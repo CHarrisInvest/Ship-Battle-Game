@@ -39,7 +39,13 @@ serves from the domain root instead — Netlify, Vercel, a plain static host —
   off five seconds before it sails in. Enemies always spawn at base strength and never upgrade, so
   the pressure comes from the count. Score by ships sunk.
 - **Free-for-all** — up to 10 rival captains starting equal. The AI upgrades like a real player, hunts
-  whoever is weakest, and gangs up on a runaway leader. Last afloat wins.
+  whoever is weakest, and gangs up on a runaway leader. For the first `OPENING_WINDOW` seconds it
+  simply takes the nearest hull, since nobody has a reputation yet. It also fires on ships it is not
+  hunting when one drifts into a weapon's arc, with a per-captain pause afterwards so the sea isn't
+  wall-to-wall powder smoke. Last afloat wins.
+
+AI ships reload on exactly the same cooldowns as the player in both modes; their only handicap is a
+touch of spread on every shot.
 
 ## Controls
 
@@ -93,4 +99,5 @@ lifetime, `RAM_*` for ramming, and `TRACKS`/`COST` for the upgrade economy.
 Arena pacing has its own block: `ARENA_START` (hunters at the opening), `ARENA_RAMP` (reinforcements
 per kill for the opening kills, two a kill after it runs out), `ARENA_SPAWN_CLEAR` (minimum distance a
 respawn keeps from the player), `ARENA_MAX_ENEMIES` (ceiling on the swarm), `ARENA_SPAWN_GAP` (how long
-the second ship of a wave holds off), and `ARENA_START_COINS` (the opening purse).
+the second ship of a wave holds off), and `ARENA_START_COINS` (the opening purse). `OPENING_WINDOW`
+sets how long free-for-all captains fight whoever is nearest before they start picking their prey.
