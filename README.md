@@ -34,7 +34,7 @@ serves from the domain root instead — Netlify, Vercel, a plain static host —
 
 - **Arena** — endless survival against a growing swarm. You start with one hunter on the water; every
   ship you sink sends two more in from the edge of the map, spawned well clear of your bow. Enemies
-  never get stronger — only you upgrade, and the pressure comes from the count. Score by ships sunk.
+  always spawn at base strength, so the pressure comes from the count. Score by ships sunk.
 - **Free-for-all** — up to 10 rival captains starting equal. The AI upgrades like a real player, hunts
   whoever is weakest, and gangs up on a runaway leader. Last afloat wins.
 

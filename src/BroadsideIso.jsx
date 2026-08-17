@@ -1568,8 +1568,8 @@ function StartOverlay({ onStart }) {
       <div style={{ fontFamily: DISPLAY, fontSize: 44, color: C.gold, letterSpacing: 2 }}>BROADSIDE</div>
       <MenuGalleon />
       <div style={{ fontFamily: UI, fontSize: 11, color: "rgba(238,244,242,0.55)", letterSpacing: 2, marginTop: 4, marginBottom: 22 }}>CHOOSE YOUR BATTLE</div>
-      <ModeCard color={C.side} title="ARENA" desc="Endless survival. One hunter to start — sink one and two more sail in from the horizon. They never get stronger, there just get to be more of them. Only you upgrade. Score by ships sunk." onClick={() => onStart("arena")} />
-      <ModeCard color={C.mast} title="FREE-FOR-ALL" desc="Up to 10 rival captains, all dead equal at the start. They upgrade like real players and hunt whoever's weakest — last afloat wins." onClick={() => onStart("ffa")} />
+      <ModeCard color={C.side} title="ARENA" desc="Endless survival. One hunter to start. Sink one and two more sail in from the horizon. Upgrade your ship. Score by ships sunk." onClick={() => onStart("arena")} />
+      <ModeCard color={C.mast} title="FREE-FOR-ALL" desc="Last afloat wins. 10 rival captains, all dead equal at the start. Enemies upgrade like real players and hunt for weak prey." onClick={() => onStart("ffa")} />
       <div style={{ marginTop: 16, fontSize: 11, color: "rgba(238,244,242,0.5)", lineHeight: 1.6 }}>Stick to sail · SIDE→hull · FRONT→mast · MUSKET→crew · ram for hull · islands block fire</div>
     </Shell>
   );
