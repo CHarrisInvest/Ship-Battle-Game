@@ -15,6 +15,21 @@ npm run build    # production bundle into dist/
 npm run preview  # serve the built bundle
 ```
 
+## Deploying
+
+Pushing to `main` builds the site and publishes it to GitHub Pages via
+`.github/workflows/deploy.yml`:
+
+<https://charrisinvest.github.io/Ship-Battle-Game/>
+
+This requires Pages to be set to the **GitHub Actions** source once, under
+Settings → Pages.
+
+Because a project site is served from a subpath, `vite.config.js` sets
+`base: "/Ship-Battle-Game/"` so the built asset URLs resolve. Deploying anywhere that
+serves from the domain root instead — Netlify, Vercel, a plain static host — needs
+`BASE_PATH=/ npm run build`.
+
 ## Modes
 
 - **Arena** — endless survival. Enemies respawn and grow stronger, only you upgrade. Score by ships sunk.
