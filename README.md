@@ -32,7 +32,9 @@ serves from the domain root instead — Netlify, Vercel, a plain static host —
 
 ## Modes
 
-- **Arena** — endless survival. Enemies respawn and grow stronger, only you upgrade. Score by ships sunk.
+- **Arena** — endless survival against a growing swarm. You start with one hunter on the water; every
+  ship you sink sends two more in from the edge of the map, spawned well clear of your bow. Enemies
+  never get stronger — only you upgrade, and the pressure comes from the count. Score by ships sunk.
 - **Free-for-all** — up to 10 rival captains starting equal. The AI upgrades like a real player, hunts
   whoever is weakest, and gangs up on a runaway leader. Last afloat wins.
 
@@ -84,3 +86,7 @@ inline-styled, so `BroadsideIso.jsx` can be dropped into any React app as-is.
 The balance knobs sit at the top of `src/BroadsideIso.jsx`: `WORLD` and `TILT` for the arena and
 camera, `BASE`/`HP_GAIN` for the health pools, `WP` for per-weapon cooldown, projectile speed, and
 lifetime, `RAM_*` for ramming, and `TRACKS`/`COST` for the upgrade economy.
+
+Arena pacing has its own block: `ARENA_START` (hunters at the opening), `ARENA_SPAWNS_PER_SINK`
+(how many sail in per kill), `ARENA_SPAWN_CLEAR` (minimum distance a respawn keeps from the player),
+`ARENA_MAX_ENEMIES` (ceiling on the swarm), and `ARENA_SPAWN_GAP` (delay between the ships of one wave).
