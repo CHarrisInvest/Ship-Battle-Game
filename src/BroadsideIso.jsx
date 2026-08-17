@@ -3,10 +3,11 @@ import { drawGalleon } from "./galleon.js";
 
 /**
  * BROADSIDE — pirate battles at sea, on a tilted (isometric-ish) sea with tall wooden ships.
- * ARENA: endless survival. One hunter to start; every ship you sink sends two more in from the
- * edge of the map, well clear of your bow. They never get stronger — there just get to be more of
- * them. FREE-FOR-ALL: up to 10 rival captains, equal start, they upgrade too, hunt whoever's
- * weakest, and turn on a runaway leader. Last afloat wins.
+ * ARENA: endless survival. One hunter to start, matched to the player gun for gun; kills bring
+ * reinforcements in from the edge of the map, well clear of your bow, 1-2-1-2 and then two a kill.
+ * They never get stronger, there just get to be more of them, and only you upgrade.
+ * FREE-FOR-ALL: up to 10 rival captains, equal start, they upgrade too, hunt whoever's weakest,
+ * and turn on a runaway leader. Last afloat wins.
  */
 
 const WORLD = 2000;
@@ -17,12 +18,16 @@ const HP_GAIN = { hull: 30, mast: 25, crew: 25 };
 const FFA_AI = 10;
 const ISLAND_COUNT = 4;
 
-// ARENA: the swarm grows instead of the ships. Sink one, two sail in from the map edge.
+// ARENA: the swarm grows instead of the ships. Reinforcements sail in from the map edge.
 const ARENA_START = 1; // hunters afloat when the round opens
-const ARENA_SPAWNS_PER_SINK = 2;
+const ARENA_RAMP = [1, 2, 1, 2]; // reinforcements for the first four kills, then 2 every kill
 const ARENA_SPAWN_CLEAR = 620; // keep a respawn at least this far from the player
 const ARENA_MAX_ENEMIES = 14; // ceiling so the fleet stays drawable
-const ARENA_SPAWN_GAP = 0.5; // seconds between two ships of the same wave
+const ARENA_SPAWN_GAP = 5; // the second ship of a wave holds off this long
+const ARENA_START_COINS = 50; // opening purse, enough for one upgrade before first contact
+
+// nth kill (1-indexed) -> how many ships sail in to replace the one that sank
+const arenaReinforcements = (n) => ARENA_RAMP[n - 1] ?? 2;
 
 const C = {
   water: "#0a2830",
@@ -340,6 +345,7 @@ export default function App() {
       g.ships.push(player);
       genIslands(g);
       if (m === "arena") {
+        player.coins = ARENA_START_COINS; // a purse, not earnings — keeps it out of the end tally
         for (let i = 0; i < ARENA_START; i++) g.ships.push(spawnArenaEnemy());
       } else {
         for (let i = 0; i < FFA_AI; i++) {
@@ -421,7 +427,8 @@ export default function App() {
       pushText(s.x, s.y, "SUNK", C.gold);
       if (g.mode === "arena") {
         g.sunk += 1;
-        g.spawnQueue = Math.min(g.spawnQueue + ARENA_SPAWNS_PER_SINK, ARENA_MAX_ENEMIES);
+        g.spawnQueue = Math.min(g.spawnQueue + arenaReinforcements(g.sunk), ARENA_MAX_ENEMIES);
+        g.spawnT = 0; // lead ship of the wave sails in at once, the next one waits out the gap
       }
       g.hudDirty = true;
       if (g.mode === "ffa" && g.player.alive && g.ships.filter((x) => x.alive).length === 1) endWin();
@@ -624,9 +631,11 @@ export default function App() {
       moveShip(s, dt, avoidIslands(s, desired), throttle);
 
       const ab = Math.abs(bearing);
-      if (dist < 220 && Math.abs(ab - Math.PI / 2) < 0.4 && s.cd.broadside <= 0) { fire(s, "broadside"); s.cd.broadside = WP.broadside.cd * 1.25; }
-      if (dist < 360 && ab < 0.28 && s.cd.bow <= 0) { fire(s, "bow"); s.cd.bow = WP.bow.cd * 1.25; }
-      if (dist < 130 && ab < 0.45 && s.cd.musket <= 0) { fire(s, "musket"); s.cd.musket = WP.musket.cd * 1.2; }
+      // arena hunters reload exactly as fast as the player; ffa rivals keep their handicap
+      const cdMul = g.mode === "arena" ? 1 : 1.25;
+      if (dist < 220 && Math.abs(ab - Math.PI / 2) < 0.4 && s.cd.broadside <= 0) { fire(s, "broadside"); s.cd.broadside = WP.broadside.cd * cdMul; }
+      if (dist < 360 && ab < 0.28 && s.cd.bow <= 0) { fire(s, "bow"); s.cd.bow = WP.bow.cd * cdMul; }
+      if (dist < 130 && ab < 0.45 && s.cd.musket <= 0) { fire(s, "musket"); s.cd.musket = WP.musket.cd * (g.mode === "arena" ? 1 : 1.2); }
       if (g.mode === "ffa") aiUpgrade(s, dt);
     }
 
@@ -1568,7 +1577,7 @@ function StartOverlay({ onStart }) {
       <div style={{ fontFamily: DISPLAY, fontSize: 44, color: C.gold, letterSpacing: 2 }}>BROADSIDE</div>
       <MenuGalleon />
       <div style={{ fontFamily: UI, fontSize: 11, color: "rgba(238,244,242,0.55)", letterSpacing: 2, marginTop: 4, marginBottom: 22 }}>CHOOSE YOUR BATTLE</div>
-      <ModeCard color={C.side} title="ARENA" desc="Endless survival. One hunter to start. Sink one and two more sail in from the horizon. Upgrade your ship. Score by ships sunk." onClick={() => onStart("arena")} />
+      <ModeCard color={C.side} title="ARENA" desc="Endless survival. One hunter to start, matched to your ship. Sink ships and reinforcements sail in from the horizon. Upgrade your ship. Score by ships sunk." onClick={() => onStart("arena")} />
       <ModeCard color={C.mast} title="FREE-FOR-ALL" desc="Last afloat wins. 10 rival captains, all dead equal at the start. Enemies upgrade like real players and hunt for weak prey." onClick={() => onStart("ffa")} />
       <div style={{ marginTop: 16, fontSize: 11, color: "rgba(238,244,242,0.5)", lineHeight: 1.6 }}>Stick to sail · SIDE→hull · FRONT→mast · MUSKET→crew · ram for hull · islands block fire</div>
     </Shell>

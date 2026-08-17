@@ -32,9 +32,12 @@ serves from the domain root instead — Netlify, Vercel, a plain static host —
 
 ## Modes
 
-- **Arena** — endless survival against a growing swarm. You start with one hunter on the water; every
-  ship you sink sends two more in from the edge of the map, spawned well clear of your bow. Enemies
-  always spawn at base strength, so the pressure comes from the count. Score by ships sunk.
+- **Arena** — endless survival against a growing swarm. You open with 50 coins and one hunter on the
+  water, matched to your ship gun for gun and reload for reload. Kills bring reinforcements in from
+  the edge of the map, spawned well clear of your bow: one for the first kill, then 1-2-1-2 through
+  the fourth, then two for every kill after that up to the fleet cap. The second ship of a wave holds
+  off five seconds before it sails in. Enemies always spawn at base strength and never upgrade, so
+  the pressure comes from the count. Score by ships sunk.
 - **Free-for-all** — up to 10 rival captains starting equal. The AI upgrades like a real player, hunts
   whoever is weakest, and gangs up on a runaway leader. Last afloat wins.
 
@@ -87,6 +90,7 @@ The balance knobs sit at the top of `src/BroadsideIso.jsx`: `WORLD` and `TILT` f
 camera, `BASE`/`HP_GAIN` for the health pools, `WP` for per-weapon cooldown, projectile speed, and
 lifetime, `RAM_*` for ramming, and `TRACKS`/`COST` for the upgrade economy.
 
-Arena pacing has its own block: `ARENA_START` (hunters at the opening), `ARENA_SPAWNS_PER_SINK`
-(how many sail in per kill), `ARENA_SPAWN_CLEAR` (minimum distance a respawn keeps from the player),
-`ARENA_MAX_ENEMIES` (ceiling on the swarm), and `ARENA_SPAWN_GAP` (delay between the ships of one wave).
+Arena pacing has its own block: `ARENA_START` (hunters at the opening), `ARENA_RAMP` (reinforcements
+per kill for the opening kills, two a kill after it runs out), `ARENA_SPAWN_CLEAR` (minimum distance a
+respawn keeps from the player), `ARENA_MAX_ENEMIES` (ceiling on the swarm), `ARENA_SPAWN_GAP` (how long
+the second ship of a wave holds off), and `ARENA_START_COINS` (the opening purse).
