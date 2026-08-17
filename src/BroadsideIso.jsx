@@ -3,8 +3,10 @@ import { drawGalleon } from "./galleon.js";
 
 /**
  * BROADSIDE — pirate battles at sea, on a tilted (isometric-ish) sea with tall wooden ships.
- * ARENA: endless survival. FREE-FOR-ALL: up to 10 rival captains, equal start, they upgrade too,
- * hunt whoever's weakest, and turn on a runaway leader. Last afloat wins.
+ * ARENA: endless survival. One hunter to start; every ship you sink sends two more in from the
+ * edge of the map, well clear of your bow. They never get stronger — there just get to be more of
+ * them. FREE-FOR-ALL: up to 10 rival captains, equal start, they upgrade too, hunt whoever's
+ * weakest, and turn on a runaway leader. Last afloat wins.
  */
 
 const WORLD = 2000;
@@ -14,6 +16,13 @@ const BASE = { hull: 100, mast: 55, crew: 70 };
 const HP_GAIN = { hull: 30, mast: 25, crew: 25 };
 const FFA_AI = 10;
 const ISLAND_COUNT = 4;
+
+// ARENA: the swarm grows instead of the ships. Sink one, two sail in from the map edge.
+const ARENA_START = 1; // hunters afloat when the round opens
+const ARENA_SPAWNS_PER_SINK = 2;
+const ARENA_SPAWN_CLEAR = 620; // keep a respawn at least this far from the player
+const ARENA_MAX_ENEMIES = 14; // ceiling so the fleet stays drawable
+const ARENA_SPAWN_GAP = 0.5; // seconds between two ships of the same wave
 
 const C = {
   water: "#0a2830",
@@ -292,19 +301,38 @@ export default function App() {
       }
     }
 
+    // A point on the map edge, as far from the player as we can manage and clear of islands.
+    function edgePos(g, minFromPlayer) {
+      const inset = 70;
+      let best = null, bestD = -1;
+      for (let t = 0; t < 60; t++) {
+        const side = t % 4;
+        const u = 120 + Math.random() * (WORLD - 240);
+        const x = side === 0 ? u : side === 1 ? u : side === 2 ? inset : WORLD - inset;
+        const y = side === 0 ? inset : side === 1 ? WORLD - inset : u;
+        let blocked = false;
+        if (g.islands) for (const isl of g.islands) if (Math.hypot(x - isl.x, y - isl.y) < isl.r + 55) { blocked = true; break; }
+        if (blocked) continue;
+        const d = g.player ? Math.hypot(x - g.player.x, y - g.player.y) : 1e9;
+        if (d >= minFromPlayer) return { x, y };
+        if (d > bestD) { bestD = d; best = { x, y }; }
+      }
+      return best || { x: inset, y: inset };
+    }
+
     function spawnArenaEnemy() {
       const g = gameRef.current;
-      const tier = Math.floor(g.sunk / 3);
-      const p = farPos(g, 460);
-      const upLv = { mast: tier, hull: tier, crew: tier, side: tier, front: tier };
-      return makeShip(p.x, p.y, Math.random() * Math.PI * 2, { ci: g.ships.length, up: upLv });
+      const p = edgePos(g, ARENA_SPAWN_CLEAR);
+      // bow pointed inland so a fresh hunter sails into the fight, not into the boundary
+      const heading = Math.atan2(WORLD / 2 - p.y, WORLD / 2 - p.x) + (Math.random() - 0.5) * 0.8;
+      return makeShip(p.x, p.y, heading, { ci: g.ships.length });
     }
 
     function reset(m) {
       gameRef.current = {
         mode: m, player: null, ships: [], shots: [], parts: [], wakes: [], islands: [], texts: [],
         cam: { x: 0, y: 0 }, sunk: 0, ffaTotal: 0, aliveCount: 0, leader: null, avgEarned: 0,
-        _lastRank: 0, spawnT: 0, vign: 0, running: false, hudDirty: false, hudAcc: 0, time: 0,
+        _lastRank: 0, spawnT: 0, spawnQueue: 0, vign: 0, running: false, hudDirty: false, hudAcc: 0, time: 0,
       };
       const g = gameRef.current;
       const player = makeShip(WORLD / 2, WORLD / 2, -Math.PI / 2, { isPlayer: true });
@@ -312,7 +340,7 @@ export default function App() {
       g.ships.push(player);
       genIslands(g);
       if (m === "arena") {
-        for (let i = 0; i < 3; i++) g.ships.push(spawnArenaEnemy());
+        for (let i = 0; i < ARENA_START; i++) g.ships.push(spawnArenaEnemy());
       } else {
         for (let i = 0; i < FFA_AI; i++) {
           const pos = farPos(g, 440);
@@ -391,7 +419,10 @@ export default function App() {
       const i = g.ships.indexOf(s);
       if (i >= 0) g.ships.splice(i, 1);
       pushText(s.x, s.y, "SUNK", C.gold);
-      if (g.mode === "arena") g.sunk += 1;
+      if (g.mode === "arena") {
+        g.sunk += 1;
+        g.spawnQueue = Math.min(g.spawnQueue + ARENA_SPAWNS_PER_SINK, ARENA_MAX_ENEMIES);
+      }
       g.hudDirty = true;
       if (g.mode === "ffa" && g.player.alive && g.ships.filter((x) => x.alive).length === 1) endWin();
     }
@@ -690,9 +721,13 @@ export default function App() {
       const g = gameRef.current;
       if (g.mode !== "arena") return;
       g.spawnT -= dt;
-      const target = Math.min(3 + Math.floor(g.sunk / 4), 5);
       const enemies = g.ships.filter((s) => !s.isPlayer).length;
-      if (enemies < target && g.spawnT <= 0) { g.ships.push(spawnArenaEnemy()); g.spawnT = 1.4; }
+      if (enemies === 0 && g.spawnQueue <= 0) g.spawnQueue = 1; // never leave the sea empty
+      if (g.spawnQueue > 0 && enemies < ARENA_MAX_ENEMIES && g.spawnT <= 0) {
+        g.ships.push(spawnArenaEnemy());
+        g.spawnQueue -= 1;
+        g.spawnT = ARENA_SPAWN_GAP;
+      }
     }
 
     function computeMeta() {
@@ -1350,7 +1385,14 @@ export default function App() {
         <>
           <div style={{ position: "absolute", top: 8, left: 10, display: "flex", gap: 8 }}>
             <Pill>🪙 {coins}</Pill>
-            {mode === "arena" ? <Pill>⚓ {sunk}</Pill> : <Pill>🚩 {left} left</Pill>}
+            {mode === "arena" ? (
+              <>
+                <Pill>⚓ {sunk}</Pill>
+                <Pill>🚩 {Math.max(0, left - 1)} hunting</Pill>
+              </>
+            ) : (
+              <Pill>🚩 {left} left</Pill>
+            )}
           </div>
 
           <div style={{ position: "absolute", top: 36, left: 10, display: "flex", gap: 6, alignItems: "stretch", width: "min(236px, 72%)" }}>
@@ -1526,7 +1568,7 @@ function StartOverlay({ onStart }) {
       <div style={{ fontFamily: DISPLAY, fontSize: 44, color: C.gold, letterSpacing: 2 }}>BROADSIDE</div>
       <MenuGalleon />
       <div style={{ fontFamily: UI, fontSize: 11, color: "rgba(238,244,242,0.55)", letterSpacing: 2, marginTop: 4, marginBottom: 22 }}>CHOOSE YOUR BATTLE</div>
-      <ModeCard color={C.side} title="ARENA" desc="Endless survival. Enemies grow stronger and respawn. Only you upgrade. Score by ships sunk." onClick={() => onStart("arena")} />
+      <ModeCard color={C.side} title="ARENA" desc="Endless survival. One hunter to start — sink one and two more sail in from the horizon. They never get stronger, there just get to be more of them. Only you upgrade. Score by ships sunk." onClick={() => onStart("arena")} />
       <ModeCard color={C.mast} title="FREE-FOR-ALL" desc="Up to 10 rival captains, all dead equal at the start. They upgrade like real players and hunt whoever's weakest — last afloat wins." onClick={() => onStart("ffa")} />
       <div style={{ marginTop: 16, fontSize: 11, color: "rgba(238,244,242,0.5)", lineHeight: 1.6 }}>Stick to sail · SIDE→hull · FRONT→mast · MUSKET→crew · ram for hull · islands block fire</div>
     </Shell>
