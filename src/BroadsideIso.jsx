@@ -1,4 +1,5 @@
 import React, { useRef, useState, useEffect, useCallback } from "react";
+import { drawGalleon } from "./galleon.js";
 
 /**
  * BROADSIDE — pirate battles at sea, on a tilted (isometric-ish) sea with tall wooden ships.
@@ -1457,9 +1458,65 @@ function FireButton({ refEl, name, sub, color, onDown, onUp }) {
 
 function Shell({ children }) {
   return (
-    <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: 24, background: "rgba(7,20,24,0.74)", backdropFilter: "blur(4px)" }}>
-      <div style={{ maxWidth: 360, textAlign: "center" }}>{children}</div>
+    // `margin:auto` rather than `align-items:center` so a tall menu on a short
+    // screen scrolls from the top instead of having its head clipped off.
+    <div style={{ position: "absolute", inset: 0, display: "flex", overflowY: "auto", padding: 24, background: "rgba(7,20,24,0.74)", backdropFilter: "blur(4px)" }}>
+      <div style={{ margin: "auto", maxWidth: 360, textAlign: "center" }}>{children}</div>
     </div>
+  );
+}
+
+const GALLEON_W = 268;
+const GALLEON_ASPECT = 0.62; // the projection is drawn into a 1 : 0.62 box
+const GALLEON_DEG_PER_MS = 0.012; // ~30s per revolution
+
+// The galleon on the menu: a 3-D hull re-projected to isometric every frame, so
+// it turns rather than spinning a flat sprite.
+function MenuGalleon() {
+  const cvs = useRef(null);
+
+  useEffect(() => {
+    const c = cvs.current;
+    if (!c) return;
+    const ctx = c.getContext("2d");
+    const w = GALLEON_W;
+    const h = Math.round(w * GALLEON_ASPECT);
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    c.width = w * dpr;
+    c.height = h * dpr;
+
+    const paint = (deg) => {
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, w, h);
+      drawGalleon(ctx, w, h, deg);
+    };
+
+    // A perpetually turning ship is exactly what reduced-motion asks us to drop,
+    // so hold a three-quarter view instead.
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+      paint(24);
+      return;
+    }
+
+    let raf = 0;
+    let last = 0;
+    let deg = 0;
+    const frame = (t) => {
+      if (last) deg = (deg + (t - last) * GALLEON_DEG_PER_MS) % 360;
+      last = t;
+      paint(deg);
+      raf = requestAnimationFrame(frame);
+    };
+    raf = requestAnimationFrame(frame);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+
+  return (
+    <canvas
+      ref={cvs}
+      aria-hidden="true"
+      style={{ display: "block", width: GALLEON_W, height: Math.round(GALLEON_W * GALLEON_ASPECT), margin: "2px auto -6px" }}
+    />
   );
 }
 
@@ -1467,6 +1524,7 @@ function StartOverlay({ onStart }) {
   return (
     <Shell>
       <div style={{ fontFamily: DISPLAY, fontSize: 44, color: C.gold, letterSpacing: 2 }}>BROADSIDE</div>
+      <MenuGalleon />
       <div style={{ fontFamily: UI, fontSize: 11, color: "rgba(238,244,242,0.55)", letterSpacing: 2, marginTop: 4, marginBottom: 22 }}>CHOOSE YOUR BATTLE</div>
       <ModeCard color={C.side} title="ARENA" desc="Endless survival. Enemies grow stronger and respawn. Only you upgrade. Score by ships sunk." onClick={() => onStart("arena")} />
       <ModeCard color={C.mast} title="FREE-FOR-ALL" desc="Up to 10 rival captains, all dead equal at the start. They upgrade like real players and hunt whoever's weakest — last afloat wins." onClick={() => onStart("ffa")} />

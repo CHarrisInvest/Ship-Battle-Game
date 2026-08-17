@@ -65,8 +65,16 @@ index.html            # Vite entry
 src/main.jsx          # React root
 src/index.css         # full-bleed, no-scroll page shell
 src/BroadsideIso.jsx  # game: simulation, canvas renderer, and UI
+src/galleon.js        # the galleon turning on the menu
 vite.config.js
 ```
+
+`galleon.js` defines the hull as 3-D stations and re-projects it to isometric on
+every frame, so the menu ship genuinely turns rather than cycling sprite frames.
+`drawGalleon(ctx, w, h, deg)` draws one bearing; the pivot is the hull centre at
+the waterline, so the ship holds the centre of the box as it comes about. It
+honours `prefers-reduced-motion` by holding a three-quarter view instead of
+turning.
 
 The game has no dependencies beyond React — all rendering is hand-rolled canvas drawing and all UI is
 inline-styled, so `BroadsideIso.jsx` can be dropped into any React app as-is.
