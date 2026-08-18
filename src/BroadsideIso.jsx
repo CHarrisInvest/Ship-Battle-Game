@@ -92,7 +92,9 @@ const SHIP_R = 17;
 const HULL_L = 36;
 const HULL_W = 13;
 const RAM_MIN_CLOSE = 32; // must be charging forward this fast to ram
-const RAM_KNOCK = 150; // recoil impulse thrown on a ram (scaled by closing speed)
+const RAM_KNOCK = 150; // impulse thrown on the ship taking the ram (scaled by closing speed)
+const RAM_RECOIL = 0.3; // share of that the ship delivering the ram feels back through her bow
+const RAM_KEEP = 0.6; // and how much of her way she carries through the impact
 const RAM_CD = 0.9; // seconds before a ship can ram again
 
 const TRACKS = [
@@ -698,24 +700,28 @@ export default function App() {
           // closing speed = each ship's forward velocity aimed at the other
           const closeA = (Math.cos(a.heading) * nx + Math.sin(a.heading) * ny) * a.spdCur;
           const closeB = -(Math.cos(b.heading) * nx + Math.sin(b.heading) * ny) * b.spdCur;
-          let hit = false;
+          let ramsA = false, ramsB = false;
           if (a.ramCd <= 0 && closeA > RAM_MIN_CLOSE) {
             applyHit(b, "hull", ramDmg(a) * clamp(closeA / 80, 0.6, 1.5), a);
             a.ramCd = RAM_CD;
-            hit = true;
+            ramsA = true;
           }
           if (b.alive && b.ramCd <= 0 && closeB > RAM_MIN_CLOSE) {
             applyHit(a, "hull", ramDmg(b) * clamp(closeB / 80, 0.6, 1.5), b);
             b.ramCd = RAM_CD;
-            hit = true;
+            ramsB = true;
           }
-          if (hit) {
-            // recoil scaled by how hard the charge landed; kills forward drive
-            // so they can't grind ram damage back and forth after impact
+          if (ramsA || ramsB) {
+            // the ship that took the blow is thrown clear and stopped dead; the one that
+            // delivered it only shudders and carries most of her way through the impact.
+            // head-on, both are rammers and both wear the full impact
             const impulse = RAM_KNOCK * clamp(Math.max(closeA, closeB) / 90, 0.4, 1.2);
-            a.kx -= nx * impulse; a.ky -= ny * impulse;
-            b.kx += nx * impulse; b.ky += ny * impulse;
-            a.spdCur *= 0.12; b.spdCur *= 0.12;
+            const aKnock = ramsB ? impulse : impulse * RAM_RECOIL;
+            const bKnock = ramsA ? impulse : impulse * RAM_RECOIL;
+            a.kx -= nx * aKnock; a.ky -= ny * aKnock;
+            b.kx += nx * bKnock; b.ky += ny * bKnock;
+            a.spdCur *= ramsB ? 0.12 : RAM_KEEP;
+            b.spdCur *= ramsA ? 0.12 : RAM_KEEP;
             burst((a.x + b.x) / 2, (a.y + b.y) / 2, "hull");
           } else {
             // incidental touch, nobody charging bow-first: gentle nudge, no recoil, no damage
