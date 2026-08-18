@@ -91,9 +91,25 @@ const WP = {
 const SHIP_R = 17;
 const HULL_L = 36;
 const HULL_W = 13;
-const RAM_MIN_CLOSE = 32; // must be charging forward this fast to ram
-const RAM_KNOCK = 150; // recoil impulse thrown on a ram (scaled by closing speed)
+const HULL_A = HULL_L / 2; // hulls collide as ellipses: semi-length along the heading...
+const HULL_B = HULL_W / 2; // ...and semi-beam across it
+const HULL_PAD = 3; // rigging and oars, so hulls never touch pixels
+const RAM_MIN_CLOSE = 25; // closing speed at which a collision starts to count as a ram
+const RAM_FULL_CLOSE = 94; // closing speed for a full-weight ram: a fresh ship's top speed
+const RAM_CURVE = 1.2; // how sharply ram weight climbs with closing speed
+const RAM_MAX_FORCE = 2.2; // ceiling on that weight, reached bow to bow at a fair clip
+const RAM_MUTUAL_CAP = 0.8; // most of a bow-to-bow blow one ship's speed can shove onto the other
+const RAM_KNOCK = 150; // impulse thrown apart on a ram (scaled by closing speed)
+const RAM_RECOIL = 0.3; // floor on the bounce for whoever drove into the blow
+const RAM_DRIVE_LOSS = 0.88; // share of her way a ship spends into the impact, bow-on
+const RAM_REARM_GAP = 26; // hulls must break this far clear before the pair can ram again
 const RAM_CD = 0.9; // seconds before a ship can ram again
+
+// how far a ship's hull reaches in a given world direction
+const hullReach = (s, ang) => {
+  const t = ang - s.heading;
+  return (HULL_A * HULL_B) / Math.hypot(Math.cos(t) * HULL_B, Math.sin(t) * HULL_A) + HULL_PAD;
+};
 
 const TRACKS = [
   { key: "mast", label: "MAST", sub: "spd·turn·hp", color: C.mast },
@@ -123,7 +139,7 @@ const turnCap = (s) => (2.4 + s.up.mast * 0.28) * (0.22 + 0.78 * (s.mast / s.max
 const sideDmg = (s) => 9 + s.up.side * 4;
 const frontDmg = (s) => 9 + s.up.front * 4;
 const musketDmg = (s) => 3.2 + s.up.crew * 1.4;
-const ramDmg = (s) => 15 + s.up.hull * 8;
+const ramDmg = (s) => 26 + s.up.hull * 4;
 const shipPower = (s) => s.up.mast + s.up.hull + s.up.crew + s.up.side + s.up.front;
 
 function applyUpgrade(s, track) {
@@ -227,7 +243,7 @@ export default function App() {
         maxHull: m.hull, maxMast: m.mast, maxCrew: m.crew,
         hull: m.hull, mast: m.mast, crew: m.crew,
         cd: { broadside: Math.random() * 0.5, bow: Math.random() * 0.5, musket: Math.random() * 0.5 },
-        mastDown: false, flash: 0, ramCd: 0, wakeT: 0, sprayT: 0,
+        mastDown: false, flash: 0, ramCd: 0, locked: new Set(), wakeT: 0, sprayT: 0,
         roll: 0, rollPhase: Math.random() * Math.PI * 2, turnVel: 0, kx: 0, ky: 0,
         fill: opts.isPlayer ? C.player : pal.fill,
         stroke: opts.isPlayer ? C.playerStroke : pal.stroke,
@@ -429,6 +445,7 @@ export default function App() {
       if (s.isPlayer) { playerDied(s._deathBar || "hull"); return; }
       const i = g.ships.indexOf(s);
       if (i >= 0) g.ships.splice(i, 1);
+      for (const o of g.ships) o.locked.delete(s); // she is on the bottom; nobody is fouled on her
       pushText(s.x, s.y, "SUNK", C.gold);
       if (g.mode === "arena") {
         g.sunk += 1;
@@ -689,36 +706,66 @@ export default function App() {
           if (!(g.mode === "ffa" || a.isPlayer !== b.isPlayer)) continue;
           const dx = b.x - a.x, dy = b.y - a.y;
           const d = Math.hypot(dx, dy) || 1;
-          if (d >= SHIP_R * 1.7) continue;
+          const toB = Math.atan2(dy, dx);
+          // how close two hulls can get depends on which way each of them is lying
+          const reach = hullReach(a, toB) + hullReach(b, toB + Math.PI);
+          if (d >= reach) {
+            // a pair has to break properly clear of each other before it can ram again
+            if (d >= reach + RAM_REARM_GAP) { a.locked.delete(b); b.locked.delete(a); }
+            continue;
+          }
           const nx = dx / d, ny = dy / d; // unit vector a -> b
           // always de-overlap so hulls never sit inside each other
-          const ov = SHIP_R * 1.7 - d;
+          const ov = reach - d;
           a.x -= nx * ov * 0.5; a.y -= ny * ov * 0.5;
           b.x += nx * ov * 0.5; b.y += ny * ov * 0.5;
-          // closing speed = each ship's forward velocity aimed at the other
-          const closeA = (Math.cos(a.heading) * nx + Math.sin(a.heading) * ny) * a.spdCur;
-          const closeB = -(Math.cos(b.heading) * nx + Math.sin(b.heading) * ny) * b.spdCur;
-          let hit = false;
-          if (a.ramCd <= 0 && closeA > RAM_MIN_CLOSE) {
-            applyHit(b, "hull", ramDmg(a) * clamp(closeA / 80, 0.6, 1.5), a);
-            a.ramCd = RAM_CD;
-            hit = true;
+
+          // closing speed along the line of impact, counting how both ships are actually moving:
+          // a head-on doubles it, and running from a chaser bleeds it away
+          const avx = Math.cos(a.heading) * a.spdCur + a.kx, avy = Math.sin(a.heading) * a.spdCur + a.ky;
+          const bvx = Math.cos(b.heading) * b.spdCur + b.kx, bvy = Math.sin(b.heading) * b.spdCur + b.ky;
+          const closing = (avx - bvx) * nx + (avy - bvy) * ny;
+          // ...and how much of each ship's own way is driving into the other. That is the ram:
+          // a ship crossing or running has none of it, however hard the hulls meet
+          const bowA = Math.cos(a.heading - toB), bowB = -Math.cos(b.heading - toB);
+          const driveA = Math.max(0, bowA * a.spdCur), driveB = Math.max(0, bowB * b.spdCur);
+          // weight climbs faster than the closing speed does — a real charge tells, a bump barely
+          // scratches her paint — but short of the square, so slow contact still counts for something
+          const t = clamp((closing - RAM_MIN_CLOSE) / (RAM_FULL_CLOSE - RAM_MIN_CLOSE), 0, 99);
+          const force = Math.min(Math.pow(t, RAM_CURVE), RAM_MAX_FORCE);
+
+          // struck square on the beam staves a hull in; caught on her fine ends it glances off
+          let hurtB = 0, hurtA = 0;
+          if (force > 0 && !a.locked.has(b)) {
+            if (driveA > 0 && a.ramCd <= 0) hurtB = ramDmg(a) * force * bowA * bowA * (0.55 + 0.45 * Math.abs(Math.sin(b.heading - toB)));
+            if (driveB > 0 && b.ramCd <= 0) hurtA = ramDmg(b) * force * bowB * bowB * (0.55 + 0.45 * Math.abs(Math.sin(a.heading - toB)));
           }
-          if (b.alive && b.ramCd <= 0 && closeB > RAM_MIN_CLOSE) {
-            applyHit(a, "hull", ramDmg(b) * clamp(closeB / 80, 0.6, 1.5), b);
-            b.ramCd = RAM_CD;
-            hit = true;
+          if (hurtB > 0 && hurtA > 0) {
+            // both bows in it: the one with less way behind her comes off worse, because the ship
+            // with more weight behind her drives through what the other has to absorb
+            const lead = clamp(driveA / (driveA + driveB), 1 - RAM_MUTUAL_CAP, RAM_MUTUAL_CAP);
+            hurtB *= 2 * lead;
+            hurtA *= 2 * (1 - lead);
           }
-          if (hit) {
-            // recoil scaled by how hard the charge landed; kills forward drive
-            // so they can't grind ram damage back and forth after impact
-            const impulse = RAM_KNOCK * clamp(Math.max(closeA, closeB) / 90, 0.4, 1.2);
-            a.kx -= nx * impulse; a.ky -= ny * impulse;
-            b.kx += nx * impulse; b.ky += ny * impulse;
-            a.spdCur *= 0.12; b.spdCur *= 0.12;
+          let rammed = false;
+          if (hurtB > 0) { applyHit(b, "hull", hurtB, a); a.ramCd = RAM_CD; rammed = true; }
+          if (hurtA > 0 && b.alive) { applyHit(a, "hull", hurtA, b); b.ramCd = RAM_CD; rammed = true; }
+          if (rammed) {
+            a.locked.add(b); b.locked.add(a);
+            // each ship spends the part of her way that went into the impact, so one driving
+            // straight in stops dead while one caught across her course carries on. whoever put
+            // the least drive into it is the one thrown clear
+            const impulse = RAM_KNOCK * clamp(closing / RAM_FULL_CLOSE, 0.3, 1.2);
+            const share = driveA / Math.max(1, driveA + driveB);
+            const aKnock = impulse * (RAM_RECOIL + (1 - RAM_RECOIL) * (1 - share));
+            const bKnock = impulse * (RAM_RECOIL + (1 - RAM_RECOIL) * share);
+            a.kx -= nx * aKnock; a.ky -= ny * aKnock;
+            b.kx += nx * bKnock; b.ky += ny * bKnock;
+            a.spdCur *= 1 - RAM_DRIVE_LOSS * (driveA / Math.max(1, a.spdCur));
+            b.spdCur *= 1 - RAM_DRIVE_LOSS * (driveB / Math.max(1, b.spdCur));
             burst((a.x + b.x) / 2, (a.y + b.y) / 2, "hull");
           } else {
-            // incidental touch, nobody charging bow-first: gentle nudge, no recoil, no damage
+            // hulls touching without a charge behind them: gentle nudge, no damage
             a.kx -= nx * 32; a.ky -= ny * 32;
             b.kx += nx * 32; b.ky += ny * 32;
           }

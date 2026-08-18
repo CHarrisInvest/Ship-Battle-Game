@@ -56,8 +56,31 @@ Pointer/touch driven, so it works the same with a mouse or on a phone:
   damages a different system.
 - **Upgrade rail** (top) — spend gold across MAST, HULL, CREW, SIDE, FRONT. Costs scale `45 × 1.55^level`.
 
-Ramming is a real attack: close bow-first above the minimum closing speed to deal hull damage and
-knock the target back. A slow bump is just a nudge.
+Ramming is a real attack, resolved from the geometry of the collision rather than from who started it:
+
+- **Closing speed** counts both ships' motion along the line of impact, so a head-on doubles it and a
+  ship running from a chaser bleeds it away. Below `RAM_MIN_CLOSE` nothing happens. Above it, weight
+  climbs faster than the closing speed does (`RAM_CURVE`), reaching full at `RAM_FULL_CLOSE` (a fresh
+  ship's top speed) and capping at `RAM_MAX_FORCE`. A committed charge tells; a bump barely scratches
+  her paint, though it still counts for something.
+- **You only ram with your bow.** Damage scales with the square of how bow-on you are, so a ship
+  crossing or sliding along another does no damage however hard the hulls meet.
+- **Where you land it matters.** A hull struck square on the beam takes nearly twice what she takes
+  caught on her bow or stern, where the blow glances off her fine ends.
+- **Bow to bow, the slower ship comes off worse.** When both ships are ramming each other the blow is
+  shared out by how much way each had behind her, up to `RAM_MUTUAL_CAP`, so the ship with more speed
+  drives through what the other has to absorb. Meet at the same speed and you split it evenly.
+- **Speed is spent, not scaled.** Each ship loses the part of her way that was driving into the
+  impact. Drive straight in and you stop dead; get caught across your course and you carry on, shoved
+  off your line. Whoever put the least drive into it is the one thrown clear.
+- **A pair must break apart to ram again**, `RAM_REARM_GAP` clear of each other, so nobody grinds
+  damage out of hulls that are already touching.
+
+Two ships meeting bow to bow are both ramming, so both take it. A slow bump is just a nudge.
+
+Hulls collide as ellipses (`HULL_A` × `HULL_B`, plus `HULL_PAD` for rigging), so two ships lying beam
+to beam close to about 19px of each other while two meeting bow to bow touch at 42px. Cannon and
+musket balls still hit against a simple `SHIP_R` circle.
 
 ## Damage model
 
