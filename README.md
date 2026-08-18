@@ -82,10 +82,17 @@ Ramming is a real attack, resolved from the geometry of the collision rather tha
 
 Two ships meeting bow to bow are both ramming, so both take it. A slow bump is just a nudge.
 
-Hulls are ellipses (`HULL_A` × `HULL_B`), for gunnery as well as for ramming. Two ships lying beam to
-beam close to about 19px of each other while two meeting bow to bow touch at 42px (collisions add
-`HULL_PAD` for rigging). A shot is tested against that same ellipse, widened by the ball's own radius,
-and along the whole path it flew that frame rather than at its new position — a musket ball crosses
+Hull against hull, a ship is her keel — a line `KEEL` long down her length — swelled by her beam, and
+two ships foul when their keels come within `HULL_TOUCH`. Measuring keel to keel rather than centre to
+centre is what keeps hulls out of each other: ships this long routinely cross well off the line
+joining their centres, and a centre-to-centre test lets them slide through one another there. The same
+measurement gives the contact normal a ram resolves along. Two ships lying beam to beam close to about
+19px while two meeting bow to bow touch at 42px. De-overlap runs for every pair on the water, whatever
+mode and whichever side they are on — consorts cannot ram each other, but no two hulls ever share the
+same water.
+
+For gunnery a hull is an ellipse (`HULL_A` × `HULL_B`). A shot is tested against it widened by the
+ball's own radius, and along the whole path it flew that frame rather than at its new position — a musket ball crosses
 more than the width of a hull in a slow frame, so a point test would let it pass clean through.
 Presenting your bow or stern to a gun is therefore a genuinely smaller target than showing your side.
 

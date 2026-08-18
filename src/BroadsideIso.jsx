@@ -108,11 +108,31 @@ const RAM_DRIVE_LOSS = 0.88; // share of her way a ship spends into the impact, 
 const RAM_REARM_GAP = 26; // hulls must break this far clear before the pair can ram again
 const RAM_CD = 0.9; // seconds before a ship can ram again
 
-// how far a ship's hull reaches in a given world direction
-const hullReach = (s, ang) => {
-  const t = ang - s.heading;
-  return (HULL_A * HULL_B) / Math.hypot(Math.cos(t) * HULL_B, Math.sin(t) * HULL_A) + HULL_PAD;
-};
+// For hull against hull a ship is her keel — a line down her length — swelled by her beam. Measuring
+// between the two keels finds where they truly foul, which the distance between two centres cannot:
+// hulls this long can cross well off the line joining them, and would slide through one another.
+const KEEL = HULL_A - HULL_B; // half the keel, so keel plus beam is her full length
+const HULL_TOUCH = 2 * (HULL_B + HULL_PAD); // keels this close and the hulls are alongside
+
+// closest approach of the two keels: distance, and the unit vector from a's keel to b's
+function keelGap(a, b) {
+  const ux = Math.cos(a.heading) * KEEL, uy = Math.sin(a.heading) * KEEL;
+  const vx = Math.cos(b.heading) * KEEL, vy = Math.sin(b.heading) * KEEL;
+  // segments a.x±u and b.x±v, walked as p0 + s*(2u) and q0 + t*(2v)
+  const wx = a.x - ux - (b.x - vx), wy = a.y - uy - (b.y - vy);
+  const A2 = 4 * (ux * ux + uy * uy), B2 = 4 * (ux * vx + uy * vy), C2 = 4 * (vx * vx + vy * vy);
+  const D2 = 2 * (ux * wx + uy * wy), E2 = 2 * (vx * wx + vy * wy);
+  const den = A2 * C2 - B2 * B2;
+  let s = den > 1e-9 ? clamp((B2 * E2 - C2 * D2) / den, 0, 1) : 0;
+  let t = C2 > 1e-9 ? clamp((B2 * s + E2) / C2, 0, 1) : 0;
+  s = A2 > 1e-9 ? clamp((B2 * t - D2) / A2, 0, 1) : 0; // settle it after the clamps
+  const px = a.x - ux + 2 * ux * s, py = a.y - uy + 2 * uy * s;
+  const qx = b.x - vx + 2 * vx * t, qy = b.y - vy + 2 * vy * t;
+  let gx = qx - px, gy = qy - py;
+  let d = Math.hypot(gx, gy);
+  if (d < 1e-6) { gx = b.x - a.x; gy = b.y - a.y; d = Math.hypot(gx, gy) || 1; } // dead aboard her
+  return { d, nx: gx / d, ny: gy / d };
+}
 
 // Did a shot's flight this frame cross a ship's hull? Works on the whole step from where the ball
 // was to where it is, so a fast ball cannot skip through a hull only thirteen paces across. `pad`
@@ -722,20 +742,17 @@ export default function App() {
         for (let j = i + 1; j < ships.length; j++) {
           const a = ships[i], b = ships[j];
           if (!a.alive || !b.alive) continue;
-          if (!(g.mode === "ffa" || a.isPlayer !== b.isPlayer)) continue;
-          const dx = b.x - a.x, dy = b.y - a.y;
-          const d = Math.hypot(dx, dy) || 1;
-          const toB = Math.atan2(dy, dx);
-          // how close two hulls can get depends on which way each of them is lying
-          const reach = hullReach(a, toB) + hullReach(b, toB + Math.PI);
-          if (d >= reach) {
+          // consorts cannot ram each other, but no two hulls may ever share the same water
+          const hostile = g.mode === "ffa" || a.isPlayer !== b.isPlayer;
+          const { d, nx, ny } = keelGap(a, b); // where the two hulls come nearest to fouling
+          if (d >= HULL_TOUCH) {
             // a pair has to break properly clear of each other before it can ram again
-            if (d >= reach + RAM_REARM_GAP) { a.locked.delete(b); b.locked.delete(a); }
+            if (d >= HULL_TOUCH + RAM_REARM_GAP) { a.locked.delete(b); b.locked.delete(a); }
             continue;
           }
-          const nx = dx / d, ny = dy / d; // unit vector a -> b
+          const toB = Math.atan2(ny, nx); // the line of the impact, from her side to theirs
           // always de-overlap so hulls never sit inside each other
-          const ov = reach - d;
+          const ov = HULL_TOUCH - d;
           a.x -= nx * ov * 0.5; a.y -= ny * ov * 0.5;
           b.x += nx * ov * 0.5; b.y += ny * ov * 0.5;
 
@@ -757,7 +774,7 @@ export default function App() {
           const weigh = (aspect) => RAM_FINE + (RAM_BEAM - RAM_FINE) * aspect;
 
           let hurtB = 0, hurtA = 0;
-          if (force > 0 && !a.locked.has(b)) {
+          if (hostile && force > 0 && !a.locked.has(b)) {
             if (driveA > 0 && a.ramCd <= 0) hurtB = ramDmg(a) * force * bowA * bowA * weigh(Math.abs(Math.sin(b.heading - toB)));
             if (driveB > 0 && b.ramCd <= 0) hurtA = ramDmg(b) * force * bowB * bowB * weigh(Math.abs(Math.sin(a.heading - toB)));
           }
