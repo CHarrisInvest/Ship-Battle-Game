@@ -96,6 +96,7 @@ const HULL_B = HULL_W / 2; // ...and semi-beam across it
 const HULL_PAD = 3; // rigging and oars, so hulls never touch pixels
 const RAM_MIN_CLOSE = 25; // closing speed at which a collision starts to count as a ram
 const RAM_FULL_CLOSE = 94; // closing speed for a full-weight ram: a fresh ship's top speed
+const RAM_CURVE = 1.5; // how sharply ram weight climbs with closing speed
 const RAM_MAX_FORCE = 2.2; // ceiling on that weight, reached bow to bow at a fair clip
 const RAM_MUTUAL_CAP = 0.8; // most of a bow-to-bow blow one ship's speed can shove onto the other
 const RAM_KNOCK = 150; // impulse thrown apart on a ram (scaled by closing speed)
@@ -728,10 +729,10 @@ export default function App() {
           // a ship crossing or running has none of it, however hard the hulls meet
           const bowA = Math.cos(a.heading - toB), bowB = -Math.cos(b.heading - toB);
           const driveA = Math.max(0, bowA * a.spdCur), driveB = Math.max(0, bowB * b.spdCur);
-          // a collision carries energy, not momentum, so weight goes with the square of the
-          // closing speed: a real charge tells, a bump barely scratches her paint
+          // weight climbs faster than the closing speed does — a real charge tells, a bump barely
+          // scratches her paint — but short of the square, so slow contact still counts for something
           const t = clamp((closing - RAM_MIN_CLOSE) / (RAM_FULL_CLOSE - RAM_MIN_CLOSE), 0, 99);
-          const force = Math.min(t * t, RAM_MAX_FORCE);
+          const force = Math.min(Math.pow(t, RAM_CURVE), RAM_MAX_FORCE);
 
           // struck square on the beam staves a hull in; caught on her fine ends it glances off
           let hurtB = 0, hurtA = 0;

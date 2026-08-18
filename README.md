@@ -60,9 +60,9 @@ Ramming is a real attack, resolved from the geometry of the collision rather tha
 
 - **Closing speed** counts both ships' motion along the line of impact, so a head-on doubles it and a
   ship running from a chaser bleeds it away. Below `RAM_MIN_CLOSE` nothing happens. Above it, weight
-  climbs with the *square* of the closing speed — a collision carries energy, not momentum — reaching
-  full at `RAM_FULL_CLOSE` (a fresh ship's top speed) and capping at `RAM_MAX_FORCE`. A committed
-  charge tells; a bump barely scratches her paint.
+  climbs faster than the closing speed does (`RAM_CURVE`), reaching full at `RAM_FULL_CLOSE` (a fresh
+  ship's top speed) and capping at `RAM_MAX_FORCE`. A committed charge tells; a bump barely scratches
+  her paint, though it still counts for something.
 - **You only ram with your bow.** Damage scales with the square of how bow-on you are, so a ship
   crossing or sliding along another does no damage however hard the hulls meet.
 - **Where you land it matters.** A hull struck square on the beam takes nearly twice what she takes
