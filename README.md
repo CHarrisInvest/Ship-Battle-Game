@@ -57,9 +57,10 @@ Pointer/touch driven, so it works the same with a mouse or on a phone:
 - **Upgrade rail** (top) — spend gold across MAST, HULL, CREW, SIDE, FRONT. Costs scale `45 × 1.55^level`.
 
 Ramming is a real attack: close bow-first above the minimum closing speed to deal hull damage and
-knock the target back. The ship that lands the ram is thrown much less than the one that wears it and
-carries most of her way through the impact, so a good charge doesn't stall you. Two ships that meet
-bow to bow both take the full impact. A slow bump is just a nudge.
+knock the target back. The ship that lands the ram drives through it and is thrown far less than the
+one that wears it, while two ships meeting bow to bow both take the full impact. Either way the
+collision kills both ships' forward drive, so a ram costs you your way through the water and can't be
+leaned on repeatedly. A slow bump is just a nudge.
 
 ## Damage model
 
