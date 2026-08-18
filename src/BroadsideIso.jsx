@@ -96,7 +96,11 @@ const HULL_B = HULL_W / 2; // ...and semi-beam across it
 const HULL_PAD = 3; // rigging and oars, so hulls never touch pixels
 const RAM_MIN_CLOSE = 25; // closing speed at which a collision starts to count as a ram
 const RAM_FULL_CLOSE = 94; // closing speed for a full-weight ram: a fresh ship's top speed
-const RAM_CURVE = 1.2; // how sharply ram weight climbs with closing speed
+const RAM_CURVE_BEAM = 2; // a crushing beam strike wants the whole charge behind it...
+const RAM_CURVE_FINE = 1; // ...where a graze along bow or stern tells at any speed you catch her at
+const RAM_BEAM = 1.3; // weight of a blow square on the beam
+const RAM_FINE = 0.45; // ...and of one that glances off her bow or stern
+const RAM_GRAZE = 1.5; // below this a touch is not a ram at all: no damage, no cooldown, no lock
 const RAM_MAX_FORCE = 2.2; // ceiling on that weight, reached bow to bow at a fair clip
 const RAM_MUTUAL_CAP = 0.8; // most of a bow-to-bow blow one ship's speed can shove onto the other
 const RAM_KNOCK = 150; // impulse thrown apart on a ram (scaled by closing speed)
@@ -729,16 +733,21 @@ export default function App() {
           // a ship crossing or running has none of it, however hard the hulls meet
           const bowA = Math.cos(a.heading - toB), bowB = -Math.cos(b.heading - toB);
           const driveA = Math.max(0, bowA * a.spdCur), driveB = Math.max(0, bowB * b.spdCur);
-          // weight climbs faster than the closing speed does — a real charge tells, a bump barely
-          // scratches her paint — but short of the square, so slow contact still counts for something
           const t = clamp((closing - RAM_MIN_CLOSE) / (RAM_FULL_CLOSE - RAM_MIN_CLOSE), 0, 99);
-          const force = Math.min(Math.pow(t, RAM_CURVE), RAM_MAX_FORCE);
 
-          // struck square on the beam staves a hull in; caught on her fine ends it glances off
+          // Struck square on the beam a hull is staved in; caught on her fine ends the blow glances
+          // along her and scrapes. The two behave differently with speed as well as in weight: a beam
+          // strike is a crushing blow, so it wants the whole charge behind it and falls away fast
+          // when it isn't there, while a graze along bow or stern tells much the same story at any
+          // speed you catch her at. So the curve itself bends with the aspect of the ship being hit.
+          const blow = (aspect) => {
+            const curve = RAM_CURVE_FINE + (RAM_CURVE_BEAM - RAM_CURVE_FINE) * aspect;
+            return Math.min(Math.pow(t, curve), RAM_MAX_FORCE) * (RAM_FINE + (RAM_BEAM - RAM_FINE) * aspect);
+          };
           let hurtB = 0, hurtA = 0;
-          if (force > 0 && !a.locked.has(b)) {
-            if (driveA > 0 && a.ramCd <= 0) hurtB = ramDmg(a) * force * bowA * bowA * (0.55 + 0.45 * Math.abs(Math.sin(b.heading - toB)));
-            if (driveB > 0 && b.ramCd <= 0) hurtA = ramDmg(b) * force * bowB * bowB * (0.55 + 0.45 * Math.abs(Math.sin(a.heading - toB)));
+          if (t > 0 && !a.locked.has(b)) {
+            if (driveA > 0 && a.ramCd <= 0) hurtB = ramDmg(a) * bowA * bowA * blow(Math.abs(Math.sin(b.heading - toB)));
+            if (driveB > 0 && b.ramCd <= 0) hurtA = ramDmg(b) * bowB * bowB * blow(Math.abs(Math.sin(a.heading - toB)));
           }
           if (hurtB > 0 && hurtA > 0) {
             // both bows in it: the one with less way behind her comes off worse, because the ship
@@ -747,6 +756,9 @@ export default function App() {
             hurtB *= 2 * lead;
             hurtA *= 2 * (1 - lead);
           }
+          // hulls kissing at walking pace are not a ram: no damage, no cooldown spent, and the pair
+          // stays free to ram properly, so a light touch can never rob a captain of her charge
+          if (Math.max(hurtA, hurtB) < RAM_GRAZE) { hurtA = 0; hurtB = 0; }
           let rammed = false;
           if (hurtB > 0) { applyHit(b, "hull", hurtB, a); a.ramCd = RAM_CD; rammed = true; }
           if (hurtA > 0 && b.alive) { applyHit(a, "hull", hurtA, b); b.ramCd = RAM_CD; rammed = true; }

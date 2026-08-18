@@ -60,13 +60,18 @@ Ramming is a real attack, resolved from the geometry of the collision rather tha
 
 - **Closing speed** counts both ships' motion along the line of impact, so a head-on doubles it and a
   ship running from a chaser bleeds it away. Below `RAM_MIN_CLOSE` nothing happens. Above it, weight
-  climbs faster than the closing speed does (`RAM_CURVE`), reaching full at `RAM_FULL_CLOSE` (a fresh
-  ship's top speed) and capping at `RAM_MAX_FORCE`. A committed charge tells; a bump barely scratches
-  her paint, though it still counts for something.
+  climbs to full weight at `RAM_FULL_CLOSE` (a fresh ship's top speed) and caps at `RAM_MAX_FORCE`.
 - **You only ram with your bow.** Damage scales with the square of how bow-on you are, so a ship
   crossing or sliding along another does no damage however hard the hulls meet.
-- **Where you land it matters.** A hull struck square on the beam takes nearly twice what she takes
-  caught on her bow or stern, where the blow glances off her fine ends.
+- **Where you land it matters**, in weight and in how it answers to speed. A beam strike is a crushing
+  blow worth `RAM_BEAM`, and it wants the whole charge behind it: it falls away with the square of the
+  closing speed (`RAM_CURVE_BEAM`), so half the speed is a fraction of the damage. A blow that glances
+  off her bow or stern is worth only `RAM_FINE`, but it tells much the same story at any speed you
+  catch her at (`RAM_CURVE_FINE`), which is what makes running a ship down worth doing. The curve
+  bends between the two with the aspect of the ship being hit.
+- **A touch is not a ram.** Contact that would deal less than `RAM_GRAZE` does nothing at all: no
+  damage, no cooldown spent, no lock on the pair. Kissing a hull at walking pace can never rob you of
+  a charge you were lining up.
 - **Bow to bow, the slower ship comes off worse.** When both ships are ramming each other the blow is
   shared out by how much way each had behind her, up to `RAM_MUTUAL_CAP`, so the ship with more speed
   drives through what the other has to absorb. Meet at the same speed and you split it evenly.
