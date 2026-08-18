@@ -94,9 +94,10 @@ const HULL_W = 13;
 const HULL_A = HULL_L / 2; // hulls collide as ellipses: semi-length along the heading...
 const HULL_B = HULL_W / 2; // ...and semi-beam across it
 const HULL_PAD = 3; // rigging and oars, so hulls never touch pixels
-const RAM_MIN_CLOSE = 32; // closing speed at which a collision starts to count as a ram
+const RAM_MIN_CLOSE = 25; // closing speed at which a collision starts to count as a ram
 const RAM_FULL_CLOSE = 94; // closing speed for a full-weight ram: a fresh ship's top speed
 const RAM_MAX_FORCE = 2.2; // ceiling on that weight, reached bow to bow at a fair clip
+const RAM_MUTUAL_CAP = 0.8; // most of a bow-to-bow blow one ship's speed can shove onto the other
 const RAM_KNOCK = 150; // impulse thrown apart on a ram (scaled by closing speed)
 const RAM_RECOIL = 0.3; // floor on the bounce for whoever drove into the blow
 const RAM_DRIVE_LOSS = 0.88; // share of her way a ship spends into the impact, bow-on
@@ -137,7 +138,7 @@ const turnCap = (s) => (2.4 + s.up.mast * 0.28) * (0.22 + 0.78 * (s.mast / s.max
 const sideDmg = (s) => 9 + s.up.side * 4;
 const frontDmg = (s) => 9 + s.up.front * 4;
 const musketDmg = (s) => 3.2 + s.up.crew * 1.4;
-const ramDmg = (s) => 26 + s.up.hull * 5;
+const ramDmg = (s) => 26 + s.up.hull * 4;
 const shipPower = (s) => s.up.mast + s.up.hull + s.up.crew + s.up.side + s.up.front;
 
 function applyUpgrade(s, track) {
@@ -732,20 +733,22 @@ export default function App() {
           const t = clamp((closing - RAM_MIN_CLOSE) / (RAM_FULL_CLOSE - RAM_MIN_CLOSE), 0, 99);
           const force = Math.min(t * t, RAM_MAX_FORCE);
 
-          let rammed = false;
+          // struck square on the beam staves a hull in; caught on her fine ends it glances off
+          let hurtB = 0, hurtA = 0;
           if (force > 0 && !a.locked.has(b)) {
-            // struck square on the beam staves a hull in; caught on her fine ends it glances off
-            if (driveA > 0 && a.ramCd <= 0) {
-              const aspect = Math.abs(Math.sin(b.heading - toB));
-              applyHit(b, "hull", ramDmg(a) * force * bowA * bowA * (0.55 + 0.45 * aspect), a);
-              a.ramCd = RAM_CD; rammed = true;
-            }
-            if (b.alive && driveB > 0 && b.ramCd <= 0) {
-              const aspect = Math.abs(Math.sin(a.heading - toB));
-              applyHit(a, "hull", ramDmg(b) * force * bowB * bowB * (0.55 + 0.45 * aspect), b);
-              b.ramCd = RAM_CD; rammed = true;
-            }
+            if (driveA > 0 && a.ramCd <= 0) hurtB = ramDmg(a) * force * bowA * bowA * (0.55 + 0.45 * Math.abs(Math.sin(b.heading - toB)));
+            if (driveB > 0 && b.ramCd <= 0) hurtA = ramDmg(b) * force * bowB * bowB * (0.55 + 0.45 * Math.abs(Math.sin(a.heading - toB)));
           }
+          if (hurtB > 0 && hurtA > 0) {
+            // both bows in it: the one with less way behind her comes off worse, because the ship
+            // with more weight behind her drives through what the other has to absorb
+            const lead = clamp(driveA / (driveA + driveB), 1 - RAM_MUTUAL_CAP, RAM_MUTUAL_CAP);
+            hurtB *= 2 * lead;
+            hurtA *= 2 * (1 - lead);
+          }
+          let rammed = false;
+          if (hurtB > 0) { applyHit(b, "hull", hurtB, a); a.ramCd = RAM_CD; rammed = true; }
+          if (hurtA > 0 && b.alive) { applyHit(a, "hull", hurtA, b); b.ramCd = RAM_CD; rammed = true; }
           if (rammed) {
             a.locked.add(b); b.locked.add(a);
             // each ship spends the part of her way that went into the impact, so one driving

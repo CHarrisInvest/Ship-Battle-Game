@@ -67,6 +67,9 @@ Ramming is a real attack, resolved from the geometry of the collision rather tha
   crossing or sliding along another does no damage however hard the hulls meet.
 - **Where you land it matters.** A hull struck square on the beam takes nearly twice what she takes
   caught on her bow or stern, where the blow glances off her fine ends.
+- **Bow to bow, the slower ship comes off worse.** When both ships are ramming each other the blow is
+  shared out by how much way each had behind her, up to `RAM_MUTUAL_CAP`, so the ship with more speed
+  drives through what the other has to absorb. Meet at the same speed and you split it evenly.
 - **Speed is spent, not scaled.** Each ship loses the part of her way that was driving into the
   impact. Drive straight in and you stop dead; get caught across your course and you carry on, shoved
   off your line. Whoever put the least drive into it is the one thrown clear.
