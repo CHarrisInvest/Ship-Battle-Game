@@ -96,12 +96,11 @@ const HULL_B = HULL_W / 2; // ...and semi-beam across it
 const HULL_PAD = 3; // rigging and oars, so hulls never touch pixels
 const RAM_MIN_CLOSE = 25; // closing speed at which a collision starts to count as a ram
 const RAM_FULL_CLOSE = 94; // closing speed for a full-weight ram: a fresh ship's top speed
-const RAM_CURVE_BEAM = 2; // a crushing beam strike wants the whole charge behind it...
-const RAM_CURVE_FINE = 1; // ...where a graze along bow or stern tells at any speed you catch her at
-const RAM_BEAM = 1.3; // weight of a blow square on the beam
-const RAM_FINE = 0.45; // ...and of one that glances off her bow or stern
-const RAM_GRAZE = 1.5; // below this a touch is not a ram at all: no damage, no cooldown, no lock
-const RAM_MAX_FORCE = 2.2; // ceiling on that weight, reached bow to bow at a fair clip
+const RAM_CURVE = 1.5; // how sharply the blow grows with closing speed, for every angle alike
+const RAM_MAX_FORCE = 2.4; // ceiling on it, so a head-on cannot run away with the match
+const RAM_BEAM = 1.25; // weight of a blow square on the beam...
+const RAM_FINE = 0.6; // ...and of one that glances off her bow or stern
+const RAM_GRAZE = 1; // below this a touch is not a ram at all: no damage, no cooldown, no lock
 const RAM_MUTUAL_CAP = 0.8; // most of a bow-to-bow blow one ship's speed can shove onto the other
 const RAM_KNOCK = 150; // impulse thrown apart on a ram (scaled by closing speed)
 const RAM_RECOIL = 0.3; // floor on the bounce for whoever drove into the blow
@@ -113,6 +112,22 @@ const RAM_CD = 0.9; // seconds before a ship can ram again
 const hullReach = (s, ang) => {
   const t = ang - s.heading;
   return (HULL_A * HULL_B) / Math.hypot(Math.cos(t) * HULL_B, Math.sin(t) * HULL_A) + HULL_PAD;
+};
+
+// Did a shot's flight this frame cross a ship's hull? Works on the whole step from where the ball
+// was to where it is, so a fast ball cannot skip through a hull only thirteen paces across. `pad`
+// widens the hull by the radius of what is arriving: a heavy round shot bites where a musket ball
+// would whistle past her rail. Scaling the hull's ellipse to a unit circle makes it one dot product.
+const shotHitsHull = (s, x0, y0, x1, y1, pad) => {
+  const c = Math.cos(s.heading), sn = Math.sin(s.heading);
+  const A = HULL_A + pad, B = HULL_B + pad;
+  const px = ((x0 - s.x) * c + (y0 - s.y) * sn) / A, py = ((y0 - s.y) * c - (x0 - s.x) * sn) / B;
+  const qx = ((x1 - s.x) * c + (y1 - s.y) * sn) / A, qy = ((y1 - s.y) * c - (x1 - s.x) * sn) / B;
+  const dx = qx - px, dy = qy - py;
+  const len2 = dx * dx + dy * dy;
+  const u = len2 > 0 ? clamp(-(px * dx + py * dy) / len2, 0, 1) : 0; // closest approach to her centre
+  const nx = px + dx * u, ny = py + dy * u;
+  return nx * nx + ny * ny < 1;
 };
 
 const TRACKS = [
@@ -733,21 +748,18 @@ export default function App() {
           // a ship crossing or running has none of it, however hard the hulls meet
           const bowA = Math.cos(a.heading - toB), bowB = -Math.cos(b.heading - toB);
           const driveA = Math.max(0, bowA * a.spdCur), driveB = Math.max(0, bowB * b.spdCur);
+          // One curve for every angle: how hard the hulls met. Harder is always worse, whoever you
+          // are and wherever it lands, which is what makes a ram something a captain can judge
           const t = clamp((closing - RAM_MIN_CLOSE) / (RAM_FULL_CLOSE - RAM_MIN_CLOSE), 0, 99);
+          const force = Math.min(Math.pow(t, RAM_CURVE), RAM_MAX_FORCE);
+          // ...and then where it lands only sets its weight: square on the beam a hull is staved in,
+          // caught on her fine ends the blow glances along her
+          const weigh = (aspect) => RAM_FINE + (RAM_BEAM - RAM_FINE) * aspect;
 
-          // Struck square on the beam a hull is staved in; caught on her fine ends the blow glances
-          // along her and scrapes. The two behave differently with speed as well as in weight: a beam
-          // strike is a crushing blow, so it wants the whole charge behind it and falls away fast
-          // when it isn't there, while a graze along bow or stern tells much the same story at any
-          // speed you catch her at. So the curve itself bends with the aspect of the ship being hit.
-          const blow = (aspect) => {
-            const curve = RAM_CURVE_FINE + (RAM_CURVE_BEAM - RAM_CURVE_FINE) * aspect;
-            return Math.min(Math.pow(t, curve), RAM_MAX_FORCE) * (RAM_FINE + (RAM_BEAM - RAM_FINE) * aspect);
-          };
           let hurtB = 0, hurtA = 0;
-          if (t > 0 && !a.locked.has(b)) {
-            if (driveA > 0 && a.ramCd <= 0) hurtB = ramDmg(a) * bowA * bowA * blow(Math.abs(Math.sin(b.heading - toB)));
-            if (driveB > 0 && b.ramCd <= 0) hurtA = ramDmg(b) * bowB * bowB * blow(Math.abs(Math.sin(a.heading - toB)));
+          if (force > 0 && !a.locked.has(b)) {
+            if (driveA > 0 && a.ramCd <= 0) hurtB = ramDmg(a) * force * bowA * bowA * weigh(Math.abs(Math.sin(b.heading - toB)));
+            if (driveB > 0 && b.ramCd <= 0) hurtA = ramDmg(b) * force * bowB * bowB * weigh(Math.abs(Math.sin(a.heading - toB)));
           }
           if (hurtB > 0 && hurtA > 0) {
             // both bows in it: the one with less way behind her comes off worse, because the ship
@@ -790,6 +802,7 @@ export default function App() {
       const s = g.shots;
       for (let i = s.length - 1; i >= 0; i--) {
         const b = s[i];
+        const fromX = b.x, fromY = b.y;
         b.x += b.vx * dt; b.y += b.vy * dt; b.life -= dt;
         let hit = false;
         for (const isl of g.islands) {
@@ -798,7 +811,7 @@ export default function App() {
         if (!hit)
           for (const target of g.ships) {
             if (!canHit(b.owner, target)) continue;
-            if (Math.hypot(b.x - target.x, b.y - target.y) < SHIP_R) {
+            if (shotHitsHull(target, fromX, fromY, b.x, b.y, b.r)) {
               applyHit(target, b.bar, b.dmg, b.owner);
               burst(b.x, b.y, b.bar);
               hit = true;
