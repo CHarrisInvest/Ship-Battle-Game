@@ -95,7 +95,8 @@ const HULL_A = HULL_L / 2; // hulls collide as ellipses: semi-length along the h
 const HULL_B = HULL_W / 2; // ...and semi-beam across it
 const HULL_PAD = 3; // rigging and oars, so hulls never touch pixels
 const RAM_MIN_CLOSE = 32; // closing speed at which a collision starts to count as a ram
-const RAM_FULL_CLOSE = 120; // closing speed that lands a ram at full weight
+const RAM_FULL_CLOSE = 94; // closing speed for a full-weight ram: a fresh ship's top speed
+const RAM_MAX_FORCE = 2.2; // ceiling on that weight, reached bow to bow at a fair clip
 const RAM_KNOCK = 150; // impulse thrown apart on a ram (scaled by closing speed)
 const RAM_RECOIL = 0.3; // floor on the bounce for whoever drove into the blow
 const RAM_DRIVE_LOSS = 0.88; // share of her way a ship spends into the impact, bow-on
@@ -136,7 +137,7 @@ const turnCap = (s) => (2.4 + s.up.mast * 0.28) * (0.22 + 0.78 * (s.mast / s.max
 const sideDmg = (s) => 9 + s.up.side * 4;
 const frontDmg = (s) => 9 + s.up.front * 4;
 const musketDmg = (s) => 3.2 + s.up.crew * 1.4;
-const ramDmg = (s) => 15 + s.up.hull * 8;
+const ramDmg = (s) => 26 + s.up.hull * 5;
 const shipPower = (s) => s.up.mast + s.up.hull + s.up.crew + s.up.side + s.up.front;
 
 function applyUpgrade(s, track) {
@@ -726,7 +727,10 @@ export default function App() {
           // a ship crossing or running has none of it, however hard the hulls meet
           const bowA = Math.cos(a.heading - toB), bowB = -Math.cos(b.heading - toB);
           const driveA = Math.max(0, bowA * a.spdCur), driveB = Math.max(0, bowB * b.spdCur);
-          const force = clamp((closing - RAM_MIN_CLOSE) / (RAM_FULL_CLOSE - RAM_MIN_CLOSE), 0, 1.5);
+          // a collision carries energy, not momentum, so weight goes with the square of the
+          // closing speed: a real charge tells, a bump barely scratches her paint
+          const t = clamp((closing - RAM_MIN_CLOSE) / (RAM_FULL_CLOSE - RAM_MIN_CLOSE), 0, 99);
+          const force = Math.min(t * t, RAM_MAX_FORCE);
 
           let rammed = false;
           if (force > 0 && !a.locked.has(b)) {
