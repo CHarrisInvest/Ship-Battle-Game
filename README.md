@@ -87,6 +87,14 @@ Pointer/touch driven, so it works the same with a mouse or on a phone:
   damages a different system.
 - **Upgrade rail** (top) — spend gold across MAST, HULL, CREW, SIDE, FRONT. Costs scale `45 × 1.55^level`.
 
+A ship's rudder grows heavier the more way she carries. The loss is weighted to the top of her speed
+range: under half stick it is within a few percent of what it ever was, so handling at close quarters
+and turns from a standstill are left alone, and it reaches `RUDDER_HEAVY` only at a fresh ship's top
+speed — where her turning circle widens from about one hull length to a little under one and a half,
+and coming about takes 1.7s instead of 1.3s. It keys off the speed she is actually making rather than
+the stick, so easing off the throttle hands the rudder back as she slows. Coming round hard costs
+speed, and a charge at full sail is a commitment that can be read and dodged.
+
 Ramming is a real attack, resolved from the geometry of the collision rather than from who started it:
 
 - **Closing speed** counts both ships' motion along the line of impact, so a head-on doubles it and a
@@ -163,7 +171,10 @@ inline-styled, so `BroadsideIso.jsx` can be dropped into any React app as-is.
 
 The balance knobs sit at the top of `src/BroadsideIso.jsx`: `WORLD` and `TILT` for the arena and
 camera, `BASE`/`HP_GAIN` for the health pools, `WP` for per-weapon cooldown, projectile speed, and
-lifetime, `RAM_*` for ramming, and `TRACKS`/`COST` for the upgrade economy.
+lifetime, `RAM_*` for ramming, and `TRACKS`/`COST` for the upgrade economy. `BASE_SPEED` is a fresh
+ship's top speed and the yardstick the heavy rudder measures against; `RUDDER_HEAVY` is how much
+rudder she loses at it and `RUDDER_CURVE` how late in the range the loss starts to bite — raising the
+curve keeps more of her handling until she is truly running.
 
 Arena pacing has its own block: `ARENA_START` (hunters at the opening), `ARENA_RAMP` (reinforcements
 per kill for the opening kills, two a kill after it runs out), `ARENA_SPAWN_CLEAR` (minimum distance a

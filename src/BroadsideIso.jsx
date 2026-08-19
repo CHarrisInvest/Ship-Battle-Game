@@ -178,8 +178,18 @@ const maxHP = (up) => ({
   mast: BASE.mast + up.mast * HP_GAIN.mast,
   crew: BASE.crew + up.crew * HP_GAIN.crew,
 });
-const speedCap = (s) => (94 + s.up.mast * 13) * (0.5 + 0.5 * (s.mast / s.maxMast));
-const turnCap = (s) => (2.4 + s.up.mast * 0.28) * (0.22 + 0.78 * (s.mast / s.maxMast));
+// A hull with way on her does not answer her rudder as she does at a crawl. The loss is weighted to
+// the top of the range: handling in and out of a fight is left where it was, and only a ship running
+// flat out finds she cannot turn inside her own wake. It keys off the way she actually carries rather
+// than the stick, so easing off the throttle hands the rudder back as she slows: coming round hard
+// means spending some of her way to do it, and a charge at full sail is a commitment.
+const BASE_SPEED = 94; // top speed of a fresh, unupgraded ship, and the yardstick for a heavy rudder
+const RUDDER_HEAVY = 0.22; // rudder lost at that speed
+const RUDDER_CURVE = 2.2; // how late in the range it starts to bite
+
+const rudder = (s) => 1 - RUDDER_HEAVY * Math.pow(clamp(s.spdCur / BASE_SPEED, 0, 1), RUDDER_CURVE);
+const speedCap = (s) => (BASE_SPEED + s.up.mast * 13) * (0.5 + 0.5 * (s.mast / s.maxMast));
+const turnCap = (s) => (2.4 + s.up.mast * 0.28) * (0.22 + 0.78 * (s.mast / s.maxMast)) * rudder(s);
 const sideDmg = (s) => 9 + s.up.side * 4;
 const frontDmg = (s) => 9 + s.up.front * 4;
 const musketDmg = (s) => 3.2 + s.up.crew * 1.4;
