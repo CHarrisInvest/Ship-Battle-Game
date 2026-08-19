@@ -47,6 +47,37 @@ serves from the domain root instead — Netlify, Vercel, a plain static host —
 AI ships reload on exactly the same cooldowns as the player in both modes; their only handicap is a
 touch of spread on every shot.
 
+## The hold
+
+Coins sit at two depths, and keeping them apart is the whole of it:
+
+- **A ship's purse** is what she carries into one battle. It buys her upgrades at sea and goes down
+  with her. Arena opens one at `ARENA_START_COINS`; free-for-all opens at nothing. This is the number
+  in the HUD.
+- **The hold** (`src/hold.js`) is the captain's, not the ship's. Every voyage that reaches an end
+  screen banks what it *earned* — 25 a kill and one a point of damage dealt — and the total carries
+  across arena and free-for-all alike and through a reload, kept in `localStorage` under
+  `broadside.hold`.
+
+Banking counts earnings, not leftovers, so an upgrade bought at sea costs nothing ashore and there is
+never a reason to sit on coins you could be fighting with. A voyage banks whether you win it or sink:
+coins are earned by fighting, and a captain who fought well and went down anyway earned them the same.
+Only a round abandoned mid-fight — a reload, a closed tab — banks nothing, because nothing ended.
+Arena's opening purse is a loan against the round rather than earnings, so it never reaches the hold.
+
+The stored record is wider than the coin count on purpose: lifetime voyages, ships sunk, damage, time
+afloat, and per-mode bests, because a stat not recorded from the first voyage can never be backfilled.
+It is read through a small API rather than touched directly — `getHold`, `bankVoyage`, `spendFromHold`,
+`resetHold`, `subscribeHold` — and a record written by an older build is folded field by field onto a
+blank one, so an added stat never costs anyone their coins and a corrupt field costs only itself. If
+`localStorage` refuses (private browsing, a full quota) the hold falls back to memory for the session
+instead of failing.
+
+Nothing spends from it yet. `spendFromHold` is the door the rest of it comes through: it refuses
+rather than overdraws, and keeps `spent` alongside `coins` so the two always reconstruct what was
+earned. `HOLD_SHARE` scales what a voyage deposits if the meta economy ever wants slowing down without
+touching the fight.
+
 ## Controls
 
 Pointer/touch driven, so it works the same with a mouse or on a phone:
@@ -114,6 +145,7 @@ src/main.jsx          # React root
 src/index.css         # full-bleed, no-scroll page shell
 src/BroadsideIso.jsx  # game: simulation, canvas renderer, and UI
 src/galleon.js        # the galleon turning on the menu
+src/hold.js           # coins and records that outlive a single round
 vite.config.js
 ```
 
@@ -138,3 +170,4 @@ per kill for the opening kills, two a kill after it runs out), `ARENA_SPAWN_CLEA
 respawn keeps from the player), `ARENA_MAX_ENEMIES` (ceiling on the swarm), `ARENA_SPAWN_GAP` (how long
 the second ship of a wave holds off), and `ARENA_START_COINS` (the opening purse). `OPENING_WINDOW`
 sets how long free-for-all captains fight whoever is nearest before they start picking their prey.
+`HOLD_SHARE` in `src/hold.js` is the one knob on the economy that outlives a round.
