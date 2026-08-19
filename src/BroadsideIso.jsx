@@ -36,6 +36,51 @@ const ARENA_START_COINS = 50; // opening purse, enough for one upgrade before fi
 // nth kill (1-indexed) -> how many ships sail in to replace the one that sank
 const arenaReinforcements = (n) => ARENA_RAMP[n - 1] ?? 2;
 
+// DERBY: ten bows, no guns, nothing to buy, and a squall closing on the middle of the sea. Without
+// cannon nobody's mast can be brought down, so every hull holds the same top speed all match and a
+// runner could never be caught — the ring is what makes the fight happen. It opens wider than the
+// map's own corners, so the grace period really is open water, and closes onto the middle, which the
+// island generator always leaves clear. Outside it the crew works the deck in a gale: survivable for
+// a dash across the weather, ruinous for anyone who tries to live out there.
+const DERBY_AI = 9; // rivals, so ten captains start
+const STORM_GRACE = 18; // seconds of open water before the ring starts to close
+const STORM_CLOSE = 95; // and how long it takes to close all the way
+const STORM_R0 = 1400; // opening radius — just past the far corners of the map, so closing bites at once
+const STORM_R1 = 190; // working radius: room for two ships to work, not to hide
+// ...and then, if the last of them are still circling one another, the eye itself shuts. A small ring
+// is not enough on its own: a ram needs closing speed to count for anything, and two ships penned in a
+// pool a hundred paces across can mill about forever without ever getting the run at each other that
+// would settle it — measured at better than two minutes of it. Weather asks nobody for a run-up, so
+// the ring goes to nothing instead, and the last hull afloat is the one with crew enough to outlast
+// the sea. However cagey the sailing, a round has an end.
+const STORM_HOLD = 20; // seconds the ring sits at its working size first
+const STORM_SQUEEZE = 35; // and how long the eye takes to shut completely
+const STORM_R2 = 0;
+const STORM_DPS_MIN = 3.5; // crew lost a second the moment she is caught out
+const STORM_DPS_MAX = 17; // ...and once she has been out there STORM_RAMP seconds
+const STORM_RAMP = 12; // how long the weather takes to work up to its worst
+const STORM_RECOVER = 2.2; // exposure shed a second once she is back inside
+// An AI captain is drawn toward the middle rather than fenced away from the edge. Inside STORM_HOME
+// of the ring she fights as she pleases; past it the middle bends her course, hardest at the rail.
+// It is a preference, not an override, which is what leaves room to shoulder a rival out into the
+// weather and hold her there — and once she is out, her own exposure is what turns the pull urgent.
+const STORM_HOME = 0.45; // share of the ring she is content to fight anywhere within
+const STORM_PULL = 0.8; // how hard the middle bends her course at the very rail
+
+// Two hulls with the same top speed can fall into a mutual tail chase and orbit one another for as
+// long as they both keep the throttle down — lead pursuit holds the circle rather than closing it.
+// A captain who has gone this long without gaining takes the way off her instead: a slow hull turns
+// far inside a fast one, so easing the throttle is what lets her cut the corner and force the meeting.
+const STALL_PATIENCE = 5; // seconds of getting nowhere before she tries something else
+const STALL_CUT = 4.5; // and how long she holds the tighter, slower turn
+const STALL_THROTTLE = 0.5;
+
+const stormRadius = (t) => {
+  const closed = STORM_GRACE + STORM_CLOSE;
+  if (t <= closed) return STORM_R0 + (STORM_R1 - STORM_R0) * clamp((t - STORM_GRACE) / STORM_CLOSE, 0, 1);
+  return STORM_R1 + (STORM_R2 - STORM_R1) * clamp((t - closed - STORM_HOLD) / STORM_SQUEEZE, 0, 1);
+};
+
 const C = {
   water: "#0a2830",
   waterEdge: "#04141a",
@@ -164,6 +209,69 @@ const TRACKS = [
 
 const COST = (lvl) => Math.round(45 * Math.pow(1.55, lvl));
 
+/**
+ * A mode is a set of rules, not a name to compare against. Everything that used to ask "are we in
+ * free-for-all?" now asks what it actually wants to know — are guns aboard, is every hull hostile to
+ * every other, does anyone keep a placement — so each rule is stated once, here, where the modes can
+ * be read side by side. Adding a mode is filling in a row rather than hunting down the checks that
+ * would otherwise have to be taught about it.
+ */
+const MODES = {
+  arena: {
+    key: "arena",
+    title: "ARENA",
+    short: "arena",
+    color: C.side,
+    desc: "Endless survival. One hunter to start, matched to your ship. Sink ships and reinforcements sail in from the horizon. Upgrade your ship. Score by ships sunk.",
+    rivals: ARENA_START, // hulls on the water at the drop, besides the player
+    startCoins: ARENA_START_COINS,
+    guns: true, // cannons and muskets aboard
+    upgrades: true, // the upgrade rail, and AI captains shopping
+    melee: false, // every hull hostile to every other, rather than only to the player
+    ranked: false, // placements, a leader, and the rank badge
+    lastAfloatWins: false,
+    reinforcements: true, // a sinking brings fresh hunters in from the horizon
+    flees: false, // a beaten captain runs rather than fights on
+    storm: false, // a closing ring of foul weather
+  },
+  ffa: {
+    key: "ffa",
+    title: "FREE-FOR-ALL",
+    short: "free-for-all",
+    color: C.mast,
+    desc: "Last afloat wins. 10 rival captains, all dead equal at the start. Enemies upgrade like real players and hunt for weak prey.",
+    rivals: FFA_AI,
+    startCoins: 0,
+    guns: true,
+    upgrades: true,
+    melee: true,
+    ranked: true,
+    lastAfloatWins: true,
+    reinforcements: false,
+    flees: true,
+    storm: false,
+  },
+  derby: {
+    key: "derby",
+    title: "DEMOLITION DERBY",
+    short: "derby",
+    color: C.crew,
+    desc: "Ten captains, not a gun between them. Sink rivals by ramming — drive your bow into her beam, and turn to face anyone charging yours. Nothing to buy: what you brought is what you have. A squall closes on the middle of the sea and takes the crew of anyone still outside it. Last afloat wins.",
+    rivals: DERBY_AI,
+    startCoins: 0,
+    guns: false,
+    upgrades: false,
+    melee: true,
+    ranked: true,
+    lastAfloatWins: true,
+    reinforcements: false,
+    flees: false, // there is nowhere to run to, and the weather is coming anyway
+    storm: true,
+  },
+};
+const MODE_LIST = ["arena", "ffa", "derby"]; // menu order
+const modeOf = (m) => MODES[m] || MODES.arena;
+
 function norm(a) {
   while (a > Math.PI) a -= Math.PI * 2;
   while (a < -Math.PI) a += Math.PI * 2;
@@ -178,8 +286,18 @@ const maxHP = (up) => ({
   mast: BASE.mast + up.mast * HP_GAIN.mast,
   crew: BASE.crew + up.crew * HP_GAIN.crew,
 });
-const speedCap = (s) => (94 + s.up.mast * 13) * (0.5 + 0.5 * (s.mast / s.maxMast));
-const turnCap = (s) => (2.4 + s.up.mast * 0.28) * (0.22 + 0.78 * (s.mast / s.maxMast));
+// A hull with way on her does not answer her rudder as she does at a crawl. The loss is weighted to
+// the top of the range: handling in and out of a fight is left where it was, and only a ship running
+// flat out finds she cannot turn inside her own wake. It keys off the way she actually carries rather
+// than the stick, so easing off the throttle hands the rudder back as she slows: coming round hard
+// means spending some of her way to do it, and a charge at full sail is a commitment.
+const BASE_SPEED = 94; // top speed of a fresh, unupgraded ship, and the yardstick for a heavy rudder
+const RUDDER_HEAVY = 0.22; // rudder lost at that speed
+const RUDDER_CURVE = 2.2; // how late in the range it starts to bite
+
+const rudder = (s) => 1 - RUDDER_HEAVY * Math.pow(clamp(s.spdCur / BASE_SPEED, 0, 1), RUDDER_CURVE);
+const speedCap = (s) => (BASE_SPEED + s.up.mast * 13) * (0.5 + 0.5 * (s.mast / s.maxMast));
+const turnCap = (s) => (2.4 + s.up.mast * 0.28) * (0.22 + 0.78 * (s.mast / s.maxMast)) * rudder(s);
 const sideDmg = (s) => 9 + s.up.side * 4;
 const frontDmg = (s) => 9 + s.up.front * 4;
 const musketDmg = (s) => 3.2 + s.up.crew * 1.4;
@@ -223,6 +341,7 @@ export default function App() {
   const [up, setUp] = useState({ mast: 0, hull: 0, crew: 0, side: 0, front: 0 });
   const [ph, setPh] = useState({ ...BASE });
   const [phMax, setPhMax] = useState({ ...BASE });
+  const [storm, setStorm] = useState({ closes: 0, out: false, closing: false });
   const [hold, setHold] = useState(getHold);
   const [banked, setBanked] = useState(0); // what the voyage on the end screen put in the hold
 
@@ -240,6 +359,7 @@ export default function App() {
     setUp({ ...p.up });
     setPh({ hull: p.hull, mast: p.mast, crew: p.crew });
     setPhMax({ hull: p.maxHull, mast: p.maxMast, crew: p.maxCrew });
+    if (g.rules.storm) setStorm({ closes: Math.max(0, STORM_GRACE - g.time), out: g.playerOut, closing: g.stormR > STORM_R1 });
   }, []);
   syncRef.current = syncHUD;
 
@@ -287,7 +407,7 @@ export default function App() {
       const s = {
         x, y, heading, spdCur: 0, alive: true,
         isPlayer: !!opts.isPlayer,
-        up: { ...up }, coins: 0, earned: 0, rank: 0, kills: 0, dmgDealt: 0,
+        up: { ...up }, coins: 0, earned: 0, rank: 0, kills: 0, dmgDealt: 0, rams: 0, exposure: 0,
         maxHull: m.hull, maxMast: m.mast, maxCrew: m.crew,
         hull: m.hull, mast: m.mast, crew: m.crew,
         cd: { broadside: Math.random() * 0.5, bow: Math.random() * 0.5, musket: Math.random() * 0.5 },
@@ -302,6 +422,8 @@ export default function App() {
         s.aiUpT = 1 + Math.random() * 2;
         s.oppT = 0;
         s.oppHold = 1.8 + Math.random() * 2.6; // trigger discipline: some captains waste less powder
+        s.nerve = Math.random(); // how late she leaves it before turning to face a charge
+        s.baffled = 0; // how long she has been getting nowhere with the hull she is after
         s.retargetT = 0;
         s.target = null;
         s.bias = TRACKS[Math.floor(Math.random() * TRACKS.length)].key;
@@ -403,27 +525,29 @@ export default function App() {
     }
 
     function reset(m) {
+      const rules = modeOf(m);
       gameRef.current = {
-        mode: m, player: null, ships: [], shots: [], parts: [], wakes: [], islands: [], texts: [],
-        cam: { x: 0, y: 0 }, sunk: 0, ffaTotal: 0, aliveCount: 0, leader: null, avgEarned: 0,
+        mode: m, rules, player: null, ships: [], shots: [], parts: [], wakes: [], islands: [], texts: [],
+        cam: { x: 0, y: 0 }, sunk: 0, fieldSize: 0, aliveCount: 0, leader: null, avgEarned: 0,
         _lastRank: 0, spawnT: 0, spawnQueue: 0, vign: 0, running: false, hudDirty: false, hudAcc: 0, time: 0,
-        banked: false,
+        banked: false, stormR: STORM_R0, stormTick: -1, playerOut: false,
       };
       const g = gameRef.current;
       const player = makeShip(WORLD / 2, WORLD / 2, -Math.PI / 2, { isPlayer: true });
+      player.coins = rules.startCoins; // a purse, not earnings — keeps it out of the end tally
       g.player = player;
       g.ships.push(player);
       genIslands(g);
-      if (m === "arena") {
-        player.coins = ARENA_START_COINS; // a purse, not earnings — keeps it out of the end tally
-        for (let i = 0; i < ARENA_START; i++) g.ships.push(spawnArenaEnemy());
-      } else {
-        for (let i = 0; i < FFA_AI; i++) {
+      for (let i = 0; i < rules.rivals; i++) {
+        // where a mode replaces its losses, rivals sail in from the horizon the same way the
+        // reinforcements will; where the field is fixed, they are scattered across the whole sea
+        if (rules.reinforcements) g.ships.push(spawnArenaEnemy());
+        else {
           const pos = farPos(g, 440);
           g.ships.push(makeShip(pos.x, pos.y, Math.random() * Math.PI * 2, { ci: i }));
         }
-        g.ffaTotal = g.ships.length;
       }
+      g.fieldSize = g.ships.length;
     }
 
     function pushText(x, y, t, col) {
@@ -458,6 +582,7 @@ export default function App() {
         dmg: Math.round(p.dmgDealt || 0),
         coins: Math.round(p.earned || 0),
         upgrades: p.up.mast + p.up.hull + p.up.crew + p.up.side + p.up.front,
+        rams: p.rams || 0,
       };
     }
 
@@ -476,9 +601,9 @@ export default function App() {
     function endWin() {
       const g = gameRef.current;
       g.running = false;
-      if (g.mode === "ffa") setPlace({ rank: 1, total: g.ffaTotal });
+      if (g.rules.ranked) setPlace({ rank: 1, total: g.fieldSize });
       setStats(finalStats());
-      bankRun(true, g.mode === "ffa" ? 1 : 0);
+      bankRun(true, g.rules.ranked ? 1 : 0);
       setResult("You are the last hull afloat.");
       setPhase("won");
       syncRef.current();
@@ -488,11 +613,15 @@ export default function App() {
       g.running = false;
       g.vign = 1;
       g.player.alive = false;
-      const rank = g.mode === "ffa" ? g.ships.filter((s) => s.alive).length + 1 : 0;
-      if (g.mode === "ffa") setPlace({ rank, total: g.ffaTotal });
+      const rank = g.rules.ranked ? g.ships.filter((s) => s.alive).length + 1 : 0;
+      if (g.rules.ranked) setPlace({ rank, total: g.fieldSize });
       setStats(finalStats());
       bankRun(false, rank);
-      setResult(bar === "hull" ? "Your hull is breached — she goes under." : "Your crew is routed — you strike your colors.");
+      setResult(
+        bar === "storm" ? "The squall has your crew — she founders in the weather."
+          : bar === "hull" ? "Your hull is breached — she goes under."
+          : "Your crew is routed — you strike your colors."
+      );
       setPhase("dead");
       syncRef.current();
     }
@@ -510,19 +639,19 @@ export default function App() {
       const i = g.ships.indexOf(s);
       if (i >= 0) g.ships.splice(i, 1);
       for (const o of g.ships) o.locked.delete(s); // she is on the bottom; nobody is fouled on her
-      pushText(s.x, s.y, "SUNK", C.gold);
-      if (g.mode === "arena") {
+      pushText(s.x, s.y, s._deathBar === "storm" ? "LOST" : "SUNK", C.gold);
+      if (g.rules.reinforcements) {
         g.sunk += 1;
         g.spawnQueue = Math.min(g.spawnQueue + arenaReinforcements(g.sunk), ARENA_MAX_ENEMIES);
         g.spawnT = 0; // lead ship of the wave sails in at once, the next one waits out the gap
       }
       g.hudDirty = true;
-      if (g.mode === "ffa" && g.player.alive && g.ships.filter((x) => x.alive).length === 1) endWin();
+      if (g.rules.lastAfloatWins && g.player.alive && g.ships.filter((x) => x.alive).length === 1) endWin();
     }
 
     function canHit(owner, target) {
       if (!target.alive || target === owner) return false;
-      if (gameRef.current.mode === "ffa") return true;
+      if (gameRef.current.rules.melee) return true;
       return owner.isPlayer !== target.isPlayer;
     }
 
@@ -620,6 +749,7 @@ export default function App() {
       const desired = inp.joyMag > 0.08 ? inp.joyAng : p.heading;
       moveShip(p, dt, desired, inp.joyMag);
       p.ramCd = Math.max(0, p.ramCd - dt);
+      if (!g.rules.guns) return; // ram-only: nothing aboard to reload
       for (const wk of ["broadside", "bow", "musket"]) {
         p.cd[wk] = Math.max(0, p.cd[wk] - dt);
         if (inp[wk] && p.cd[wk] <= 0) { fire(p, wk); p.cd[wk] = WP[wk].cd; }
@@ -628,7 +758,7 @@ export default function App() {
 
     function pickTarget(s) {
       const g = gameRef.current;
-      if (g.mode === "arena") return g.player.alive ? g.player : null;
+      if (!g.rules.melee) return g.player.alive ? g.player : null; // one quarry: the player
       const leaderSnow = g.leader && g.leader !== s && g.leader.earned > g.avgEarned * 1.6 && g.aliveCount > 2;
       // at the drop nobody has a reputation yet, so range is what matters: take the nearest hull
       // and only start shopping for weak or wealthy prey once the melee has had time to sort itself
@@ -692,9 +822,124 @@ export default function App() {
       if (s.coins >= cost) { s.coins -= cost; applyUpgrade(s, best); }
     }
 
+    // ---- ram-only captains -------------------------------------------------------------------
+    // With nothing to shoot, a captain's whole trade is where her bow is pointed and how much way she
+    // has behind it. She wants a rival's beam, because that is where a hull is staved in; she wants to
+    // meet a charge with her own bow, because that turns a beam blow into a glance the other ship has
+    // to share; and she has to spend speed to come round at all, now that a rudder goes heavy at a run.
+
+    // Whose beam is worth crossing the sea for. Weighs how side-on she lies to us, how badly she is
+    // already holed, whether she is looking the other way, and how far off she is.
+    function pickRamTarget(s) {
+      const g = gameRef.current;
+      let best = null, bestScore = -1e9;
+      for (const c of g.ships) {
+        if (c === s || !c.alive) continue;
+        const toC = Math.atan2(c.y - s.y, c.x - s.x);
+        const dist = Math.hypot(c.x - s.x, c.y - s.y);
+        const aspect = Math.abs(Math.sin(c.heading - toC)); // 1 when her beam is square to us
+        const facing = Math.abs(norm(toC + Math.PI - c.heading)); // 0 when her bow is on us
+        // ...and whether we are gaining on her at all. Every hull holds the same top speed in a mode
+        // with no upgrades and no gunnery to bring a mast down, so a stern chase is one nobody ever
+        // wins: without this a captain will happily follow a fleeing rival across the whole sea while
+        // the beam of a ship crossing her bow goes begging.
+        const closing =
+          (Math.cos(s.heading) * s.spdCur - Math.cos(c.heading) * c.spdCur) * Math.cos(toC) +
+          (Math.sin(s.heading) * s.spdCur - Math.sin(c.heading) * c.spdCur) * Math.sin(toC);
+        let score = -dist * 0.06 + aspect * 46 + facing * 8 + (1 - c.hull / c.maxHull) * 55 + clamp(closing, -70, 70) * 0.55;
+        if (c.isPlayer) score += 8; // captains would rather have the notorious hull
+        if (score > bestScore) { bestScore = score; best = c; }
+      }
+      return best;
+    }
+
+    // Steer for where she will be by the time we get there, not where she is now.
+    function ramIntercept(s, t) {
+      const dist = Math.hypot(t.x - s.x, t.y - s.y);
+      const lead = clamp(dist / Math.max(40, speedCap(s)), 0, 2.4);
+      return Math.atan2(t.y + Math.sin(t.heading) * t.spdCur * lead - s.y, t.x + Math.cos(t.heading) * t.spdCur * lead - s.x);
+    }
+
+    // Anyone bow-on to us, close, and carrying way is about to ram. Nearest one wins our attention.
+    function incomingRam(s) {
+      const g = gameRef.current;
+      let threat = null, td = 1e9;
+      for (const c of g.ships) {
+        if (c === s || !c.alive) continue;
+        const dist = Math.hypot(c.x - s.x, c.y - s.y);
+        if (dist > 250 || dist > td) continue;
+        if (c.spdCur < 46) continue;
+        if (Math.abs(norm(Math.atan2(s.y - c.y, s.x - c.x) - c.heading)) > 0.42) continue;
+        threat = c; td = dist;
+      }
+      return threat;
+    }
+
+    function stepRamAI(s, dt) {
+      const g = gameRef.current;
+      s.ramCd = Math.max(0, s.ramCd - dt);
+      s.retargetT -= dt;
+      if (!s.target || !s.target.alive || s.retargetT <= 0) {
+        s.target = pickRamTarget(s);
+        s.retargetT = 0.6 + Math.random() * 0.7;
+      }
+      const tgt = s.target;
+      let desired, throttle = 1;
+
+      const threat = incomingRam(s);
+
+      if (threat && Math.hypot(threat.x - s.x, threat.y - s.y) < 150 + s.nerve * 90) {
+        // meet her bow to bow rather than let her have the beam — a glance both of us share
+        desired = Math.atan2(threat.y - s.y, threat.x - s.x);
+      } else if (!tgt) {
+        s.wanderT -= dt;
+        if (s.wanderT <= 0) { s.wander += (Math.random() - 0.5) * 1.2; s.wanderT = 1.5 + Math.random(); }
+        desired = s.wander;
+        throttle = 0.5;
+      } else {
+        // are we actually gaining on her? if not, patience runs out and she comes round inside instead
+        const toT = Math.atan2(tgt.y - s.y, tgt.x - s.x);
+        const closing =
+          (Math.cos(s.heading) * s.spdCur - Math.cos(tgt.heading) * tgt.spdCur) * Math.cos(toT) +
+          (Math.sin(s.heading) * s.spdCur - Math.sin(tgt.heading) * tgt.spdCur) * Math.sin(toT);
+        s.baffled = closing > 18 ? Math.max(0, s.baffled - dt * 2) : s.baffled + dt;
+        if (s.baffled > STALL_PATIENCE) {
+          desired = toT; // straight at her, not at where she is going
+          throttle = STALL_THROTTLE;
+          if (s.baffled > STALL_PATIENCE + STALL_CUT) s.baffled = 0; // then have another go at the chase
+        } else {
+          desired = ramIntercept(s, tgt);
+        }
+      }
+
+      // Now the weather bends whatever she meant to do. Well inside the ring it asks nothing; nearer
+      // the rail it leans on her course; once she is actually out in it her own exposure decides how
+      // hard, so a shove into the weather is something she rides out and a pinning is something she
+      // fights her way out of — or does not.
+      const dc = Math.hypot(s.x - WORLD / 2, s.y - WORLD / 2);
+      const out = dc > g.stormR;
+      const lean = out
+        ? clamp(0.55 + 0.45 * (s.exposure / STORM_RAMP), 0, 1)
+        : STORM_PULL * clamp((dc / Math.max(1, g.stormR) - STORM_HOME) / (1 - STORM_HOME), 0, 1);
+      if (lean > 0.01) {
+        const toMid = Math.atan2(WORLD / 2 - s.y, WORLD / 2 - s.x);
+        desired += norm(toMid - desired) * lean; // swing part of the way onto the course home
+        if (out) throttle = Math.max(throttle, 0.9);
+      }
+
+      // A hull carrying way will not come round. Ease off to swing the bow across, then pile it on —
+      // which is what makes an AI charge something a captain can watch coming and step aside from.
+      const err = Math.abs(norm(desired - s.heading));
+      if (err > 1.15) throttle = Math.min(throttle, 0.4);
+      else if (err > 0.55) throttle = Math.min(throttle, 0.72);
+
+      moveShip(s, dt, avoidIslands(s, desired), throttle);
+    }
+
     function stepAI(s, dt) {
       const g = gameRef.current;
       if (!s.alive) return;
+      if (!g.rules.guns) { stepRamAI(s, dt); return; }
       s.retargetT -= dt;
       if (!s.target || !s.target.alive || s.retargetT <= 0) {
         s.target = pickTarget(s);
@@ -710,7 +955,7 @@ export default function App() {
         s.wanderT -= dt;
         if (s.wanderT <= 0) { s.wander += (Math.random() - 0.5) * 1.2; s.wanderT = 1.5 + Math.random(); }
         moveShip(s, dt, avoidIslands(s, nearWall ? Math.atan2(WORLD / 2 - s.y, WORLD / 2 - s.x) : s.wander), 0.4);
-        if (g.mode === "ffa") aiUpgrade(s, dt);
+        if (g.rules.upgrades) aiUpgrade(s, dt);
         return;
       }
 
@@ -720,13 +965,13 @@ export default function App() {
       const bearing = norm(toT - s.heading);
       const hpR = Math.min(s.hull / s.maxHull, s.crew / s.maxCrew);
       const scary = shipPower(tgt) - shipPower(s) > 2;
-      const fleeing = g.mode === "ffa" && (hpR < 0.3 || (scary && hpR < 0.55));
+      const fleeing = g.rules.flees && (hpR < 0.3 || (scary && hpR < 0.55));
 
       if (fleeing) {
         let away = Math.atan2(s.y - tgt.y, s.x - tgt.x);
         if (nearWall) away = Math.atan2(WORLD / 2 - s.y, WORLD / 2 - s.x);
         moveShip(s, dt, avoidIslands(s, away), 0.95);
-        aiUpgrade(s, dt);
+        if (g.rules.upgrades) aiUpgrade(s, dt);
         return;
       }
 
@@ -744,7 +989,7 @@ export default function App() {
       else { const sign = bearing >= 0 ? 1 : -1; desired = toT - (sign * Math.PI) / 2; throttle = 0.5; }
       moveShip(s, dt, avoidIslands(s, desired), throttle);
 
-      for (const wk of ["broadside", "bow", "musket"]) {
+      if (g.rules.guns) for (const wk of ["broadside", "bow", "musket"]) {
         if (s.cd[wk] > 0) continue;
         const shot = linedUp(s, wk, tgt);
         if (!shot) continue;
@@ -757,7 +1002,7 @@ export default function App() {
         fire(s, wk);
         s.cd[wk] = WP[wk].cd; // AI reloads on the player's clock, every mode
       }
-      if (g.mode === "ffa") aiUpgrade(s, dt);
+      if (g.rules.upgrades) aiUpgrade(s, dt);
     }
 
     function stepRam() {
@@ -768,7 +1013,7 @@ export default function App() {
           const a = ships[i], b = ships[j];
           if (!a.alive || !b.alive) continue;
           // consorts cannot ram each other, but no two hulls may ever share the same water
-          const hostile = g.mode === "ffa" || a.isPlayer !== b.isPlayer;
+          const hostile = g.rules.melee || a.isPlayer !== b.isPlayer;
           const { d, nx, ny } = keelGap(a, b); // where the two hulls come nearest to fouling
           if (d >= HULL_TOUCH) {
             // a pair has to break properly clear of each other before it can ram again
@@ -814,8 +1059,8 @@ export default function App() {
           // stays free to ram properly, so a light touch can never rob a captain of her charge
           if (Math.max(hurtA, hurtB) < RAM_GRAZE) { hurtA = 0; hurtB = 0; }
           let rammed = false;
-          if (hurtB > 0) { applyHit(b, "hull", hurtB, a); a.ramCd = RAM_CD; rammed = true; }
-          if (hurtA > 0 && b.alive) { applyHit(a, "hull", hurtA, b); b.ramCd = RAM_CD; rammed = true; }
+          if (hurtB > 0) { applyHit(b, "hull", hurtB, a); a.ramCd = RAM_CD; a.baffled = 0; if (hurtB >= RAM_GRAZE) a.rams++; rammed = true; }
+          if (hurtA > 0 && b.alive) { applyHit(a, "hull", hurtA, b); b.ramCd = RAM_CD; b.baffled = 0; if (hurtA >= RAM_GRAZE) b.rams++; rammed = true; }
           if (rammed) {
             a.locked.add(b); b.locked.add(a);
             // each ship spends the part of her way that went into the impact, so one driving
@@ -836,6 +1081,40 @@ export default function App() {
             b.kx += nx * 32; b.ky += ny * 32;
           }
         }
+      }
+    }
+
+    // The squall is weather, not an attack: no captain is paid for it, so it does not run through
+    // applyHit. It works on the crew, exposed on deck, and the longer they are out in it the harder
+    // it works — a dash across the weather costs a few hands, living out there costs the ship.
+    function stepStorm(dt) {
+      const g = gameRef.current;
+      if (!g.rules.storm) return;
+      g.stormR = stormRadius(g.time);
+      const cx = WORLD / 2, cy = WORLD / 2;
+      // walked backwards because a ship the weather finishes is spliced out from under us
+      for (let i = g.ships.length - 1; i >= 0; i--) {
+        const s = g.ships[i];
+        if (!s.alive) continue;
+        const out = Math.hypot(s.x - cx, s.y - cy) > g.stormR;
+        if (!out) { s.exposure = Math.max(0, s.exposure - dt * STORM_RECOVER); continue; }
+        s.exposure = Math.min(STORM_RAMP, s.exposure + dt);
+        const bite = STORM_DPS_MIN + (STORM_DPS_MAX - STORM_DPS_MIN) * (s.exposure / STORM_RAMP);
+        s.crew = Math.max(0, s.crew - bite * dt);
+        if (s.isPlayer) {
+          // a steady tint that deepens with the exposure, rather than the jolt a hit gives
+          g.vign = Math.max(g.vign, 0.2 + 0.55 * (s.exposure / STORM_RAMP));
+          g.hudDirty = true;
+        }
+        if (s.crew <= 0 && s.alive) { s._deathBar = "storm"; killShip(s, null); }
+      }
+      // the countdown ticks in whole seconds, and going in or out of the weather is worth a redraw
+      const tick = Math.max(0, Math.ceil(STORM_GRACE - g.time));
+      const playerOut = g.player.alive && Math.hypot(g.player.x - cx, g.player.y - cy) > g.stormR;
+      if (tick !== g.stormTick || playerOut !== g.playerOut) {
+        g.stormTick = tick;
+        g.playerOut = playerOut;
+        g.hudDirty = true;
       }
     }
 
@@ -882,7 +1161,7 @@ export default function App() {
 
     function maintain(dt) {
       const g = gameRef.current;
-      if (g.mode !== "arena") return;
+      if (!g.rules.reinforcements) return;
       g.spawnT -= dt;
       const enemies = g.ships.filter((s) => !s.isPlayer).length;
       if (enemies === 0 && g.spawnQueue <= 0) g.spawnQueue = 1; // never leave the sea empty
@@ -895,7 +1174,7 @@ export default function App() {
 
     function computeMeta() {
       const g = gameRef.current;
-      if (g.mode !== "ffa") return;
+      if (!g.rules.ranked) return;
       const alive = g.ships.filter((s) => s.alive);
       alive.sort((a, b) => b.earned - a.earned || b.coins - a.coins);
       alive.forEach((s, i) => (s.rank = i + 1));
@@ -919,6 +1198,7 @@ export default function App() {
       stepPlayer(dt);
       for (const s of g.ships) if (!s.isPlayer) stepAI(s, dt);
       stepRam();
+      stepStorm(dt);
       stepShots(dt);
       stepParts(dt);
       maintain(dt);
@@ -1039,6 +1319,69 @@ export default function App() {
       };
       for (let X = 0; X <= WORLD; X += step) { buoy(X, 0); buoy(X, WORLD); }
       for (let Y = step; Y < WORLD; Y += step) { buoy(0, Y); buoy(WORLD, Y); }
+    }
+
+    // The weather is painted in two passes so it never costs readability: the sea outside the ring
+    // darkens under the ships, and the edge itself is drawn over the top of everything, because the
+    // one thing a captain must always be able to find is the line between fair water and foul.
+    function stormEllipse(cam) {
+      const g = gameRef.current;
+      return { cx: SX(WORLD / 2, cam), cy: SY(WORLD / 2, cam), r: g.stormR };
+    }
+
+    function drawStormWater(cam) {
+      const g = gameRef.current;
+      if (!g.rules.storm) return;
+      const { cx, cy, r } = stormEllipse(cam);
+      const outside = () => {
+        ctx.beginPath();
+        ctx.rect(0, 0, Wd, Hd);
+        ctx.ellipse(cx, cy, r, r * TILT, 0, 0, Math.PI * 2);
+      };
+      outside();
+      ctx.fillStyle = "rgba(6,14,20,0.5)";
+      ctx.fill("evenodd");
+      // rain, drawn only where the weather is
+      ctx.save();
+      outside();
+      ctx.clip("evenodd");
+      ctx.strokeStyle = "rgba(190,215,225,0.5)";
+      ctx.lineWidth = 1;
+      ctx.globalAlpha = 0.35;
+      ctx.beginPath();
+      const cell = 46;
+      for (let i = 0; i < Math.ceil(Wd / cell) + 1; i++) {
+        for (let j = 0; j < Math.ceil(Hd / cell) + 1; j++) {
+          const h1 = hash(i + Math.floor(cam.x / cell), j + Math.floor(cam.y / cell));
+          const px = i * cell + h1 * cell;
+          const py = ((j * cell + h1 * 900 + clock * 340) % (Hd + cell)) - cell / 2;
+          ctx.moveTo(px, py);
+          ctx.lineTo(px - 3, py + 11);
+        }
+      }
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    }
+
+    function drawStormEdge(cam) {
+      const g = gameRef.current;
+      if (!g.rules.storm) return;
+      const { cx, cy, r } = stormEllipse(cam);
+      const ring = (w, style, dash, off) => {
+        ctx.beginPath();
+        ctx.ellipse(cx, cy, r, r * TILT, 0, 0, Math.PI * 2);
+        ctx.lineWidth = w;
+        ctx.strokeStyle = style;
+        ctx.setLineDash(dash);
+        ctx.lineDashOffset = off;
+        ctx.stroke();
+        ctx.setLineDash([]);
+      };
+      ring(6, "rgba(0,0,0,0.35)", [], 0);
+      // it pulses harder once it is actually closing in
+      const closing = g.time > STORM_GRACE ? 1 : 0.45;
+      ring(2.4, `rgba(209,91,91,${0.45 + 0.35 * closing * (0.5 + 0.5 * Math.sin(clock * 3))})`, [16, 12], -clock * 26);
     }
 
     function drawWakes(cam) {
@@ -1313,7 +1656,7 @@ export default function App() {
       if (!s.isPlayer) {
         const bw = 26, bxL = gx - bw / 2;
         const byT = P3(1, 0, deckH + 34)[1] - 14;
-        if (g.mode === "ffa" && s.rank) {
+        if (g.rules.ranked && s.rank) {
           ctx.font = `700 10px ${UI}`;
           ctx.textAlign = "right";
           ctx.fillStyle = s.rank === 1 ? C.gold : "rgba(238,244,242,0.8)";
@@ -1433,11 +1776,18 @@ export default function App() {
       ctx.stroke();
       ctx.strokeStyle = "rgba(236,226,204,0.3)";
       ctx.strokeRect(rx + g.cam.x * sc, ry + g.cam.y * sc, Wd * sc, (Hd / TILT) * sc);
+      if (g.rules.storm) {
+        ctx.strokeStyle = "rgba(209,91,91,0.85)";
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.arc(rx + (WORLD / 2) * sc, ry + (WORLD / 2) * sc, g.stormR * sc, 0, Math.PI * 2);
+        ctx.stroke();
+      }
       for (const s of g.ships) {
         if (!s.alive || s.isPlayer) continue;
-        ctx.fillStyle = g.mode === "ffa" && s.rank === 1 ? C.gold : s.fill;
+        ctx.fillStyle = g.rules.ranked && s.rank === 1 ? C.gold : s.fill;
         ctx.beginPath();
-        ctx.arc(rx + s.x * sc, ry + s.y * sc, g.mode === "ffa" && s.rank === 1 ? 3 : 2.3, 0, Math.PI * 2);
+        ctx.arc(rx + s.x * sc, ry + s.y * sc, g.rules.ranked && s.rank === 1 ? 3 : 2.3, 0, Math.PI * 2);
         ctx.fill();
       }
       if (g.player.alive) {
@@ -1464,6 +1814,7 @@ export default function App() {
       if (!g) return;
       const cam = g.cam;
       drawWater(cam);
+      drawStormWater(cam);
       drawWakes(cam);
       drawIslands(cam);
       if (g.running) drawArcGuides(g.player, cam);
@@ -1471,6 +1822,7 @@ export default function App() {
       const order = g.ships.filter((s) => s.alive).slice().sort((a, b) => a.y - b.y);
       for (const s of order) drawShip(s, cam);
       drawParts(cam);
+      drawStormEdge(cam);
       drawVignette();
       drawRadar();
     }
@@ -1491,7 +1843,7 @@ export default function App() {
       reset(m);
       camUpdate();
       const g = gameRef.current;
-      if (m === "ffa") computeMeta();
+      if (g.rules.ranked) computeMeta();
       g.running = true;
       inputRef.current = { joyMag: 0, joyAng: 0, broadside: false, bow: false, musket: false };
       last = 0;
@@ -1537,6 +1889,7 @@ export default function App() {
     if (knobRef.current) knobRef.current.style.transform = "translate(0px,0px)";
   };
   const holdBtn = (key, val) => (e) => { e.preventDefault(); inputRef.current[key] = val; };
+  const rules = modeOf(mode);
 
   return (
     <div
@@ -1549,7 +1902,7 @@ export default function App() {
         <>
           <div style={{ position: "absolute", top: 8, left: 10, display: "flex", gap: 8 }}>
             <Pill>🪙 {coins}</Pill>
-            {mode === "arena" ? (
+            {rules.reinforcements ? (
               <>
                 <Pill>⚓ {sunk}</Pill>
                 <Pill>🚩 {Math.max(0, left - 1)} hunting</Pill>
@@ -1557,15 +1910,17 @@ export default function App() {
             ) : (
               <Pill>🚩 {left} left</Pill>
             )}
+            {rules.storm && <StormPill storm={storm} />}
           </div>
 
           <div style={{ position: "absolute", top: 36, left: 10, display: "flex", gap: 6, alignItems: "stretch", width: "min(236px, 72%)" }}>
-            {mode === "ffa" && <RankBadge rank={rank.rank} total={rank.total} />}
+            {rules.ranked && <RankBadge rank={rank.rank} total={rank.total} />}
             <div style={{ flex: 1 }}>
               <HealthPanel ph={ph} phMax={phMax} />
             </div>
           </div>
 
+          {rules.upgrades && (
           <div style={{ position: "absolute", top: 110, left: 8, right: 8, display: "flex", gap: 6, overflowX: "auto", paddingBottom: 2 }}>
             {TRACKS.map((t) => {
               const lvl = up[t.key];
@@ -1584,6 +1939,7 @@ export default function App() {
               );
             })}
           </div>
+          )}
 
           <div
             onPointerDown={joyDown}
@@ -1595,11 +1951,13 @@ export default function App() {
             <div ref={knobRef} style={{ position: "absolute", left: "50%", top: "50%", width: 52, height: 52, marginLeft: -26, marginTop: -26, borderRadius: "50%", background: "rgba(236,226,204,0.9)", boxShadow: "0 2px 6px rgba(0,0,0,0.4)", pointerEvents: "none" }} />
           </div>
 
+          {rules.guns && (
           <div style={{ position: "absolute", right: 20, bottom: 26, display: "flex", flexDirection: "column", gap: 10 }}>
             <FireButton refEl={btnRefs.broadside} name="SIDE" sub="hull" color={C.hull} onDown={holdBtn("broadside", true)} onUp={holdBtn("broadside", false)} />
             <FireButton refEl={btnRefs.bow} name="FRONT" sub="mast" color={C.mast} onDown={holdBtn("bow", true)} onUp={holdBtn("bow", false)} />
             <FireButton refEl={btnRefs.musket} name="MUSKET" sub="crew" color={C.crew} onDown={holdBtn("musket", true)} onUp={holdBtn("musket", false)} />
           </div>
+          )}
         </>
       )}
 
@@ -1614,6 +1972,12 @@ export default function App() {
 
 function Pill({ children }) {
   return <div style={{ background: C.panel, border: `1px solid ${C.hair}`, borderRadius: 20, padding: "5px 11px", fontSize: 12, color: C.gold, fontWeight: 700 }}>{children}</div>;
+}
+
+function StormPill({ storm }) {
+  if (storm.out) return <div style={{ background: "rgba(70,18,18,0.85)", border: `1px solid ${C.crew}`, borderRadius: 20, padding: "5px 11px", fontSize: 12, color: "#ffd9d9", fontWeight: 700 }}>⛈ IN THE STORM</div>;
+  if (storm.closes > 0) return <Pill>⛈ {fmtTime(storm.closes)}</Pill>;
+  return <Pill>{storm.closing ? "⛈ closing" : "⛈ closed"}</Pill>;
 }
 
 function RankBadge({ rank, total }) {
@@ -1730,12 +2094,12 @@ function MenuGalleon() {
 // nothing to total, so it explains itself instead of showing a row of zeroes.
 function HoldPanel({ hold }) {
   const lt = hold.lifetime;
-  const arena = modeRecord(hold, "arena");
-  const ffa = modeRecord(hold, "ffa");
   const bests = [];
-  if (arena.bestSunk > 0) bests.push(`arena best ${arena.bestSunk} sunk`);
-  if (ffa.wins > 0) bests.push(`${ffa.wins} free-for-all${ffa.wins === 1 ? "" : "s"} won`);
-  else if (ffa.bestRank > 0) bests.push(`free-for-all best #${ffa.bestRank}`);
+  for (const key of MODE_LIST) {
+    const m = MODES[key], r = modeRecord(hold, key);
+    if (m.ranked && r.bestRank > 0) bests.push(`${m.short} best #${r.bestRank}`);
+    else if (!m.ranked && r.bestSunk > 0) bests.push(`${m.short} best ${r.bestSunk} sunk`);
+  }
   return (
     <div style={{ background: "rgba(10,40,48,0.6)", border: `1px solid ${C.hair}`, borderRadius: 10, padding: "9px 12px", margin: "14px 0 18px", textAlign: "left" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10 }}>
@@ -1744,7 +2108,7 @@ function HoldPanel({ hold }) {
       </div>
       <div style={{ fontSize: 10, color: "rgba(238,244,242,0.5)", lineHeight: 1.6, marginTop: 4 }}>
         {lt.runs > 0
-          ? [`${lt.runs} voyage${lt.runs === 1 ? "" : "s"}`, `${lt.sunk} sunk`, `${fmtTime(lt.afloat)} afloat`, ...bests].join(" · ")
+          ? [`${lt.runs} voyage${lt.runs === 1 ? "" : "s"}`, `${lt.sunk} sunk`, ...(lt.wins > 0 ? [`${lt.wins} won`] : []), `${fmtTime(lt.afloat)} afloat`, ...bests].join(" · ")
           : "Every coin you earn at sea comes back here, from either mode, and keeps between sessions."}
       </div>
     </div>
@@ -1771,8 +2135,10 @@ function StartOverlay({ onStart, hold, onScuttle }) {
       <MenuGalleon />
       <HoldPanel hold={hold} />
       <div style={{ fontFamily: UI, fontSize: 11, color: "rgba(238,244,242,0.55)", letterSpacing: 2, marginBottom: 14 }}>CHOOSE YOUR BATTLE</div>
-      <ModeCard color={C.side} title="ARENA" desc="Endless survival. One hunter to start, matched to your ship. Sink ships and reinforcements sail in from the horizon. Upgrade your ship. Score by ships sunk." onClick={() => onStart("arena")} />
-      <ModeCard color={C.mast} title="FREE-FOR-ALL" desc="Last afloat wins. 10 rival captains, all dead equal at the start. Enemies upgrade like real players and hunt for weak prey." onClick={() => onStart("ffa")} />
+      {MODE_LIST.map((key) => {
+        const m = MODES[key];
+        return <ModeCard key={key} color={m.color} title={m.title} desc={m.desc} onClick={() => onStart(key)} />;
+      })}
       <div style={{ marginTop: 16, fontSize: 11, color: "rgba(238,244,242,0.5)", lineHeight: 1.6 }}>Stick to sail · SIDE→hull · FRONT→mast · MUSKET→crew · ram for hull · islands block fire</div>
       {hold.lifetime.runs > 0 && <ScuttleHold onScuttle={onScuttle} />}
     </Shell>
@@ -1789,13 +2155,14 @@ function ModeCard({ color, title, desc, onClick }) {
 }
 
 function EndOverlay({ title, titleColor, result, stats, mode, place, hold, banked, onAgain, onMenu }) {
+  const rules = modeOf(mode);
   const rows = [];
-  if (mode === "ffa" && place) rows.push(["Placement", `#${place.rank} of ${place.total}`]);
+  if (rules.ranked && place) rows.push(["Placement", `#${place.rank} of ${place.total}`]);
   rows.push(["Time survived", fmtTime(stats.time)]);
   rows.push(["Ships sunk", stats.kills]);
   rows.push(["Damage dealt", stats.dmg]);
   rows.push(["Coins earned", fmtCoins(stats.coins)]);
-  rows.push(["Upgrades bought", stats.upgrades]);
+  rows.push(rules.upgrades ? ["Upgrades bought", stats.upgrades] : ["Rams landed", stats.rams || 0]);
   return (
     <Shell>
       <div style={{ fontFamily: DISPLAY, fontSize: 40, color: titleColor, letterSpacing: 1 }}>{title}</div>

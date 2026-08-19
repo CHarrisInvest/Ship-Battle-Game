@@ -38,25 +38,74 @@ serves from the domain root instead — Netlify, Vercel, a plain static host —
   the fourth, then two for every kill after that up to the fleet cap. The second ship of a wave holds
   off five seconds before it sails in. Enemies always spawn at base strength and never upgrade, so
   the pressure comes from the count. Score by ships sunk.
+- **Demolition derby** — ten captains and not a gun between them. Hulls are broken open by ramming
+  alone, there is nothing to buy, and a squall closes on the middle of the sea. Last afloat wins.
 - **Free-for-all** — up to 10 rival captains starting equal. The AI upgrades like a real player, hunts
   whoever is weakest, and gangs up on a runaway leader. For the first `OPENING_WINDOW` seconds it
   simply takes the nearest hull, since nobody has a reputation yet. It also fires on ships it is not
   hunting when one drifts into a weapon's arc, with a per-captain pause afterwards so the sea isn't
   wall-to-wall powder smoke. Last afloat wins.
 
-AI ships reload on exactly the same cooldowns as the player in both modes; their only handicap is a
-touch of spread on every shot.
+AI ships reload on exactly the same cooldowns as the player in every mode that has guns; their only
+handicap is a touch of spread on every shot.
+
+A mode is a row in the `MODES` table rather than a name to compare against — `melee` (is every hull
+hostile to every other, or only the player's), `ranked`, `lastAfloatWins`, `reinforcements`, `guns`,
+`upgrades`, `flees`, `storm`, plus the field size and opening purse. The simulation, the HUD, the
+menu cards, and the end screen all read those rules, so a new mode is a new row rather than a dozen
+scattered checks that have to be taught about it.
+
+### The derby
+
+Without cannon nothing can bring a mast down, so every hull holds the same top speed for the whole
+match and a fleeing captain could never be run down. The squall is what makes the fight happen. It
+opens at `STORM_R0` — just past the far corners of the map, so closing bites at once rather than
+spending its first seconds on empty water — holds for `STORM_GRACE`, and takes `STORM_CLOSE` seconds
+to shrink to `STORM_R1`, which leaves room for two ships to work but nowhere to hide. It closes on the
+middle of the map, which the island generator always leaves clear.
+
+Then, after `STORM_HOLD`, the eye itself shuts over `STORM_SQUEEZE` seconds until there is no fair
+water left at all. A small ring is not enough to settle a round on its own: a ram needs closing speed
+to count for anything, and two ships penned in a pool a hundred paces across can mill about
+indefinitely without ever getting the run at each other that would end it — left alone, better than
+two minutes of it. Weather asks nobody for a run-up, so the last hull afloat is whoever has crew
+enough to outlast the sea.
+
+The weather works on the crew, exposed on deck, rather than on the hull, and it is not an attack: no
+captain is paid for it and it does not run through the damage path a ram does. Its bite starts at
+`STORM_DPS_MIN` and climbs to `STORM_DPS_MAX` over `STORM_RAMP` seconds out in it, so a dash across
+the weather costs a few hands and living out there costs about eight seconds and the ship. Come back
+inside and the exposure sheds at `STORM_RECOVER` a second.
+
+The middle *pulls* an AI captain rather than fencing her away from the rail. Inside `STORM_HOME` of
+the ring she fights wherever she likes; past that the course home bends her steering, hardest at the
+edge (`STORM_PULL`); and once she is actually out in the weather her own exposure decides how hard, so
+a shove into the rain is something she rides out and a pinning is something she has to fight her way
+back from. It is a preference rather than an override on purpose — being fenced off the edge would
+make her impossible to shoulder out there, and driving a rival into the weather and holding her in it
+is a way to win a fight without ever holing her.
+
+Ram-only captains reason differently from gunners. They want a rival's beam, because that is where a
+hull is staved in; they turn to meet a charge bow to bow, because that makes the blow a glance the
+other ship has to share; and — since a rudder now goes heavy at a run — they ease the throttle to
+swing the bow across before piling the speed back on, which is what makes an AI charge something you
+can watch coming and step aside from. They also weigh whether they are gaining on a target at all:
+with every ship the same speed, a stern chase is one nobody ever wins, and without that term a captain
+will happily follow a fleeing rival across the whole sea while the beam of a ship crossing her bow
+goes begging. A captain who has gone `STALL_PATIENCE` seconds without gaining takes the way off her
+and comes round inside instead — a slow hull turns far inside a fast one, so easing the throttle is
+what lets her cut the corner and force the meeting.
 
 ## The hold
 
 Coins sit at two depths, and keeping them apart is the whole of it:
 
 - **A ship's purse** is what she carries into one battle. It buys her upgrades at sea and goes down
-  with her. Arena opens one at `ARENA_START_COINS`; free-for-all opens at nothing. This is the number
-  in the HUD.
+  with her. Arena opens one at `ARENA_START_COINS`; the other modes open at nothing. This is the
+  number in the HUD.
 - **The hold** (`src/hold.js`) is the captain's, not the ship's. Every voyage that reaches an end
-  screen banks what it *earned* — 25 a kill and one a point of damage dealt — and the total carries
-  across arena and free-for-all alike and through a reload, kept in `localStorage` under
+  screen banks what it *earned* — 25 a kill and one a point of damage dealt, a rammed hull included —
+  and the total carries across every mode alike and through a reload, kept in `localStorage` under
   `broadside.hold`.
 
 Banking counts earnings, not leftovers, so an upgrade bought at sea costs nothing ashore and there is
@@ -84,8 +133,17 @@ Pointer/touch driven, so it works the same with a mouse or on a phone:
 
 - **Virtual joystick** (bottom left) — steer and throttle.
 - **SIDE / FRONT / MUSKET** (bottom right) — hold to fire; each has its own cooldown, range, and
-  damages a different system.
+  damages a different system. Absent in a mode that carries no guns.
 - **Upgrade rail** (top) — spend gold across MAST, HULL, CREW, SIDE, FRONT. Costs scale `45 × 1.55^level`.
+  Absent in a mode with nothing to buy, which leaves the stick as the only control on the screen.
+
+A ship's rudder grows heavier the more way she carries. The loss is weighted to the top of her speed
+range: under half stick it is within a few percent of what it ever was, so handling at close quarters
+and turns from a standstill are left alone, and it reaches `RUDDER_HEAVY` only at a fresh ship's top
+speed — where her turning circle widens from about one hull length to a little under one and a half,
+and coming about takes 1.7s instead of 1.3s. It keys off the speed she is actually making rather than
+the stick, so easing off the throttle hands the rudder back as she slows. Coming round hard costs
+speed, and a charge at full sail is a commitment that can be read and dodged.
 
 Ramming is a real attack, resolved from the geometry of the collision rather than from who started it:
 
@@ -135,7 +193,7 @@ Ships track three separate pools instead of one health bar:
 | --- | --- | --- |
 | `hull` | broadside cannons, rams | ship sinks at zero |
 | `mast` | bow cannon | speed and turn rate fall off |
-| `crew` | muskets | musket output falls off |
+| `crew` | muskets, foul weather | musket output falls off; ship is lost at zero |
 
 ## Layout
 
@@ -163,7 +221,10 @@ inline-styled, so `BroadsideIso.jsx` can be dropped into any React app as-is.
 
 The balance knobs sit at the top of `src/BroadsideIso.jsx`: `WORLD` and `TILT` for the arena and
 camera, `BASE`/`HP_GAIN` for the health pools, `WP` for per-weapon cooldown, projectile speed, and
-lifetime, `RAM_*` for ramming, and `TRACKS`/`COST` for the upgrade economy.
+lifetime, `RAM_*` for ramming, and `TRACKS`/`COST` for the upgrade economy. `BASE_SPEED` is a fresh
+ship's top speed and the yardstick the heavy rudder measures against; `RUDDER_HEAVY` is how much
+rudder she loses at it and `RUDDER_CURVE` how late in the range the loss starts to bite — raising the
+curve keeps more of her handling until she is truly running.
 
 Arena pacing has its own block: `ARENA_START` (hunters at the opening), `ARENA_RAMP` (reinforcements
 per kill for the opening kills, two a kill after it runs out), `ARENA_SPAWN_CLEAR` (minimum distance a
@@ -171,3 +232,6 @@ respawn keeps from the player), `ARENA_MAX_ENEMIES` (ceiling on the swarm), `ARE
 the second ship of a wave holds off), and `ARENA_START_COINS` (the opening purse). `OPENING_WINDOW`
 sets how long free-for-all captains fight whoever is nearest before they start picking their prey.
 `HOLD_SHARE` in `src/hold.js` is the one knob on the economy that outlives a round.
+
+The derby has its own block: `DERBY_AI` (rivals, so ten captains start) and the `STORM_*` constants
+described above.
