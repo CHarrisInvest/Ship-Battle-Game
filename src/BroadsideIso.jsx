@@ -75,6 +75,18 @@ const STALL_PATIENCE = 5; // seconds of getting nowhere before she tries somethi
 const STALL_CUT = 4.5; // and how long she holds the tighter, slower turn
 const STALL_THROTTLE = 0.5;
 
+// The same clock caps a face-off. Two captains who each turn to meet the other's bow settle into a
+// mutual circle, both at full sail, both pointed inward, closing at a couple of paces a second —
+// measured at better than a minute of it, with not a blow landed either way. Holding your bow on a
+// charge is right; holding it on a hull that is only circling you is a way of losing the match slowly.
+// So she gives it a few seconds, then puts the helm over, opens the range, and comes back for a
+// fresh run. Patience is scaled by her nerve so no two captains blink together — if they did, the
+// pair would break as one and fall straight back into the same circle.
+const FACEOFF_HOLD = 3; // seconds nose to nose with nothing happening before she breaks off
+const SHEER_ANGLE = 1.35; // about 77 degrees off her bearing: sea room, not a retreat
+const SHEER_TIME = 2.4; // how long she holds the break before working back in
+const SHEER_THROTTLE = 0.7; // and she takes some way off to get the bow across
+
 const stormRadius = (t) => {
   const closed = STORM_GRACE + STORM_CLOSE;
   if (t <= closed) return STORM_R0 + (STORM_R1 - STORM_R0) * clamp((t - STORM_GRACE) / STORM_CLOSE, 0, 1);
@@ -156,6 +168,11 @@ const RAM_RECOIL = 0.3; // floor on the bounce for whoever drove into the blow
 const RAM_DRIVE_LOSS = 0.88; // share of her way a ship spends into the impact, bow-on
 const RAM_REARM_GAP = 26; // hulls must break this far clear before the pair can ram again
 const RAM_CD = 0.9; // seconds before a ship can ram again
+// Breaking clear was the only way out of that lock, which two ships circling each other never manage:
+// they can hold station inside the gap indefinitely and the pair stays barred from ever trading
+// another blow. The lock is meant to stop damage being ground out of hulls already touching, and a
+// few seconds does that, so it lapses on its own as well.
+const RAM_LOCK_MAX = 3;
 
 // For hull against hull a ship is her keel — a line down her length — swelled by her beam. Measuring
 // between the two keels finds where they truly foul, which the distance between two centres cannot:
@@ -411,7 +428,7 @@ export default function App() {
         maxHull: m.hull, maxMast: m.mast, maxCrew: m.crew,
         hull: m.hull, mast: m.mast, crew: m.crew,
         cd: { broadside: Math.random() * 0.5, bow: Math.random() * 0.5, musket: Math.random() * 0.5 },
-        mastDown: false, flash: 0, ramCd: 0, locked: new Set(), wakeT: 0, sprayT: 0,
+        mastDown: false, flash: 0, ramCd: 0, locked: new Map(), wakeT: 0, sprayT: 0,
         roll: 0, rollPhase: Math.random() * Math.PI * 2, turnVel: 0, kx: 0, ky: 0,
         fill: opts.isPlayer ? C.player : pal.fill,
         stroke: opts.isPlayer ? C.playerStroke : pal.stroke,
@@ -423,7 +440,9 @@ export default function App() {
         s.oppT = 0;
         s.oppHold = 1.8 + Math.random() * 2.6; // trigger discipline: some captains waste less powder
         s.nerve = Math.random(); // how late she leaves it before turning to face a charge
-        s.baffled = 0; // how long she has been getting nowhere with the hull she is after
+        s.baffled = 0; // how long she has been getting nowhere with the hull she is engaged with
+        s.sheerT = 0; // time left on a deliberate break-off
+        s.sheerSide = 1;
         s.retargetT = 0;
         s.target = null;
         s.bias = TRACKS[Math.floor(Math.random() * TRACKS.length)].key;
@@ -884,32 +903,50 @@ export default function App() {
         s.retargetT = 0.6 + Math.random() * 0.7;
       }
       const tgt = s.target;
-      let desired, throttle = 1;
-
       const threat = incomingRam(s);
+      const facing = threat && Math.hypot(threat.x - s.x, threat.y - s.y) < 150 + s.nerve * 90 ? threat : null;
+      const engaged = facing || tgt; // the hull this is about, whether she picked it or it picked her
+      let desired, throttle = 1;
+      s.sheerT = Math.max(0, s.sheerT - dt);
 
-      if (threat && Math.hypot(threat.x - s.x, threat.y - s.y) < 150 + s.nerve * 90) {
+      // Is she getting anywhere with it? The clock runs against whoever she is engaged with, the hull
+      // she is chasing and the one charging her alike. It used to run only inside the chase, so the
+      // one case that never resolves itself — a pair locked bow to bow — was the one case never timed.
+      if (engaged) {
+        const toE = Math.atan2(engaged.y - s.y, engaged.x - s.x);
+        const closing =
+          (Math.cos(s.heading) * s.spdCur - Math.cos(engaged.heading) * engaged.spdCur) * Math.cos(toE) +
+          (Math.sin(s.heading) * s.spdCur - Math.sin(engaged.heading) * engaged.spdCur) * Math.sin(toE);
+        s.baffled = closing > 18 ? Math.max(0, s.baffled - dt * 2) : s.baffled + dt;
+      } else s.baffled = Math.max(0, s.baffled - dt);
+
+      const patience = (secs) => secs * (0.7 + 0.6 * s.nerve); // no two captains blink together
+
+      if (facing && s.sheerT <= 0 && s.baffled > patience(FACEOFF_HOLD)) {
+        s.sheerT = SHEER_TIME; // enough of this: helm over
+        s.sheerSide = Math.random() < 0.5 ? 1 : -1;
+        s.baffled = 0;
+      }
+
+      if (s.sheerT > 0 && engaged) {
+        // break off across her bow for sea room, then work back in for a fresh run
+        desired = Math.atan2(engaged.y - s.y, engaged.x - s.x) + s.sheerSide * SHEER_ANGLE;
+        throttle = SHEER_THROTTLE;
+      } else if (facing) {
         // meet her bow to bow rather than let her have the beam — a glance both of us share
-        desired = Math.atan2(threat.y - s.y, threat.x - s.x);
+        desired = Math.atan2(facing.y - s.y, facing.x - s.x);
       } else if (!tgt) {
         s.wanderT -= dt;
         if (s.wanderT <= 0) { s.wander += (Math.random() - 0.5) * 1.2; s.wanderT = 1.5 + Math.random(); }
         desired = s.wander;
         throttle = 0.5;
+      } else if (s.baffled > patience(STALL_PATIENCE)) {
+        // a chase she is not winning: come round inside her instead of following her wake
+        desired = Math.atan2(tgt.y - s.y, tgt.x - s.x); // straight at her, not at where she is going
+        throttle = STALL_THROTTLE;
+        if (s.baffled > patience(STALL_PATIENCE + STALL_CUT)) s.baffled = 0; // then have another go
       } else {
-        // are we actually gaining on her? if not, patience runs out and she comes round inside instead
-        const toT = Math.atan2(tgt.y - s.y, tgt.x - s.x);
-        const closing =
-          (Math.cos(s.heading) * s.spdCur - Math.cos(tgt.heading) * tgt.spdCur) * Math.cos(toT) +
-          (Math.sin(s.heading) * s.spdCur - Math.sin(tgt.heading) * tgt.spdCur) * Math.sin(toT);
-        s.baffled = closing > 18 ? Math.max(0, s.baffled - dt * 2) : s.baffled + dt;
-        if (s.baffled > STALL_PATIENCE) {
-          desired = toT; // straight at her, not at where she is going
-          throttle = STALL_THROTTLE;
-          if (s.baffled > STALL_PATIENCE + STALL_CUT) s.baffled = 0; // then have another go at the chase
-        } else {
-          desired = ramIntercept(s, tgt);
-        }
+        desired = ramIntercept(s, tgt);
       }
 
       // Now the weather bends whatever she meant to do. Well inside the ring it asks nothing; nearer
@@ -1014,6 +1051,8 @@ export default function App() {
           if (!a.alive || !b.alive) continue;
           // consorts cannot ram each other, but no two hulls may ever share the same water
           const hostile = g.rules.melee || a.isPlayer !== b.isPlayer;
+          const heldSince = a.locked.get(b);
+          if (heldSince !== undefined && g.time - heldSince > RAM_LOCK_MAX) { a.locked.delete(b); b.locked.delete(a); }
           const { d, nx, ny } = keelGap(a, b); // where the two hulls come nearest to fouling
           if (d >= HULL_TOUCH) {
             // a pair has to break properly clear of each other before it can ram again
@@ -1062,7 +1101,7 @@ export default function App() {
           if (hurtB > 0) { applyHit(b, "hull", hurtB, a); a.ramCd = RAM_CD; a.baffled = 0; if (hurtB >= RAM_GRAZE) a.rams++; rammed = true; }
           if (hurtA > 0 && b.alive) { applyHit(a, "hull", hurtA, b); b.ramCd = RAM_CD; b.baffled = 0; if (hurtA >= RAM_GRAZE) b.rams++; rammed = true; }
           if (rammed) {
-            a.locked.add(b); b.locked.add(a);
+            a.locked.set(b, g.time); b.locked.set(a, g.time);
             // each ship spends the part of her way that went into the impact, so one driving
             // straight in stops dead while one caught across her course carries on. whoever put
             // the least drive into it is the one thrown clear
