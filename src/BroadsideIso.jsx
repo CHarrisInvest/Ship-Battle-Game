@@ -164,6 +164,50 @@ const TRACKS = [
 
 const COST = (lvl) => Math.round(45 * Math.pow(1.55, lvl));
 
+/**
+ * A mode is a set of rules, not a name to compare against. Everything that used to ask "are we in
+ * free-for-all?" now asks what it actually wants to know — are guns aboard, is every hull hostile to
+ * every other, does anyone keep a placement — so each rule is stated once, here, where the modes can
+ * be read side by side. Adding a mode is filling in a row rather than hunting down the checks that
+ * would otherwise have to be taught about it.
+ */
+const MODES = {
+  arena: {
+    key: "arena",
+    title: "ARENA",
+    color: C.side,
+    desc: "Endless survival. One hunter to start, matched to your ship. Sink ships and reinforcements sail in from the horizon. Upgrade your ship. Score by ships sunk.",
+    rivals: ARENA_START, // hulls on the water at the drop, besides the player
+    startCoins: ARENA_START_COINS,
+    guns: true, // cannons and muskets aboard
+    upgrades: true, // the upgrade rail, and AI captains shopping
+    melee: false, // every hull hostile to every other, rather than only to the player
+    ranked: false, // placements, a leader, and the rank badge
+    lastAfloatWins: false,
+    reinforcements: true, // a sinking brings fresh hunters in from the horizon
+    flees: false, // a beaten captain runs rather than fights on
+    storm: false, // a closing ring of foul weather
+  },
+  ffa: {
+    key: "ffa",
+    title: "FREE-FOR-ALL",
+    color: C.mast,
+    desc: "Last afloat wins. 10 rival captains, all dead equal at the start. Enemies upgrade like real players and hunt for weak prey.",
+    rivals: FFA_AI,
+    startCoins: 0,
+    guns: true,
+    upgrades: true,
+    melee: true,
+    ranked: true,
+    lastAfloatWins: true,
+    reinforcements: false,
+    flees: true,
+    storm: false,
+  },
+};
+const MODE_LIST = ["arena", "ffa"]; // menu order
+const modeOf = (m) => MODES[m] || MODES.arena;
+
 function norm(a) {
   while (a > Math.PI) a -= Math.PI * 2;
   while (a < -Math.PI) a += Math.PI * 2;
@@ -413,27 +457,29 @@ export default function App() {
     }
 
     function reset(m) {
+      const rules = modeOf(m);
       gameRef.current = {
-        mode: m, player: null, ships: [], shots: [], parts: [], wakes: [], islands: [], texts: [],
-        cam: { x: 0, y: 0 }, sunk: 0, ffaTotal: 0, aliveCount: 0, leader: null, avgEarned: 0,
+        mode: m, rules, player: null, ships: [], shots: [], parts: [], wakes: [], islands: [], texts: [],
+        cam: { x: 0, y: 0 }, sunk: 0, fieldSize: 0, aliveCount: 0, leader: null, avgEarned: 0,
         _lastRank: 0, spawnT: 0, spawnQueue: 0, vign: 0, running: false, hudDirty: false, hudAcc: 0, time: 0,
         banked: false,
       };
       const g = gameRef.current;
       const player = makeShip(WORLD / 2, WORLD / 2, -Math.PI / 2, { isPlayer: true });
+      player.coins = rules.startCoins; // a purse, not earnings — keeps it out of the end tally
       g.player = player;
       g.ships.push(player);
       genIslands(g);
-      if (m === "arena") {
-        player.coins = ARENA_START_COINS; // a purse, not earnings — keeps it out of the end tally
-        for (let i = 0; i < ARENA_START; i++) g.ships.push(spawnArenaEnemy());
-      } else {
-        for (let i = 0; i < FFA_AI; i++) {
+      for (let i = 0; i < rules.rivals; i++) {
+        // where a mode replaces its losses, rivals sail in from the horizon the same way the
+        // reinforcements will; where the field is fixed, they are scattered across the whole sea
+        if (rules.reinforcements) g.ships.push(spawnArenaEnemy());
+        else {
           const pos = farPos(g, 440);
           g.ships.push(makeShip(pos.x, pos.y, Math.random() * Math.PI * 2, { ci: i }));
         }
-        g.ffaTotal = g.ships.length;
       }
+      g.fieldSize = g.ships.length;
     }
 
     function pushText(x, y, t, col) {
@@ -486,9 +532,9 @@ export default function App() {
     function endWin() {
       const g = gameRef.current;
       g.running = false;
-      if (g.mode === "ffa") setPlace({ rank: 1, total: g.ffaTotal });
+      if (g.rules.ranked) setPlace({ rank: 1, total: g.fieldSize });
       setStats(finalStats());
-      bankRun(true, g.mode === "ffa" ? 1 : 0);
+      bankRun(true, g.rules.ranked ? 1 : 0);
       setResult("You are the last hull afloat.");
       setPhase("won");
       syncRef.current();
@@ -498,8 +544,8 @@ export default function App() {
       g.running = false;
       g.vign = 1;
       g.player.alive = false;
-      const rank = g.mode === "ffa" ? g.ships.filter((s) => s.alive).length + 1 : 0;
-      if (g.mode === "ffa") setPlace({ rank, total: g.ffaTotal });
+      const rank = g.rules.ranked ? g.ships.filter((s) => s.alive).length + 1 : 0;
+      if (g.rules.ranked) setPlace({ rank, total: g.fieldSize });
       setStats(finalStats());
       bankRun(false, rank);
       setResult(bar === "hull" ? "Your hull is breached — she goes under." : "Your crew is routed — you strike your colors.");
@@ -521,18 +567,18 @@ export default function App() {
       if (i >= 0) g.ships.splice(i, 1);
       for (const o of g.ships) o.locked.delete(s); // she is on the bottom; nobody is fouled on her
       pushText(s.x, s.y, "SUNK", C.gold);
-      if (g.mode === "arena") {
+      if (g.rules.reinforcements) {
         g.sunk += 1;
         g.spawnQueue = Math.min(g.spawnQueue + arenaReinforcements(g.sunk), ARENA_MAX_ENEMIES);
         g.spawnT = 0; // lead ship of the wave sails in at once, the next one waits out the gap
       }
       g.hudDirty = true;
-      if (g.mode === "ffa" && g.player.alive && g.ships.filter((x) => x.alive).length === 1) endWin();
+      if (g.rules.lastAfloatWins && g.player.alive && g.ships.filter((x) => x.alive).length === 1) endWin();
     }
 
     function canHit(owner, target) {
       if (!target.alive || target === owner) return false;
-      if (gameRef.current.mode === "ffa") return true;
+      if (gameRef.current.rules.melee) return true;
       return owner.isPlayer !== target.isPlayer;
     }
 
@@ -630,6 +676,7 @@ export default function App() {
       const desired = inp.joyMag > 0.08 ? inp.joyAng : p.heading;
       moveShip(p, dt, desired, inp.joyMag);
       p.ramCd = Math.max(0, p.ramCd - dt);
+      if (!g.rules.guns) return; // ram-only: nothing aboard to reload
       for (const wk of ["broadside", "bow", "musket"]) {
         p.cd[wk] = Math.max(0, p.cd[wk] - dt);
         if (inp[wk] && p.cd[wk] <= 0) { fire(p, wk); p.cd[wk] = WP[wk].cd; }
@@ -638,7 +685,7 @@ export default function App() {
 
     function pickTarget(s) {
       const g = gameRef.current;
-      if (g.mode === "arena") return g.player.alive ? g.player : null;
+      if (!g.rules.melee) return g.player.alive ? g.player : null; // one quarry: the player
       const leaderSnow = g.leader && g.leader !== s && g.leader.earned > g.avgEarned * 1.6 && g.aliveCount > 2;
       // at the drop nobody has a reputation yet, so range is what matters: take the nearest hull
       // and only start shopping for weak or wealthy prey once the melee has had time to sort itself
@@ -720,7 +767,7 @@ export default function App() {
         s.wanderT -= dt;
         if (s.wanderT <= 0) { s.wander += (Math.random() - 0.5) * 1.2; s.wanderT = 1.5 + Math.random(); }
         moveShip(s, dt, avoidIslands(s, nearWall ? Math.atan2(WORLD / 2 - s.y, WORLD / 2 - s.x) : s.wander), 0.4);
-        if (g.mode === "ffa") aiUpgrade(s, dt);
+        if (g.rules.upgrades) aiUpgrade(s, dt);
         return;
       }
 
@@ -730,13 +777,13 @@ export default function App() {
       const bearing = norm(toT - s.heading);
       const hpR = Math.min(s.hull / s.maxHull, s.crew / s.maxCrew);
       const scary = shipPower(tgt) - shipPower(s) > 2;
-      const fleeing = g.mode === "ffa" && (hpR < 0.3 || (scary && hpR < 0.55));
+      const fleeing = g.rules.flees && (hpR < 0.3 || (scary && hpR < 0.55));
 
       if (fleeing) {
         let away = Math.atan2(s.y - tgt.y, s.x - tgt.x);
         if (nearWall) away = Math.atan2(WORLD / 2 - s.y, WORLD / 2 - s.x);
         moveShip(s, dt, avoidIslands(s, away), 0.95);
-        aiUpgrade(s, dt);
+        if (g.rules.upgrades) aiUpgrade(s, dt);
         return;
       }
 
@@ -754,7 +801,7 @@ export default function App() {
       else { const sign = bearing >= 0 ? 1 : -1; desired = toT - (sign * Math.PI) / 2; throttle = 0.5; }
       moveShip(s, dt, avoidIslands(s, desired), throttle);
 
-      for (const wk of ["broadside", "bow", "musket"]) {
+      if (g.rules.guns) for (const wk of ["broadside", "bow", "musket"]) {
         if (s.cd[wk] > 0) continue;
         const shot = linedUp(s, wk, tgt);
         if (!shot) continue;
@@ -767,7 +814,7 @@ export default function App() {
         fire(s, wk);
         s.cd[wk] = WP[wk].cd; // AI reloads on the player's clock, every mode
       }
-      if (g.mode === "ffa") aiUpgrade(s, dt);
+      if (g.rules.upgrades) aiUpgrade(s, dt);
     }
 
     function stepRam() {
@@ -778,7 +825,7 @@ export default function App() {
           const a = ships[i], b = ships[j];
           if (!a.alive || !b.alive) continue;
           // consorts cannot ram each other, but no two hulls may ever share the same water
-          const hostile = g.mode === "ffa" || a.isPlayer !== b.isPlayer;
+          const hostile = g.rules.melee || a.isPlayer !== b.isPlayer;
           const { d, nx, ny } = keelGap(a, b); // where the two hulls come nearest to fouling
           if (d >= HULL_TOUCH) {
             // a pair has to break properly clear of each other before it can ram again
@@ -892,7 +939,7 @@ export default function App() {
 
     function maintain(dt) {
       const g = gameRef.current;
-      if (g.mode !== "arena") return;
+      if (!g.rules.reinforcements) return;
       g.spawnT -= dt;
       const enemies = g.ships.filter((s) => !s.isPlayer).length;
       if (enemies === 0 && g.spawnQueue <= 0) g.spawnQueue = 1; // never leave the sea empty
@@ -905,7 +952,7 @@ export default function App() {
 
     function computeMeta() {
       const g = gameRef.current;
-      if (g.mode !== "ffa") return;
+      if (!g.rules.ranked) return;
       const alive = g.ships.filter((s) => s.alive);
       alive.sort((a, b) => b.earned - a.earned || b.coins - a.coins);
       alive.forEach((s, i) => (s.rank = i + 1));
@@ -1323,7 +1370,7 @@ export default function App() {
       if (!s.isPlayer) {
         const bw = 26, bxL = gx - bw / 2;
         const byT = P3(1, 0, deckH + 34)[1] - 14;
-        if (g.mode === "ffa" && s.rank) {
+        if (g.rules.ranked && s.rank) {
           ctx.font = `700 10px ${UI}`;
           ctx.textAlign = "right";
           ctx.fillStyle = s.rank === 1 ? C.gold : "rgba(238,244,242,0.8)";
@@ -1445,9 +1492,9 @@ export default function App() {
       ctx.strokeRect(rx + g.cam.x * sc, ry + g.cam.y * sc, Wd * sc, (Hd / TILT) * sc);
       for (const s of g.ships) {
         if (!s.alive || s.isPlayer) continue;
-        ctx.fillStyle = g.mode === "ffa" && s.rank === 1 ? C.gold : s.fill;
+        ctx.fillStyle = g.rules.ranked && s.rank === 1 ? C.gold : s.fill;
         ctx.beginPath();
-        ctx.arc(rx + s.x * sc, ry + s.y * sc, g.mode === "ffa" && s.rank === 1 ? 3 : 2.3, 0, Math.PI * 2);
+        ctx.arc(rx + s.x * sc, ry + s.y * sc, g.rules.ranked && s.rank === 1 ? 3 : 2.3, 0, Math.PI * 2);
         ctx.fill();
       }
       if (g.player.alive) {
@@ -1501,7 +1548,7 @@ export default function App() {
       reset(m);
       camUpdate();
       const g = gameRef.current;
-      if (m === "ffa") computeMeta();
+      if (g.rules.ranked) computeMeta();
       g.running = true;
       inputRef.current = { joyMag: 0, joyAng: 0, broadside: false, bow: false, musket: false };
       last = 0;
@@ -1547,6 +1594,7 @@ export default function App() {
     if (knobRef.current) knobRef.current.style.transform = "translate(0px,0px)";
   };
   const holdBtn = (key, val) => (e) => { e.preventDefault(); inputRef.current[key] = val; };
+  const rules = modeOf(mode);
 
   return (
     <div
@@ -1559,7 +1607,7 @@ export default function App() {
         <>
           <div style={{ position: "absolute", top: 8, left: 10, display: "flex", gap: 8 }}>
             <Pill>🪙 {coins}</Pill>
-            {mode === "arena" ? (
+            {rules.reinforcements ? (
               <>
                 <Pill>⚓ {sunk}</Pill>
                 <Pill>🚩 {Math.max(0, left - 1)} hunting</Pill>
@@ -1570,12 +1618,13 @@ export default function App() {
           </div>
 
           <div style={{ position: "absolute", top: 36, left: 10, display: "flex", gap: 6, alignItems: "stretch", width: "min(236px, 72%)" }}>
-            {mode === "ffa" && <RankBadge rank={rank.rank} total={rank.total} />}
+            {rules.ranked && <RankBadge rank={rank.rank} total={rank.total} />}
             <div style={{ flex: 1 }}>
               <HealthPanel ph={ph} phMax={phMax} />
             </div>
           </div>
 
+          {rules.upgrades && (
           <div style={{ position: "absolute", top: 110, left: 8, right: 8, display: "flex", gap: 6, overflowX: "auto", paddingBottom: 2 }}>
             {TRACKS.map((t) => {
               const lvl = up[t.key];
@@ -1594,6 +1643,7 @@ export default function App() {
               );
             })}
           </div>
+          )}
 
           <div
             onPointerDown={joyDown}
@@ -1605,11 +1655,13 @@ export default function App() {
             <div ref={knobRef} style={{ position: "absolute", left: "50%", top: "50%", width: 52, height: 52, marginLeft: -26, marginTop: -26, borderRadius: "50%", background: "rgba(236,226,204,0.9)", boxShadow: "0 2px 6px rgba(0,0,0,0.4)", pointerEvents: "none" }} />
           </div>
 
+          {rules.guns && (
           <div style={{ position: "absolute", right: 20, bottom: 26, display: "flex", flexDirection: "column", gap: 10 }}>
             <FireButton refEl={btnRefs.broadside} name="SIDE" sub="hull" color={C.hull} onDown={holdBtn("broadside", true)} onUp={holdBtn("broadside", false)} />
             <FireButton refEl={btnRefs.bow} name="FRONT" sub="mast" color={C.mast} onDown={holdBtn("bow", true)} onUp={holdBtn("bow", false)} />
             <FireButton refEl={btnRefs.musket} name="MUSKET" sub="crew" color={C.crew} onDown={holdBtn("musket", true)} onUp={holdBtn("musket", false)} />
           </div>
+          )}
         </>
       )}
 
@@ -1781,8 +1833,10 @@ function StartOverlay({ onStart, hold, onScuttle }) {
       <MenuGalleon />
       <HoldPanel hold={hold} />
       <div style={{ fontFamily: UI, fontSize: 11, color: "rgba(238,244,242,0.55)", letterSpacing: 2, marginBottom: 14 }}>CHOOSE YOUR BATTLE</div>
-      <ModeCard color={C.side} title="ARENA" desc="Endless survival. One hunter to start, matched to your ship. Sink ships and reinforcements sail in from the horizon. Upgrade your ship. Score by ships sunk." onClick={() => onStart("arena")} />
-      <ModeCard color={C.mast} title="FREE-FOR-ALL" desc="Last afloat wins. 10 rival captains, all dead equal at the start. Enemies upgrade like real players and hunt for weak prey." onClick={() => onStart("ffa")} />
+      {MODE_LIST.map((key) => {
+        const m = MODES[key];
+        return <ModeCard key={key} color={m.color} title={m.title} desc={m.desc} onClick={() => onStart(key)} />;
+      })}
       <div style={{ marginTop: 16, fontSize: 11, color: "rgba(238,244,242,0.5)", lineHeight: 1.6 }}>Stick to sail · SIDE→hull · FRONT→mast · MUSKET→crew · ram for hull · islands block fire</div>
       {hold.lifetime.runs > 0 && <ScuttleHold onScuttle={onScuttle} />}
     </Shell>
@@ -1799,8 +1853,9 @@ function ModeCard({ color, title, desc, onClick }) {
 }
 
 function EndOverlay({ title, titleColor, result, stats, mode, place, hold, banked, onAgain, onMenu }) {
+  const rules = modeOf(mode);
   const rows = [];
-  if (mode === "ffa" && place) rows.push(["Placement", `#${place.rank} of ${place.total}`]);
+  if (rules.ranked && place) rows.push(["Placement", `#${place.rank} of ${place.total}`]);
   rows.push(["Time survived", fmtTime(stats.time)]);
   rows.push(["Ships sunk", stats.kills]);
   rows.push(["Damage dealt", stats.dmg]);
