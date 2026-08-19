@@ -46,14 +46,40 @@ const DERBY_AI = 9; // rivals, so ten captains start
 const STORM_GRACE = 18; // seconds of open water before the ring starts to close
 const STORM_CLOSE = 95; // and how long it takes to close all the way
 const STORM_R0 = 1400; // opening radius — just past the far corners of the map, so closing bites at once
-const STORM_R1 = 190; // final radius: room for two ships to work, not to hide
+const STORM_R1 = 190; // working radius: room for two ships to work, not to hide
+// ...and then, if the last of them are still circling one another, the eye itself shuts. A small ring
+// is not enough on its own: a ram needs closing speed to count for anything, and two ships penned in a
+// pool a hundred paces across can mill about forever without ever getting the run at each other that
+// would settle it — measured at better than two minutes of it. Weather asks nobody for a run-up, so
+// the ring goes to nothing instead, and the last hull afloat is the one with crew enough to outlast
+// the sea. However cagey the sailing, a round has an end.
+const STORM_HOLD = 20; // seconds the ring sits at its working size first
+const STORM_SQUEEZE = 35; // and how long the eye takes to shut completely
+const STORM_R2 = 0;
 const STORM_DPS_MIN = 3.5; // crew lost a second the moment she is caught out
 const STORM_DPS_MAX = 17; // ...and once she has been out there STORM_RAMP seconds
 const STORM_RAMP = 12; // how long the weather takes to work up to its worst
 const STORM_RECOVER = 2.2; // exposure shed a second once she is back inside
-const STORM_AI_MARGIN = 90; // how far inside the edge an AI captain tries to keep
+// An AI captain is drawn toward the middle rather than fenced away from the edge. Inside STORM_HOME
+// of the ring she fights as she pleases; past it the middle bends her course, hardest at the rail.
+// It is a preference, not an override, which is what leaves room to shoulder a rival out into the
+// weather and hold her there — and once she is out, her own exposure is what turns the pull urgent.
+const STORM_HOME = 0.45; // share of the ring she is content to fight anywhere within
+const STORM_PULL = 0.8; // how hard the middle bends her course at the very rail
 
-const stormRadius = (t) => STORM_R0 + (STORM_R1 - STORM_R0) * clamp((t - STORM_GRACE) / STORM_CLOSE, 0, 1);
+// Two hulls with the same top speed can fall into a mutual tail chase and orbit one another for as
+// long as they both keep the throttle down — lead pursuit holds the circle rather than closing it.
+// A captain who has gone this long without gaining takes the way off her instead: a slow hull turns
+// far inside a fast one, so easing the throttle is what lets her cut the corner and force the meeting.
+const STALL_PATIENCE = 5; // seconds of getting nowhere before she tries something else
+const STALL_CUT = 4.5; // and how long she holds the tighter, slower turn
+const STALL_THROTTLE = 0.5;
+
+const stormRadius = (t) => {
+  const closed = STORM_GRACE + STORM_CLOSE;
+  if (t <= closed) return STORM_R0 + (STORM_R1 - STORM_R0) * clamp((t - STORM_GRACE) / STORM_CLOSE, 0, 1);
+  return STORM_R1 + (STORM_R2 - STORM_R1) * clamp((t - closed - STORM_HOLD) / STORM_SQUEEZE, 0, 1);
+};
 
 const C = {
   water: "#0a2830",
@@ -397,6 +423,7 @@ export default function App() {
         s.oppT = 0;
         s.oppHold = 1.8 + Math.random() * 2.6; // trigger discipline: some captains waste less powder
         s.nerve = Math.random(); // how late she leaves it before turning to face a charge
+        s.baffled = 0; // how long she has been getting nowhere with the hull she is after
         s.retargetT = 0;
         s.target = null;
         s.bias = TRACKS[Math.floor(Math.random() * TRACKS.length)].key;
@@ -859,16 +886,9 @@ export default function App() {
       const tgt = s.target;
       let desired, throttle = 1;
 
-      const dc = Math.hypot(s.x - WORLD / 2, s.y - WORLD / 2);
-      const keep = Math.max(g.stormR * 0.55, g.stormR - STORM_AI_MARGIN);
       const threat = incomingRam(s);
-      const toMid = Math.atan2(WORLD / 2 - s.y, WORLD / 2 - s.x);
 
-      if (dc > keep) {
-        // the weather beats any prize: run for the middle, and take the fight there
-        desired = toMid;
-        throttle = 0.95;
-      } else if (threat && Math.hypot(threat.x - s.x, threat.y - s.y) < 150 + s.nerve * 90) {
+      if (threat && Math.hypot(threat.x - s.x, threat.y - s.y) < 150 + s.nerve * 90) {
         // meet her bow to bow rather than let her have the beam — a glance both of us share
         desired = Math.atan2(threat.y - s.y, threat.x - s.x);
       } else if (!tgt) {
@@ -877,7 +897,34 @@ export default function App() {
         desired = s.wander;
         throttle = 0.5;
       } else {
-        desired = ramIntercept(s, tgt);
+        // are we actually gaining on her? if not, patience runs out and she comes round inside instead
+        const toT = Math.atan2(tgt.y - s.y, tgt.x - s.x);
+        const closing =
+          (Math.cos(s.heading) * s.spdCur - Math.cos(tgt.heading) * tgt.spdCur) * Math.cos(toT) +
+          (Math.sin(s.heading) * s.spdCur - Math.sin(tgt.heading) * tgt.spdCur) * Math.sin(toT);
+        s.baffled = closing > 18 ? Math.max(0, s.baffled - dt * 2) : s.baffled + dt;
+        if (s.baffled > STALL_PATIENCE) {
+          desired = toT; // straight at her, not at where she is going
+          throttle = STALL_THROTTLE;
+          if (s.baffled > STALL_PATIENCE + STALL_CUT) s.baffled = 0; // then have another go at the chase
+        } else {
+          desired = ramIntercept(s, tgt);
+        }
+      }
+
+      // Now the weather bends whatever she meant to do. Well inside the ring it asks nothing; nearer
+      // the rail it leans on her course; once she is actually out in it her own exposure decides how
+      // hard, so a shove into the weather is something she rides out and a pinning is something she
+      // fights her way out of — or does not.
+      const dc = Math.hypot(s.x - WORLD / 2, s.y - WORLD / 2);
+      const out = dc > g.stormR;
+      const lean = out
+        ? clamp(0.55 + 0.45 * (s.exposure / STORM_RAMP), 0, 1)
+        : STORM_PULL * clamp((dc / Math.max(1, g.stormR) - STORM_HOME) / (1 - STORM_HOME), 0, 1);
+      if (lean > 0.01) {
+        const toMid = Math.atan2(WORLD / 2 - s.y, WORLD / 2 - s.x);
+        desired += norm(toMid - desired) * lean; // swing part of the way onto the course home
+        if (out) throttle = Math.max(throttle, 0.9);
       }
 
       // A hull carrying way will not come round. Ease off to swing the bow across, then pile it on —
@@ -1012,8 +1059,8 @@ export default function App() {
           // stays free to ram properly, so a light touch can never rob a captain of her charge
           if (Math.max(hurtA, hurtB) < RAM_GRAZE) { hurtA = 0; hurtB = 0; }
           let rammed = false;
-          if (hurtB > 0) { applyHit(b, "hull", hurtB, a); a.ramCd = RAM_CD; if (hurtB >= RAM_GRAZE) a.rams++; rammed = true; }
-          if (hurtA > 0 && b.alive) { applyHit(a, "hull", hurtA, b); b.ramCd = RAM_CD; if (hurtA >= RAM_GRAZE) b.rams++; rammed = true; }
+          if (hurtB > 0) { applyHit(b, "hull", hurtB, a); a.ramCd = RAM_CD; a.baffled = 0; if (hurtB >= RAM_GRAZE) a.rams++; rammed = true; }
+          if (hurtA > 0 && b.alive) { applyHit(a, "hull", hurtA, b); b.ramCd = RAM_CD; b.baffled = 0; if (hurtA >= RAM_GRAZE) b.rams++; rammed = true; }
           if (rammed) {
             a.locked.add(b); b.locked.add(a);
             // each ship spends the part of her way that went into the impact, so one driving
@@ -1869,7 +1916,7 @@ export default function App() {
           <div style={{ position: "absolute", top: 36, left: 10, display: "flex", gap: 6, alignItems: "stretch", width: "min(236px, 72%)" }}>
             {rules.ranked && <RankBadge rank={rank.rank} total={rank.total} />}
             <div style={{ flex: 1 }}>
-              <HealthPanel ph={ph} phMax={phMax} mast={rules.guns} />
+              <HealthPanel ph={ph} phMax={phMax} />
             </div>
           </div>
 
@@ -1944,10 +1991,8 @@ function RankBadge({ rank, total }) {
   );
 }
 
-function HealthPanel({ ph, phMax, mast = true }) {
-  const rows = [["HULL", ph.hull, phMax.hull, C.hull], ["CREW", ph.crew, phMax.crew, C.crew]];
-  // nothing can bring a mast down where there are no bow chasers, so the bar would only sit full
-  if (mast) rows.splice(1, 0, ["MAST", ph.mast, phMax.mast, C.mast]);
+function HealthPanel({ ph, phMax }) {
+  const rows = [["HULL", ph.hull, phMax.hull, C.hull], ["MAST", ph.mast, phMax.mast, C.mast], ["CREW", ph.crew, phMax.crew, C.crew]];
   return (
     <div style={{ background: C.panel, border: `1px solid ${C.hair}`, borderRadius: 10, padding: "7px 9px" }}>
       {rows.map(([label, val, max, col]) => (

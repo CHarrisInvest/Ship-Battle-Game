@@ -64,12 +64,26 @@ spending its first seconds on empty water — holds for `STORM_GRACE`, and takes
 to shrink to `STORM_R1`, which leaves room for two ships to work but nowhere to hide. It closes on the
 middle of the map, which the island generator always leaves clear.
 
+Then, after `STORM_HOLD`, the eye itself shuts over `STORM_SQUEEZE` seconds until there is no fair
+water left at all. A small ring is not enough to settle a round on its own: a ram needs closing speed
+to count for anything, and two ships penned in a pool a hundred paces across can mill about
+indefinitely without ever getting the run at each other that would end it — left alone, better than
+two minutes of it. Weather asks nobody for a run-up, so the last hull afloat is whoever has crew
+enough to outlast the sea.
+
 The weather works on the crew, exposed on deck, rather than on the hull, and it is not an attack: no
 captain is paid for it and it does not run through the damage path a ram does. Its bite starts at
 `STORM_DPS_MIN` and climbs to `STORM_DPS_MAX` over `STORM_RAMP` seconds out in it, so a dash across
 the weather costs a few hands and living out there costs about eight seconds and the ship. Come back
-inside and the exposure sheds at `STORM_RECOVER` a second. AI captains keep `STORM_AI_MARGIN` inside
-the edge and break off whatever they are doing to get there.
+inside and the exposure sheds at `STORM_RECOVER` a second.
+
+The middle *pulls* an AI captain rather than fencing her away from the rail. Inside `STORM_HOME` of
+the ring she fights wherever she likes; past that the course home bends her steering, hardest at the
+edge (`STORM_PULL`); and once she is actually out in the weather her own exposure decides how hard, so
+a shove into the rain is something she rides out and a pinning is something she has to fight her way
+back from. It is a preference rather than an override on purpose — being fenced off the edge would
+make her impossible to shoulder out there, and driving a rival into the weather and holding her in it
+is a way to win a fight without ever holing her.
 
 Ram-only captains reason differently from gunners. They want a rival's beam, because that is where a
 hull is staved in; they turn to meet a charge bow to bow, because that makes the blow a glance the
@@ -78,7 +92,9 @@ swing the bow across before piling the speed back on, which is what makes an AI 
 can watch coming and step aside from. They also weigh whether they are gaining on a target at all:
 with every ship the same speed, a stern chase is one nobody ever wins, and without that term a captain
 will happily follow a fleeing rival across the whole sea while the beam of a ship crossing her bow
-goes begging.
+goes begging. A captain who has gone `STALL_PATIENCE` seconds without gaining takes the way off her
+and comes round inside instead — a slow hull turns far inside a fast one, so easing the throttle is
+what lets her cut the corner and force the meeting.
 
 ## The hold
 
