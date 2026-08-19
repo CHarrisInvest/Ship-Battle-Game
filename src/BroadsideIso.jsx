@@ -1,5 +1,6 @@
 import React, { useRef, useState, useEffect, useCallback } from "react";
 import { drawGalleon } from "./galleon.js";
+import { getHold, bankVoyage, resetHold, subscribeHold, modeRecord } from "./hold.js";
 
 /**
  * BROADSIDE — pirate battles at sea, on a tilted (isometric-ish) sea with tall wooden ships.
@@ -10,6 +11,9 @@ import { drawGalleon } from "./galleon.js";
  * before they start shopping for weak prey, loose the odd volley at whatever drifts into the arc,
  * and turn on a runaway leader. Last afloat wins.
  * Every AI reloads on the same clock as the player, in both modes.
+ * Coins run at two depths: a purse spent at sea on this ship's upgrades, which sinks with her, and the
+ * hold (`hold.js`), which takes what every finished voyage earned and keeps it across modes and
+ * reloads alike.
  */
 
 const WORLD = 2000;
@@ -167,6 +171,7 @@ function norm(a) {
 }
 const clamp = (v, a, b) => Math.min(Math.max(v, a), b);
 const fmtTime = (sec) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, "0")}`;
+const fmtCoins = (n) => Math.round(n || 0).toLocaleString();
 
 const maxHP = (up) => ({
   hull: BASE.hull + up.hull * HP_GAIN.hull,
@@ -218,6 +223,10 @@ export default function App() {
   const [up, setUp] = useState({ mast: 0, hull: 0, crew: 0, side: 0, front: 0 });
   const [ph, setPh] = useState({ ...BASE });
   const [phMax, setPhMax] = useState({ ...BASE });
+  const [hold, setHold] = useState(getHold);
+  const [banked, setBanked] = useState(0); // what the voyage on the end screen put in the hold
+
+  useEffect(() => subscribeHold(setHold), []);
 
   const syncHUD = useCallback(() => {
     const g = gameRef.current;
@@ -398,6 +407,7 @@ export default function App() {
         mode: m, player: null, ships: [], shots: [], parts: [], wakes: [], islands: [], texts: [],
         cam: { x: 0, y: 0 }, sunk: 0, ffaTotal: 0, aliveCount: 0, leader: null, avgEarned: 0,
         _lastRank: 0, spawnT: 0, spawnQueue: 0, vign: 0, running: false, hudDirty: false, hudAcc: 0, time: 0,
+        banked: false,
       };
       const g = gameRef.current;
       const player = makeShip(WORLD / 2, WORLD / 2, -Math.PI / 2, { isPlayer: true });
@@ -451,11 +461,24 @@ export default function App() {
       };
     }
 
+    // A voyage banks once, at the end screen, whichever end it was. The flag matters because both ends
+    // can fire for one round: a mutual ram that sinks the last rival and you resolves hit by hit, so
+    // the win and the sinking arrive one after the other.
+    function bankRun(won, rank) {
+      const g = gameRef.current;
+      if (g.banked) return;
+      g.banked = true;
+      const s = finalStats();
+      const { banked: got } = bankVoyage({ mode: g.mode, earned: s.coins, kills: s.kills, dmg: s.dmg, time: s.time, won, rank });
+      setBanked(got);
+    }
+
     function endWin() {
       const g = gameRef.current;
       g.running = false;
       if (g.mode === "ffa") setPlace({ rank: 1, total: g.ffaTotal });
       setStats(finalStats());
+      bankRun(true, g.mode === "ffa" ? 1 : 0);
       setResult("You are the last hull afloat.");
       setPhase("won");
       syncRef.current();
@@ -465,8 +488,10 @@ export default function App() {
       g.running = false;
       g.vign = 1;
       g.player.alive = false;
-      if (g.mode === "ffa") setPlace({ rank: g.ships.filter((s) => s.alive).length + 1, total: g.ffaTotal });
+      const rank = g.mode === "ffa" ? g.ships.filter((s) => s.alive).length + 1 : 0;
+      if (g.mode === "ffa") setPlace({ rank, total: g.ffaTotal });
       setStats(finalStats());
+      bankRun(false, rank);
       setResult(bar === "hull" ? "Your hull is breached — she goes under." : "Your crew is routed — you strike your colors.");
       setPhase("dead");
       syncRef.current();
@@ -1472,6 +1497,7 @@ export default function App() {
       last = 0;
       syncRef.current();
       setResult("");
+      setBanked(0);
       setMode(m);
       setPhase("playing");
     }
@@ -1510,7 +1536,7 @@ export default function App() {
     inputRef.current.joyMag = 0;
     if (knobRef.current) knobRef.current.style.transform = "translate(0px,0px)";
   };
-  const hold = (key, val) => (e) => { e.preventDefault(); inputRef.current[key] = val; };
+  const holdBtn = (key, val) => (e) => { e.preventDefault(); inputRef.current[key] = val; };
 
   return (
     <div
@@ -1570,17 +1596,17 @@ export default function App() {
           </div>
 
           <div style={{ position: "absolute", right: 20, bottom: 26, display: "flex", flexDirection: "column", gap: 10 }}>
-            <FireButton refEl={btnRefs.broadside} name="SIDE" sub="hull" color={C.hull} onDown={hold("broadside", true)} onUp={hold("broadside", false)} />
-            <FireButton refEl={btnRefs.bow} name="FRONT" sub="mast" color={C.mast} onDown={hold("bow", true)} onUp={hold("bow", false)} />
-            <FireButton refEl={btnRefs.musket} name="MUSKET" sub="crew" color={C.crew} onDown={hold("musket", true)} onUp={hold("musket", false)} />
+            <FireButton refEl={btnRefs.broadside} name="SIDE" sub="hull" color={C.hull} onDown={holdBtn("broadside", true)} onUp={holdBtn("broadside", false)} />
+            <FireButton refEl={btnRefs.bow} name="FRONT" sub="mast" color={C.mast} onDown={holdBtn("bow", true)} onUp={holdBtn("bow", false)} />
+            <FireButton refEl={btnRefs.musket} name="MUSKET" sub="crew" color={C.crew} onDown={holdBtn("musket", true)} onUp={holdBtn("musket", false)} />
           </div>
         </>
       )}
 
-      {phase === "start" && <StartOverlay onStart={(m) => startRef.current(m)} />}
-      {phase === "won" && <EndOverlay title="LAST AFLOAT" titleColor={C.gold} result={result} stats={stats} mode={mode} place={place} onAgain={() => startRef.current(mode)} onMenu={() => setPhase("start")} />}
+      {phase === "start" && <StartOverlay onStart={(m) => startRef.current(m)} hold={hold} onScuttle={() => resetHold()} />}
+      {phase === "won" && <EndOverlay title="LAST AFLOAT" titleColor={C.gold} result={result} stats={stats} mode={mode} place={place} hold={hold} banked={banked} onAgain={() => startRef.current(mode)} onMenu={() => setPhase("start")} />}
       {phase === "dead" && (
-        <EndOverlay title="SUNK" titleColor={C.crew} result={result} stats={stats} mode={mode} place={place} onAgain={() => startRef.current(mode)} onMenu={() => setPhase("start")} />
+        <EndOverlay title="SUNK" titleColor={C.crew} result={result} stats={stats} mode={mode} place={place} hold={hold} banked={banked} onAgain={() => startRef.current(mode)} onMenu={() => setPhase("start")} />
       )}
     </div>
   );
@@ -1700,15 +1726,55 @@ function MenuGalleon() {
   );
 }
 
-function StartOverlay({ onStart }) {
+// The hold on the menu: the running total first, then what earned it. Before the first voyage there is
+// nothing to total, so it explains itself instead of showing a row of zeroes.
+function HoldPanel({ hold }) {
+  const lt = hold.lifetime;
+  const arena = modeRecord(hold, "arena");
+  const ffa = modeRecord(hold, "ffa");
+  const bests = [];
+  if (arena.bestSunk > 0) bests.push(`arena best ${arena.bestSunk} sunk`);
+  if (ffa.wins > 0) bests.push(`${ffa.wins} free-for-all${ffa.wins === 1 ? "" : "s"} won`);
+  else if (ffa.bestRank > 0) bests.push(`free-for-all best #${ffa.bestRank}`);
+  return (
+    <div style={{ background: "rgba(10,40,48,0.6)", border: `1px solid ${C.hair}`, borderRadius: 10, padding: "9px 12px", margin: "14px 0 18px", textAlign: "left" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10 }}>
+        <span style={{ fontSize: 10, letterSpacing: 2, color: "rgba(238,244,242,0.55)" }}>THE HOLD</span>
+        <span style={{ fontSize: 17, fontWeight: 800, color: C.gold }}>🪙 {fmtCoins(hold.coins)}</span>
+      </div>
+      <div style={{ fontSize: 10, color: "rgba(238,244,242,0.5)", lineHeight: 1.6, marginTop: 4 }}>
+        {lt.runs > 0
+          ? [`${lt.runs} voyage${lt.runs === 1 ? "" : "s"}`, `${lt.sunk} sunk`, `${fmtTime(lt.afloat)} afloat`, ...bests].join(" · ")
+          : "Every coin you earn at sea comes back here, from either mode, and keeps between sessions."}
+      </div>
+    </div>
+  );
+}
+
+function ScuttleHold({ onScuttle }) {
+  const [armed, setArmed] = useState(false);
+  return (
+    <button
+      onClick={() => (armed ? (onScuttle(), setArmed(false)) : setArmed(true))}
+      onBlur={() => setArmed(false)}
+      style={{ marginTop: 14, fontFamily: UI, fontSize: 10, letterSpacing: 1, color: armed ? C.crew : "rgba(238,244,242,0.35)", background: "transparent", border: "none", padding: 4, cursor: "pointer", WebkitTapHighlightColor: "transparent" }}
+    >
+      {armed ? "TAP AGAIN TO SCUTTLE THE HOLD" : "scuttle the hold"}
+    </button>
+  );
+}
+
+function StartOverlay({ onStart, hold, onScuttle }) {
   return (
     <Shell>
       <div style={{ fontFamily: DISPLAY, fontSize: 44, color: C.gold, letterSpacing: 2 }}>BROADSIDE</div>
       <MenuGalleon />
-      <div style={{ fontFamily: UI, fontSize: 11, color: "rgba(238,244,242,0.55)", letterSpacing: 2, marginTop: 4, marginBottom: 22 }}>CHOOSE YOUR BATTLE</div>
+      <HoldPanel hold={hold} />
+      <div style={{ fontFamily: UI, fontSize: 11, color: "rgba(238,244,242,0.55)", letterSpacing: 2, marginBottom: 14 }}>CHOOSE YOUR BATTLE</div>
       <ModeCard color={C.side} title="ARENA" desc="Endless survival. One hunter to start, matched to your ship. Sink ships and reinforcements sail in from the horizon. Upgrade your ship. Score by ships sunk." onClick={() => onStart("arena")} />
       <ModeCard color={C.mast} title="FREE-FOR-ALL" desc="Last afloat wins. 10 rival captains, all dead equal at the start. Enemies upgrade like real players and hunt for weak prey." onClick={() => onStart("ffa")} />
       <div style={{ marginTop: 16, fontSize: 11, color: "rgba(238,244,242,0.5)", lineHeight: 1.6 }}>Stick to sail · SIDE→hull · FRONT→mast · MUSKET→crew · ram for hull · islands block fire</div>
+      {hold.lifetime.runs > 0 && <ScuttleHold onScuttle={onScuttle} />}
     </Shell>
   );
 }
@@ -1722,13 +1788,13 @@ function ModeCard({ color, title, desc, onClick }) {
   );
 }
 
-function EndOverlay({ title, titleColor, result, stats, mode, place, onAgain, onMenu }) {
+function EndOverlay({ title, titleColor, result, stats, mode, place, hold, banked, onAgain, onMenu }) {
   const rows = [];
   if (mode === "ffa" && place) rows.push(["Placement", `#${place.rank} of ${place.total}`]);
   rows.push(["Time survived", fmtTime(stats.time)]);
   rows.push(["Ships sunk", stats.kills]);
   rows.push(["Damage dealt", stats.dmg]);
-  rows.push(["Coins earned", stats.coins]);
+  rows.push(["Coins earned", fmtCoins(stats.coins)]);
   rows.push(["Upgrades bought", stats.upgrades]);
   return (
     <Shell>
@@ -1741,6 +1807,15 @@ function EndOverlay({ title, titleColor, result, stats, mode, place, onAgain, on
             <span style={{ fontSize: 13, color: C.gold, fontWeight: 700 }}>{v}</span>
           </div>
         ))}
+        {/* The voyage is over and the ship's purse with it; this is the part that sails on. */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0 7px", borderTop: `1px solid ${C.hair}`, marginTop: 2 }}>
+          <span style={{ fontSize: 11, color: "rgba(238,244,242,0.6)", letterSpacing: 0.5 }}>Into the hold</span>
+          <span style={{ fontSize: 13, color: banked > 0 ? C.grass : "rgba(238,244,242,0.5)", fontWeight: 700 }}>+{fmtCoins(banked)}</span>
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0 0 7px" }}>
+          <span style={{ fontSize: 11, color: "rgba(238,244,242,0.6)", letterSpacing: 0.5 }}>Hold total</span>
+          <span style={{ fontSize: 15, color: C.gold, fontWeight: 800 }}>🪙 {fmtCoins(hold.coins)}</span>
+        </div>
       </div>
       <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
         <StartButton onClick={onAgain} label="REMATCH" />
