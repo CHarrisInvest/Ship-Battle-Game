@@ -87,10 +87,6 @@ const SHEER_LOOK = 190; // hulls this close are what she counts as the heap she 
 const SHEER_TIME = 2.4; // how long she holds the break before working back in
 const SHEER_THROTTLE = 0.7; // and she takes some way off to get the bow across
 
-// The whole span of a round left to its own devices: open water, the ring closing, the pause at its
-// working size, and the eye shutting. A winner is paid for all of it however quickly she settled it.
-const STORM_FULL = STORM_GRACE + STORM_CLOSE + STORM_HOLD + STORM_SQUEEZE;
-
 const stormRadius = (t) => {
   const closed = STORM_GRACE + STORM_CLOSE;
   if (t <= closed) return STORM_R0 + (STORM_R1 - STORM_R0) * clamp((t - STORM_GRACE) / STORM_CLOSE, 0, 1);
@@ -317,12 +313,14 @@ const MODES = {
     flees: false, // there is nowhere to run to, and the weather is coming anyway
     storm: true,
     // Staying afloat is most of the work here, so it is paid by the second — and a winner is paid for
-    // the whole round however early she ended it. Settling the thing in forty seconds is worth the
-    // same purse as outlasting the weather for the full span, which is to say it is worth far more an
-    // hour: the time she saves is hers to spend on the next one.
+    // a whole round however early she ended it. Settling the thing in forty seconds is worth the same
+    // purse as outlasting the weather for the full span, which is to say it is worth far more an hour:
+    // the time she saves is hers to spend on the next one. A round left alone runs
+    // STORM_GRACE + STORM_CLOSE + STORM_HOLD + STORM_SQUEEZE, 168 seconds as the weather is tuned;
+    // the winner's is a set purse a shade above that, so a win comes to 250 whatever else she took.
     timeCoins: 1,
-    fullRound: STORM_FULL,
-    winBonus: 25,
+    fullRound: 175,
+    winBonus: 75,
   },
 };
 const MODE_LIST = ["arena", "ffa", "derby"]; // menu order

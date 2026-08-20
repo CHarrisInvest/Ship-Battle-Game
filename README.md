@@ -115,10 +115,11 @@ catch, since a slow hull turns far inside a fast one.
 #### What the derby pays
 
 Staying afloat is most of the work, so it is paid by the second (`timeCoins`) on top of what a
-captain's bow earns her. Win, and she is paid for the whole round — `fullRound`, the entire span from
-the opening water to the eye shutting, which is `STORM_GRACE + STORM_CLOSE + STORM_HOLD +
-STORM_SQUEEZE` — however early she settled it, plus `winBonus` for being the last hull afloat. As the
-storm is tuned that is 168 and 25, so a win is worth 193 before a single ram is counted.
+captain's bow earns her. Win, and she is paid for a whole round — `fullRound` — however early she
+settled it, plus `winBonus` for being the last hull afloat: 175 and 75, so a win comes to 250 before a
+single ram is counted. Left alone a round actually runs `STORM_GRACE + STORM_CLOSE + STORM_HOLD +
+STORM_SQUEEZE`, 168 seconds as the weather is tuned, so the winner's is a set purse a shade above the
+clock rather than a figure that tracks it — retune the storm and this wants looking at.
 
 Settling it in forty seconds therefore pays the same purse as outlasting the weather for the full
 span, which is to say it pays far better an hour: the time she saves is hers to spend on the next
