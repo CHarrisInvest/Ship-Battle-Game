@@ -295,7 +295,7 @@ const MODES = {
     title: "DEMOLITION DERBY",
     short: "derby",
     color: C.crew,
-    desc: "Ten captains, not a gun between them. Sink rivals by ramming — drive your bow into her beam, and turn to face anyone charging yours. Nothing to buy: what you brought is what you have. A squall closes on the middle of the sea and takes the crew of anyone still outside it. Last afloat wins.",
+    desc: "Only one hand needed. Last afloat wins. Ten captains, no guns, no upgrades. Sink rivals by ramming. Drive your bow into her beam, and turn to face anyone charging yours. A storm closes in and takes the crew of any ship caught.",
     rivals: DERBY_AI,
     startCoins: 0,
     guns: false,
@@ -2210,7 +2210,7 @@ function HoldPanel({ hold }) {
       <div style={{ fontSize: 10, color: "rgba(238,244,242,0.5)", lineHeight: 1.6, marginTop: 4 }}>
         {lt.runs > 0
           ? [`${lt.runs} voyage${lt.runs === 1 ? "" : "s"}`, `${lt.sunk} sunk`, ...(lt.wins > 0 ? [`${lt.wins} won`] : []), `${fmtTime(lt.afloat)} afloat`, ...bests].join(" · ")
-          : "Every coin you earn at sea comes back here, from either mode, and keeps between sessions."}
+          : "Every coin you earn at sea comes back here, from every mode, and keeps between sessions."}
       </div>
     </div>
   );
