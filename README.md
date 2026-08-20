@@ -94,21 +94,23 @@ with every ship the same speed, a stern chase is one nobody ever wins, and witho
 will happily follow a fleeing rival across the whole sea while the beam of a ship crossing her bow
 goes begging.
 
-The clock that asks *am I getting anywhere with this?* runs against whichever hull a captain is
-engaged with, the one she is chasing and the one charging her alike. A chase she is not winning after
-`STALL_PATIENCE` seconds, and she takes the way off her and comes round inside instead — a slow hull
-turns far inside a fast one, so easing the throttle is what lets her cut the corner and force the
-meeting. A face-off she is not winning after `FACEOFF_HOLD` seconds, and she puts the helm over:
-`SHEER_ANGLE` off the other ship's bearing for `SHEER_TIME`, which buys sea room for a fresh run.
+A captain gets out of a heap rather than grinding away in it. Jammed against another hull she is going
+nowhere and so is everyone around her, so once she has been stuck like that a moment she peels out
+along the course away from the hulls within `SHEER_LOOK` of her, runs `SHEER_TIME` in clear water to
+gather way, and comes back for a proper charge — usually at somebody other than whoever she was
+jammed against, since that is the hull she has just proved she cannot get a run at. About three
+peel-offs in five pick a new target.
 
-That second case is why the clock covers both. Turning to meet a charge is right — showing your beam
-is how a hull gets staved in — but two captains who both do it settle into a mutual circle, full sail,
-both bows pointed inward, closing at a couple of paces a second. Measured before the cap existed:
-locks of 51, 68 and 76 seconds with not a blow landed either way, because a ram needs closing speed
-and a circle has none. Patience is scaled by each captain's nerve so no two blink at the same moment —
-if they did, the pair would break as one and fall straight back into the same circle. Blinking has its
-price, of course: she shows her beam to get the bow round, and a captain who reads it can make her
-pay for it.
+What times it is `baulkT`, the plain fact of being foul of a hull and making no ground, which is a far
+better signal than any reckoning of closing speed: in a pile that reads high one frame and nothing the
+next, while being stuck is simply true or not. Each captain's nerve scales how long she will put up
+with it, so no two blink together — a pile that broke as one would only re-form. It is what keeps the
+mode moving: without it, rounds ran the full distance and the closing storm had to finish them, and
+with it they are settled by ramming inside a minute or so with the ring still wide open.
+
+A chase she is not winning after `STALL_PATIENCE` seconds gets the same treatment from the other
+direction — she takes the way off her and comes round inside instead of following a wake she can never
+catch, since a slow hull turns far inside a fast one.
 
 ## The hold
 

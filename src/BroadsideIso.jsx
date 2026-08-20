@@ -75,15 +75,15 @@ const STALL_PATIENCE = 5; // seconds of getting nowhere before she tries somethi
 const STALL_CUT = 4.5; // and how long she holds the tighter, slower turn
 const STALL_THROTTLE = 0.5;
 
-// The same clock caps a face-off. Two captains who each turn to meet the other's bow settle into a
-// mutual circle, both at full sail, both pointed inward, closing at a couple of paces a second —
-// measured at better than a minute of it, with not a blow landed either way. Holding your bow on a
-// charge is right; holding it on a hull that is only circling you is a way of losing the match slowly.
-// So she gives it a few seconds, then puts the helm over, opens the range, and comes back for a
-// fresh run. Patience is scaled by her nerve so no two captains blink together — if they did, the
-// pair would break as one and fall straight back into the same circle.
-const FACEOFF_HOLD = 3; // seconds nose to nose with nothing happening before she breaks off
-const SHEER_ANGLE = 1.35; // about 77 degrees off her bearing: sea room, not a retreat
+// A captain gets out of a heap rather than grinding away in it. Being jammed against another hull is
+// not a fight — she is going nowhere and neither is anyone else — so once she has been stuck like
+// that a moment she peels out, gathers way in clear water, and comes back for a proper run, usually
+// at somebody other than whoever she was jammed against. What times it is `baulkT`, the plain fact of
+// being foul of a hull and making no ground: in a pile any reckoning of closing speed reads high one
+// frame and nothing the next, while being stuck is simply true or not. Her nerve scales how long she
+// will put up with it, so no two blink together — a pile that broke as one would only re-form.
+const SHEER_ANGLE = 1.35; // about 77 degrees off her bearing, when there is no heap to steer out of
+const SHEER_LOOK = 190; // hulls this close are what she counts as the heap she is peeling out of
 const SHEER_TIME = 2.4; // how long she holds the break before working back in
 const SHEER_THROTTLE = 0.7; // and she takes some way off to get the bow across
 
@@ -465,7 +465,7 @@ export default function App() {
         s.nerve = Math.random(); // how late she leaves it before turning to face a charge
         s.baffled = 0; // how long she has been getting nowhere with the hull she is engaged with
         s.sheerT = 0; // time left on a deliberate break-off
-        s.sheerSide = 1;
+        s.sheerHeading = 0; // and the course out of the heap she picked when she began it
         s.retargetT = 0;
         s.target = null;
         s.bias = TRACKS[Math.floor(Math.random() * TRACKS.length)].key;
@@ -872,7 +872,7 @@ export default function App() {
 
     // Whose beam is worth crossing the sea for. Weighs how side-on she lies to us, how badly she is
     // already holed, whether she is looking the other way, and how far off she is.
-    function pickRamTarget(s) {
+    function pickRamTarget(s, shyOf) {
       const g = gameRef.current;
       let best = null, bestScore = -1e9;
       for (const c of g.ships) {
@@ -890,6 +890,10 @@ export default function App() {
           (Math.sin(s.heading) * s.spdCur - Math.sin(c.heading) * c.spdCur) * Math.sin(toC);
         let score = -dist * 0.06 + aspect * 46 + facing * 8 + (1 - c.hull / c.maxHull) * 55 + clamp(closing, -70, 70) * 0.55;
         if (c.isPlayer) score += 8; // captains would rather have the notorious hull
+        // the hull she has just spent a while jammed against is the one she is least likely to get
+        // anything out of, so she shops elsewhere — though she will come back to her if she is all
+        // there is, which is why this leans against her rather than ruling her out
+        if (c === shyOf) score -= 55;
         if (score > bestScore) { bestScore = score; best = c; }
       }
       return best;
@@ -915,6 +919,22 @@ export default function App() {
         threat = c; td = dist;
       }
       return threat;
+    }
+
+    // Which way is out of the heap: away from the mean bearing of every hull near enough to be in the
+    // road, with a touch of sheer either side so a whole pile does not peel off along the same line.
+    function clearWater(s) {
+      const g = gameRef.current;
+      let cx = 0, cy = 0, n = 0;
+      for (const c of g.ships) {
+        if (c === s || !c.alive) continue;
+        const dx = c.x - s.x, dy = c.y - s.y;
+        const d = Math.hypot(dx, dy);
+        if (d > SHEER_LOOK || d < 1) continue;
+        cx += dx / d; cy += dy / d; n++;
+      }
+      const away = n > 0 ? Math.atan2(-cy, -cx) : s.heading + (Math.random() < 0.5 ? 1 : -1) * SHEER_ANGLE;
+      return away + (Math.random() - 0.5) * 0.7;
     }
 
     function stepRamAI(s, dt) {
@@ -945,15 +965,24 @@ export default function App() {
 
       const patience = (secs) => secs * (0.7 + 0.6 * s.nerve); // no two captains blink together
 
-      if (facing && s.sheerT <= 0 && s.baffled > patience(FACEOFF_HOLD)) {
-        s.sheerT = SHEER_TIME; // enough of this: helm over
-        s.sheerSide = Math.random() < 0.5 ? 1 : -1;
+      // Bunched up. `baulkT` is the plain fact of it — she is foul of another hull and going nowhere —
+      // and it is a far better signal than any reckoning of closing speed, which in a pile is high one
+      // frame and nothing the next. Once she has been stuck like that a moment she peels out of the
+      // heap, gathers way in clear water, and comes back at whoever looks best from out there. That
+      // is usually somebody else: the hull she was jammed against is the one she has just proved she
+      // cannot get a run at.
+      if (s.sheerT <= 0 && s.baulkT > patience(BAULK_GRACE)) {
+        s.sheerT = SHEER_TIME;
+        s.sheerHeading = clearWater(s);
+        s.baulkT = 0;
         s.baffled = 0;
+        s.target = pickRamTarget(s, engaged);
+        s.retargetT = SHEER_TIME + Math.random() * 0.5; // let the new choice stand while she pulls out
       }
 
-      if (s.sheerT > 0 && engaged) {
-        // break off across her bow for sea room, then work back in for a fresh run
-        desired = Math.atan2(engaged.y - s.y, engaged.x - s.x) + s.sheerSide * SHEER_ANGLE;
+      if (s.sheerT > 0) {
+        // out of the heap: sea room first, a fresh run at her second
+        desired = s.sheerHeading;
         throttle = SHEER_THROTTLE;
       } else if (facing) {
         // meet her bow to bow rather than let her have the beam — a glance both of us share
@@ -1209,8 +1238,9 @@ export default function App() {
         s.vx += ((s.x - s.px) / dt - s.vx) * k;
         s.vy += ((s.y - s.py) / dt - s.vy) * k;
         s.way = Math.max(0, s.vx * ch + s.vy * sh);
-        // and a hull that meant to go forward and did not is baulked — held on another's timbers, run
-        // up on a shoal, pinned on the boundary — so she loses her way and must gather it again
+        // and a hull foul of another and going nowhere is baulked, so she loses her way and must gather
+        // it again. Only another hull counts: an island or the boundary already checks her by other
+        // means, and a ship merely knocked off her stride is still free to sail
         if (s.foul && s.spdCur > 5 && s.way < s.spdCur * BAULK_TOL) s.baulkT += dt;
         else s.baulkT = Math.max(0, s.baulkT - dt * 2);
         if (s.baulkT > BAULK_GRACE) s.spdCur *= Math.exp(-dt * BAULK_RATE);
