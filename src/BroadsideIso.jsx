@@ -87,6 +87,10 @@ const SHEER_LOOK = 190; // hulls this close are what she counts as the heap she 
 const SHEER_TIME = 2.4; // how long she holds the break before working back in
 const SHEER_THROTTLE = 0.7; // and she takes some way off to get the bow across
 
+// The whole span of a round left to its own devices: open water, the ring closing, the pause at its
+// working size, and the eye shutting. A winner is paid for all of it however quickly she settled it.
+const STORM_FULL = STORM_GRACE + STORM_CLOSE + STORM_HOLD + STORM_SQUEEZE;
+
 const stormRadius = (t) => {
   const closed = STORM_GRACE + STORM_CLOSE;
   if (t <= closed) return STORM_R0 + (STORM_R1 - STORM_R0) * clamp((t - STORM_GRACE) / STORM_CLOSE, 0, 1);
@@ -272,6 +276,9 @@ const MODES = {
     reinforcements: true, // a sinking brings fresh hunters in from the horizon
     flees: false, // a beaten captain runs rather than fights on
     storm: false, // a closing ring of foul weather
+    timeCoins: 0, // coins a second afloat, on top of what her guns and bow earn
+    fullRound: 0, // ...and the span a winner is paid for whatever the clock said
+    winBonus: 0,
   },
   ffa: {
     key: "ffa",
@@ -289,6 +296,9 @@ const MODES = {
     reinforcements: false,
     flees: true,
     storm: false,
+    timeCoins: 0,
+    fullRound: 0,
+    winBonus: 0,
   },
   derby: {
     key: "derby",
@@ -306,6 +316,13 @@ const MODES = {
     reinforcements: false,
     flees: false, // there is nowhere to run to, and the weather is coming anyway
     storm: true,
+    // Staying afloat is most of the work here, so it is paid by the second — and a winner is paid for
+    // the whole round however early she ended it. Settling the thing in forty seconds is worth the
+    // same purse as outlasting the weather for the full span, which is to say it is worth far more an
+    // hour: the time she saves is hers to spend on the next one.
+    timeCoins: 1,
+    fullRound: STORM_FULL,
+    winBonus: 25,
   },
 };
 const MODE_LIST = ["arena", "ffa", "derby"]; // menu order
@@ -616,15 +633,22 @@ export default function App() {
       parts.push({ x, y, life: 0.5, max: 0.5, col, kind: "ring" });
     }
 
-    function finalStats() {
-      const g = gameRef.current, p = g.player;
+    function finalStats(won) {
+      const g = gameRef.current, p = g.player, r = g.rules;
+      const time = g.time || 0;
+      const paidInFull = !!(won && r.fullRound); // she ended it early; she is paid as though she had not
+      const timePay = Math.round((paidInFull ? r.fullRound : time) * r.timeCoins);
+      const winPay = won ? r.winBonus : 0;
+      const fought = Math.round(p.earned || 0);
       return {
-        time: g.time || 0,
+        time,
         kills: p.kills || 0,
         dmg: Math.round(p.dmgDealt || 0),
-        coins: Math.round(p.earned || 0),
+        coins: fought, // what her bow and her guns took
         upgrades: p.up.mast + p.up.hull + p.up.crew + p.up.side + p.up.front,
         rams: p.rams || 0,
+        timePay, winPay, paidInFull,
+        total: fought + timePay + winPay,
       };
     }
 
@@ -635,8 +659,8 @@ export default function App() {
       const g = gameRef.current;
       if (g.banked) return;
       g.banked = true;
-      const s = finalStats();
-      const { banked: got } = bankVoyage({ mode: g.mode, earned: s.coins, kills: s.kills, dmg: s.dmg, time: s.time, won, rank });
+      const s = finalStats(won);
+      const { banked: got } = bankVoyage({ mode: g.mode, earned: s.total, kills: s.kills, dmg: s.dmg, time: s.time, won, rank });
       setBanked(got);
     }
 
@@ -644,7 +668,7 @@ export default function App() {
       const g = gameRef.current;
       g.running = false;
       if (g.rules.ranked) setPlace({ rank: 1, total: g.fieldSize });
-      setStats(finalStats());
+      setStats(finalStats(true));
       bankRun(true, g.rules.ranked ? 1 : 0);
       setResult("You are the last hull afloat.");
       setPhase("won");
@@ -657,7 +681,7 @@ export default function App() {
       g.player.alive = false;
       const rank = g.rules.ranked ? g.ships.filter((s) => s.alive).length + 1 : 0;
       if (g.rules.ranked) setPlace({ rank, total: g.fieldSize });
-      setStats(finalStats());
+      setStats(finalStats(false));
       bankRun(false, rank);
       setResult(
         bar === "storm" ? "The squall has your crew — she founders in the weather."
@@ -2294,6 +2318,11 @@ function EndOverlay({ title, titleColor, result, stats, mode, place, hold, banke
   rows.push(["Damage dealt", stats.dmg]);
   rows.push(["Coins earned", fmtCoins(stats.coins)]);
   rows.push(rules.upgrades ? ["Upgrades bought", stats.upgrades] : ["Rams landed", stats.rams || 0]);
+  // where a mode pays for the time she kept her hull under her, show it: the tally then adds up to
+  // what goes in the hold instead of the two disagreeing by a number with no name on it
+  if (rules.timeCoins > 0)
+    rows.push([stats.paidInFull ? "Round paid in full" : "Time afloat", `+${fmtCoins(stats.timePay)}`]);
+  if (stats.winPay > 0) rows.push(["Last afloat", `+${fmtCoins(stats.winPay)}`]);
   return (
     <Shell>
       <div style={{ fontFamily: DISPLAY, fontSize: 40, color: titleColor, letterSpacing: 1 }}>{title}</div>
