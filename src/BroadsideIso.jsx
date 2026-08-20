@@ -75,6 +75,18 @@ const STALL_PATIENCE = 5; // seconds of getting nowhere before she tries somethi
 const STALL_CUT = 4.5; // and how long she holds the tighter, slower turn
 const STALL_THROTTLE = 0.5;
 
+// The same clock caps a face-off. Two captains who each turn to meet the other's bow settle into a
+// mutual circle, both at full sail, both pointed inward, closing at a couple of paces a second —
+// measured at better than a minute of it, with not a blow landed either way. Holding your bow on a
+// charge is right; holding it on a hull that is only circling you is a way of losing the match slowly.
+// So she gives it a few seconds, then puts the helm over, opens the range, and comes back for a
+// fresh run. Patience is scaled by her nerve so no two captains blink together — if they did, the
+// pair would break as one and fall straight back into the same circle.
+const FACEOFF_HOLD = 3; // seconds nose to nose with nothing happening before she breaks off
+const SHEER_ANGLE = 1.35; // about 77 degrees off her bearing: sea room, not a retreat
+const SHEER_TIME = 2.4; // how long she holds the break before working back in
+const SHEER_THROTTLE = 0.7; // and she takes some way off to get the bow across
+
 const stormRadius = (t) => {
   const closed = STORM_GRACE + STORM_CLOSE;
   if (t <= closed) return STORM_R0 + (STORM_R1 - STORM_R0) * clamp((t - STORM_GRACE) / STORM_CLOSE, 0, 1);
@@ -156,6 +168,33 @@ const RAM_RECOIL = 0.3; // floor on the bounce for whoever drove into the blow
 const RAM_DRIVE_LOSS = 0.88; // share of her way a ship spends into the impact, bow-on
 const RAM_REARM_GAP = 26; // hulls must break this far clear before the pair can ram again
 const RAM_CD = 0.9; // seconds before a ship can ram again
+// Breaking clear was the only way out of that lock, which two ships circling each other never manage:
+// they can hold station inside the gap indefinitely and the pair stays barred from ever trading
+// another blow. The lock is meant to stop damage being ground out of hulls already touching, and a
+// few seconds does that, so it lapses on its own as well.
+const RAM_LOCK_MAX = 3;
+// A ram is worked out from the way a ship has actually made, not from the way her helmsman wanted.
+// The two part company whenever something is in the road: hulls pressed against one another are
+// de-overlapped every frame, so they stand still in the water while `spdCur` — the throttle's idea of
+// her speed — reads full ahead. Resolving a blow from that gives a stationary ship the weight of a
+// flying one: a pair jammed bow to bow could sink a third that came to attack them, and the moment
+// one of them turned away the other took her beam at full force without ever having moved. So each
+// ship measures the ground she truly covered last frame, and a hull that cannot go forward loses her
+// way like any other.
+// The measurement is smoothed. Hulls in contact are driven together and pushed apart again frame by
+// frame, so a single frame's difference swings wildly either side of nothing, and taking the positive
+// half of that swing at face value hands a standing ship the weight of a charging one every other
+// frame. Not too smooth, though: force climbs as the 1.5 power of closing speed, so under-reading a
+// ship working up to a charge by a fifth costs nearly half her blow.
+const WAY_SMOOTH = 14; // the measurement follows her within about a fifteenth of a second
+
+// And a hull held on another's timbers loses her way, so she has to gather it again before she is
+// worth anything — which is what stops her taking the beam of the ship that breaks off first as
+// though she had been charging all along. Only being foul of another hull counts: a ship knocked off
+// her stride is still free to sail, and treating that as held empties the melee of blows altogether.
+const BAULK_TOL = 0.35; // foul of a hull and making less than this share of her asking: she is baulked
+const BAULK_GRACE = 0.35; // ...and only held once it has gone on this long. A knock in passing is not
+const BAULK_RATE = 6; // once held, her way falls away, halving in about an eighth of a second
 
 // For hull against hull a ship is her keel — a line down her length — swelled by her beam. Measuring
 // between the two keels finds where they truly foul, which the distance between two centres cannot:
@@ -411,8 +450,9 @@ export default function App() {
         maxHull: m.hull, maxMast: m.mast, maxCrew: m.crew,
         hull: m.hull, mast: m.mast, crew: m.crew,
         cd: { broadside: Math.random() * 0.5, bow: Math.random() * 0.5, musket: Math.random() * 0.5 },
-        mastDown: false, flash: 0, ramCd: 0, locked: new Set(), wakeT: 0, sprayT: 0,
+        mastDown: false, flash: 0, ramCd: 0, locked: new Map(), wakeT: 0, sprayT: 0,
         roll: 0, rollPhase: Math.random() * Math.PI * 2, turnVel: 0, kx: 0, ky: 0,
+        px: x, py: y, vx: 0, vy: 0, way: 0, baulkT: 0, foul: false, // where she was, and the ground she truly made
         fill: opts.isPlayer ? C.player : pal.fill,
         stroke: opts.isPlayer ? C.playerStroke : pal.stroke,
       };
@@ -423,7 +463,9 @@ export default function App() {
         s.oppT = 0;
         s.oppHold = 1.8 + Math.random() * 2.6; // trigger discipline: some captains waste less powder
         s.nerve = Math.random(); // how late she leaves it before turning to face a charge
-        s.baffled = 0; // how long she has been getting nowhere with the hull she is after
+        s.baffled = 0; // how long she has been getting nowhere with the hull she is engaged with
+        s.sheerT = 0; // time left on a deliberate break-off
+        s.sheerSide = 1;
         s.retargetT = 0;
         s.target = null;
         s.bias = TRACKS[Math.floor(Math.random() * TRACKS.length)].key;
@@ -884,32 +926,50 @@ export default function App() {
         s.retargetT = 0.6 + Math.random() * 0.7;
       }
       const tgt = s.target;
-      let desired, throttle = 1;
-
       const threat = incomingRam(s);
+      const facing = threat && Math.hypot(threat.x - s.x, threat.y - s.y) < 150 + s.nerve * 90 ? threat : null;
+      const engaged = facing || tgt; // the hull this is about, whether she picked it or it picked her
+      let desired, throttle = 1;
+      s.sheerT = Math.max(0, s.sheerT - dt);
 
-      if (threat && Math.hypot(threat.x - s.x, threat.y - s.y) < 150 + s.nerve * 90) {
+      // Is she getting anywhere with it? The clock runs against whoever she is engaged with, the hull
+      // she is chasing and the one charging her alike. It used to run only inside the chase, so the
+      // one case that never resolves itself — a pair locked bow to bow — was the one case never timed.
+      if (engaged) {
+        const toE = Math.atan2(engaged.y - s.y, engaged.x - s.x);
+        const closing =
+          (Math.cos(s.heading) * s.spdCur - Math.cos(engaged.heading) * engaged.spdCur) * Math.cos(toE) +
+          (Math.sin(s.heading) * s.spdCur - Math.sin(engaged.heading) * engaged.spdCur) * Math.sin(toE);
+        s.baffled = closing > 18 ? Math.max(0, s.baffled - dt * 2) : s.baffled + dt;
+      } else s.baffled = Math.max(0, s.baffled - dt);
+
+      const patience = (secs) => secs * (0.7 + 0.6 * s.nerve); // no two captains blink together
+
+      if (facing && s.sheerT <= 0 && s.baffled > patience(FACEOFF_HOLD)) {
+        s.sheerT = SHEER_TIME; // enough of this: helm over
+        s.sheerSide = Math.random() < 0.5 ? 1 : -1;
+        s.baffled = 0;
+      }
+
+      if (s.sheerT > 0 && engaged) {
+        // break off across her bow for sea room, then work back in for a fresh run
+        desired = Math.atan2(engaged.y - s.y, engaged.x - s.x) + s.sheerSide * SHEER_ANGLE;
+        throttle = SHEER_THROTTLE;
+      } else if (facing) {
         // meet her bow to bow rather than let her have the beam — a glance both of us share
-        desired = Math.atan2(threat.y - s.y, threat.x - s.x);
+        desired = Math.atan2(facing.y - s.y, facing.x - s.x);
       } else if (!tgt) {
         s.wanderT -= dt;
         if (s.wanderT <= 0) { s.wander += (Math.random() - 0.5) * 1.2; s.wanderT = 1.5 + Math.random(); }
         desired = s.wander;
         throttle = 0.5;
+      } else if (s.baffled > patience(STALL_PATIENCE)) {
+        // a chase she is not winning: come round inside her instead of following her wake
+        desired = Math.atan2(tgt.y - s.y, tgt.x - s.x); // straight at her, not at where she is going
+        throttle = STALL_THROTTLE;
+        if (s.baffled > patience(STALL_PATIENCE + STALL_CUT)) s.baffled = 0; // then have another go
       } else {
-        // are we actually gaining on her? if not, patience runs out and she comes round inside instead
-        const toT = Math.atan2(tgt.y - s.y, tgt.x - s.x);
-        const closing =
-          (Math.cos(s.heading) * s.spdCur - Math.cos(tgt.heading) * tgt.spdCur) * Math.cos(toT) +
-          (Math.sin(s.heading) * s.spdCur - Math.sin(tgt.heading) * tgt.spdCur) * Math.sin(toT);
-        s.baffled = closing > 18 ? Math.max(0, s.baffled - dt * 2) : s.baffled + dt;
-        if (s.baffled > STALL_PATIENCE) {
-          desired = toT; // straight at her, not at where she is going
-          throttle = STALL_THROTTLE;
-          if (s.baffled > STALL_PATIENCE + STALL_CUT) s.baffled = 0; // then have another go at the chase
-        } else {
-          desired = ramIntercept(s, tgt);
-        }
+        desired = ramIntercept(s, tgt);
       }
 
       // Now the weather bends whatever she meant to do. Well inside the ring it asks nothing; nearer
@@ -1014,7 +1074,12 @@ export default function App() {
           if (!a.alive || !b.alive) continue;
           // consorts cannot ram each other, but no two hulls may ever share the same water
           const hostile = g.rules.melee || a.isPlayer !== b.isPlayer;
+          const heldSince = a.locked.get(b);
+          if (heldSince !== undefined && g.time - heldSince > RAM_LOCK_MAX) { a.locked.delete(b); b.locked.delete(a); }
           const { d, nx, ny } = keelGap(a, b); // where the two hulls come nearest to fouling
+          // pressed hulls sit right on HULL_TOUCH and cross it every other frame as they drive
+          // together and are pushed apart, so the margin is what keeps this from flickering
+          if (d < HULL_TOUCH + 4) a.foul = b.foul = true;
           if (d >= HULL_TOUCH) {
             // a pair has to break properly clear of each other before it can ram again
             if (d >= HULL_TOUCH + RAM_REARM_GAP) { a.locked.delete(b); b.locked.delete(a); }
@@ -1028,13 +1093,15 @@ export default function App() {
 
           // closing speed along the line of impact, counting how both ships are actually moving:
           // a head-on doubles it, and running from a chaser bleeds it away
-          const avx = Math.cos(a.heading) * a.spdCur + a.kx, avy = Math.sin(a.heading) * a.spdCur + a.ky;
-          const bvx = Math.cos(b.heading) * b.spdCur + b.kx, bvy = Math.sin(b.heading) * b.spdCur + b.ky;
-          const closing = (avx - bvx) * nx + (avy - bvy) * ny;
+          const closing = (a.vx - b.vx) * nx + (a.vy - b.vy) * ny;
           // ...and how much of each ship's own way is driving into the other. That is the ram:
           // a ship crossing or running has none of it, however hard the hulls meet
           const bowA = Math.cos(a.heading - toB), bowB = -Math.cos(b.heading - toB);
-          const driveA = Math.max(0, bowA * a.spdCur), driveB = Math.max(0, bowB * b.spdCur);
+          // A hull that has been held on someone's timbers for a while is not ramming anybody: whatever
+          // her helmsman is asking for, she is not going anywhere, and the ground she covers between
+          // one frame and the next is the shoving rather than any way of her own. Two ships jammed bow
+          // to bow are a target, not a threat — including to whoever comes to take advantage of them.
+          const driveA = Math.max(0, bowA * a.way), driveB = Math.max(0, bowB * b.way);
           // One curve for every angle: how hard the hulls met. Harder is always worse, whoever you
           // are and wherever it lands, which is what makes a ram something a captain can judge
           const t = clamp((closing - RAM_MIN_CLOSE) / (RAM_FULL_CLOSE - RAM_MIN_CLOSE), 0, 99);
@@ -1062,7 +1129,7 @@ export default function App() {
           if (hurtB > 0) { applyHit(b, "hull", hurtB, a); a.ramCd = RAM_CD; a.baffled = 0; if (hurtB >= RAM_GRAZE) a.rams++; rammed = true; }
           if (hurtA > 0 && b.alive) { applyHit(a, "hull", hurtA, b); b.ramCd = RAM_CD; b.baffled = 0; if (hurtA >= RAM_GRAZE) b.rams++; rammed = true; }
           if (rammed) {
-            a.locked.add(b); b.locked.add(a);
+            a.locked.set(b, g.time); b.locked.set(a, g.time);
             // each ship spends the part of her way that went into the impact, so one driving
             // straight in stops dead while one caught across her course carries on. whoever put
             // the least drive into it is the one thrown clear
@@ -1115,6 +1182,38 @@ export default function App() {
         g.stormTick = tick;
         g.playerOut = playerOut;
         g.hudDirty = true;
+      }
+    }
+
+    // What each ship actually did with the frame, measured once the hulls have been pushed out of one
+    // another: her velocity over the ground, and how much of it carried her bow forward. A hull that
+    // could not go forward — jammed against another, shouldered off an island, pinned on the boundary,
+    // or thrown back by a blow — loses her way to match, and has to gather it again like anyone else.
+    // Next frame's ram is resolved from these.
+    //
+    // It is her plain velocity along her heading, with nothing taken back out of it for the shoving.
+    // An earlier turn of this subtracted the knock, meaning to leave only what she made under her own
+    // power; but a ship held back by a knock has that knock subtracted the other way, and two hulls
+    // pressed bow to bow — dead in the water, covering 0.2px/s between them — came out reading 118.
+    //
+    // It is smoothed, too. Hulls in contact are driven together and pushed apart again frame by frame,
+    // so a single frame's difference swings wildly either side of nothing; taking the positive half of
+    // that swing at face value handed a standing ship the weight of a charging one every other frame.
+    function measureWay(dt) {
+      const g = gameRef.current;
+      if (dt <= 0) return;
+      for (const s of g.ships) {
+        if (!s.alive) continue;
+        const ch = Math.cos(s.heading), sh = Math.sin(s.heading);
+        const k = Math.min(1, dt * WAY_SMOOTH);
+        s.vx += ((s.x - s.px) / dt - s.vx) * k;
+        s.vy += ((s.y - s.py) / dt - s.vy) * k;
+        s.way = Math.max(0, s.vx * ch + s.vy * sh);
+        // and a hull that meant to go forward and did not is baulked — held on another's timbers, run
+        // up on a shoal, pinned on the boundary — so she loses her way and must gather it again
+        if (s.foul && s.spdCur > 5 && s.way < s.spdCur * BAULK_TOL) s.baulkT += dt;
+        else s.baulkT = Math.max(0, s.baulkT - dt * 2);
+        if (s.baulkT > BAULK_GRACE) s.spdCur *= Math.exp(-dt * BAULK_RATE);
       }
     }
 
@@ -1195,9 +1294,11 @@ export default function App() {
       const g = gameRef.current;
       g.time += dt;
       computeMeta();
+      for (const s of g.ships) { s.px = s.x; s.py = s.y; s.foul = false; } // where she started the frame
       stepPlayer(dt);
       for (const s of g.ships) if (!s.isPlayer) stepAI(s, dt);
       stepRam();
+      measureWay(dt);
       stepStorm(dt);
       stepShots(dt);
       stepParts(dt);
