@@ -2210,7 +2210,7 @@ function HoldPanel({ hold }) {
       <div style={{ fontSize: 10, color: "rgba(238,244,242,0.5)", lineHeight: 1.6, marginTop: 4 }}>
         {lt.runs > 0
           ? [`${lt.runs} voyage${lt.runs === 1 ? "" : "s"}`, `${lt.sunk} sunk`, ...(lt.wins > 0 ? [`${lt.wins} won`] : []), `${fmtTime(lt.afloat)} afloat`, ...bests].join(" · ")
-          : "Every coin you earn at sea comes back here, whichever battle you earn it in, and keeps between sessions."}
+          : "Every coin you earn at sea comes back here, from every mode, and keeps between sessions."}
       </div>
     </div>
   );
