@@ -51,9 +51,9 @@ handicap is a touch of spread on every shot.
 
 A mode is a row in the `MODES` table rather than a name to compare against — `melee` (is every hull
 hostile to every other, or only the player's), `ranked`, `lastAfloatWins`, `reinforcements`, `guns`,
-`upgrades`, `flees`, `storm`, plus the field size and opening purse. The simulation, the HUD, the
-menu cards, and the end screen all read those rules, so a new mode is a new row rather than a dozen
-scattered checks that have to be taught about it.
+`upgrades`, `flees`, `storm`, what it pays for time afloat and for winning, plus the field size and
+opening purse. The simulation, the HUD, the menu cards, and the end screen all read those rules, so a
+new mode is a new row rather than a dozen scattered checks that have to be taught about it.
 
 ### The derby
 
@@ -111,6 +111,20 @@ with it they are settled by ramming inside a minute or so with the ring still wi
 A chase she is not winning after `STALL_PATIENCE` seconds gets the same treatment from the other
 direction — she takes the way off her and comes round inside instead of following a wake she can never
 catch, since a slow hull turns far inside a fast one.
+
+#### What the derby pays
+
+Staying afloat is most of the work, so it is paid by the second (`timeCoins`) on top of what a
+captain's bow earns her. Win, and she is paid for a whole round — `fullRound` — however early she
+settled it, plus `winBonus` for being the last hull afloat: 175 and 75, so a win comes to 250 before a
+single ram is counted. Left alone a round actually runs `STORM_GRACE + STORM_CLOSE + STORM_HOLD +
+STORM_SQUEEZE`, 168 seconds as the weather is tuned, so the winner's is a set purse a shade above the
+clock rather than a figure that tracks it — retune the storm and this wants looking at.
+
+Settling it in forty seconds therefore pays the same purse as outlasting the weather for the full
+span, which is to say it pays far better an hour: the time she saves is hers to spend on the next
+round. The end screen lists the parts — what she fought for, what her time afloat was worth, and the
+winner's bounty — so the tally adds up to what actually reaches the hold.
 
 ## The hold
 
