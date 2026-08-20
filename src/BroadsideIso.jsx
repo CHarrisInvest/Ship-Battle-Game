@@ -1238,8 +1238,9 @@ export default function App() {
         s.vx += ((s.x - s.px) / dt - s.vx) * k;
         s.vy += ((s.y - s.py) / dt - s.vy) * k;
         s.way = Math.max(0, s.vx * ch + s.vy * sh);
-        // and a hull that meant to go forward and did not is baulked — held on another's timbers, run
-        // up on a shoal, pinned on the boundary — so she loses her way and must gather it again
+        // and a hull foul of another and going nowhere is baulked, so she loses her way and must gather
+        // it again. Only another hull counts: an island or the boundary already checks her by other
+        // means, and a ship merely knocked off her stride is still free to sail
         if (s.foul && s.spdCur > 5 && s.way < s.spdCur * BAULK_TOL) s.baulkT += dt;
         else s.baulkT = Math.max(0, s.baulkT - dt * 2);
         if (s.baulkT > BAULK_GRACE) s.spdCur *= Math.exp(-dt * BAULK_RATE);
