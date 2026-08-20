@@ -173,6 +173,28 @@ const RAM_CD = 0.9; // seconds before a ship can ram again
 // another blow. The lock is meant to stop damage being ground out of hulls already touching, and a
 // few seconds does that, so it lapses on its own as well.
 const RAM_LOCK_MAX = 3;
+// A ram is worked out from the way a ship has actually made, not from the way her helmsman wanted.
+// The two part company whenever something is in the road: hulls pressed against one another are
+// de-overlapped every frame, so they stand still in the water while `spdCur` — the throttle's idea of
+// her speed — reads full ahead. Resolving a blow from that gives a stationary ship the weight of a
+// flying one: a pair jammed bow to bow could sink a third that came to attack them, and the moment
+// one of them turned away the other took her beam at full force without ever having moved. So each
+// ship measures the ground she truly covered last frame, and a hull that cannot go forward loses her
+// way like any other.
+// The measurement is smoothed. Hulls in contact are driven together and pushed apart again frame by
+// frame, so a single frame's difference swings wildly either side of nothing, and taking the positive
+// half of that swing at face value hands a standing ship the weight of a charging one every other
+// frame. Not too smooth, though: force climbs as the 1.5 power of closing speed, so under-reading a
+// ship working up to a charge by a fifth costs nearly half her blow.
+const WAY_SMOOTH = 14; // the measurement follows her within about a fifteenth of a second
+
+// And a hull held on another's timbers loses her way, so she has to gather it again before she is
+// worth anything — which is what stops her taking the beam of the ship that breaks off first as
+// though she had been charging all along. Only being foul of another hull counts: a ship knocked off
+// her stride is still free to sail, and treating that as held empties the melee of blows altogether.
+const BAULK_TOL = 0.35; // foul of a hull and making less than this share of her asking: she is baulked
+const BAULK_GRACE = 0.35; // ...and only held once it has gone on this long. A knock in passing is not
+const BAULK_RATE = 6; // once held, her way falls away, halving in about an eighth of a second
 
 // For hull against hull a ship is her keel — a line down her length — swelled by her beam. Measuring
 // between the two keels finds where they truly foul, which the distance between two centres cannot:
@@ -430,6 +452,7 @@ export default function App() {
         cd: { broadside: Math.random() * 0.5, bow: Math.random() * 0.5, musket: Math.random() * 0.5 },
         mastDown: false, flash: 0, ramCd: 0, locked: new Map(), wakeT: 0, sprayT: 0,
         roll: 0, rollPhase: Math.random() * Math.PI * 2, turnVel: 0, kx: 0, ky: 0,
+        px: x, py: y, vx: 0, vy: 0, way: 0, baulkT: 0, foul: false, // where she was, and the ground she truly made
         fill: opts.isPlayer ? C.player : pal.fill,
         stroke: opts.isPlayer ? C.playerStroke : pal.stroke,
       };
@@ -1054,6 +1077,9 @@ export default function App() {
           const heldSince = a.locked.get(b);
           if (heldSince !== undefined && g.time - heldSince > RAM_LOCK_MAX) { a.locked.delete(b); b.locked.delete(a); }
           const { d, nx, ny } = keelGap(a, b); // where the two hulls come nearest to fouling
+          // pressed hulls sit right on HULL_TOUCH and cross it every other frame as they drive
+          // together and are pushed apart, so the margin is what keeps this from flickering
+          if (d < HULL_TOUCH + 4) a.foul = b.foul = true;
           if (d >= HULL_TOUCH) {
             // a pair has to break properly clear of each other before it can ram again
             if (d >= HULL_TOUCH + RAM_REARM_GAP) { a.locked.delete(b); b.locked.delete(a); }
@@ -1067,13 +1093,15 @@ export default function App() {
 
           // closing speed along the line of impact, counting how both ships are actually moving:
           // a head-on doubles it, and running from a chaser bleeds it away
-          const avx = Math.cos(a.heading) * a.spdCur + a.kx, avy = Math.sin(a.heading) * a.spdCur + a.ky;
-          const bvx = Math.cos(b.heading) * b.spdCur + b.kx, bvy = Math.sin(b.heading) * b.spdCur + b.ky;
-          const closing = (avx - bvx) * nx + (avy - bvy) * ny;
+          const closing = (a.vx - b.vx) * nx + (a.vy - b.vy) * ny;
           // ...and how much of each ship's own way is driving into the other. That is the ram:
           // a ship crossing or running has none of it, however hard the hulls meet
           const bowA = Math.cos(a.heading - toB), bowB = -Math.cos(b.heading - toB);
-          const driveA = Math.max(0, bowA * a.spdCur), driveB = Math.max(0, bowB * b.spdCur);
+          // A hull that has been held on someone's timbers for a while is not ramming anybody: whatever
+          // her helmsman is asking for, she is not going anywhere, and the ground she covers between
+          // one frame and the next is the shoving rather than any way of her own. Two ships jammed bow
+          // to bow are a target, not a threat — including to whoever comes to take advantage of them.
+          const driveA = Math.max(0, bowA * a.way), driveB = Math.max(0, bowB * b.way);
           // One curve for every angle: how hard the hulls met. Harder is always worse, whoever you
           // are and wherever it lands, which is what makes a ram something a captain can judge
           const t = clamp((closing - RAM_MIN_CLOSE) / (RAM_FULL_CLOSE - RAM_MIN_CLOSE), 0, 99);
@@ -1157,6 +1185,38 @@ export default function App() {
       }
     }
 
+    // What each ship actually did with the frame, measured once the hulls have been pushed out of one
+    // another: her velocity over the ground, and how much of it carried her bow forward. A hull that
+    // could not go forward — jammed against another, shouldered off an island, pinned on the boundary,
+    // or thrown back by a blow — loses her way to match, and has to gather it again like anyone else.
+    // Next frame's ram is resolved from these.
+    //
+    // It is her plain velocity along her heading, with nothing taken back out of it for the shoving.
+    // An earlier turn of this subtracted the knock, meaning to leave only what she made under her own
+    // power; but a ship held back by a knock has that knock subtracted the other way, and two hulls
+    // pressed bow to bow — dead in the water, covering 0.2px/s between them — came out reading 118.
+    //
+    // It is smoothed, too. Hulls in contact are driven together and pushed apart again frame by frame,
+    // so a single frame's difference swings wildly either side of nothing; taking the positive half of
+    // that swing at face value handed a standing ship the weight of a charging one every other frame.
+    function measureWay(dt) {
+      const g = gameRef.current;
+      if (dt <= 0) return;
+      for (const s of g.ships) {
+        if (!s.alive) continue;
+        const ch = Math.cos(s.heading), sh = Math.sin(s.heading);
+        const k = Math.min(1, dt * WAY_SMOOTH);
+        s.vx += ((s.x - s.px) / dt - s.vx) * k;
+        s.vy += ((s.y - s.py) / dt - s.vy) * k;
+        s.way = Math.max(0, s.vx * ch + s.vy * sh);
+        // and a hull that meant to go forward and did not is baulked — held on another's timbers, run
+        // up on a shoal, pinned on the boundary — so she loses her way and must gather it again
+        if (s.foul && s.spdCur > 5 && s.way < s.spdCur * BAULK_TOL) s.baulkT += dt;
+        else s.baulkT = Math.max(0, s.baulkT - dt * 2);
+        if (s.baulkT > BAULK_GRACE) s.spdCur *= Math.exp(-dt * BAULK_RATE);
+      }
+    }
+
     function stepShots(dt) {
       const g = gameRef.current;
       const s = g.shots;
@@ -1234,9 +1294,11 @@ export default function App() {
       const g = gameRef.current;
       g.time += dt;
       computeMeta();
+      for (const s of g.ships) { s.px = s.x; s.py = s.y; s.foul = false; } // where she started the frame
       stepPlayer(dt);
       for (const s of g.ships) if (!s.isPlayer) stepAI(s, dt);
       stepRam();
+      measureWay(dt);
       stepStorm(dt);
       stepShots(dt);
       stepParts(dt);

@@ -161,6 +161,15 @@ speed, and a charge at full sail is a commitment that can be read and dodged.
 
 Ramming is a real attack, resolved from the geometry of the collision rather than from who started it:
 
+- **A ram is worked out from the way a ship has actually made**, never from the speed her helmsman is
+  asking for. The two part company whenever something is in the road: hulls pressed against one another
+  are de-overlapped every frame, so they stand still in the water while the throttle still reads full
+  ahead. Resolving a blow from that gave a stationary ship the weight of a flying one — a pair jammed
+  bow to bow could sink a third that came to attack them, and the moment one of them turned away the
+  other took her beam at full force without ever having moved. Each ship therefore measures the ground
+  she truly covers, smoothed over about a fifteenth of a second, and a hull held on another's timbers
+  loses her way and has to gather it again. Two ships locked bow to bow now trade nothing at all, and
+  are a target rather than a threat to whoever comes to take advantage of them.
 - **Closing speed** counts both ships' motion along the line of impact, so a head-on doubles it and a
   ship running from a chaser bleeds it away. Below `RAM_MIN_CLOSE` nothing happens. Above it, weight
   climbs to full weight at `RAM_FULL_CLOSE` (a fresh ship's top speed) and caps at `RAM_MAX_FORCE`.
