@@ -2513,14 +2513,14 @@ export default function App() {
       {phase === "playing" && (
         <>
           <div style={{ position: "absolute", top: 8, left: 10, display: "flex", gap: 8 }}>
-            <Pill>🪙 {coins}</Pill>
+            <Pill label={`${coins} coins`}><CoinIcon /><span>{coins}</span></Pill>
             {rules.reinforcements ? (
               <>
-                <Pill>⚓ {sunk}</Pill>
-                <Pill>🚩 {Math.max(0, left - 1)} hunting</Pill>
+                <Pill label={`${sunk} sunk`}><SunkIcon /><span>{sunk}</span></Pill>
+                <Pill label={`${Math.max(0, left - 1)} hunting you`}><ShipIcon /><span>{Math.max(0, left - 1)} hunting</span></Pill>
               </>
             ) : (
-              <Pill>🚩 {left} left</Pill>
+              <Pill label={`${left} rivals left`}><ShipIcon /><span>{left} left</span></Pill>
             )}
             {rules.storm && <StormPill storm={storm} />}
           </div>
@@ -2547,7 +2547,7 @@ export default function App() {
                   <span style={{ fontSize: 11, fontWeight: 700, color: t.color }}>{t.label}</span>
                   <span style={{ fontSize: 8, color: "rgba(238,244,242,0.55)" }}>{t.sub}</span>
                   <span style={{ fontSize: 9 }}>Level {lvl}</span>
-                  <span style={{ fontSize: 9, color: C.gold }}>🪙{cost}</span>
+                  <span style={{ fontSize: 9, color: C.gold, display: "inline-flex", alignItems: "center", gap: 3 }}><CoinIcon size={9} />{cost}</span>
                 </button>
               );
             })}
@@ -2583,14 +2583,75 @@ export default function App() {
   );
 }
 
-function Pill({ children }) {
-  return <div style={{ background: C.panel, border: `1px solid ${C.hair}`, borderRadius: 20, padding: "5px 11px", fontSize: 12, color: C.gold, fontWeight: 700 }}>{children}</div>;
+// ---------------- HUD icons ----------------
+// Drawn rather than set in emoji, so the HUD keeps its shape across iOS, Android and Windows instead
+// of picking up whatever each OS ships in its emoji font. Every one is a 16-unit box filled with
+// currentColor, so the same component serves the gold pills and the pale red storm-danger pill
+// without a variant. aria-hidden throughout: the number beside the icon carries the meaning, and the
+// pill itself takes the label.
+const iconStyle = { verticalAlign: "-0.12em", flex: "0 0 auto" };
+
+// Currency, both the run purse and the hold that outlives it.
+function CoinIcon({ size = 12 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" style={iconStyle}>
+      <path d="M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13Zm0 1.5a5 5 0 1 1 0 10A5 5 0 0 1 8 3Z" />
+      <path d="M8.75 4.25H7.3v.9H6.65v1.2h1.7c.45 0 .7.15.7.45s-.25.45-.7.45h-1.7v1.2h.65v.9h1.45v-.9h.65v-1.2H7.7c-.45 0-.7-.15-.7-.45s.25-.45.7-.45h1.05v-1.2h-.65v-.9Z" />
+    </svg>
+  );
+}
+
+// Rivals still afloat. A ship, not a flag: the counter is ships remaining.
+function ShipIcon({ size = 12 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" style={iconStyle}>
+      <path d="M7.15 2h1.1v7.5h-1.1z" />
+      <path d="M8.05 2.25 12.6 6.9H8.05z" />
+      <path d="M2.75 9.35h10.5l-1.45 2.25H4.8L2.75 9.35Z" />
+      <path d="M2 12.15c.95-.55 1.8-.55 2.75 0 .95.55 1.8.55 2.75 0 .95-.55 1.8-.55 2.75 0 .95.55 1.8.55 2.75 0v1c-.95.55-1.8.55-2.75 0-.95-.55-1.8-.55-2.75 0-.95.55-1.8.55-2.75 0-.95-.55-1.8-.55-2.75 0v-1Z" />
+    </svg>
+  );
+}
+
+// Ships sunk. Deliberately not an anchor: an anchor is gear a healthy ship carries, and this counter
+// had been wearing one for no better reason than that it was the nearest emoji. A hull going down
+// past a waterline is what the number counts.
+function SunkIcon({ size = 12 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" style={iconStyle}>
+      <path d="M8.45 2.05h1.15v6.35H8.45z" transform="rotate(15 9.025 5.225)" />
+      <path d="m5.1 9.15 3.7 1.05 2.15-2.8 2.05 2.05-1.2 1.55H6.55l-1.8-.55z" />
+      <path d="M1.5 11.55c1-.6 1.9-.6 2.9 0s1.9.6 2.9 0 1.9-.6 2.9 0 1.9.6 2.9 0 1.9-.6 2.9 0v1.05c-1 .6-1.9.6-2.9 0s-1.9-.6-2.9 0-1.9.6-2.9 0-1.9-.6-2.9 0-1.9.6-2.9 0v-1.05Z" />
+    </svg>
+  );
+}
+
+// The closing squall. Two shapes only, and that is the whole design: every one of this icon's four
+// sites renders at 12px, where a 16-unit grid gives about nine device pixels to work in. A first
+// pass carried a broken ring behind the cloud, quoting the dashed ellipse the game draws closing in,
+// with three rain strokes below. Captured at 1x it read as a mushroom: the cloud covered the ring
+// down to one stub, and the three strokes fused into a single lumpy row. So the ring is gone and the
+// rain is two wedges wide enough to survive, with a gap between them wide enough to stay a gap.
+function SquallIcon({ size = 12 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" style={iconStyle}>
+      <path d="M3.1 9.4Q1.2 9.4 1.2 7.4Q1.2 5.4 3.3 5.2Q3.7 2 7 2Q10 2 10.9 4.6Q13.5 4.6 14 6.8Q14.4 9.4 12 9.4Z" />
+      <path d="M3.2 10.4h3.2l-1.6 4.2H1.6zM9.6 10.4h3.2l-1.6 4.2H8z" />
+    </svg>
+  );
+}
+
+// A pill lays its children out in a row with a gap, so an icon sits beside its number without a
+// space character doing the spacing. Wrap the text in one span: two loose children would each become
+// a flex item and take the gap between them.
+function Pill({ children, label }) {
+  return <div aria-label={label} style={{ background: C.panel, border: `1px solid ${C.hair}`, borderRadius: 20, padding: "5px 11px", fontSize: 12, color: C.gold, fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}>{children}</div>;
 }
 
 function StormPill({ storm }) {
-  if (storm.out) return <div style={{ background: "rgba(70,18,18,0.85)", border: `1px solid ${C.crew}`, borderRadius: 20, padding: "5px 11px", fontSize: 12, color: "#ffd9d9", fontWeight: 700 }}>⛈ In the storm</div>;
-  if (storm.closes > 0) return <Pill>⛈ {fmtTime(storm.closes)}</Pill>;
-  return <Pill>{storm.closing ? "⛈ closing" : "⛈ closed"}</Pill>;
+  if (storm.out) return <div style={{ background: "rgba(70,18,18,0.85)", border: `1px solid ${C.crew}`, borderRadius: 20, padding: "5px 11px", fontSize: 12, color: "#ffd9d9", fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }} aria-label="You are in the storm"><SquallIcon /><span>In the storm</span></div>;
+  if (storm.closes > 0) return <Pill label={`Storm closes in ${fmtTime(storm.closes)}`}><SquallIcon /><span>{fmtTime(storm.closes)}</span></Pill>;
+  return <Pill label={storm.closing ? "Storm closing" : "Storm closed"}><SquallIcon /><span>{storm.closing ? "closing" : "closed"}</span></Pill>;
 }
 
 function RankBadge({ rank, total }) {
@@ -2717,7 +2778,7 @@ function HoldPanel({ hold }) {
     <div style={{ background: "rgba(11,51,49,0.6)", border: `1px solid ${C.hair}`, borderRadius: 10, padding: "9px 12px", margin: "14px 0 18px", textAlign: "left" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10 }}>
         <span style={{ fontSize: 10, letterSpacing: 1, color: "rgba(238,244,242,0.55)" }}>The hold</span>
-        <span style={{ fontSize: 17, fontWeight: 800, color: C.gold }}>🪙 {fmtCoins(hold.coins)}</span>
+        <span style={{ fontSize: 17, fontWeight: 800, color: C.gold, display: "inline-flex", alignItems: "center", gap: 4 }} aria-label={`${fmtCoins(hold.coins)} coins in the hold`}><CoinIcon size={17} />{fmtCoins(hold.coins)}</span>
       </div>
       <div style={{ fontSize: 10, color: "rgba(238,244,242,0.5)", lineHeight: 1.6, marginTop: 4 }}>
         {lt.runs > 0
@@ -2813,7 +2874,7 @@ function EndOverlay({ title, titleColor, result, stats, mode, place, hold, banke
         {/* The voyage is over and the ship's purse with it; this is the part that sails on. */}
         <TallyRow label="Into the hold" value={`+${fmtCoins(banked)}`} rule="group"
           valueColor={banked > 0 ? C.grass : "rgba(238,244,242,0.5)"} />
-        <TallyRow label="Hold total" value={`🪙 ${fmtCoins(hold.coins)}`} valueSize={15} valueWeight={800} />
+        <TallyRow label="Hold total" value={<span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><CoinIcon size={15} />{fmtCoins(hold.coins)}</span>} valueSize={15} valueWeight={800} />
       </div>
       <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
         <StartButton onClick={onAgain} label="Rematch" />

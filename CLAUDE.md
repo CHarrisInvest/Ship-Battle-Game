@@ -49,6 +49,11 @@ Buttons take size over tracking. Wide letterspacing makes every control read as 
   so inline SVG is the right form.
 - **An icon has to carry its meaning.** Pick the shape from what the number counts, not from what is
   nearest to hand in the emoji table.
+- **Two or three shapes per icon, and check them at 1x.** The HUD icons run 9px to 17px on a 16-unit
+  grid, so a 1-unit detail is under a pixel. The squall started as a cloud, three rain strokes and a
+  broken ring quoting the storm ellipse; captured at real device scale it read as a mushroom. Cloud
+  and two fat wedges reads. A capture at deviceScaleFactor 6 will not tell you this, because it draws
+  72 device pixels for a 12px box.
 - **Border radius comes from a small set:** 3 for hairline bar fills, 10 for cards and buttons, 20
   for full-round pills. Do not invent a new one per component.
 - **Check a new colour against every ground it lands on.** HUD colours sit on the enemy bar's
@@ -67,5 +72,4 @@ comes from a replica rather than a real frame, say so.
 
 Rules above that the code does not yet satisfy. Tracked cleanups, not exceptions.
 
-- **Emoji, 11 instances.** Coins, ships sunk, ships remaining, and the storm pill still use emoji.
-  Note that the sunk counter uses an anchor, which does not communicate "sunk" at all.
+None open. The last one was the emoji HUD; it is now four drawn icons.
