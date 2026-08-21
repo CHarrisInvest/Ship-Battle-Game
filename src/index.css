@@ -3,7 +3,9 @@ body,
 #root {
   height: 100%;
   margin: 0;
-  background: #04141a;
+  /* open water, the same tone the canvas fills with, so nothing flashes a different colour
+     while the sea is being painted or when a scroll rubber-bands past the edge of the canvas */
+  background: #2a8f8b;
   overflow: hidden;
 }
 
