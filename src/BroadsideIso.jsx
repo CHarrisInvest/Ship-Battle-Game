@@ -123,7 +123,6 @@ const C = {
   sand: "#cbb98a",
   sandDark: "#a8935f",
   grass: "#6fae5c",
-  grassDark: "#4f8a45",
   tree: "#3f7a3a",
   sail: "#f4ecd8",
   wood: "#6b4a2b",
@@ -1639,46 +1638,61 @@ export default function App() {
         const n = isl.verts.length;
         ctx.save();
         ctx.translate(cx, cy);
-        const ring = (scale, extra) => {
+        // One closed ring of the island's outline at `scale`, optionally rolling on the swell.
+        //
+        // The roll has to close on itself, which is why it is given as a whole number of `waves` round
+        // the ring rather than as a phase that advances per vertex. An advancing phase leaves the last
+        // vertex and the first at different radii even though they are neighbours, and the ring then
+        // shuts with a straight chord across the gap — a hard step that reads as a notch bitten out of
+        // the band. Taking the phase from the vertex angle makes that unrepresentable.
+        //
+        // The vertices are joined by a closed quadratic spline through the midpoint of each edge: the
+        // curve passes through every midpoint and is tangent to the outline there, so the facets round
+        // off and the bands roll instead of stepping. It cuts the corners slightly, so the drawn shape
+        // sits a touch inside the polygon — far less than the 0.78-1.08 spread of verts already puts
+        // between the drawn sand and the isl.r circle that shots and hulls actually test against.
+        const ring = (scale, waves = 0, amp = 0, speed = 0) => {
+          const pts = [];
+          for (let k = 0; k < n; k++) {
+            const a = (k / n) * Math.PI * 2;
+            const rr = isl.r * isl.verts[k] * scale + (amp ? Math.sin(clock * speed + a * waves) * amp : 0);
+            pts.push([Math.cos(a) * rr, Math.sin(a) * rr * TILT]);
+          }
           ctx.beginPath();
-          for (let k = 0; k <= n; k++) {
-            const a = ((k % n) / n) * Math.PI * 2;
-            const rr = isl.r * isl.verts[k % n] * scale + extra(k);
-            const X = Math.cos(a) * rr, Y = Math.sin(a) * rr * TILT;
-            if (k === 0) ctx.moveTo(X, Y);
-            else ctx.lineTo(X, Y);
+          ctx.moveTo((pts[n - 1][0] + pts[0][0]) / 2, (pts[n - 1][1] + pts[0][1]) / 2);
+          for (let k = 0; k < n; k++) {
+            const p = pts[k], q = pts[(k + 1) % n];
+            ctx.quadraticCurveTo(p[0], p[1], (p[0] + q[0]) / 2, (p[1] + q[1]) / 2);
           }
           ctx.closePath();
         };
         // The bottom comes up in two steps before it breaks the surface: a broad bank of shallows, then
-        // a thin beach rim right at the sand. Both wobble on the swell, and the outer one wobbles wider,
-        // so the two edges never march in step and the island keeps a moving waterline.
-        ring(1.30, (k) => Math.sin(clock * 1.6 + k * 0.8) * 3);
+        // a thin beach rim right at the sand. Both roll on the swell — the outer one wider and slower,
+        // over fewer crests — so the two edges never march in step and the island keeps a moving
+        // waterline.
+        ring(1.30, 2, 3, 1.6);
         ctx.fillStyle = C.shallows;
         ctx.fill();
-        ring(1.08, (k) => Math.sin(clock * 2 + k) * 2);
+        ring(1.08, 3, 2, 2);
         ctx.fillStyle = C.beachRim;
         ctx.fill();
         // just a hairline of shade under the sand edge — any wider and it eats the beach rim
         ctx.globalAlpha = 0.14;
         ctx.fillStyle = "#000";
-        ring(1.015, () => 0);
+        ring(1.015);
         ctx.fill();
         ctx.globalAlpha = 1;
-        ring(1, () => 0);
+        ring(1);
         ctx.fillStyle = C.sand;
         ctx.fill();
         ctx.lineWidth = 1.5;
         ctx.strokeStyle = C.sandDark;
         ctx.stroke();
-        ring(0.72, () => 0);
+        // One flat green, not two: the interior stays a single colour and the only darker green on the
+        // island is the foliage, which reads as canopy rather than as another contour line inland.
+        ring(0.72);
         ctx.fillStyle = C.grass;
         ctx.fill();
-        ctx.globalAlpha = 0.5;
-        ring(0.5, () => 0);
-        ctx.fillStyle = C.grassDark;
-        ctx.fill();
-        ctx.globalAlpha = 1;
         for (const f of isl.foliage) {
           const fx = f.x, fy = f.y * TILT;
           const tr = isl.r * 0.12 * f.s;
