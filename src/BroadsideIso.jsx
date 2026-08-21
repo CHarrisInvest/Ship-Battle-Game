@@ -101,6 +101,7 @@ const C = {
   water: "#2a8f8b",      // open water — the main sea, and the page background behind it
   shallows: "#45b39d",   // the bank of shallow water an island sits in
   beachRim: "#7fd0bd",   // the thin band right where the water meets the sand
+  foam: "#f4fffc",       // a cap catching the light as it breaks
   waterEdge: "#1c6663",  // outside the buoys: open water run deep, so the arena reads as the bright part
   deep: "#0b3331",       // the sea at its darkest — panel grounds, and ink on a gold field
   grid: "rgba(9,52,50,0.10)",
@@ -614,8 +615,8 @@ export default function App() {
       g.fieldSize = g.ships.length;
     }
 
-    function pushText(x, y, t, col) {
-      gameRef.current.texts.push({ x, y: y - 26, t, life: 1.3, col });
+    function pushText(x, y, t) {
+      gameRef.current.texts.push({ x, y: y - 26, t, life: 1.3 });
     }
     function muzzle(x, y, ang) {
       gameRef.current.parts.push({ x, y, ang, life: 0.12, max: 0.12, kind: "muzzle" });
@@ -710,7 +711,7 @@ export default function App() {
       const i = g.ships.indexOf(s);
       if (i >= 0) g.ships.splice(i, 1);
       for (const o of g.ships) o.locked.delete(s); // she is on the bottom; nobody is fouled on her
-      pushText(s.x, s.y, s._deathBar === "storm" ? "LOST" : "SUNK", C.gold);
+      pushText(s.x, s.y, s._deathBar === "storm" ? "LOST" : "SUNK");
       if (g.rules.reinforcements) {
         g.sunk += 1;
         g.spawnQueue = Math.min(g.spawnQueue + arenaReinforcements(g.sunk), ARENA_MAX_ENEMIES);
@@ -743,7 +744,7 @@ export default function App() {
       }
       if (bar === "mast" && before > 0 && target[bar] <= 0 && !target.mastDown) {
         target.mastDown = true;
-        pushText(target.x, target.y, target.isPlayer ? "OUR MAST!" : "MAST DOWN", C.mast);
+        pushText(target.x, target.y, target.isPlayer ? "OUR MAST!" : "MAST DOWN");
       }
       if ((bar === "hull" || bar === "crew") && target[bar] <= 0 && target.alive) {
         target._deathBar = bar;
@@ -1412,6 +1413,61 @@ export default function App() {
     }
 
     // ---------------- rendering ----------------
+
+    // One breaking crest: two peaked humps with the outer legs rolling away from the shape, the way
+    // foam spills off either shoulder of a cap. Drawn wide and low, because a cap lies flat on the
+    // water and the water is seen at a tilt.
+    //
+    // The troughs are rounded but the crests are not, and that asymmetry is the whole shape. On each
+    // descent the control on the crest side sits on the crest itself, so the curve leaves it steeply
+    // and the peak stays sharp; the control on the trough side sits out to the side at trough height,
+    // which flattens the tangent there and rolls the bottom out. Round both ends and it stops reading
+    // as a breaking wave and starts reading as a sine squiggle.
+    //
+    // The notch between the two crests rides HIGHER than the troughs the tails fall into, so the low
+    // points of the shape are its two outside ends and the water only dips a little in the middle.
+    // Each tail is a quadratic from (-w, -0.1h) through (-0.8w, 0.6h) to the crest, which puts its y
+    // at -0.1 + 1.4t - 2t² and bottoms out at t = 0.35, i.e. 0.145h below the baseline. CAP_MID has
+    // to stay clear of that figure — push it past 0.145 and the middle becomes the lowest point of the
+    // cap again; drop it much below about -0.05 and the notch flattens until the two crests read as
+    // one broad hump.
+    //
+    // Path only: the caller owns beginPath/stroke, so each cap can carry its own alpha.
+    const CAP_W = 5.5, CAP_H = 4, CAP_LW = 1.4;
+    const CAP_MID = 0; // centre notch, as a fraction of CAP_H below the baseline
+    const CAP_TROUGH = 0.3; // how far the trough controls sit to the side — 0 would cusp the bottom
+
+    // A cap breaking: it whitens fast, then falls back to its own colour over about a second. Every
+    // cap runs its own cycle, so a few are always going off somewhere in view and no two are in step.
+    //
+    // This is a function of the cap's cell and the clock and nothing else — there is no list of live
+    // flares, nothing is spawned, and nothing is stored per cap. That is what makes it free at the
+    // edges of the screen: caps keep their rhythm whether or not they are being drawn, so one that
+    // scrolls into view arrives already mid-cycle instead of starting over or popping.
+    const CAP_CYCLE_MIN = 9, CAP_CYCLE_MAX = 19; // seconds between one cap's breaks
+    const CAP_FLARE_LEN = 0.9;   // how long a break lasts
+    const CAP_FLARE_RISE = 0.18; // fraction of that spent whitening — small, so it snaps and then fades
+    const CAP_FLARE_ALPHA = 0.55;
+    function capFlare(cell, phase) {
+      const period = CAP_CYCLE_MIN + cell * (CAP_CYCLE_MAX - CAP_CYCLE_MIN);
+      const u = (clock / period + phase) % 1;      // where this cap is in its own cycle
+      const win = CAP_FLARE_LEN / period;
+      if (u >= win) return 0;
+      const s = u / win;
+      if (s < CAP_FLARE_RISE) return s / CAP_FLARE_RISE;
+      const fall = (1 - s) / (1 - CAP_FLARE_RISE); // squared, so it drops away and then lingers
+      return fall * fall;
+    }
+    function whitecap(x, y) {
+      const w = CAP_W, h = CAP_H, d = CAP_TROUGH;
+      const px = 0.45 * w, py = y - 0.7 * h, ty = y + CAP_MID * h;
+      ctx.moveTo(x - w, y - 0.1 * h);
+      ctx.quadraticCurveTo(x - 0.8 * w, y + 0.6 * h, x - px, py);        // tail rolls out, up into the crest
+      ctx.bezierCurveTo(x - px, py, x - d * w, ty, x, ty);               // down into the shallow notch
+      ctx.bezierCurveTo(x + d * w, ty, x + px, py, x + px, py);          // and back up to the far crest
+      ctx.quadraticCurveTo(x + 0.8 * w, y + 0.6 * h, x + w, y - 0.1 * h); // then rolls out again
+    }
+
     function drawWater(cam) {
       ctx.fillStyle = C.water;
       ctx.fillRect(0, 0, Wd, Hd);
@@ -1433,23 +1489,35 @@ export default function App() {
       const ci0 = Math.floor(cam.x / cs) - 1, ci1 = Math.floor((cam.x + Wd) / cs) + 1;
       const cj0 = Math.floor(cam.y / cs) - 1, cj1 = Math.floor((cam.y + Hd / TILT) / cs) + 1;
       ctx.strokeStyle = C.beachRim;
-      ctx.lineWidth = 1.4;
+      ctx.lineWidth = CAP_LW;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
       for (let ci = ci0; ci <= ci1; ci++) {
         for (let cj = cj0; cj <= cj1; cj++) {
           const h1 = hash(ci, cj), h2 = hash(ci + 9, cj + 4);
           const wx = (ci + h1) * cs, wy = (cj + h2) * cs;
           if (wx < 6 || wx > WORLD - 6 || wy < 6 || wy > WORLD - 6) continue;
           const sx = SX(wx, cam), sy = SY(wy, cam) + Math.sin(clock * 1.3 + h1 * 6.283) * 1.4;
-          // beach-rim tone on open water: a lighter hue than the old caps, so it needs more of itself
-          // showing through to register as a cap rather than as dirt on the screen
-          ctx.globalAlpha = 0.16 + 0.10 * (0.5 + 0.5 * Math.sin(clock + h2 * 6.283));
+          // beach-rim tone on open water: a lighter hue than the old caps, and a shape with detail in
+          // it rather than a bare tick, so it needs more of itself showing through to read as a cap
+          ctx.globalAlpha = 0.2 + 0.12 * (0.5 + 0.5 * Math.sin(clock + h2 * 6.283));
           ctx.beginPath();
-          ctx.moveTo(sx - 3, sy);
-          ctx.lineTo(sx + 3, sy);
+          whitecap(sx, sy);
           ctx.stroke();
+          // A break is painted over the top rather than swapped in, so the cap keeps its own colour
+          // underneath and the white simply fades off it. Same path, so there is nothing to rebuild.
+          const flare = capFlare(hash(ci + 5, cj + 17), h1);
+          if (flare > 0.01) {
+            ctx.strokeStyle = C.foam;
+            ctx.globalAlpha = flare * CAP_FLARE_ALPHA;
+            ctx.stroke();
+            ctx.strokeStyle = C.beachRim;
+          }
         }
       }
       ctx.globalAlpha = 1;
+      ctx.lineCap = "butt";
+      ctx.lineJoin = "miter";
       drawBoundary(cam, x0, y0, x1, y1);
     }
 
@@ -1904,17 +1972,18 @@ export default function App() {
         }
       }
       ctx.textAlign = "center";
-      // Floating damage sat on near-black water before and needed nothing behind it. Open water is a
-      // mid tone, so gold and ink both sit close to it — the numbers get a dark halo to lift them off.
+      // SUNK and MAST DOWN are white, outlined in a dark halo so they carry on open water — which is a
+      // mid tone, where plain white would sit too close to it. Halo first: the stroke is centred on the
+      // glyph edge and eats half its width into the letter, so the fill has to go down over it.
       ctx.lineJoin = "round";
       for (const t of g.texts) {
         ctx.globalAlpha = Math.min(1, t.life);
-        ctx.font = `600 12px ${UI}`;
+        ctx.font = `600 10px ${UI}`;
         const tx = SX(t.x, cam), ty = SY(t.y, cam);
-        ctx.lineWidth = 3;
+        ctx.lineWidth = 3.4;
         ctx.strokeStyle = "rgba(6,32,31,0.7)";
         ctx.strokeText(t.t, tx, ty);
-        ctx.fillStyle = t.col;
+        ctx.fillStyle = C.ink;
         ctx.fillText(t.t, tx, ty);
         ctx.globalAlpha = 1;
       }
