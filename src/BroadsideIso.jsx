@@ -2670,15 +2670,20 @@ const iconStyle = { verticalAlign: "-0.12em", flex: "0 0 auto" };
 // back in. Cutting the skull out rather than drawing it in line is what keeps it black at 12px; the
 // nose and teeth that SunkIcon can afford are left off here, because inside a 14-unit disc they are
 // half-pixel marks that only silt up the sockets.
+//
+// The cranium is centred at 7.65 rather than 8, which is what sits the skull in the middle of the
+// coin: the shape hangs down from the dome, so centring the dome leaves the whole mark riding high
+// with a crescent of bare gold under the jaw. 7.65 puts the head-and-jaw box in the middle of the
+// disc, within a tenth of a unit of where its centre of area wants to be.
 function CoinIcon({ size = 12 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" style={iconStyle}>
       <path
         fillRule="evenodd"
         d="M8 .8a7.2 7.2 0 1 1 0 14.4A7.2 7.2 0 0 1 8 .8Z
-           M4.1 6.6a3.9 3.5 0 1 1 7.8 0v1.93H9.95v2.3h-3.9v-2.3H4.1Z
-           M4.9 6.7a1.35 1.35 0 1 0 2.7 0 1.35 1.35 0 1 0-2.7 0Z
-           M8.4 6.7a1.35 1.35 0 1 0 2.7 0 1.35 1.35 0 1 0-2.7 0Z"
+           M4.1 7.65a3.9 3.5 0 1 1 7.8 0v1.93H9.95v2.3h-3.9v-2.3H4.1Z
+           M4.9 7.75a1.35 1.35 0 1 0 2.7 0 1.35 1.35 0 1 0-2.7 0Z
+           M8.4 7.75a1.35 1.35 0 1 0 2.7 0 1.35 1.35 0 1 0-2.7 0Z"
       />
     </svg>
   );
