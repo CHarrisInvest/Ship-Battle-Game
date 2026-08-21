@@ -123,7 +123,6 @@ const C = {
   sand: "#cbb98a",
   sandDark: "#a8935f",
   grass: "#6fae5c",
-  grassDark: "#4f8a45",
   tree: "#3f7a3a",
   sail: "#f4ecd8",
   wood: "#6b4a2b",
@@ -1689,14 +1688,11 @@ export default function App() {
         ctx.lineWidth = 1.5;
         ctx.strokeStyle = C.sandDark;
         ctx.stroke();
+        // One flat green, not two: the interior stays a single colour and the only darker green on the
+        // island is the foliage, which reads as canopy rather than as another contour line inland.
         ring(0.72);
         ctx.fillStyle = C.grass;
         ctx.fill();
-        ctx.globalAlpha = 0.5;
-        ring(0.5);
-        ctx.fillStyle = C.grassDark;
-        ctx.fill();
-        ctx.globalAlpha = 1;
         for (const f of isl.foliage) {
           const fx = f.x, fy = f.y * TILT;
           const tr = isl.r * 0.12 * f.s;
