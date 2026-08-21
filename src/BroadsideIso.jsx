@@ -2753,8 +2753,8 @@ function StartOverlay({ onStart, hold, onScuttle }) {
         return <ModeCard key={key} color={m.color} title={m.title} desc={m.desc} onClick={() => onStart(key)} />;
       })}
       <div style={{ marginTop: 16, fontSize: 11, color: "rgba(238,244,242,0.5)", lineHeight: 1.6 }}>
-        Stick to sail. Your side guns hole a hull, the bow gun brings a rig down, muskets clear her
-        deck. Ram to stave one in. Shot will not carry through an island.
+        Stick to sail. Your side guns hit the hull, the bow gun brings down the mast, muskets clear
+        the crew. Rams can pack a punch.
       </div>
       {hold.lifetime.runs > 0 && <ScuttleHold onScuttle={onScuttle} />}
     </Shell>
