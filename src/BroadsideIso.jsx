@@ -517,6 +517,27 @@ const WP = {
   musket: { cd: 0.75, speed: 320, life: 0.4, r: 1.6, bar: "crew" },
 };
 
+// ---- the player's view ----
+//
+// What a captain sees is a square laid on the middle of the screen: its side is the shorter side of
+// the phone — the width held upright, the height held sideways — and whatever screen is left over
+// beyond it simply shows more sea, behind the buttons. Sizing the water to the screen instead left
+// her sight of it lopsided and different in each orientation: an upright phone gave barely a
+// broadside's width across and three times that up and down, so a ship a little abeam was off the
+// side of the screen while empty water ran away above and below her.
+//
+// The square holds a full broadside either side of her, because that is the range a fight is decided
+// at: whatever can reach her lies inside the square, whichever way it lies from her.
+const BROADSIDE_R = WP.broadside.speed * WP.broadside.life;
+const VIEW = BROADSIDE_R * 2; // world units across the square
+// A screen much bigger than a phone's would otherwise magnify everything to fill its shorter side.
+// Past this the square only ever shows more water than it promises, which costs the captain nothing.
+const MAX_ZOOM = 1.5;
+// How far the map's boundary is let inside the edge of the screen: enough to read the rope, its
+// buoys, and a strip of the water beyond, and no more. It is the whole of the camera's give on a
+// side, so it is also how far off centre a ship ends up when she runs right up on that boundary.
+const EDGE_PEEK = 40; // screen pixels
+
 const SHIP_R = 17;
 const HULL_L = 36;
 const HULL_W = 13;
@@ -802,12 +823,23 @@ export default function App() {
   useEffect(() => {
     const canvas = canvasRef.current;
     const ctx = canvas.getContext("2d");
-    let Wd = 0,
+    let Wd = 0, // the canvas, in screen pixels: what the buttons and the radar are placed against
       Hd = 0,
       dpr = 1,
+      zoom = 1, // screen pixels per unit of view space
+      Vw = 0, // and the same canvas in view space, which is where the sea is drawn
+      Vh = 0,
+      Vsq = 0, // the side of the square, in view space
       raf = 0,
       last = 0,
       clock = 0;
+
+    // View space is world space seen from the camera: across is one to one, and down is squashed by
+    // TILT. `zoom` is the only thing between it and the screen, so every distance the sea is drawn
+    // with — a hull, a range, a whitecap — stays in world units and the square decides how big they
+    // come out. Screen pixels are wanted for two things only, the radar and the vignette.
+    const worldSpace = () => ctx.setTransform(dpr * zoom, 0, 0, dpr * zoom, 0, 0);
+    const screenSpace = () => ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     function resize() {
       dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -816,7 +848,12 @@ export default function App() {
       Hd = rect.height;
       canvas.width = Math.round(Wd * dpr);
       canvas.height = Math.round(Hd * dpr);
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      zoom = Math.min(Math.min(Wd, Hd) / VIEW, MAX_ZOOM);
+      Vw = Wd / zoom;
+      Vh = Hd / zoom;
+      Vsq = Math.min(Vw, Vh);
+      screenSpace();
+      camUpdate();
     }
 
     const SX = (x, cam) => x - cam.x;
@@ -1697,11 +1734,33 @@ export default function App() {
       if (g.player.alive && g.player.rank !== g._lastRank) { g._lastRank = g.player.rank; g.hudDirty = true; }
     }
 
+    // The camera holds her in the middle and fills the rest of the view with sea, which puts the
+    // boundary off the edge of the screen until she is close to it. Coming in on a side, it is let
+    // `peek` inside the screen — a strip of open water, the rope, and its buoys, no more — and she
+    // comes off centre by exactly as much: the edge slides into view and she slides toward it, which
+    // is what tells a captain how much sea she has left on that hand.
+    //
+    // The peek is a strip of screen, so it comes to the same band whichever way the map is squashed:
+    // across it is that many pixels of world, and up and down it is that many pixels of a world
+    // foreshortened by TILT, which takes more world to cover.
+    //
+    // Where the screen runs longer than the square — up and down, held upright — the boundary is let
+    // in as far as the edge of the square instead, since that strip of screen is the one the buttons
+    // and the panels sit on and it is hers to spend. That is what keeps her out from under them at
+    // the top and bottom of the map, where she used to end up pinned against the glass.
+    function camHold(centred, span, peek) {
+      const lo = -peek; // the far side of the map, let this far into the view
+      return clamp(centred, lo, Math.max(lo, WORLD - span + peek));
+    }
+
     function camUpdate() {
       const g = gameRef.current;
-      const viewH = Hd / TILT;
-      g.cam.x = clamp(g.player.x - Wd / 2, 0, Math.max(0, WORLD - Wd));
-      g.cam.y = clamp(g.player.y - viewH / 2, 0, Math.max(0, WORLD - viewH));
+      if (!g || !g.player) return;
+      const spanX = Vw, spanY = Vh / TILT; // sea on the screen, in world units
+      const peekX = Math.max((spanX - Vsq) / 2, EDGE_PEEK / zoom);
+      const peekY = Math.max((spanY - Vsq / TILT) / 2, EDGE_PEEK / (zoom * TILT));
+      g.cam.x = camHold(g.player.x - spanX / 2, spanX, peekX);
+      g.cam.y = camHold(g.player.y - spanY / 2, spanY, peekY);
     }
 
     function update(dt) {
@@ -1824,24 +1883,24 @@ export default function App() {
 
     function drawWater(cam) {
       ctx.fillStyle = C.water;
-      ctx.fillRect(0, 0, Wd, Hd);
+      ctx.fillRect(0, 0, Vw, Vh);
       const x0 = SX(0, cam), x1 = SX(WORLD, cam), y0 = SY(0, cam), y1 = SY(WORLD, cam);
       ctx.fillStyle = C.waterEdge;
-      if (y0 > 0) ctx.fillRect(0, 0, Wd, y0);
-      if (y1 < Hd) ctx.fillRect(0, y1, Wd, Hd - y1);
-      if (x0 > 0) ctx.fillRect(0, 0, x0, Hd);
-      if (x1 < Wd) ctx.fillRect(x1, 0, Wd - x1, Hd);
+      if (y0 > 0) ctx.fillRect(0, 0, Vw, y0);
+      if (y1 < Vh) ctx.fillRect(0, y1, Vw, Vh - y1);
+      if (x0 > 0) ctx.fillRect(0, 0, x0, Vh);
+      if (x1 < Vw) ctx.fillRect(x1, 0, Vw - x1, Vh);
       ctx.strokeStyle = C.grid;
       ctx.lineWidth = 1;
       ctx.beginPath();
       const step = 80;
-      const gy0 = Math.max(0, y0), gy1 = Math.min(Hd, y1), gx0 = Math.max(0, x0), gx1 = Math.min(Wd, x1);
-      for (let X = Math.ceil(cam.x / step) * step; X <= WORLD; X += step) { const sx = SX(X, cam); if (sx > Wd) break; if (sx < 0) continue; ctx.moveTo(sx, gy0); ctx.lineTo(sx, gy1); }
-      for (let Y = Math.ceil(cam.y / step) * step; Y <= WORLD; Y += step) { const sy = SY(Y, cam); if (sy > Hd) break; if (sy < 0) continue; ctx.moveTo(gx0, sy); ctx.lineTo(gx1, sy); }
+      const gy0 = Math.max(0, y0), gy1 = Math.min(Vh, y1), gx0 = Math.max(0, x0), gx1 = Math.min(Vw, x1);
+      for (let X = Math.ceil(cam.x / step) * step; X <= WORLD; X += step) { const sx = SX(X, cam); if (sx > Vw) break; if (sx < 0) continue; ctx.moveTo(sx, gy0); ctx.lineTo(sx, gy1); }
+      for (let Y = Math.ceil(cam.y / step) * step; Y <= WORLD; Y += step) { const sy = SY(Y, cam); if (sy > Vh) break; if (sy < 0) continue; ctx.moveTo(gx0, sy); ctx.lineTo(gx1, sy); }
       ctx.stroke();
       const cs = 130;
-      const ci0 = Math.floor(cam.x / cs) - 1, ci1 = Math.floor((cam.x + Wd) / cs) + 1;
-      const cj0 = Math.floor(cam.y / cs) - 1, cj1 = Math.floor((cam.y + Hd / TILT) / cs) + 1;
+      const ci0 = Math.floor(cam.x / cs) - 1, ci1 = Math.floor((cam.x + Vw) / cs) + 1;
+      const cj0 = Math.floor(cam.y / cs) - 1, cj1 = Math.floor((cam.y + Vh / TILT) / cs) + 1;
       ctx.strokeStyle = C.beachRim;
       ctx.lineWidth = CAP_LW;
       ctx.lineCap = "round";
@@ -1892,7 +1951,7 @@ export default function App() {
       const buoy = (wx, wy) => {
         const sx = SX(wx, cam), sy = SY(wy, cam) + Math.sin(clock * 2 + wx * 0.01 + wy * 0.01) * 1.5;
         n++;
-        if (sx < -10 || sx > Wd + 10 || sy < -10 || sy > Hd + 10) return;
+        if (sx < -10 || sx > Vw + 10 || sy < -10 || sy > Vh + 10) return;
         ctx.beginPath();
         ctx.arc(sx, sy, 4, 0, Math.PI * 2);
         ctx.fillStyle = n % 2 ? C.buoyB : C.buoyA;
@@ -1919,7 +1978,7 @@ export default function App() {
       const { cx, cy, r } = stormEllipse(cam);
       const outside = () => {
         ctx.beginPath();
-        ctx.rect(0, 0, Wd, Hd);
+        ctx.rect(0, 0, Vw, Vh);
         ctx.ellipse(cx, cy, r, r * TILT, 0, 0, Math.PI * 2);
       };
       outside();
@@ -1934,11 +1993,11 @@ export default function App() {
       ctx.globalAlpha = 0.35;
       ctx.beginPath();
       const cell = 46;
-      for (let i = 0; i < Math.ceil(Wd / cell) + 1; i++) {
-        for (let j = 0; j < Math.ceil(Hd / cell) + 1; j++) {
+      for (let i = 0; i < Math.ceil(Vw / cell) + 1; i++) {
+        for (let j = 0; j < Math.ceil(Vh / cell) + 1; j++) {
           const h1 = hash(i + Math.floor(cam.x / cell), j + Math.floor(cam.y / cell));
           const px = i * cell + h1 * cell;
-          const py = ((j * cell + h1 * 900 + clock * 340) % (Hd + cell)) - cell / 2;
+          const py = ((j * cell + h1 * 900 + clock * 340) % (Vh + cell)) - cell / 2;
           ctx.moveTo(px, py);
           ctx.lineTo(px - 3, py + 11);
         }
@@ -1989,7 +2048,7 @@ export default function App() {
         // cull on the shallows, not the sand: the bank reaches well outside isl.r, and culling on the
         // land radius would pop a whole ring of shallow water in and out at the edge of the screen
         const vr = isl.r * 1.45 + 8;
-        if (cx < -vr || cx > Wd + vr || cy < -vr * TILT - 60 || cy > Hd + vr * TILT + 60) continue;
+        if (cx < -vr || cx > Vw + vr || cy < -vr * TILT - 60 || cy > Vh + vr * TILT + 60) continue;
         const n = isl.verts.length;
         ctx.save();
         ctx.translate(cx, cy);
@@ -2382,7 +2441,7 @@ export default function App() {
       ctx.lineTo(rx + size / 2 + Math.cos(ang) * size, ry + size / 2 + Math.sin(ang) * size);
       ctx.stroke();
       ctx.strokeStyle = "rgba(236,226,204,0.3)";
-      ctx.strokeRect(rx + g.cam.x * sc, ry + g.cam.y * sc, Wd * sc, (Hd / TILT) * sc);
+      ctx.strokeRect(rx + g.cam.x * sc, ry + g.cam.y * sc, Vw * sc, (Vh / TILT) * sc);
       if (g.rules.storm) {
         ctx.strokeStyle = "rgba(209,91,91,0.85)";
         ctx.lineWidth = 1.2;
@@ -2420,6 +2479,7 @@ export default function App() {
       const g = gameRef.current;
       if (!g) return;
       const cam = g.cam;
+      worldSpace();
       drawWater(cam);
       drawStormWater(cam);
       drawWakes(cam);
@@ -2430,6 +2490,7 @@ export default function App() {
       for (const s of order) drawShip(s, cam);
       drawParts(cam);
       drawStormEdge(cam);
+      screenSpace(); // the two that belong to the screen rather than to the sea
       drawVignette();
       drawRadar();
     }

@@ -227,6 +227,32 @@ ball's own radius, and along the whole path it flew that frame rather than at it
 more than the width of a hull in a slow frame, so a point test would let it pass clean through.
 Presenting your bow or stern to a gun is therefore a genuinely smaller target than showing your side.
 
+## The player's view
+
+What a captain can see is a **square** laid on the middle of the screen. Its side is the shorter side
+of the device — the width of a phone held upright, the height of one held sideways — and whatever
+screen is left over beyond it simply shows more sea, behind the buttons. `VIEW` sets how much water
+the square holds across, in world units; it is twice a broadside's reach, so anything that can shoot
+at her is inside the square whichever way it lies from her. `MAX_ZOOM` caps the magnification, so a
+screen much larger than a phone's shows more water rather than bigger ships.
+
+Sizing the water to the screen instead left her sight of it lopsided, and different in each
+orientation: an upright phone gave barely a broadside's width across and three times that up and
+down, so a ship a little abeam was off the side of the screen while empty water ran away above and
+below her.
+
+The camera holds her in the middle and fills the rest of the view with sea, so the boundary is off
+the edge of the screen until she is close to it. Coming in on a side, it is let `EDGE_PEEK` inside
+the screen — a strip of open water, the rope, and its buoys, no more — and she comes off centre by
+exactly as much. The edge slides into view and she slides toward it, which is what tells a captain
+how much sea she has left on that hand. On an upright phone that puts her about 65px off the side of
+the screen when she is hard against the wall, with the whole map in front of her.
+
+Up and down, where the screen runs longer than the square, the boundary is let in as far as the edge
+of the square instead — that strip of screen is the one the pills, the upgrade rail, the stick and
+the gun buttons sit on, and it is hers to spend. It is what keeps her out from under them at the top
+and bottom of the map, where she used to end up pinned against the glass.
+
 ## Damage model
 
 Ships track three separate pools instead of one health bar:
@@ -262,8 +288,9 @@ inline-styled, so `BroadsideIso.jsx` can be dropped into any React app as-is.
 ### Tuning constants
 
 The balance knobs sit at the top of `src/BroadsideIso.jsx`: `WORLD` and `TILT` for the arena and
-camera, `BASE`/`HP_GAIN` for the health pools, `WP` for per-weapon cooldown, projectile speed, and
-lifetime, `RAM_*` for ramming, and `TRACKS`/`COST` for the upgrade economy. `BASE_SPEED` is a fresh
+camera, `VIEW`/`MAX_ZOOM` for how much sea the square view holds and `EDGE_PEEK` for how far the
+boundary is let inside it, `BASE`/`HP_GAIN` for the health
+pools, `WP` for per-weapon cooldown, projectile speed, and lifetime, `RAM_*` for ramming, and `TRACKS`/`COST` for the upgrade economy. `BASE_SPEED` is a fresh
 ship's top speed and the yardstick the heavy rudder measures against; `RUDDER_HEAVY` is how much
 rudder she loses at it and `RUDDER_CURVE` how late in the range the loss starts to bite — raising the
 curve keeps more of her handling until she is truly running.
