@@ -93,10 +93,17 @@ const stormRadius = (t) => {
   return STORM_R1 + (STORM_R2 - STORM_R1) * clamp((t - closed - STORM_HOLD) / STORM_SQUEEZE, 0, 1);
 };
 
+// The sea is three tones of one hue, laid down by depth: open water everywhere, the shallows banked
+// around each island, and a thin beach rim where the bottom comes up to meet the sand. Everything the
+// UI paints on top of the water — panels, scrims, the grid — is the same hue run down to near black,
+// so the chrome reads as the sea in shadow rather than as a second, unrelated colour scheme.
 const C = {
-  water: "#0a2830",
-  waterEdge: "#04141a",
-  grid: "rgba(126,196,190,0.06)",
+  water: "#2a8f8b",      // open water — the main sea, and the page background behind it
+  shallows: "#45b39d",   // the bank of shallow water an island sits in
+  beachRim: "#7fd0bd",   // the thin band right where the water meets the sand
+  waterEdge: "#1c6663",  // outside the buoys: open water run deep, so the arena reads as the bright part
+  deep: "#0b3331",       // the sea at its darkest — panel grounds, and ink on a gold field
+  grid: "rgba(9,52,50,0.10)",
   player: "#ece2cc",
   playerStroke: "#b3a684",
   ball: "#f2c14e",
@@ -109,8 +116,8 @@ const C = {
   front: "#7a9cc6",
   splinter: "#b98a4a",
   gold: "#e8c877",
-  panel: "rgba(10,40,48,0.78)",
-  hair: "rgba(150,210,205,0.16)",
+  panel: "rgba(11,51,49,0.80)",
+  hair: "rgba(160,224,210,0.20)",
   ink: "#eef4f2",
   sand: "#cbb98a",
   sandDark: "#a8935f",
@@ -550,7 +557,7 @@ export default function App() {
       const parts = gameRef.current.parts;
       for (let i = 0; i < 5; i++) {
         const a = Math.random() * Math.PI * 2, sp = 30 + Math.random() * 60;
-        parts.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 0.3, max: 0.4, col: "rgba(150,210,205,0.85)", kind: "spark" });
+        parts.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 0.3, max: 0.4, col: "rgba(240,252,249,0.9)", kind: "spark" });
       }
     }
 
@@ -1425,7 +1432,7 @@ export default function App() {
       const cs = 130;
       const ci0 = Math.floor(cam.x / cs) - 1, ci1 = Math.floor((cam.x + Wd) / cs) + 1;
       const cj0 = Math.floor(cam.y / cs) - 1, cj1 = Math.floor((cam.y + Hd / TILT) / cs) + 1;
-      ctx.strokeStyle = "#bfe4de";
+      ctx.strokeStyle = C.beachRim;
       ctx.lineWidth = 1.4;
       for (let ci = ci0; ci <= ci1; ci++) {
         for (let cj = cj0; cj <= cj1; cj++) {
@@ -1433,7 +1440,9 @@ export default function App() {
           const wx = (ci + h1) * cs, wy = (cj + h2) * cs;
           if (wx < 6 || wx > WORLD - 6 || wy < 6 || wy > WORLD - 6) continue;
           const sx = SX(wx, cam), sy = SY(wy, cam) + Math.sin(clock * 1.3 + h1 * 6.283) * 1.4;
-          ctx.globalAlpha = 0.05 + 0.03 * (0.5 + 0.5 * Math.sin(clock + h2 * 6.283));
+          // beach-rim tone on open water: a lighter hue than the old caps, so it needs more of itself
+          // showing through to register as a cap rather than as dirt on the screen
+          ctx.globalAlpha = 0.16 + 0.10 * (0.5 + 0.5 * Math.sin(clock + h2 * 6.283));
           ctx.beginPath();
           ctx.moveTo(sx - 3, sy);
           ctx.lineTo(sx + 3, sy);
@@ -1492,7 +1501,7 @@ export default function App() {
         ctx.ellipse(cx, cy, r, r * TILT, 0, 0, Math.PI * 2);
       };
       outside();
-      ctx.fillStyle = "rgba(6,14,20,0.5)";
+      ctx.fillStyle = "rgba(7,34,33,0.5)";
       ctx.fill("evenodd");
       // rain, drawn only where the weather is
       ctx.save();
@@ -1541,8 +1550,8 @@ export default function App() {
       const g = gameRef.current;
       for (const w of g.wakes) {
         const k = w.life / w.max;
-        ctx.globalAlpha = k * 0.5;
-        ctx.fillStyle = "#dcf0ee";
+        ctx.globalAlpha = k * 0.55;
+        ctx.fillStyle = "#eefaf6";
         const rr = 1.6 + (1 - k) * 4.5;
         ctx.beginPath();
         ctx.ellipse(SX(w.x, cam), SY(w.y, cam), rr, rr * TILT, 0, 0, Math.PI * 2);
@@ -1555,7 +1564,10 @@ export default function App() {
       const g = gameRef.current;
       for (const isl of g.islands) {
         const cx = SX(isl.x, cam), cy = SY(isl.y, cam);
-        if (cx < -isl.r - 40 || cx > Wd + isl.r + 40 || cy < -isl.r * TILT - 60 || cy > Hd + isl.r * TILT + 60) continue;
+        // cull on the shallows, not the sand: the bank reaches well outside isl.r, and culling on the
+        // land radius would pop a whole ring of shallow water in and out at the edge of the screen
+        const vr = isl.r * 1.45 + 8;
+        if (cx < -vr || cx > Wd + vr || cy < -vr * TILT - 60 || cy > Hd + vr * TILT + 60) continue;
         const n = isl.verts.length;
         ctx.save();
         ctx.translate(cx, cy);
@@ -1570,14 +1582,21 @@ export default function App() {
           }
           ctx.closePath();
         };
-        ctx.globalAlpha = 0.25;
+        // The bottom comes up in two steps before it breaks the surface: a broad bank of shallows, then
+        // a thin beach rim right at the sand. Both wobble on the swell, and the outer one wobbles wider,
+        // so the two edges never march in step and the island keeps a moving waterline.
+        ring(1.30, (k) => Math.sin(clock * 1.6 + k * 0.8) * 3);
+        ctx.fillStyle = C.shallows;
+        ctx.fill();
+        ring(1.08, (k) => Math.sin(clock * 2 + k) * 2);
+        ctx.fillStyle = C.beachRim;
+        ctx.fill();
+        // just a hairline of shade under the sand edge — any wider and it eats the beach rim
+        ctx.globalAlpha = 0.14;
         ctx.fillStyle = "#000";
-        ring(1.02, () => 0);
+        ring(1.015, () => 0);
         ctx.fill();
         ctx.globalAlpha = 1;
-        ring(1.14, (k) => Math.sin(clock * 2 + k) * 2);
-        ctx.fillStyle = "rgba(255,255,255,0.14)";
-        ctx.fill();
         ring(1, () => 0);
         ctx.fillStyle = C.sand;
         ctx.fill();
@@ -1885,11 +1904,18 @@ export default function App() {
         }
       }
       ctx.textAlign = "center";
+      // Floating damage sat on near-black water before and needed nothing behind it. Open water is a
+      // mid tone, so gold and ink both sit close to it — the numbers get a dark halo to lift them off.
+      ctx.lineJoin = "round";
       for (const t of g.texts) {
         ctx.globalAlpha = Math.min(1, t.life);
-        ctx.fillStyle = t.col;
         ctx.font = `600 12px ${UI}`;
-        ctx.fillText(t.t, SX(t.x, cam), SY(t.y, cam));
+        const tx = SX(t.x, cam), ty = SY(t.y, cam);
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = "rgba(6,32,31,0.7)";
+        ctx.strokeText(t.t, tx, ty);
+        ctx.fillStyle = t.col;
+        ctx.fillText(t.t, tx, ty);
         ctx.globalAlpha = 1;
       }
       ctx.textAlign = "left";
@@ -1909,7 +1935,7 @@ export default function App() {
       const g = gameRef.current;
       const size = 96, rx = Wd - size - 10, ry = 10;
       ctx.save();
-      ctx.fillStyle = "rgba(6,26,32,0.9)";
+      ctx.fillStyle = "rgba(11,51,49,0.92)";
       ctx.strokeStyle = C.hair;
       ctx.lineWidth = 1;
       roundRect(rx, ry, size, size, 8);
@@ -2083,7 +2109,7 @@ export default function App() {
                 <button
                   key={t.key}
                   onPointerDown={(e) => { e.preventDefault(); buy(t.key); }}
-                  style={{ flex: "1 0 62px", minWidth: 62, borderRadius: 9, border: `1px solid ${t.color}`, background: can ? "rgba(14,45,54,0.9)" : "rgba(14,45,54,0.5)", opacity: can ? 1 : 0.55, color: C.ink, padding: "5px 4px", display: "flex", flexDirection: "column", alignItems: "center", gap: 1, cursor: "pointer", WebkitTapHighlightColor: "transparent" }}
+                  style={{ flex: "1 0 62px", minWidth: 62, borderRadius: 9, border: `1px solid ${t.color}`, background: can ? "rgba(13,58,56,0.9)" : "rgba(13,58,56,0.5)", opacity: can ? 1 : 0.55, color: C.ink, padding: "5px 4px", display: "flex", flexDirection: "column", alignItems: "center", gap: 1, cursor: "pointer", WebkitTapHighlightColor: "transparent" }}
                 >
                   <span style={{ fontSize: 11, fontWeight: 700, color: t.color }}>{t.label}</span>
                   <span style={{ fontSize: 8, color: "rgba(238,244,242,0.55)" }}>{t.sub}</span>
@@ -2099,7 +2125,7 @@ export default function App() {
             onPointerMove={joyMove}
             onPointerUp={joyUp}
             onPointerCancel={joyUp}
-            style={{ position: "absolute", left: 24, bottom: 28, width: 120, height: 120, borderRadius: "50%", border: `1px solid ${C.hair}`, background: "rgba(14,45,54,0.55)", touchAction: "none" }}
+            style={{ position: "absolute", left: 24, bottom: 28, width: 120, height: 120, borderRadius: "50%", border: `1px solid ${C.hair}`, background: "rgba(13,58,56,0.55)", touchAction: "none" }}
           >
             <div ref={knobRef} style={{ position: "absolute", left: "50%", top: "50%", width: 52, height: 52, marginLeft: -26, marginTop: -26, borderRadius: "50%", background: "rgba(236,226,204,0.9)", boxShadow: "0 2px 6px rgba(0,0,0,0.4)", pointerEvents: "none" }} />
           </div>
@@ -2168,7 +2194,7 @@ function FireButton({ refEl, name, sub, color, onDown, onUp }) {
       onPointerUp={onUp}
       onPointerLeave={onUp}
       onPointerCancel={onUp}
-      style={{ position: "relative", width: 66, height: 56, borderRadius: 12, border: `1px solid ${color}`, background: "rgba(14,45,54,0.88)", color: C.ink, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 1, overflow: "hidden", touchAction: "none", WebkitTapHighlightColor: "transparent", cursor: "pointer" }}
+      style={{ position: "relative", width: 66, height: 56, borderRadius: 12, border: `1px solid ${color}`, background: "rgba(13,58,56,0.88)", color: C.ink, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 1, overflow: "hidden", touchAction: "none", WebkitTapHighlightColor: "transparent", cursor: "pointer" }}
     >
       <span style={{ fontSize: 12, fontWeight: 700 }}>{name}</span>
       <span style={{ fontSize: 8, color, letterSpacing: 1 }}>{sub}</span>
@@ -2183,7 +2209,7 @@ function Shell({ children }) {
   return (
     // `margin:auto` rather than `align-items:center` so a tall menu on a short
     // screen scrolls from the top instead of having its head clipped off.
-    <div style={{ position: "absolute", inset: 0, display: "flex", overflowY: "auto", padding: 24, background: "rgba(7,20,24,0.74)", backdropFilter: "blur(4px)" }}>
+    <div style={{ position: "absolute", inset: 0, display: "flex", overflowY: "auto", padding: 24, background: "rgba(8,38,37,0.80)", backdropFilter: "blur(4px)" }}>
       <div style={{ margin: "auto", maxWidth: 360, textAlign: "center" }}>{children}</div>
     </div>
   );
@@ -2254,7 +2280,7 @@ function HoldPanel({ hold }) {
     else if (!m.ranked && r.bestSunk > 0) bests.push(`${m.short} best ${r.bestSunk} sunk`);
   }
   return (
-    <div style={{ background: "rgba(10,40,48,0.6)", border: `1px solid ${C.hair}`, borderRadius: 10, padding: "9px 12px", margin: "14px 0 18px", textAlign: "left" }}>
+    <div style={{ background: "rgba(11,51,49,0.6)", border: `1px solid ${C.hair}`, borderRadius: 10, padding: "9px 12px", margin: "14px 0 18px", textAlign: "left" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10 }}>
         <span style={{ fontSize: 10, letterSpacing: 2, color: "rgba(238,244,242,0.55)" }}>THE HOLD</span>
         <span style={{ fontSize: 17, fontWeight: 800, color: C.gold }}>🪙 {fmtCoins(hold.coins)}</span>
@@ -2300,7 +2326,7 @@ function StartOverlay({ onStart, hold, onScuttle }) {
 
 function ModeCard({ color, title, desc, onClick }) {
   return (
-    <button onClick={onClick} style={{ display: "block", width: "100%", textAlign: "left", borderRadius: 12, border: `1px solid ${color}`, background: "rgba(14,45,54,0.85)", color: C.ink, padding: "14px 16px", marginBottom: 12, cursor: "pointer", WebkitTapHighlightColor: "transparent" }}>
+    <button onClick={onClick} style={{ display: "block", width: "100%", textAlign: "left", borderRadius: 12, border: `1px solid ${color}`, background: "rgba(13,58,56,0.85)", color: C.ink, padding: "14px 16px", marginBottom: 12, cursor: "pointer", WebkitTapHighlightColor: "transparent" }}>
       <div style={{ fontFamily: DISPLAY, fontSize: 20, color, marginBottom: 4 }}>{title}</div>
       <div style={{ fontSize: 12, color: "rgba(238,244,242,0.78)", lineHeight: 1.5 }}>{desc}</div>
     </button>
@@ -2325,9 +2351,9 @@ function EndOverlay({ title, titleColor, result, stats, mode, place, hold, banke
     <Shell>
       <div style={{ fontFamily: DISPLAY, fontSize: 40, color: titleColor, letterSpacing: 1 }}>{title}</div>
       <div style={{ fontSize: 13, color: "rgba(238,244,242,0.85)", margin: "10px 0 14px", lineHeight: 1.6 }}>{result}</div>
-      <div style={{ background: "rgba(10,40,48,0.6)", border: `1px solid ${C.hair}`, borderRadius: 10, padding: "6px 12px", marginBottom: 18, textAlign: "left" }}>
+      <div style={{ background: "rgba(11,51,49,0.6)", border: `1px solid ${C.hair}`, borderRadius: 10, padding: "6px 12px", marginBottom: 18, textAlign: "left" }}>
         {rows.map(([l, v], i) => (
-          <div key={l} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderTop: i === 0 ? "none" : "1px solid rgba(150,210,205,0.1)" }}>
+          <div key={l} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderTop: i === 0 ? "none" : "1px solid rgba(160,224,210,0.14)" }}>
             <span style={{ fontSize: 11, color: "rgba(238,244,242,0.6)", letterSpacing: 0.5 }}>{l}</span>
             <span style={{ fontSize: 13, color: C.gold, fontWeight: 700 }}>{v}</span>
           </div>
@@ -2352,7 +2378,7 @@ function EndOverlay({ title, titleColor, result, stats, mode, place, hold, banke
 
 function StartButton({ onClick, label, ghost }) {
   return (
-    <button onClick={onClick} style={{ fontFamily: UI, fontSize: 13, letterSpacing: 2, fontWeight: 700, color: ghost ? C.gold : C.water, background: ghost ? "transparent" : C.gold, border: ghost ? `1px solid ${C.gold}` : "none", borderRadius: 10, padding: "12px 22px", cursor: "pointer", WebkitTapHighlightColor: "transparent" }}>
+    <button onClick={onClick} style={{ fontFamily: UI, fontSize: 13, letterSpacing: 2, fontWeight: 700, color: ghost ? C.gold : C.deep, background: ghost ? "transparent" : C.gold, border: ghost ? `1px solid ${C.gold}` : "none", borderRadius: 10, padding: "12px 22px", cursor: "pointer", WebkitTapHighlightColor: "transparent" }}>
       {label}
     </button>
   );
