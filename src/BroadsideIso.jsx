@@ -2659,23 +2659,26 @@ export default function App() {
 // a thin stroke just fades.
 const iconStyle = { verticalAlign: "-0.12em", flex: "0 0 auto" };
 
-// Currency, both the run purse and the hold that outlives it. A solid disc with the stamp cut out of
-// it, which is the whole reason it works: at 17px on the menu the stamp resolves and the icon is a
-// struck coin, and at 12px in the HUD it falls back to a round gold mass, which is still a coin. The
-// version before this one was a ring with a thin glyph hung inside it, and at 12px a ring with a
-// stub in the middle is a wall clock.
+// Currency, both the run purse and the hold that outlives it. A solid disc with a skull struck into
+// it, so the coin carries the same mark as the sunk counter and the money in this game is plainly
+// pirate money. The disc doing the work is the whole reason it survives: at 17px on the menu the
+// stamp resolves into a skull, and at 12px in the HUD it falls back to a round gold mass with a dark
+// mark on it, which is still a coin. The version before this one was a ring with a thin glyph hung
+// inside it, and at 12px a ring with a stub in the middle is a wall clock.
 //
-// The stamp is three fat bars, not a drawn $. A $ needs a stem crossing its bowls, and the bowls
-// then have to be thin enough to leave room, so at 12px the whole mark silts up into one dark blob.
-// Bars this wide keep their two gaps open, and a character struck on a coin reads as a denomination
-// anyway.
+// Three levels of fill, and the order matters: gold disc, skull cut out of it, eye sockets filled
+// back in. Cutting the skull out rather than drawing it in line is what keeps it black at 12px; the
+// nose and teeth that SunkIcon can afford are left off here, because inside a 14-unit disc they are
+// half-pixel marks that only silt up the sockets.
 function CoinIcon({ size = 12 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" style={iconStyle}>
       <path
         fillRule="evenodd"
         d="M8 .8a7.2 7.2 0 1 1 0 14.4A7.2 7.2 0 0 1 8 .8Z
-           M11.1 3.7H4.9v5.2h3.8v1.2H4.9v2.2h6.2V7.1H7.3V5.9h3.8Z"
+           M4.1 6.6a3.9 3.5 0 1 1 7.8 0v1.93H9.95v2.3h-3.9v-2.3H4.1Z
+           M4.9 6.7a1.35 1.35 0 1 0 2.7 0 1.35 1.35 0 1 0-2.7 0Z
+           M8.4 6.7a1.35 1.35 0 1 0 2.7 0 1.35 1.35 0 1 0-2.7 0Z"
       />
     </svg>
   );
@@ -2695,32 +2698,51 @@ function ShipIcon({ size = 12 }) {
   );
 }
 
-// Ships sunk. Not an anchor, which is gear a healthy ship carries. The hull is gone under and what
-// is left above the water is the mast heeled over, cut off by a waterline heavy enough to read as
-// the sea rather than as an underline. It shares its mast and sail with ShipIcon on purpose, so the
-// two counters in the arena HUD are the same ship upright and going down. An earlier pass kept the
-// whole hull and tipped it, which at 12px was one diagonal lump with a line beneath it.
+// Ships sunk. A skull over crossed bones: the count is kills, and the flag a captain runs up over
+// them is the thing every player already reads as kills. It beats the sinking hull that stood here
+// before, which needed a waterline to explain it and still arrived as a diagonal lump.
+//
+// The bones go down first and the skull over them, so the two shapes stay separate at size instead
+// of fusing into one mass. Everything inside the skull is cut out, not drawn: sockets big enough to
+// hold two dark pixels at 12px, and a nose that is the one detail here allowed to disappear, since
+// a domed head with two sockets over a jaw is already a skull without it.
 function SunkIcon({ size = 12 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" style={iconStyle}>
-      <g transform="rotate(-22 8 9)">
-        <path d="M5.4 .6h2.1v11H5.4z" />
-        <path d="M8.2 1.6 13.6 11.2H8.2z" />
-      </g>
-      <path d="M0 10.8h16v2.2H0z" />
+      <path d="M1.27 11.7 14.07 15.5l.66-2.2L1.93 9.5ZM14.07 9.5 1.27 13.3l.66 2.2 12.8-3.8Z" />
+      <path
+        fillRule="evenodd"
+        d="M3.5 5.6a4.5 4 0 1 1 9 0v2.2h-2.2v2.6H5.7V7.8H3.5Z
+           M4.5 5.8a1.5 1.5 0 1 0 3 0 1.5 1.5 0 1 0-3 0Z
+           M8.5 5.8a1.5 1.5 0 1 0 3 0 1.5 1.5 0 1 0-3 0Z
+           M8 7.2l.6 1.2H7.4Z"
+      />
     </svg>
   );
 }
 
-// The closing squall. One shape, because every site this icon appears in renders at 12px, where a
-// 16-unit grid is about nine device pixels across. It was a cloud with rain under it for a while,
-// and at 1x that is a lump with a fringe: the cloud has no silhouette left to recognise and the rain
-// merges into it. A bolt is the one weather mark that is all mass and holds its outline down to 9px,
-// and the pill it sits in always says the rest ("closing", "0:16", "In the storm").
+// The closing squall: the weather up top, the ring it is closing on underneath. The ring is the one
+// thing the mode actually does to you, so it is worth the half of the box it takes.
+//
+// Both shapes run the full width. Two rules fought here and width settled both. A small cloud on a
+// wide ring is a chess pawn, since the eye takes the narrow thing on top as a knob and the wide
+// thing under it as a base; and a cloud tucked inside the ring, which is nearer to what the game
+// draws, is worse still, because the overlap fuses them into one mass. Full-width and clear of each
+// other, they stay two things: weather, and a perimeter drawing in under it.
+//
+// The ring is a shape with a hole rather than a stroked ellipse, so it keeps full contrast at 12px,
+// and it can only be flattened so far: at this height the hole is about two device pixels, and
+// squashing it further closes the hole and leaves a solid lozenge. The cloud is a bumpy top edge
+// over a flat base, which is all a cloud is at 12px anyway.
 function SquallIcon({ size = 12 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" style={iconStyle}>
-      <path d="M10.2.6 2.8 9.4H7L6 15.4l7.2-8.8H9z" />
+      <path d="M3.26 6.1Q1.6 6.1 1.6 3.87Q1.6 2.28 3.39 1.97Q3.9.8 6.98.8Q9.66.8 10.56 2.81Q12.61 2.5 14.4 3.87Q14.91 6.1 12.74 6.1Z" />
+      <path
+        fillRule="evenodd"
+        d="M.4 12a7.6 3.8 0 1 0 15.2 0 7.6 3.8 0 1 0-15.2 0Z
+           M1.9 12a6.1 2.3 0 1 1 12.2 0 6.1 2.3 0 1 1-12.2 0Z"
+      />
     </svg>
   );
 }
