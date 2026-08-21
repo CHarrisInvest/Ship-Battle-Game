@@ -627,12 +627,15 @@ const shotHitsHull = (s, x0, y0, x1, y1, pad) => {
   return nx * nx + ny * ny < 1;
 };
 
+// Each track says what it actually buys, in words. SIDE and FRONT both read "cannon dmg" before,
+// which told a captain nothing about which one to spend on: the side guns hole a hull, the bow gun
+// brings a rig down. The dot-separated shorthand went with it.
 const TRACKS = [
-  { key: "mast", label: "MAST", sub: "spd·turn·hp", color: C.mast },
-  { key: "hull", label: "HULL", sub: "ram·hp", color: C.hull },
-  { key: "crew", label: "CREW", sub: "musket·hp", color: C.crew },
-  { key: "side", label: "SIDE", sub: "cannon dmg", color: C.side },
-  { key: "front", label: "FRONT", sub: "cannon dmg", color: C.front },
+  { key: "mast", label: "MAST", sub: "faster, turns harder", color: C.mast },
+  { key: "hull", label: "HULL", sub: "takes and gives a ram", color: C.hull },
+  { key: "crew", label: "CREW", sub: "musket fire, more hands", color: C.crew },
+  { key: "side", label: "SIDE", sub: "heavier broadside", color: C.side },
+  { key: "front", label: "FRONT", sub: "bow gun bites deeper", color: C.front },
 ];
 
 const COST = (lvl) => Math.round(45 * Math.pow(1.55, lvl));
@@ -690,7 +693,7 @@ const MODES = {
     title: "DEMOLITION DERBY",
     short: "derby",
     color: C.crew,
-    desc: "Only one hand needed. Last afloat wins. Ten captains, no guns, no upgrades. Sink rivals by ramming. Drive your bow into her beam, and turn to face anyone charging yours. A storm closes in and takes the crew of any ship caught.",
+    desc: "Only one hand needed. Last afloat wins. 10 captains, no guns, no upgrades. Sink rivals by ramming. Drive your bow into her beam, and turn to face anyone charging yours. A storm closes in and takes the crew of any ship caught.",
     rivals: DERBY_AI,
     startCoins: 0,
     guns: false,
@@ -1044,7 +1047,7 @@ export default function App() {
         coins: fought, // what her bow and her guns took
         upgrades: p.up.mast + p.up.hull + p.up.crew + p.up.side + p.up.front,
         rams: p.rams || 0,
-        timePay, winPay, paidInFull,
+        timePay, winPay,
         total: fought + timePay + winPay,
       };
     }
@@ -1081,9 +1084,11 @@ export default function App() {
       setStats(finalStats(false));
       bankRun(false, rank);
       setResult(
-        bar === "storm" ? "The squall has your crew — she founders in the weather."
-          : bar === "hull" ? "Your hull is breached — she goes under."
-          : "Your crew is routed — you strike your colors."
+        // Three different shapes on purpose. Written to one template they read as filled-in slots,
+        // however good the words are.
+        bar === "storm" ? "The squall has your crew, and she founders in the weather."
+          : bar === "hull" ? "Your hull is breached. She goes under."
+          : "Crew routed. You strike your colors."
       );
       setPhase("dead");
       syncRef.current();
@@ -2569,14 +2574,14 @@ export default function App() {
       {phase === "playing" && (
         <>
           <div style={{ position: "absolute", top: 8, left: 10, display: "flex", gap: 8 }}>
-            <Pill>🪙 {coins}</Pill>
+            <Pill label={`${coins} coins`}><CoinIcon /><span>{coins}</span></Pill>
             {rules.reinforcements ? (
               <>
-                <Pill>⚓ {sunk}</Pill>
-                <Pill>🚩 {Math.max(0, left - 1)} hunting</Pill>
+                <Pill label={`${sunk} sunk`}><SunkIcon /><span>{sunk}</span></Pill>
+                <Pill label={`${Math.max(0, left - 1)} hunting you`}><ShipIcon /><span>{Math.max(0, left - 1)} hunting</span></Pill>
               </>
             ) : (
-              <Pill>🚩 {left} left</Pill>
+              <Pill label={`${left} rivals left`}><ShipIcon /><span>{left} left</span></Pill>
             )}
             {rules.storm && <StormPill storm={storm} />}
           </div>
@@ -2598,11 +2603,12 @@ export default function App() {
                 <button
                   key={t.key}
                   onPointerDown={(e) => { e.preventDefault(); buy(t.key); }}
-                  style={{ flex: "1 0 62px", minWidth: 62, borderRadius: 9, border: `1px solid ${t.color}`, background: can ? "rgba(13,58,56,0.9)" : "rgba(13,58,56,0.5)", opacity: can ? 1 : 0.55, color: C.ink, padding: "5px 4px", display: "flex", flexDirection: "column", alignItems: "center", gap: 1, cursor: "pointer", WebkitTapHighlightColor: "transparent" }}
+                  style={{ flex: "1 0 62px", minWidth: 62, borderRadius: 10, border: `1px solid ${t.color}`, background: can ? "rgba(13,58,56,0.9)" : "rgba(13,58,56,0.5)", opacity: can ? 1 : 0.55, color: C.ink, padding: "5px 4px", display: "flex", flexDirection: "column", alignItems: "center", gap: 1, cursor: "pointer", WebkitTapHighlightColor: "transparent" }}
                 >
                   <span style={{ fontSize: 11, fontWeight: 700, color: t.color }}>{t.label}</span>
                   <span style={{ fontSize: 8, color: "rgba(238,244,242,0.55)" }}>{t.sub}</span>
-                  <span style={{ fontSize: 9 }}>Lv{lvl} · 🪙{cost}</span>
+                  <span style={{ fontSize: 9 }}>Level {lvl}</span>
+                  <span style={{ fontSize: 9, color: C.gold, display: "inline-flex", alignItems: "center", gap: 3 }}><CoinIcon size={9} />{cost}</span>
                 </button>
               );
             })}
@@ -2638,21 +2644,82 @@ export default function App() {
   );
 }
 
-function Pill({ children }) {
-  return <div style={{ background: C.panel, border: `1px solid ${C.hair}`, borderRadius: 20, padding: "5px 11px", fontSize: 12, color: C.gold, fontWeight: 700 }}>{children}</div>;
+// ---------------- HUD icons ----------------
+// Drawn rather than set in emoji, so the HUD keeps its shape across iOS, Android and Windows instead
+// of picking up whatever each OS ships in its emoji font. Every one is a 16-unit box filled with
+// currentColor, so the same component serves the gold pills and the pale red storm-danger pill
+// without a variant. aria-hidden throughout: the number beside the icon carries the meaning, and the
+// pill itself takes the label.
+const iconStyle = { verticalAlign: "-0.12em", flex: "0 0 auto" };
+
+// Currency, both the run purse and the hold that outlives it.
+function CoinIcon({ size = 12 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" style={iconStyle}>
+      <path d="M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13Zm0 1.5a5 5 0 1 1 0 10A5 5 0 0 1 8 3Z" />
+      <path d="M8.75 4.25H7.3v.9H6.65v1.2h1.7c.45 0 .7.15.7.45s-.25.45-.7.45h-1.7v1.2h.65v.9h1.45v-.9h.65v-1.2H7.7c-.45 0-.7-.15-.7-.45s.25-.45.7-.45h1.05v-1.2h-.65v-.9Z" />
+    </svg>
+  );
+}
+
+// Rivals still afloat. A ship, not a flag: the counter is ships remaining.
+function ShipIcon({ size = 12 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" style={iconStyle}>
+      <path d="M7.15 2h1.1v7.5h-1.1z" />
+      <path d="M8.05 2.25 12.6 6.9H8.05z" />
+      <path d="M2.75 9.35h10.5l-1.45 2.25H4.8L2.75 9.35Z" />
+      <path d="M2 12.15c.95-.55 1.8-.55 2.75 0 .95.55 1.8.55 2.75 0 .95-.55 1.8-.55 2.75 0 .95.55 1.8.55 2.75 0v1c-.95.55-1.8.55-2.75 0-.95-.55-1.8-.55-2.75 0-.95.55-1.8.55-2.75 0-.95-.55-1.8-.55-2.75 0v-1Z" />
+    </svg>
+  );
+}
+
+// Ships sunk. Deliberately not an anchor: an anchor is gear a healthy ship carries, and this counter
+// had been wearing one for no better reason than that it was the nearest emoji. A hull going down
+// past a waterline is what the number counts.
+function SunkIcon({ size = 12 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" style={iconStyle}>
+      <path d="M8.45 2.05h1.15v6.35H8.45z" transform="rotate(15 9.025 5.225)" />
+      <path d="m5.1 9.15 3.7 1.05 2.15-2.8 2.05 2.05-1.2 1.55H6.55l-1.8-.55z" />
+      <path d="M1.5 11.55c1-.6 1.9-.6 2.9 0s1.9.6 2.9 0 1.9-.6 2.9 0 1.9.6 2.9 0 1.9-.6 2.9 0v1.05c-1 .6-1.9.6-2.9 0s-1.9-.6-2.9 0-1.9.6-2.9 0-1.9-.6-2.9 0-1.9.6-2.9 0v-1.05Z" />
+    </svg>
+  );
+}
+
+// The closing squall. Two shapes only, and that is the whole design: every one of this icon's four
+// sites renders at 12px, where a 16-unit grid gives about nine device pixels to work in. A first
+// pass carried a broken ring behind the cloud, quoting the dashed ellipse the game draws closing in,
+// with three rain strokes below. Captured at 1x it read as a mushroom: the cloud covered the ring
+// down to one stub, and the three strokes fused into a single lumpy row. So the ring is gone and the
+// rain is two wedges wide enough to survive, with a gap between them wide enough to stay a gap.
+function SquallIcon({ size = 12 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" style={iconStyle}>
+      <path d="M3.1 9.4Q1.2 9.4 1.2 7.4Q1.2 5.4 3.3 5.2Q3.7 2 7 2Q10 2 10.9 4.6Q13.5 4.6 14 6.8Q14.4 9.4 12 9.4Z" />
+      <path d="M3.2 10.4h3.2l-1.6 4.2H1.6zM9.6 10.4h3.2l-1.6 4.2H8z" />
+    </svg>
+  );
+}
+
+// A pill lays its children out in a row with a gap, so an icon sits beside its number without a
+// space character doing the spacing. Wrap the text in one span: two loose children would each become
+// a flex item and take the gap between them.
+function Pill({ children, label }) {
+  return <div aria-label={label} style={{ background: C.panel, border: `1px solid ${C.hair}`, borderRadius: 20, padding: "5px 11px", fontSize: 12, color: C.gold, fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}>{children}</div>;
 }
 
 function StormPill({ storm }) {
-  if (storm.out) return <div style={{ background: "rgba(70,18,18,0.85)", border: `1px solid ${C.crew}`, borderRadius: 20, padding: "5px 11px", fontSize: 12, color: "#ffd9d9", fontWeight: 700 }}>⛈ IN THE STORM</div>;
-  if (storm.closes > 0) return <Pill>⛈ {fmtTime(storm.closes)}</Pill>;
-  return <Pill>{storm.closing ? "⛈ closing" : "⛈ closed"}</Pill>;
+  if (storm.out) return <div style={{ background: "rgba(70,18,18,0.85)", border: `1px solid ${C.crew}`, borderRadius: 20, padding: "5px 11px", fontSize: 12, color: "#ffd9d9", fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }} aria-label="You are in the storm"><SquallIcon /><span>In the storm</span></div>;
+  if (storm.closes > 0) return <Pill label={`Storm closes in ${fmtTime(storm.closes)}`}><SquallIcon /><span>{fmtTime(storm.closes)}</span></Pill>;
+  return <Pill label={storm.closing ? "Storm closing" : "Storm closed"}><SquallIcon /><span>{storm.closing ? "closing" : "closed"}</span></Pill>;
 }
 
 function RankBadge({ rank, total }) {
   const leader = rank === 1;
   return (
     <div style={{ background: C.panel, border: `1px solid ${leader ? C.gold : C.hair}`, borderRadius: 10, padding: "4px 8px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minWidth: 44 }}>
-      <span style={{ fontSize: 8, letterSpacing: 1, color: "rgba(238,244,242,0.5)" }}>RANK</span>
+      <span style={{ fontSize: 8, letterSpacing: 1, color: "rgba(238,244,242,0.5)" }}>Rank</span>
       <span style={{ fontSize: 20, fontWeight: 800, lineHeight: 1, color: leader ? C.gold : C.ink }}>#{rank}</span>
       <span style={{ fontSize: 8, color: "rgba(238,244,242,0.5)" }}>of {total}</span>
     </div>
@@ -2683,7 +2750,7 @@ function FireButton({ refEl, name, sub, color, onDown, onUp }) {
       onPointerUp={onUp}
       onPointerLeave={onUp}
       onPointerCancel={onUp}
-      style={{ position: "relative", width: 66, height: 56, borderRadius: 12, border: `1px solid ${color}`, background: "rgba(13,58,56,0.88)", color: C.ink, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 1, overflow: "hidden", touchAction: "none", WebkitTapHighlightColor: "transparent", cursor: "pointer" }}
+      style={{ position: "relative", width: 66, height: 56, borderRadius: 10, border: `1px solid ${color}`, background: "rgba(13,58,56,0.88)", color: C.ink, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 1, overflow: "hidden", touchAction: "none", WebkitTapHighlightColor: "transparent", cursor: "pointer" }}
     >
       <span style={{ fontSize: 12, fontWeight: 700 }}>{name}</span>
       <span style={{ fontSize: 8, color, letterSpacing: 1 }}>{sub}</span>
@@ -2771,12 +2838,12 @@ function HoldPanel({ hold }) {
   return (
     <div style={{ background: "rgba(11,51,49,0.6)", border: `1px solid ${C.hair}`, borderRadius: 10, padding: "9px 12px", margin: "14px 0 18px", textAlign: "left" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10 }}>
-        <span style={{ fontSize: 10, letterSpacing: 2, color: "rgba(238,244,242,0.55)" }}>THE HOLD</span>
-        <span style={{ fontSize: 17, fontWeight: 800, color: C.gold }}>🪙 {fmtCoins(hold.coins)}</span>
+        <span style={{ fontSize: 10, letterSpacing: 1, color: "rgba(238,244,242,0.55)" }}>The hold</span>
+        <span style={{ fontSize: 17, fontWeight: 800, color: C.gold, display: "inline-flex", alignItems: "center", gap: 4 }} aria-label={`${fmtCoins(hold.coins)} coins in the hold`}><CoinIcon size={17} />{fmtCoins(hold.coins)}</span>
       </div>
       <div style={{ fontSize: 10, color: "rgba(238,244,242,0.5)", lineHeight: 1.6, marginTop: 4 }}>
         {lt.runs > 0
-          ? [`${lt.runs} voyage${lt.runs === 1 ? "" : "s"}`, `${lt.sunk} sunk`, ...(lt.wins > 0 ? [`${lt.wins} won`] : []), `${fmtTime(lt.afloat)} afloat`, ...bests].join(" · ")
+          ? [`${lt.runs} voyage${lt.runs === 1 ? "" : "s"}`, `${lt.sunk} sunk`, ...(lt.wins > 0 ? [`${lt.wins} won`] : []), `${fmtTime(lt.afloat)} afloat`, ...bests].join(", ")
           : "Every coin you earn at sea comes back here, from every mode, and keeps between sessions."}
       </div>
     </div>
@@ -2791,7 +2858,7 @@ function ScuttleHold({ onScuttle }) {
       onBlur={() => setArmed(false)}
       style={{ marginTop: 14, fontFamily: UI, fontSize: 10, letterSpacing: 1, color: armed ? C.crew : "rgba(238,244,242,0.35)", background: "transparent", border: "none", padding: 4, cursor: "pointer", WebkitTapHighlightColor: "transparent" }}
     >
-      {armed ? "TAP AGAIN TO SCUTTLE THE HOLD" : "scuttle the hold"}
+      {armed ? "Tap again to scuttle the hold" : "Scuttle the hold"}
     </button>
   );
 }
@@ -2802,12 +2869,17 @@ function StartOverlay({ onStart, hold, onScuttle }) {
       <div style={{ fontFamily: DISPLAY, fontSize: 44, color: C.gold, letterSpacing: 2 }}>BROADSIDE</div>
       <MenuGalleon />
       <HoldPanel hold={hold} />
-      <div style={{ fontFamily: UI, fontSize: 11, color: "rgba(238,244,242,0.55)", letterSpacing: 2, marginBottom: 14 }}>CHOOSE YOUR BATTLE</div>
+      {/* No prompt over the modes. Three named cards under the game's own title are visibly the
+          choice, and a line telling you to choose is the kind of thing only a template asks for. */}
+      <div style={{ height: 14 }} />
       {MODE_LIST.map((key) => {
         const m = MODES[key];
         return <ModeCard key={key} color={m.color} title={m.title} desc={m.desc} onClick={() => onStart(key)} />;
       })}
-      <div style={{ marginTop: 16, fontSize: 11, color: "rgba(238,244,242,0.5)", lineHeight: 1.6 }}>Stick to sail · SIDE→hull · FRONT→mast · MUSKET→crew · ram for hull · islands block fire</div>
+      <div style={{ marginTop: 16, fontSize: 11, color: "rgba(238,244,242,0.5)", lineHeight: 1.6 }}>
+        Stick to sail. Your side guns hit the hull, the bow gun brings down the mast, muskets clear
+        the crew. Rams can pack a punch.
+      </div>
       {hold.lifetime.runs > 0 && <ScuttleHold onScuttle={onScuttle} />}
     </Shell>
   );
@@ -2815,51 +2887,59 @@ function StartOverlay({ onStart, hold, onScuttle }) {
 
 function ModeCard({ color, title, desc, onClick }) {
   return (
-    <button onClick={onClick} style={{ display: "block", width: "100%", textAlign: "left", borderRadius: 12, border: `1px solid ${color}`, background: "rgba(13,58,56,0.85)", color: C.ink, padding: "14px 16px", marginBottom: 12, cursor: "pointer", WebkitTapHighlightColor: "transparent" }}>
+    <button onClick={onClick} style={{ display: "block", width: "100%", textAlign: "left", borderRadius: 10, border: `1px solid ${color}`, background: "rgba(13,58,56,0.85)", color: C.ink, padding: "14px 16px", marginBottom: 12, cursor: "pointer", WebkitTapHighlightColor: "transparent" }}>
       <div style={{ fontFamily: DISPLAY, fontSize: 20, color, marginBottom: 4 }}>{title}</div>
       <div style={{ fontSize: 12, color: "rgba(238,244,242,0.78)", lineHeight: 1.5 }}>{desc}</div>
     </button>
   );
 }
 
+// One row of the end-of-voyage tally. `rule` draws the line above it: "hair" inside a group, "group"
+// where one group ends and the next begins.
+function TallyRow({ label, value, rule, valueColor, valueSize, valueWeight }) {
+  return (
+    // A group break gets air as well as a brighter rule. The two line weights alone are 0.20 against
+    // 0.14 and read as the same line, so the space is what actually separates the sections.
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: rule === "group" ? "11px 0 6px" : "6px 0", borderTop: rule ? `1px solid ${rule === "group" ? C.hair : "rgba(160,224,210,0.14)"}` : "none" }}>
+      <span style={{ fontSize: 11, color: "rgba(238,244,242,0.6)", letterSpacing: 0.5 }}>{label}</span>
+      <span style={{ fontSize: valueSize || 13, color: valueColor || C.gold, fontWeight: valueWeight || 700 }}>{value}</span>
+    </div>
+  );
+}
+
 function EndOverlay({ title, titleColor, result, stats, mode, place, hold, banked, onAgain, onMenu }) {
   const rules = modeOf(mode);
-  const rows = [];
-  if (rules.ranked && place) rows.push(["Placement", `#${place.rank} of ${place.total}`]);
-  rows.push(["Time survived", fmtTime(stats.time)]);
-  rows.push(["Ships sunk", stats.kills]);
-  rows.push(["Damage dealt", stats.dmg]);
-  rows.push(["Coins earned", fmtCoins(stats.coins)]);
-  rows.push(rules.upgrades ? ["Upgrades bought", stats.upgrades] : ["Rams landed", stats.rams || 0]);
-  // where a mode pays for the time she kept her hull under her, show it: the tally then adds up to
-  // what goes in the hold instead of the two disagreeing by a number with no name on it
-  if (rules.timeCoins > 0)
-    rows.push([stats.paidInFull ? "Round paid in full" : "Time afloat", `+${fmtCoins(stats.timePay)}`]);
-  if (stats.winPay > 0) rows.push(["Last afloat", `+${fmtCoins(stats.winPay)}`]);
+
+  // How she sailed.
+  const statRows = [];
+  if (rules.ranked && place) statRows.push(["Placement", `#${place.rank} of ${place.total}`]);
+  statRows.push(["Time survived", fmtTime(stats.time)]);
+  statRows.push(["Ships sunk", stats.kills]);
+  statRows.push(["Damage dealt", stats.dmg]);
+  statRows.push(rules.upgrades ? ["Upgrades bought", stats.upgrades] : ["Rams landed", stats.rams || 0]);
+
+  // What she was paid, kept apart from the stats and put directly above the total it makes. These
+  // three are the whole of it: total = fought + timePay + winPay, and the hold takes all of it, so
+  // the column adds up on the page. "Coins earned" used to sit up among the stats, three rows from
+  // its own subtotal, and named as though it were the lot when it was only what the guns took.
+  const payRows = [["From fighting", `+${fmtCoins(stats.coins)}`]];
+  if (rules.timeCoins > 0) payRows.push(["For time at sea", `+${fmtCoins(stats.timePay)}`]);
+  if (stats.winPay > 0) payRows.push(["For winning", `+${fmtCoins(stats.winPay)}`]);
   return (
     <Shell>
       <div style={{ fontFamily: DISPLAY, fontSize: 40, color: titleColor, letterSpacing: 1 }}>{title}</div>
       <div style={{ fontSize: 13, color: "rgba(238,244,242,0.85)", margin: "10px 0 14px", lineHeight: 1.6 }}>{result}</div>
       <div style={{ background: "rgba(11,51,49,0.6)", border: `1px solid ${C.hair}`, borderRadius: 10, padding: "6px 12px", marginBottom: 18, textAlign: "left" }}>
-        {rows.map(([l, v], i) => (
-          <div key={l} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderTop: i === 0 ? "none" : "1px solid rgba(160,224,210,0.14)" }}>
-            <span style={{ fontSize: 11, color: "rgba(238,244,242,0.6)", letterSpacing: 0.5 }}>{l}</span>
-            <span style={{ fontSize: 13, color: C.gold, fontWeight: 700 }}>{v}</span>
-          </div>
-        ))}
+        {statRows.map(([l, v], i) => <TallyRow key={l} label={l} value={v} rule={i > 0 ? "hair" : ""} />)}
+        {payRows.map(([l, v], i) => <TallyRow key={l} label={l} value={v} rule={i === 0 ? "group" : "hair"} />)}
         {/* The voyage is over and the ship's purse with it; this is the part that sails on. */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0 7px", borderTop: `1px solid ${C.hair}`, marginTop: 2 }}>
-          <span style={{ fontSize: 11, color: "rgba(238,244,242,0.6)", letterSpacing: 0.5 }}>Into the hold</span>
-          <span style={{ fontSize: 13, color: banked > 0 ? C.grass : "rgba(238,244,242,0.5)", fontWeight: 700 }}>+{fmtCoins(banked)}</span>
-        </div>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0 0 7px" }}>
-          <span style={{ fontSize: 11, color: "rgba(238,244,242,0.6)", letterSpacing: 0.5 }}>Hold total</span>
-          <span style={{ fontSize: 15, color: C.gold, fontWeight: 800 }}>🪙 {fmtCoins(hold.coins)}</span>
-        </div>
+        <TallyRow label="Into the hold" value={`+${fmtCoins(banked)}`} rule="group"
+          valueColor={banked > 0 ? C.grass : "rgba(238,244,242,0.5)"} />
+        <TallyRow label="Hold total" value={<span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><CoinIcon size={15} />{fmtCoins(hold.coins)}</span>} valueSize={15} valueWeight={800} />
       </div>
       <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
-        <StartButton onClick={onAgain} label="REMATCH" />
-        <StartButton onClick={onMenu} label="MENU" ghost />
+        <StartButton onClick={onAgain} label="Rematch" />
+        <StartButton onClick={onMenu} label="Menu" ghost />
       </div>
     </Shell>
   );
@@ -2867,7 +2947,7 @@ function EndOverlay({ title, titleColor, result, stats, mode, place, hold, banke
 
 function StartButton({ onClick, label, ghost }) {
   return (
-    <button onClick={onClick} style={{ fontFamily: UI, fontSize: 13, letterSpacing: 2, fontWeight: 700, color: ghost ? C.gold : C.deep, background: ghost ? "transparent" : C.gold, border: ghost ? `1px solid ${C.gold}` : "none", borderRadius: 10, padding: "12px 22px", cursor: "pointer", WebkitTapHighlightColor: "transparent" }}>
+    <button onClick={onClick} style={{ fontFamily: UI, fontSize: 14, letterSpacing: 0.5, fontWeight: 700, color: ghost ? C.gold : C.deep, background: ghost ? "transparent" : C.gold, border: ghost ? `1px solid ${C.gold}` : "none", borderRadius: 10, padding: "12px 22px", cursor: "pointer", WebkitTapHighlightColor: "transparent" }}>
       {label}
     </button>
   );
