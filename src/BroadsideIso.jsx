@@ -1412,6 +1412,21 @@ export default function App() {
     }
 
     // ---------------- rendering ----------------
+
+    // One breaking crest, as a capital M whose outer legs roll away from the letter — the two humps
+    // are the cap itself and the curled feet are the foam spilling off either shoulder. Drawn wide and
+    // low, because a cap lies flat on the water and the water is seen at a tilt. Path only: the caller
+    // owns beginPath/stroke so it can set its own alpha per cap.
+    const CAP_W = 5.5, CAP_H = 4, CAP_LW = 1.4;
+    function whitecap(x, y) {
+      const w = CAP_W, h = CAP_H;
+      ctx.moveTo(x - w, y + 0.15 * h);
+      ctx.bezierCurveTo(x - 1.05 * w, y + 0.7 * h, x - 0.62 * w, y + 0.55 * h, x - 0.45 * w, y - 0.72 * h);
+      ctx.bezierCurveTo(x - 0.3 * w, y - 0.2 * h, x - 0.13 * w, y - 0.1 * h, x, y + 0.25 * h);
+      ctx.bezierCurveTo(x + 0.13 * w, y - 0.1 * h, x + 0.3 * w, y - 0.2 * h, x + 0.45 * w, y - 0.72 * h);
+      ctx.bezierCurveTo(x + 0.62 * w, y + 0.55 * h, x + 1.05 * w, y + 0.7 * h, x + w, y + 0.15 * h);
+    }
+
     function drawWater(cam) {
       ctx.fillStyle = C.water;
       ctx.fillRect(0, 0, Wd, Hd);
@@ -1433,23 +1448,26 @@ export default function App() {
       const ci0 = Math.floor(cam.x / cs) - 1, ci1 = Math.floor((cam.x + Wd) / cs) + 1;
       const cj0 = Math.floor(cam.y / cs) - 1, cj1 = Math.floor((cam.y + Hd / TILT) / cs) + 1;
       ctx.strokeStyle = C.beachRim;
-      ctx.lineWidth = 1.4;
+      ctx.lineWidth = CAP_LW;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
       for (let ci = ci0; ci <= ci1; ci++) {
         for (let cj = cj0; cj <= cj1; cj++) {
           const h1 = hash(ci, cj), h2 = hash(ci + 9, cj + 4);
           const wx = (ci + h1) * cs, wy = (cj + h2) * cs;
           if (wx < 6 || wx > WORLD - 6 || wy < 6 || wy > WORLD - 6) continue;
           const sx = SX(wx, cam), sy = SY(wy, cam) + Math.sin(clock * 1.3 + h1 * 6.283) * 1.4;
-          // beach-rim tone on open water: a lighter hue than the old caps, so it needs more of itself
-          // showing through to register as a cap rather than as dirt on the screen
-          ctx.globalAlpha = 0.16 + 0.10 * (0.5 + 0.5 * Math.sin(clock + h2 * 6.283));
+          // beach-rim tone on open water: a lighter hue than the old caps, and a shape with detail in
+          // it rather than a bare tick, so it needs more of itself showing through to read as a cap
+          ctx.globalAlpha = 0.2 + 0.12 * (0.5 + 0.5 * Math.sin(clock + h2 * 6.283));
           ctx.beginPath();
-          ctx.moveTo(sx - 3, sy);
-          ctx.lineTo(sx + 3, sy);
+          whitecap(sx, sy);
           ctx.stroke();
         }
       }
       ctx.globalAlpha = 1;
+      ctx.lineCap = "butt";
+      ctx.lineJoin = "miter";
       drawBoundary(cam, x0, y0, x1, y1);
     }
 
@@ -1904,17 +1922,23 @@ export default function App() {
         }
       }
       ctx.textAlign = "center";
-      // Floating damage sat on near-black water before and needed nothing behind it. Open water is a
-      // mid tone, so gold and ink both sit close to it — the numbers get a dark halo to lift them off.
+      // SUNK and MAST DOWN are white in the middle, ringed in the colour that says which they are —
+      // gold for a kill, mast-green for a rig coming down — and that ring is itself carried on a dark
+      // halo. Three passes, widest first, because each stroke is centred on the glyph edge and so eats
+      // half its width into the letter: the halo has to go down before the ring, and the ring before
+      // the white, or the outer passes bury the inner ones.
       ctx.lineJoin = "round";
       for (const t of g.texts) {
         ctx.globalAlpha = Math.min(1, t.life);
         ctx.font = `600 12px ${UI}`;
         const tx = SX(t.x, cam), ty = SY(t.y, cam);
-        ctx.lineWidth = 3;
+        ctx.lineWidth = 4.5;
         ctx.strokeStyle = "rgba(6,32,31,0.7)";
         ctx.strokeText(t.t, tx, ty);
-        ctx.fillStyle = t.col;
+        ctx.lineWidth = 2.2;
+        ctx.strokeStyle = t.col;
+        ctx.strokeText(t.t, tx, ty);
+        ctx.fillStyle = C.ink;
         ctx.fillText(t.t, tx, ty);
         ctx.globalAlpha = 1;
       }
