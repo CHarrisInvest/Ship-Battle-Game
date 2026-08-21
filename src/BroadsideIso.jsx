@@ -614,8 +614,8 @@ export default function App() {
       g.fieldSize = g.ships.length;
     }
 
-    function pushText(x, y, t, col) {
-      gameRef.current.texts.push({ x, y: y - 26, t, life: 1.3, col });
+    function pushText(x, y, t) {
+      gameRef.current.texts.push({ x, y: y - 26, t, life: 1.3 });
     }
     function muzzle(x, y, ang) {
       gameRef.current.parts.push({ x, y, ang, life: 0.12, max: 0.12, kind: "muzzle" });
@@ -710,7 +710,7 @@ export default function App() {
       const i = g.ships.indexOf(s);
       if (i >= 0) g.ships.splice(i, 1);
       for (const o of g.ships) o.locked.delete(s); // she is on the bottom; nobody is fouled on her
-      pushText(s.x, s.y, s._deathBar === "storm" ? "LOST" : "SUNK", C.gold);
+      pushText(s.x, s.y, s._deathBar === "storm" ? "LOST" : "SUNK");
       if (g.rules.reinforcements) {
         g.sunk += 1;
         g.spawnQueue = Math.min(g.spawnQueue + arenaReinforcements(g.sunk), ARENA_MAX_ENEMIES);
@@ -743,7 +743,7 @@ export default function App() {
       }
       if (bar === "mast" && before > 0 && target[bar] <= 0 && !target.mastDown) {
         target.mastDown = true;
-        pushText(target.x, target.y, target.isPlayer ? "OUR MAST!" : "MAST DOWN", C.mast);
+        pushText(target.x, target.y, target.isPlayer ? "OUR MAST!" : "MAST DOWN");
       }
       if ((bar === "hull" || bar === "crew") && target[bar] <= 0 && target.alive) {
         target._deathBar = bar;
@@ -1413,18 +1413,27 @@ export default function App() {
 
     // ---------------- rendering ----------------
 
-    // One breaking crest, as a capital M whose outer legs roll away from the letter — the two humps
-    // are the cap itself and the curled feet are the foam spilling off either shoulder. Drawn wide and
-    // low, because a cap lies flat on the water and the water is seen at a tilt. Path only: the caller
-    // owns beginPath/stroke so it can set its own alpha per cap.
+    // One breaking crest: two peaked humps with the outer legs rolling away from the shape, the way
+    // foam spills off either shoulder of a cap. Drawn wide and low, because a cap lies flat on the
+    // water and the water is seen at a tilt.
+    //
+    // The troughs are rounded but the crests are not, and that asymmetry is the whole shape. On each
+    // descent the control on the crest side sits on the crest itself, so the curve leaves it steeply
+    // and the peak stays sharp; the control on the trough side sits out to the side at trough height,
+    // which flattens the tangent there and rolls the bottom out. Round both ends and it stops reading
+    // as a breaking wave and starts reading as a sine squiggle.
+    //
+    // Path only: the caller owns beginPath/stroke, so each cap can carry its own alpha.
     const CAP_W = 5.5, CAP_H = 4, CAP_LW = 1.4;
+    const CAP_TROUGH = 0.3; // how far the trough controls sit to the side — 0 would cusp the bottom
     function whitecap(x, y) {
-      const w = CAP_W, h = CAP_H;
-      ctx.moveTo(x - w, y + 0.15 * h);
-      ctx.bezierCurveTo(x - 1.05 * w, y + 0.7 * h, x - 0.62 * w, y + 0.55 * h, x - 0.45 * w, y - 0.72 * h);
-      ctx.bezierCurveTo(x - 0.3 * w, y - 0.2 * h, x - 0.13 * w, y - 0.1 * h, x, y + 0.25 * h);
-      ctx.bezierCurveTo(x + 0.13 * w, y - 0.1 * h, x + 0.3 * w, y - 0.2 * h, x + 0.45 * w, y - 0.72 * h);
-      ctx.bezierCurveTo(x + 0.62 * w, y + 0.55 * h, x + 1.05 * w, y + 0.7 * h, x + w, y + 0.15 * h);
+      const w = CAP_W, h = CAP_H, d = CAP_TROUGH;
+      const px = 0.45 * w, py = y - 0.7 * h, ty = y + 0.3 * h;
+      ctx.moveTo(x - w, y - 0.1 * h);
+      ctx.quadraticCurveTo(x - 0.8 * w, y + 0.6 * h, x - px, py);        // tail rolls out, up into the crest
+      ctx.bezierCurveTo(x - px, py, x - d * w, ty, x, ty);               // down into the rounded trough
+      ctx.bezierCurveTo(x + d * w, ty, x + px, py, x + px, py);          // and back up to the far crest
+      ctx.quadraticCurveTo(x + 0.8 * w, y + 0.6 * h, x + w, y - 0.1 * h); // then rolls out again
     }
 
     function drawWater(cam) {
@@ -1922,21 +1931,16 @@ export default function App() {
         }
       }
       ctx.textAlign = "center";
-      // SUNK and MAST DOWN are white in the middle, ringed in the colour that says which they are —
-      // gold for a kill, mast-green for a rig coming down — and that ring is itself carried on a dark
-      // halo. Three passes, widest first, because each stroke is centred on the glyph edge and so eats
-      // half its width into the letter: the halo has to go down before the ring, and the ring before
-      // the white, or the outer passes bury the inner ones.
+      // SUNK and MAST DOWN are white, outlined in a dark halo so they carry on open water — which is a
+      // mid tone, where plain white would sit too close to it. Halo first: the stroke is centred on the
+      // glyph edge and eats half its width into the letter, so the fill has to go down over it.
       ctx.lineJoin = "round";
       for (const t of g.texts) {
         ctx.globalAlpha = Math.min(1, t.life);
-        ctx.font = `600 12px ${UI}`;
+        ctx.font = `600 10px ${UI}`;
         const tx = SX(t.x, cam), ty = SY(t.y, cam);
-        ctx.lineWidth = 4.5;
+        ctx.lineWidth = 3.4;
         ctx.strokeStyle = "rgba(6,32,31,0.7)";
-        ctx.strokeText(t.t, tx, ty);
-        ctx.lineWidth = 2.2;
-        ctx.strokeStyle = t.col;
         ctx.strokeText(t.t, tx, ty);
         ctx.fillStyle = C.ink;
         ctx.fillText(t.t, tx, ty);
