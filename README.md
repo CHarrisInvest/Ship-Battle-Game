@@ -241,14 +241,17 @@ orientation: an upright phone gave barely a broadside's width across and three t
 down, so a ship a little abeam was off the side of the screen while empty water ran away above and
 below her.
 
-The camera holds her in the middle of the square, and slides off her only as far as the screen
-reaches beyond it — never further. A ship in open water therefore has the whole screen full of sea,
-and one that runs up on the boundary brings that edge of the map with her: it comes to rest on the
-edge of the square, with the void beyond it filling the strip the buttons sit on, instead of the ship
-being shoved into the corner of the screen and under her own controls. Where the square spans the
-screen outright — across, on an upright phone — there is no room to slide at all and she stays dead
-centre, so the boundary comes half way into her view. That is the point of it: everything within
-range of her is on the water side of that line, and all of it is in sight.
+The camera holds her in the middle and fills the rest of the view with sea, so the boundary is off
+the edge of the screen until she is close to it. Coming in on a side, it is let `EDGE_PEEK` inside
+the screen — a strip of open water, the rope, and its buoys, no more — and she comes off centre by
+exactly as much. The edge slides into view and she slides toward it, which is what tells a captain
+how much sea she has left on that hand. On an upright phone that puts her about 65px off the side of
+the screen when she is hard against the wall, with the whole map in front of her.
+
+Up and down, where the screen runs longer than the square, the boundary is let in as far as the edge
+of the square instead — that strip of screen is the one the pills, the upgrade rail, the stick and
+the gun buttons sit on, and it is hers to spend. It is what keeps her out from under them at the top
+and bottom of the map, where she used to end up pinned against the glass.
 
 ## Damage model
 
@@ -285,7 +288,8 @@ inline-styled, so `BroadsideIso.jsx` can be dropped into any React app as-is.
 ### Tuning constants
 
 The balance knobs sit at the top of `src/BroadsideIso.jsx`: `WORLD` and `TILT` for the arena and
-camera, `VIEW`/`MAX_ZOOM` for how much sea the square view holds, `BASE`/`HP_GAIN` for the health
+camera, `VIEW`/`MAX_ZOOM` for how much sea the square view holds and `EDGE_PEEK` for how far the
+boundary is let inside it, `BASE`/`HP_GAIN` for the health
 pools, `WP` for per-weapon cooldown, projectile speed, and lifetime, `RAM_*` for ramming, and `TRACKS`/`COST` for the upgrade economy. `BASE_SPEED` is a fresh
 ship's top speed and the yardstick the heavy rudder measures against; `RUDDER_HEAVY` is how much
 rudder she loses at it and `RUDDER_CURVE` how late in the range the loss starts to bite — raising the

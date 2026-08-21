@@ -533,6 +533,10 @@ const VIEW = BROADSIDE_R * 2; // world units across the square
 // A screen much bigger than a phone's would otherwise magnify everything to fill its shorter side.
 // Past this the square only ever shows more water than it promises, which costs the captain nothing.
 const MAX_ZOOM = 1.5;
+// How far the map's boundary is let inside the edge of the screen: enough to read the rope, its
+// buoys, and a strip of the water beyond, and no more. It is the whole of the camera's give on a
+// side, so it is also how far off centre a ship ends up when she runs right up on that boundary.
+const EDGE_PEEK = 40; // screen pixels
 
 const SHIP_R = 17;
 const HULL_L = 36;
@@ -1730,27 +1734,33 @@ export default function App() {
       if (g.player.alive && g.player.rank !== g._lastRank) { g._lastRank = g.player.rank; g.hudDirty = true; }
     }
 
-    // The camera keeps the player in the middle of the square, and slides off her only as far as the
-    // screen reaches beyond it — never further. So a ship out in open water has the whole screen full
-    // of sea, and one that runs up on the boundary brings that edge of the map with her: it comes to
-    // rest on the edge of the square, with the void beyond it filling the strip the buttons sit on,
-    // rather than the ship being shoved into the corner of the screen and under her own controls.
+    // The camera holds her in the middle and fills the rest of the view with sea, which puts the
+    // boundary off the edge of the screen until she is close to it. Coming in on a side, it is let
+    // `peek` inside the screen — a strip of open water, the rope, and its buoys, no more — and she
+    // comes off centre by exactly as much: the edge slides into view and she slides toward it, which
+    // is what tells a captain how much sea she has left on that hand.
     //
-    // Where the square spans the screen outright — across, held upright — there is no room to slide
-    // at all and she simply stays centred, so the boundary comes half way into her view. That is the
-    // point of it: everything within range of her is on the water side, and all of it is in sight.
-    function camDrift(centred, span, slack) {
-      const lo = -slack, hi = Math.max(lo, WORLD - span + slack); // keeps the square full of map...
-      return clamp(clamp(centred, lo, hi), centred - slack, centred + slack); // ...within the slack
+    // The peek is a strip of screen, so it comes to the same band whichever way the map is squashed:
+    // across it is that many pixels of world, and up and down it is that many pixels of a world
+    // foreshortened by TILT, which takes more world to cover.
+    //
+    // Where the screen runs longer than the square — up and down, held upright — the boundary is let
+    // in as far as the edge of the square instead, since that strip of screen is the one the buttons
+    // and the panels sit on and it is hers to spend. That is what keeps her out from under them at
+    // the top and bottom of the map, where she used to end up pinned against the glass.
+    function camHold(centred, span, peek) {
+      const lo = -peek; // the far side of the map, let this far into the view
+      return clamp(centred, lo, Math.max(lo, WORLD - span + peek));
     }
 
     function camUpdate() {
       const g = gameRef.current;
       if (!g || !g.player) return;
       const spanX = Vw, spanY = Vh / TILT; // sea on the screen, in world units
-      const slackX = (spanX - Vsq) / 2, slackY = (spanY - Vsq / TILT) / 2; // and what lies outside the square
-      g.cam.x = camDrift(g.player.x - spanX / 2, spanX, slackX);
-      g.cam.y = camDrift(g.player.y - spanY / 2, spanY, slackY);
+      const peekX = Math.max((spanX - Vsq) / 2, EDGE_PEEK / zoom);
+      const peekY = Math.max((spanY - Vsq / TILT) / 2, EDGE_PEEK / (zoom * TILT));
+      g.cam.x = camHold(g.player.x - spanX / 2, spanX, peekX);
+      g.cam.y = camHold(g.player.y - spanY / 2, spanY, peekY);
     }
 
     function update(dt) {
