@@ -101,6 +101,7 @@ const C = {
   water: "#2a8f8b",      // open water — the main sea, and the page background behind it
   shallows: "#45b39d",   // the bank of shallow water an island sits in
   beachRim: "#7fd0bd",   // the thin band right where the water meets the sand
+  foam: "#f4fffc",       // a cap catching the light as it breaks
   waterEdge: "#1c6663",  // outside the buoys: open water run deep, so the arena reads as the bright part
   deep: "#0b3331",       // the sea at its darkest — panel grounds, and ink on a gold field
   grid: "rgba(9,52,50,0.10)",
@@ -1435,6 +1436,28 @@ export default function App() {
     const CAP_W = 5.5, CAP_H = 4, CAP_LW = 1.4;
     const CAP_MID = 0; // centre notch, as a fraction of CAP_H below the baseline
     const CAP_TROUGH = 0.3; // how far the trough controls sit to the side — 0 would cusp the bottom
+
+    // A cap breaking: it whitens fast, then falls back to its own colour over about a second. Every
+    // cap runs its own cycle, so a few are always going off somewhere in view and no two are in step.
+    //
+    // This is a function of the cap's cell and the clock and nothing else — there is no list of live
+    // flares, nothing is spawned, and nothing is stored per cap. That is what makes it free at the
+    // edges of the screen: caps keep their rhythm whether or not they are being drawn, so one that
+    // scrolls into view arrives already mid-cycle instead of starting over or popping.
+    const CAP_CYCLE_MIN = 9, CAP_CYCLE_MAX = 19; // seconds between one cap's breaks
+    const CAP_FLARE_LEN = 0.9;   // how long a break lasts
+    const CAP_FLARE_RISE = 0.18; // fraction of that spent whitening — small, so it snaps and then fades
+    const CAP_FLARE_ALPHA = 0.55;
+    function capFlare(cell, phase) {
+      const period = CAP_CYCLE_MIN + cell * (CAP_CYCLE_MAX - CAP_CYCLE_MIN);
+      const u = (clock / period + phase) % 1;      // where this cap is in its own cycle
+      const win = CAP_FLARE_LEN / period;
+      if (u >= win) return 0;
+      const s = u / win;
+      if (s < CAP_FLARE_RISE) return s / CAP_FLARE_RISE;
+      const fall = (1 - s) / (1 - CAP_FLARE_RISE); // squared, so it drops away and then lingers
+      return fall * fall;
+    }
     function whitecap(x, y) {
       const w = CAP_W, h = CAP_H, d = CAP_TROUGH;
       const px = 0.45 * w, py = y - 0.7 * h, ty = y + CAP_MID * h;
@@ -1481,6 +1504,15 @@ export default function App() {
           ctx.beginPath();
           whitecap(sx, sy);
           ctx.stroke();
+          // A break is painted over the top rather than swapped in, so the cap keeps its own colour
+          // underneath and the white simply fades off it. Same path, so there is nothing to rebuild.
+          const flare = capFlare(hash(ci + 5, cj + 17), h1);
+          if (flare > 0.01) {
+            ctx.strokeStyle = C.foam;
+            ctx.globalAlpha = flare * CAP_FLARE_ALPHA;
+            ctx.stroke();
+            ctx.strokeStyle = C.beachRim;
+          }
         }
       }
       ctx.globalAlpha = 1;
