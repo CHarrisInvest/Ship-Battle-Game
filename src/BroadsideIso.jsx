@@ -1423,15 +1423,24 @@ export default function App() {
     // which flattens the tangent there and rolls the bottom out. Round both ends and it stops reading
     // as a breaking wave and starts reading as a sine squiggle.
     //
+    // The notch between the two crests rides HIGHER than the troughs the tails fall into, so the low
+    // points of the shape are its two outside ends and the water only dips a little in the middle.
+    // Each tail is a quadratic from (-w, -0.1h) through (-0.8w, 0.6h) to the crest, which puts its y
+    // at -0.1 + 1.4t - 2t² and bottoms out at t = 0.35, i.e. 0.145h below the baseline. CAP_MID has
+    // to stay clear of that figure — push it past 0.145 and the middle becomes the lowest point of the
+    // cap again; drop it much below about -0.05 and the notch flattens until the two crests read as
+    // one broad hump.
+    //
     // Path only: the caller owns beginPath/stroke, so each cap can carry its own alpha.
     const CAP_W = 5.5, CAP_H = 4, CAP_LW = 1.4;
+    const CAP_MID = 0; // centre notch, as a fraction of CAP_H below the baseline
     const CAP_TROUGH = 0.3; // how far the trough controls sit to the side — 0 would cusp the bottom
     function whitecap(x, y) {
       const w = CAP_W, h = CAP_H, d = CAP_TROUGH;
-      const px = 0.45 * w, py = y - 0.7 * h, ty = y + 0.3 * h;
+      const px = 0.45 * w, py = y - 0.7 * h, ty = y + CAP_MID * h;
       ctx.moveTo(x - w, y - 0.1 * h);
       ctx.quadraticCurveTo(x - 0.8 * w, y + 0.6 * h, x - px, py);        // tail rolls out, up into the crest
-      ctx.bezierCurveTo(x - px, py, x - d * w, ty, x, ty);               // down into the rounded trough
+      ctx.bezierCurveTo(x - px, py, x - d * w, ty, x, ty);               // down into the shallow notch
       ctx.bezierCurveTo(x + d * w, ty, x + px, py, x + px, py);          // and back up to the far crest
       ctx.quadraticCurveTo(x + 0.8 * w, y + 0.6 * h, x + w, y - 0.1 * h); // then rolls out again
     }
