@@ -1010,7 +1010,7 @@ export default function App() {
         coins: fought, // what her bow and her guns took
         upgrades: p.up.mast + p.up.hull + p.up.crew + p.up.side + p.up.front,
         rams: p.rams || 0,
-        timePay, winPay, paidInFull,
+        timePay, winPay,
         total: fought + timePay + winPay,
       };
     }
@@ -2546,7 +2546,7 @@ export default function App() {
                 >
                   <span style={{ fontSize: 11, fontWeight: 700, color: t.color }}>{t.label}</span>
                   <span style={{ fontSize: 8, color: "rgba(238,244,242,0.55)" }}>{t.sub}</span>
-                  <span style={{ fontSize: 9 }}>Lv{lvl}</span>
+                  <span style={{ fontSize: 9 }}>Level {lvl}</span>
                   <span style={{ fontSize: 9, color: C.gold }}>🪙{cost}</span>
                 </button>
               );
@@ -2747,7 +2747,9 @@ function StartOverlay({ onStart, hold, onScuttle }) {
       <div style={{ fontFamily: DISPLAY, fontSize: 44, color: C.gold, letterSpacing: 2 }}>BROADSIDE</div>
       <MenuGalleon />
       <HoldPanel hold={hold} />
-      <div style={{ fontFamily: UI, fontSize: 11, color: "rgba(238,244,242,0.55)", letterSpacing: 1, marginBottom: 14 }}>Choose your battle</div>
+      {/* No prompt over the modes. Three named cards under the game's own title are visibly the
+          choice, and a line telling you to choose is the kind of thing only a template asks for. */}
+      <div style={{ height: 14 }} />
       {MODE_LIST.map((key) => {
         const m = MODES[key];
         return <ModeCard key={key} color={m.color} title={m.title} desc={m.desc} onClick={() => onStart(key)} />;
@@ -2770,40 +2772,48 @@ function ModeCard({ color, title, desc, onClick }) {
   );
 }
 
+// One row of the end-of-voyage tally. `rule` draws the line above it: "hair" inside a group, "group"
+// where one group ends and the next begins.
+function TallyRow({ label, value, rule, valueColor, valueSize, valueWeight }) {
+  return (
+    // A group break gets air as well as a brighter rule. The two line weights alone are 0.20 against
+    // 0.14 and read as the same line, so the space is what actually separates the sections.
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: rule === "group" ? "11px 0 6px" : "6px 0", borderTop: rule ? `1px solid ${rule === "group" ? C.hair : "rgba(160,224,210,0.14)"}` : "none" }}>
+      <span style={{ fontSize: 11, color: "rgba(238,244,242,0.6)", letterSpacing: 0.5 }}>{label}</span>
+      <span style={{ fontSize: valueSize || 13, color: valueColor || C.gold, fontWeight: valueWeight || 700 }}>{value}</span>
+    </div>
+  );
+}
+
 function EndOverlay({ title, titleColor, result, stats, mode, place, hold, banked, onAgain, onMenu }) {
   const rules = modeOf(mode);
-  const rows = [];
-  if (rules.ranked && place) rows.push(["Placement", `#${place.rank} of ${place.total}`]);
-  rows.push(["Time survived", fmtTime(stats.time)]);
-  rows.push(["Ships sunk", stats.kills]);
-  rows.push(["Damage dealt", stats.dmg]);
-  rows.push(["Coins earned", fmtCoins(stats.coins)]);
-  rows.push(rules.upgrades ? ["Upgrades bought", stats.upgrades] : ["Rams landed", stats.rams || 0]);
-  // where a mode pays for the time she kept her hull under her, show it: the tally then adds up to
-  // what goes in the hold instead of the two disagreeing by a number with no name on it
-  if (rules.timeCoins > 0)
-    rows.push([stats.paidInFull ? "Round paid in full" : "Time afloat", `+${fmtCoins(stats.timePay)}`]);
-  if (stats.winPay > 0) rows.push(["Last afloat", `+${fmtCoins(stats.winPay)}`]);
+
+  // How she sailed.
+  const statRows = [];
+  if (rules.ranked && place) statRows.push(["Placement", `#${place.rank} of ${place.total}`]);
+  statRows.push(["Time survived", fmtTime(stats.time)]);
+  statRows.push(["Ships sunk", stats.kills]);
+  statRows.push(["Damage dealt", stats.dmg]);
+  statRows.push(rules.upgrades ? ["Upgrades bought", stats.upgrades] : ["Rams landed", stats.rams || 0]);
+
+  // What she was paid, kept apart from the stats and put directly above the total it makes. These
+  // three are the whole of it: total = fought + timePay + winPay, and the hold takes all of it, so
+  // the column adds up on the page. "Coins earned" used to sit up among the stats, three rows from
+  // its own subtotal, and named as though it were the lot when it was only what the guns took.
+  const payRows = [["From fighting", `+${fmtCoins(stats.coins)}`]];
+  if (rules.timeCoins > 0) payRows.push(["For time at sea", `+${fmtCoins(stats.timePay)}`]);
+  if (stats.winPay > 0) payRows.push(["For winning", `+${fmtCoins(stats.winPay)}`]);
   return (
     <Shell>
       <div style={{ fontFamily: DISPLAY, fontSize: 40, color: titleColor, letterSpacing: 1 }}>{title}</div>
       <div style={{ fontSize: 13, color: "rgba(238,244,242,0.85)", margin: "10px 0 14px", lineHeight: 1.6 }}>{result}</div>
       <div style={{ background: "rgba(11,51,49,0.6)", border: `1px solid ${C.hair}`, borderRadius: 10, padding: "6px 12px", marginBottom: 18, textAlign: "left" }}>
-        {rows.map(([l, v], i) => (
-          <div key={l} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderTop: i === 0 ? "none" : "1px solid rgba(160,224,210,0.14)" }}>
-            <span style={{ fontSize: 11, color: "rgba(238,244,242,0.6)", letterSpacing: 0.5 }}>{l}</span>
-            <span style={{ fontSize: 13, color: C.gold, fontWeight: 700 }}>{v}</span>
-          </div>
-        ))}
+        {statRows.map(([l, v], i) => <TallyRow key={l} label={l} value={v} rule={i > 0 ? "hair" : ""} />)}
+        {payRows.map(([l, v], i) => <TallyRow key={l} label={l} value={v} rule={i === 0 ? "group" : "hair"} />)}
         {/* The voyage is over and the ship's purse with it; this is the part that sails on. */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0 7px", borderTop: `1px solid ${C.hair}`, marginTop: 2 }}>
-          <span style={{ fontSize: 11, color: "rgba(238,244,242,0.6)", letterSpacing: 0.5 }}>Into the hold</span>
-          <span style={{ fontSize: 13, color: banked > 0 ? C.grass : "rgba(238,244,242,0.5)", fontWeight: 700 }}>+{fmtCoins(banked)}</span>
-        </div>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0 0 7px" }}>
-          <span style={{ fontSize: 11, color: "rgba(238,244,242,0.6)", letterSpacing: 0.5 }}>Hold total</span>
-          <span style={{ fontSize: 15, color: C.gold, fontWeight: 800 }}>🪙 {fmtCoins(hold.coins)}</span>
-        </div>
+        <TallyRow label="Into the hold" value={`+${fmtCoins(banked)}`} rule="group"
+          valueColor={banked > 0 ? C.grass : "rgba(238,244,242,0.5)"} />
+        <TallyRow label="Hold total" value={`🪙 ${fmtCoins(hold.coins)}`} valueSize={15} valueWeight={800} />
       </div>
       <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
         <StartButton onClick={onAgain} label="Rematch" />

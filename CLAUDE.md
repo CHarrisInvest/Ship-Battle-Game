@@ -34,7 +34,9 @@ Caps and letterspacing stopped meaning anything when everything had them. The sp
 text *is*, not by where it sits:
 
 - **Caps** for the game's proper nouns: the title `BROADSIDE`, the three mode names, and the five
-  ship systems (`MAST` `HULL` `CREW` `SIDE` `FRONT`).
+  ship systems (`MAST` `HULL` `CREW` `SIDE` `FRONT`). Outcome headlines set in the display face at
+  title size count here too, so `SUNK` and `LAST AFLOAT` keep their caps; they name the moment
+  rather than instruct.
 - **Sentence case** for anything the player is told or asked: buttons, section headers, stat labels,
   prose. `Rematch`, not `REMATCH`.
 
