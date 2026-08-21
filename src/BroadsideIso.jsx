@@ -606,12 +606,15 @@ const shotHitsHull = (s, x0, y0, x1, y1, pad) => {
   return nx * nx + ny * ny < 1;
 };
 
+// Each track says what it actually buys, in words. SIDE and FRONT both read "cannon dmg" before,
+// which told a captain nothing about which one to spend on: the side guns hole a hull, the bow gun
+// brings a rig down. The dot-separated shorthand went with it.
 const TRACKS = [
-  { key: "mast", label: "MAST", sub: "spd·turn·hp", color: C.mast },
-  { key: "hull", label: "HULL", sub: "ram·hp", color: C.hull },
-  { key: "crew", label: "CREW", sub: "musket·hp", color: C.crew },
-  { key: "side", label: "SIDE", sub: "cannon dmg", color: C.side },
-  { key: "front", label: "FRONT", sub: "cannon dmg", color: C.front },
+  { key: "mast", label: "MAST", sub: "faster, turns harder", color: C.mast },
+  { key: "hull", label: "HULL", sub: "takes and gives a ram", color: C.hull },
+  { key: "crew", label: "CREW", sub: "musket fire, more hands", color: C.crew },
+  { key: "side", label: "SIDE", sub: "heavier broadside", color: C.side },
+  { key: "front", label: "FRONT", sub: "bow gun bites deeper", color: C.front },
 ];
 
 const COST = (lvl) => Math.round(45 * Math.pow(1.55, lvl));
@@ -669,7 +672,7 @@ const MODES = {
     title: "DEMOLITION DERBY",
     short: "derby",
     color: C.crew,
-    desc: "Only one hand needed. Last afloat wins. Ten captains, no guns, no upgrades. Sink rivals by ramming. Drive your bow into her beam, and turn to face anyone charging yours. A storm closes in and takes the crew of any ship caught.",
+    desc: "Only one hand needed. Last afloat wins. 10 captains, no guns, no upgrades. Sink rivals by ramming. Drive your bow into her beam, and turn to face anyone charging yours. A storm closes in and takes the crew of any ship caught.",
     rivals: DERBY_AI,
     startCoins: 0,
     guns: false,
@@ -1044,9 +1047,11 @@ export default function App() {
       setStats(finalStats(false));
       bankRun(false, rank);
       setResult(
-        bar === "storm" ? "The squall has your crew — she founders in the weather."
-          : bar === "hull" ? "Your hull is breached — she goes under."
-          : "Your crew is routed — you strike your colors."
+        // Three different shapes on purpose. Written to one template they read as filled-in slots,
+        // however good the words are.
+        bar === "storm" ? "The squall has your crew, and she founders in the weather."
+          : bar === "hull" ? "Your hull is breached. She goes under."
+          : "Crew routed. You strike your colors."
       );
       setPhase("dead");
       syncRef.current();
@@ -2541,7 +2546,8 @@ export default function App() {
                 >
                   <span style={{ fontSize: 11, fontWeight: 700, color: t.color }}>{t.label}</span>
                   <span style={{ fontSize: 8, color: "rgba(238,244,242,0.55)" }}>{t.sub}</span>
-                  <span style={{ fontSize: 9 }}>Lv{lvl} · 🪙{cost}</span>
+                  <span style={{ fontSize: 9 }}>Lv{lvl}</span>
+                  <span style={{ fontSize: 9, color: C.gold }}>🪙{cost}</span>
                 </button>
               );
             })}
@@ -2582,7 +2588,7 @@ function Pill({ children }) {
 }
 
 function StormPill({ storm }) {
-  if (storm.out) return <div style={{ background: "rgba(70,18,18,0.85)", border: `1px solid ${C.crew}`, borderRadius: 20, padding: "5px 11px", fontSize: 12, color: "#ffd9d9", fontWeight: 700 }}>⛈ IN THE STORM</div>;
+  if (storm.out) return <div style={{ background: "rgba(70,18,18,0.85)", border: `1px solid ${C.crew}`, borderRadius: 20, padding: "5px 11px", fontSize: 12, color: "#ffd9d9", fontWeight: 700 }}>⛈ In the storm</div>;
   if (storm.closes > 0) return <Pill>⛈ {fmtTime(storm.closes)}</Pill>;
   return <Pill>{storm.closing ? "⛈ closing" : "⛈ closed"}</Pill>;
 }
@@ -2591,7 +2597,7 @@ function RankBadge({ rank, total }) {
   const leader = rank === 1;
   return (
     <div style={{ background: C.panel, border: `1px solid ${leader ? C.gold : C.hair}`, borderRadius: 10, padding: "4px 8px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minWidth: 44 }}>
-      <span style={{ fontSize: 8, letterSpacing: 1, color: "rgba(238,244,242,0.5)" }}>RANK</span>
+      <span style={{ fontSize: 8, letterSpacing: 1, color: "rgba(238,244,242,0.5)" }}>Rank</span>
       <span style={{ fontSize: 20, fontWeight: 800, lineHeight: 1, color: leader ? C.gold : C.ink }}>#{rank}</span>
       <span style={{ fontSize: 8, color: "rgba(238,244,242,0.5)" }}>of {total}</span>
     </div>
@@ -2710,12 +2716,12 @@ function HoldPanel({ hold }) {
   return (
     <div style={{ background: "rgba(11,51,49,0.6)", border: `1px solid ${C.hair}`, borderRadius: 10, padding: "9px 12px", margin: "14px 0 18px", textAlign: "left" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10 }}>
-        <span style={{ fontSize: 10, letterSpacing: 2, color: "rgba(238,244,242,0.55)" }}>THE HOLD</span>
+        <span style={{ fontSize: 10, letterSpacing: 1, color: "rgba(238,244,242,0.55)" }}>The hold</span>
         <span style={{ fontSize: 17, fontWeight: 800, color: C.gold }}>🪙 {fmtCoins(hold.coins)}</span>
       </div>
       <div style={{ fontSize: 10, color: "rgba(238,244,242,0.5)", lineHeight: 1.6, marginTop: 4 }}>
         {lt.runs > 0
-          ? [`${lt.runs} voyage${lt.runs === 1 ? "" : "s"}`, `${lt.sunk} sunk`, ...(lt.wins > 0 ? [`${lt.wins} won`] : []), `${fmtTime(lt.afloat)} afloat`, ...bests].join(" · ")
+          ? [`${lt.runs} voyage${lt.runs === 1 ? "" : "s"}`, `${lt.sunk} sunk`, ...(lt.wins > 0 ? [`${lt.wins} won`] : []), `${fmtTime(lt.afloat)} afloat`, ...bests].join(", ")
           : "Every coin you earn at sea comes back here, from every mode, and keeps between sessions."}
       </div>
     </div>
@@ -2730,7 +2736,7 @@ function ScuttleHold({ onScuttle }) {
       onBlur={() => setArmed(false)}
       style={{ marginTop: 14, fontFamily: UI, fontSize: 10, letterSpacing: 1, color: armed ? C.crew : "rgba(238,244,242,0.35)", background: "transparent", border: "none", padding: 4, cursor: "pointer", WebkitTapHighlightColor: "transparent" }}
     >
-      {armed ? "TAP AGAIN TO SCUTTLE THE HOLD" : "scuttle the hold"}
+      {armed ? "Tap again to scuttle the hold" : "Scuttle the hold"}
     </button>
   );
 }
@@ -2741,12 +2747,15 @@ function StartOverlay({ onStart, hold, onScuttle }) {
       <div style={{ fontFamily: DISPLAY, fontSize: 44, color: C.gold, letterSpacing: 2 }}>BROADSIDE</div>
       <MenuGalleon />
       <HoldPanel hold={hold} />
-      <div style={{ fontFamily: UI, fontSize: 11, color: "rgba(238,244,242,0.55)", letterSpacing: 2, marginBottom: 14 }}>CHOOSE YOUR BATTLE</div>
+      <div style={{ fontFamily: UI, fontSize: 11, color: "rgba(238,244,242,0.55)", letterSpacing: 1, marginBottom: 14 }}>Choose your battle</div>
       {MODE_LIST.map((key) => {
         const m = MODES[key];
         return <ModeCard key={key} color={m.color} title={m.title} desc={m.desc} onClick={() => onStart(key)} />;
       })}
-      <div style={{ marginTop: 16, fontSize: 11, color: "rgba(238,244,242,0.5)", lineHeight: 1.6 }}>Stick to sail · SIDE→hull · FRONT→mast · MUSKET→crew · ram for hull · islands block fire</div>
+      <div style={{ marginTop: 16, fontSize: 11, color: "rgba(238,244,242,0.5)", lineHeight: 1.6 }}>
+        Stick to sail. Your side guns hole a hull, the bow gun brings a rig down, muskets clear her
+        deck. Ram to stave one in. Shot will not carry through an island.
+      </div>
       {hold.lifetime.runs > 0 && <ScuttleHold onScuttle={onScuttle} />}
     </Shell>
   );
@@ -2797,8 +2806,8 @@ function EndOverlay({ title, titleColor, result, stats, mode, place, hold, banke
         </div>
       </div>
       <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
-        <StartButton onClick={onAgain} label="REMATCH" />
-        <StartButton onClick={onMenu} label="MENU" ghost />
+        <StartButton onClick={onAgain} label="Rematch" />
+        <StartButton onClick={onMenu} label="Menu" ghost />
       </div>
     </Shell>
   );
@@ -2806,7 +2815,7 @@ function EndOverlay({ title, titleColor, result, stats, mode, place, hold, banke
 
 function StartButton({ onClick, label, ghost }) {
   return (
-    <button onClick={onClick} style={{ fontFamily: UI, fontSize: 13, letterSpacing: 2, fontWeight: 700, color: ghost ? C.gold : C.deep, background: ghost ? "transparent" : C.gold, border: ghost ? `1px solid ${C.gold}` : "none", borderRadius: 10, padding: "12px 22px", cursor: "pointer", WebkitTapHighlightColor: "transparent" }}>
+    <button onClick={onClick} style={{ fontFamily: UI, fontSize: 14, letterSpacing: 0.5, fontWeight: 700, color: ghost ? C.gold : C.deep, background: ghost ? "transparent" : C.gold, border: ghost ? `1px solid ${C.gold}` : "none", borderRadius: 10, padding: "12px 22px", cursor: "pointer", WebkitTapHighlightColor: "transparent" }}>
       {label}
     </button>
   );
