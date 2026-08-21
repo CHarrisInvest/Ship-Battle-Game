@@ -2650,54 +2650,77 @@ export default function App() {
 // currentColor, so the same component serves the gold pills and the pale red storm-danger pill
 // without a variant. aria-hidden throughout: the number beside the icon carries the meaning, and the
 // pill itself takes the label.
+//
+// These run 9px to 17px, so every shape here is a mass rather than a stroke. The first drawn set was
+// built out of outlines and hairlines, and at 1x the coin's ring and inner glyph read as a wall
+// clock while the sinking hull read as a smudge. The rule the redraw follows: one silhouette a
+// reader can name, and where an icon needs interior detail, cut it out of a filled body instead of
+// drawing it in line, because a knocked-out mark keeps full contrast when it falls under a pixel and
+// a thin stroke just fades.
 const iconStyle = { verticalAlign: "-0.12em", flex: "0 0 auto" };
 
-// Currency, both the run purse and the hold that outlives it.
+// Currency, both the run purse and the hold that outlives it. A solid disc with the stamp cut out of
+// it, which is the whole reason it works: at 17px on the menu the stamp resolves and the icon is a
+// struck coin, and at 12px in the HUD it falls back to a round gold mass, which is still a coin. The
+// version before this one was a ring with a thin glyph hung inside it, and at 12px a ring with a
+// stub in the middle is a wall clock.
+//
+// The stamp is three fat bars, not a drawn $. A $ needs a stem crossing its bowls, and the bowls
+// then have to be thin enough to leave room, so at 12px the whole mark silts up into one dark blob.
+// Bars this wide keep their two gaps open, and a character struck on a coin reads as a denomination
+// anyway.
 function CoinIcon({ size = 12 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" style={iconStyle}>
-      <path d="M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13Zm0 1.5a5 5 0 1 1 0 10A5 5 0 0 1 8 3Z" />
-      <path d="M8.75 4.25H7.3v.9H6.65v1.2h1.7c.45 0 .7.15.7.45s-.25.45-.7.45h-1.7v1.2h.65v.9h1.45v-.9h.65v-1.2H7.7c-.45 0-.7-.15-.7-.45s.25-.45.7-.45h1.05v-1.2h-.65v-.9Z" />
+      <path
+        fillRule="evenodd"
+        d="M8 .8a7.2 7.2 0 1 1 0 14.4A7.2 7.2 0 0 1 8 .8Z
+           M11.1 3.7H4.9v5.2h3.8v1.2H4.9v2.2h6.2V7.1H7.3V5.9h3.8Z"
+      />
     </svg>
   );
 }
 
-// Rivals still afloat. A ship, not a flag: the counter is ships remaining.
+// Rivals still afloat. A ship, not a flag: the counter is ships remaining. Three masses, sized so
+// each one survives on its own: mast, mainsail, hull. The waves that used to run under the hull are
+// gone. At 12px they were a 1px ripple that only furred the bottom edge, and the hull's own flat
+// sheer line already puts the ship on the water.
 function ShipIcon({ size = 12 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" style={iconStyle}>
-      <path d="M7.15 2h1.1v7.5h-1.1z" />
-      <path d="M8.05 2.25 12.6 6.9H8.05z" />
-      <path d="M2.75 9.35h10.5l-1.45 2.25H4.8L2.75 9.35Z" />
-      <path d="M2 12.15c.95-.55 1.8-.55 2.75 0 .95.55 1.8.55 2.75 0 .95-.55 1.8-.55 2.75 0 .95.55 1.8.55 2.75 0v1c-.95.55-1.8.55-2.75 0-.95-.55-1.8-.55-2.75 0-.95.55-1.8.55-2.75 0-.95-.55-1.8-.55-2.75 0v-1Z" />
+      <path d="M6.4 1.2h1.9v8.2H6.4z" />
+      <path d="M9.1 2 13.6 8.2H9.1z" />
+      <path d="M1.4 9.6h13.2l-2.4 4.6H3.8L1.4 9.6Z" />
     </svg>
   );
 }
 
-// Ships sunk. Deliberately not an anchor: an anchor is gear a healthy ship carries, and this counter
-// had been wearing one for no better reason than that it was the nearest emoji. A hull going down
-// past a waterline is what the number counts.
+// Ships sunk. Not an anchor, which is gear a healthy ship carries. The hull is gone under and what
+// is left above the water is the mast heeled over, cut off by a waterline heavy enough to read as
+// the sea rather than as an underline. It shares its mast and sail with ShipIcon on purpose, so the
+// two counters in the arena HUD are the same ship upright and going down. An earlier pass kept the
+// whole hull and tipped it, which at 12px was one diagonal lump with a line beneath it.
 function SunkIcon({ size = 12 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" style={iconStyle}>
-      <path d="M8.45 2.05h1.15v6.35H8.45z" transform="rotate(15 9.025 5.225)" />
-      <path d="m5.1 9.15 3.7 1.05 2.15-2.8 2.05 2.05-1.2 1.55H6.55l-1.8-.55z" />
-      <path d="M1.5 11.55c1-.6 1.9-.6 2.9 0s1.9.6 2.9 0 1.9-.6 2.9 0 1.9.6 2.9 0 1.9-.6 2.9 0v1.05c-1 .6-1.9.6-2.9 0s-1.9-.6-2.9 0-1.9.6-2.9 0-1.9-.6-2.9 0-1.9.6-2.9 0v-1.05Z" />
+      <g transform="rotate(-22 8 9)">
+        <path d="M5.4 .6h2.1v11H5.4z" />
+        <path d="M8.2 1.6 13.6 11.2H8.2z" />
+      </g>
+      <path d="M0 10.8h16v2.2H0z" />
     </svg>
   );
 }
 
-// The closing squall. Two shapes only, and that is the whole design: every one of this icon's four
-// sites renders at 12px, where a 16-unit grid gives about nine device pixels to work in. A first
-// pass carried a broken ring behind the cloud, quoting the dashed ellipse the game draws closing in,
-// with three rain strokes below. Captured at 1x it read as a mushroom: the cloud covered the ring
-// down to one stub, and the three strokes fused into a single lumpy row. So the ring is gone and the
-// rain is two wedges wide enough to survive, with a gap between them wide enough to stay a gap.
+// The closing squall. One shape, because every site this icon appears in renders at 12px, where a
+// 16-unit grid is about nine device pixels across. It was a cloud with rain under it for a while,
+// and at 1x that is a lump with a fringe: the cloud has no silhouette left to recognise and the rain
+// merges into it. A bolt is the one weather mark that is all mass and holds its outline down to 9px,
+// and the pill it sits in always says the rest ("closing", "0:16", "In the storm").
 function SquallIcon({ size = 12 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" style={iconStyle}>
-      <path d="M3.1 9.4Q1.2 9.4 1.2 7.4Q1.2 5.4 3.3 5.2Q3.7 2 7 2Q10 2 10.9 4.6Q13.5 4.6 14 6.8Q14.4 9.4 12 9.4Z" />
-      <path d="M3.2 10.4h3.2l-1.6 4.2H1.6zM9.6 10.4h3.2l-1.6 4.2H8z" />
+      <path d="M10.2.6 2.8 9.4H7L6 15.4l7.2-8.8H9z" />
     </svg>
   );
 }
