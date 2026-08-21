@@ -2542,7 +2542,7 @@ export default function App() {
                 <button
                   key={t.key}
                   onPointerDown={(e) => { e.preventDefault(); buy(t.key); }}
-                  style={{ flex: "1 0 62px", minWidth: 62, borderRadius: 9, border: `1px solid ${t.color}`, background: can ? "rgba(13,58,56,0.9)" : "rgba(13,58,56,0.5)", opacity: can ? 1 : 0.55, color: C.ink, padding: "5px 4px", display: "flex", flexDirection: "column", alignItems: "center", gap: 1, cursor: "pointer", WebkitTapHighlightColor: "transparent" }}
+                  style={{ flex: "1 0 62px", minWidth: 62, borderRadius: 10, border: `1px solid ${t.color}`, background: can ? "rgba(13,58,56,0.9)" : "rgba(13,58,56,0.5)", opacity: can ? 1 : 0.55, color: C.ink, padding: "5px 4px", display: "flex", flexDirection: "column", alignItems: "center", gap: 1, cursor: "pointer", WebkitTapHighlightColor: "transparent" }}
                 >
                   <span style={{ fontSize: 11, fontWeight: 700, color: t.color }}>{t.label}</span>
                   <span style={{ fontSize: 8, color: "rgba(238,244,242,0.55)" }}>{t.sub}</span>
@@ -2628,7 +2628,7 @@ function FireButton({ refEl, name, sub, color, onDown, onUp }) {
       onPointerUp={onUp}
       onPointerLeave={onUp}
       onPointerCancel={onUp}
-      style={{ position: "relative", width: 66, height: 56, borderRadius: 12, border: `1px solid ${color}`, background: "rgba(13,58,56,0.88)", color: C.ink, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 1, overflow: "hidden", touchAction: "none", WebkitTapHighlightColor: "transparent", cursor: "pointer" }}
+      style={{ position: "relative", width: 66, height: 56, borderRadius: 10, border: `1px solid ${color}`, background: "rgba(13,58,56,0.88)", color: C.ink, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 1, overflow: "hidden", touchAction: "none", WebkitTapHighlightColor: "transparent", cursor: "pointer" }}
     >
       <span style={{ fontSize: 12, fontWeight: 700 }}>{name}</span>
       <span style={{ fontSize: 8, color, letterSpacing: 1 }}>{sub}</span>
@@ -2765,7 +2765,7 @@ function StartOverlay({ onStart, hold, onScuttle }) {
 
 function ModeCard({ color, title, desc, onClick }) {
   return (
-    <button onClick={onClick} style={{ display: "block", width: "100%", textAlign: "left", borderRadius: 12, border: `1px solid ${color}`, background: "rgba(13,58,56,0.85)", color: C.ink, padding: "14px 16px", marginBottom: 12, cursor: "pointer", WebkitTapHighlightColor: "transparent" }}>
+    <button onClick={onClick} style={{ display: "block", width: "100%", textAlign: "left", borderRadius: 10, border: `1px solid ${color}`, background: "rgba(13,58,56,0.85)", color: C.ink, padding: "14px 16px", marginBottom: 12, cursor: "pointer", WebkitTapHighlightColor: "transparent" }}>
       <div style={{ fontFamily: DISPLAY, fontSize: 20, color, marginBottom: 4 }}>{title}</div>
       <div style={{ fontSize: 12, color: "rgba(238,244,242,0.78)", lineHeight: 1.5 }}>{desc}</div>
     </button>

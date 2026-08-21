@@ -65,8 +65,7 @@ comes from a replica rather than a real frame, say so.
 
 ## Known gaps
 
-Rules above that the code does not yet satisfy. Both are tracked cleanups, not exceptions.
+Rules above that the code does not yet satisfy. Tracked cleanups, not exceptions.
 
 - **Emoji, 11 instances.** Coins, ships sunk, ships remaining, and the storm pill still use emoji.
   Note that the sunk counter uses an anchor, which does not communicate "sunk" at all.
-- **Border radius.** `9` and `12` are still in use and should collapse into `10`.
