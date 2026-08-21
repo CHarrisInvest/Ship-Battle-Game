@@ -49,11 +49,26 @@ Buttons take size over tracking. Wide letterspacing makes every control read as 
   so inline SVG is the right form.
 - **An icon has to carry its meaning.** Pick the shape from what the number counts, not from what is
   nearest to hand in the emoji table.
-- **Two or three shapes per icon, and check them at 1x.** The HUD icons run 9px to 17px on a 16-unit
-  grid, so a 1-unit detail is under a pixel. The squall started as a cloud, three rain strokes and a
-  broken ring quoting the storm ellipse; captured at real device scale it read as a mushroom. Cloud
-  and two fat wedges reads. A capture at deviceScaleFactor 6 will not tell you this, because it draws
-  72 device pixels for a 12px box.
+- **Check every icon at 1x, in the game.** The HUD icons run 9px to 17px on a 16-unit grid, so a
+  1-unit detail is under a pixel. A capture at deviceScaleFactor 6 will not tell you this, because it
+  draws 72 device pixels for a 12px box.
+- **Draw masses, not strokes, and cut detail out rather than drawing it in.** A hairline goes grey
+  when it lands under a pixel; a shape knocked out of a filled body keeps full contrast at any size,
+  and when it finally does fall under a pixel the body is still there to carry the meaning. The coin
+  is the case: as a ring with a thin glyph inside it, it read at 12px as a wall clock, and the same
+  coin as a filled disc with a skull cut out of it reads as a coin all the way down to 9px, where the
+  skull has gone and a round gold mass is left.
+- **An icon can go down a level of detail as it shrinks, but not down a meaning.** The skull on the
+  coin loses its nose and teeth to the skull on the sunk counter, which has more room; it keeps the
+  domed head, two sockets and a jaw, because that is the part that says skull. Decide what the icon
+  must still be at 9px, and spend the units on that first.
+- **Two shapes in one icon have to stay two shapes.** Size them alike and keep them clear of each
+  other. The squall is a cloud over the ring the storm is closing on: a small cloud on a wide ring
+  read as a chess pawn, a knob on a base, and a cloud tucked inside the ring fused into one lump. Two
+  full-width shapes with air between them read as weather over a perimeter.
+- **Counters that count the same thing should share a shape.** The purse and the sunk counter carry
+  the same skull, once struck on a coin and once flying over crossed bones. Two unrelated drawings
+  would make the player learn two marks for one idea.
 - **Border radius comes from a small set:** 3 for hairline bar fills, 10 for cards and buttons, 20
   for full-round pills. Do not invent a new one per component.
 - **Check a new colour against every ground it lands on.** HUD colours sit on the enemy bar's
