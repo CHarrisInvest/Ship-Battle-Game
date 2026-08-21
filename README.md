@@ -227,6 +227,29 @@ ball's own radius, and along the whole path it flew that frame rather than at it
 more than the width of a hull in a slow frame, so a point test would let it pass clean through.
 Presenting your bow or stern to a gun is therefore a genuinely smaller target than showing your side.
 
+## The player's view
+
+What a captain can see is a **square** laid on the middle of the screen. Its side is the shorter side
+of the device — the width of a phone held upright, the height of one held sideways — and whatever
+screen is left over beyond it simply shows more sea, behind the buttons. `VIEW` sets how much water
+the square holds across, in world units; it is twice a broadside's reach, so anything that can shoot
+at her is inside the square whichever way it lies from her. `MAX_ZOOM` caps the magnification, so a
+screen much larger than a phone's shows more water rather than bigger ships.
+
+Sizing the water to the screen instead left her sight of it lopsided, and different in each
+orientation: an upright phone gave barely a broadside's width across and three times that up and
+down, so a ship a little abeam was off the side of the screen while empty water ran away above and
+below her.
+
+The camera holds her in the middle of the square, and slides off her only as far as the screen
+reaches beyond it — never further. A ship in open water therefore has the whole screen full of sea,
+and one that runs up on the boundary brings that edge of the map with her: it comes to rest on the
+edge of the square, with the void beyond it filling the strip the buttons sit on, instead of the ship
+being shoved into the corner of the screen and under her own controls. Where the square spans the
+screen outright — across, on an upright phone — there is no room to slide at all and she stays dead
+centre, so the boundary comes half way into her view. That is the point of it: everything within
+range of her is on the water side of that line, and all of it is in sight.
+
 ## Damage model
 
 Ships track three separate pools instead of one health bar:
@@ -262,8 +285,8 @@ inline-styled, so `BroadsideIso.jsx` can be dropped into any React app as-is.
 ### Tuning constants
 
 The balance knobs sit at the top of `src/BroadsideIso.jsx`: `WORLD` and `TILT` for the arena and
-camera, `BASE`/`HP_GAIN` for the health pools, `WP` for per-weapon cooldown, projectile speed, and
-lifetime, `RAM_*` for ramming, and `TRACKS`/`COST` for the upgrade economy. `BASE_SPEED` is a fresh
+camera, `VIEW`/`MAX_ZOOM` for how much sea the square view holds, `BASE`/`HP_GAIN` for the health
+pools, `WP` for per-weapon cooldown, projectile speed, and lifetime, `RAM_*` for ramming, and `TRACKS`/`COST` for the upgrade economy. `BASE_SPEED` is a fresh
 ship's top speed and the yardstick the heavy rudder measures against; `RUDDER_HEAVY` is how much
 rudder she loses at it and `RUDDER_CURVE` how late in the range the loss starts to bite — raising the
 curve keeps more of her handling until she is truly running.
