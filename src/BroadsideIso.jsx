@@ -111,7 +111,12 @@ const C = {
   ballEdge: "#3a2c1a",
   pellet: "#dfefff",
   hull: "#d99a3c",
-  mast: "#5fa8a0",
+  // Mast reads on three grounds: the enemy bar's 50%-black backing, the player's HUD bar, and the
+  // FRONT gun button — the bow gun brings masts down, so it carries this colour too. It was a teal
+  // barely a shade off open water (1.41 contrast) and vanished against the sea. Pale rather than
+  // navy on purpose: a dark blue scores 1.01 against the bar's own dark backing, which would make a
+  // full mast bar look exactly like an empty one.
+  mast: "#a8c4ff",
   crew: "#d15b5b",
   side: "#e8c877",
   front: "#7a9cc6",
