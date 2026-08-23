@@ -717,7 +717,10 @@ const MODES = {
     winBonus: 75,
   },
 };
-const MODE_LIST = ["arena", "ffa", "derby"]; // menu order
+// Menu order, and the order the hold's per-mode bests are listed in. Arena sits last for now: it is
+// the hardest opening a new captain can pick, since it is the one mode where the sea keeps filling
+// up behind every ship she sinks. The first card is the one most players will take.
+const MODE_LIST = ["ffa", "derby", "arena"];
 const modeOf = (m) => MODES[m] || MODES.arena;
 
 function norm(a) {
