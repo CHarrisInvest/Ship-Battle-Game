@@ -533,6 +533,17 @@ const WP = {
   musket: { cd: 0.75, speed: 320, life: 0.4, r: 1.6, bar: "crew" },
 };
 
+// A shot's `r` is how wide a bite it takes: it is what widens the hull when the flight is tested,
+// so a round shot holes a ship where a musket ball whistles past her rail. What gets drawn is
+// smaller than that. Shrinking the drawn ball is a matter of how the sea looks; shrinking the bite
+// would quietly make every gun in the game worse, and those are two different decisions. Set this
+// to 1 to put them back together.
+const SHOT_DRAW = 0.7;
+// The light on the ball is the half of it that carries on dark water, so it is not allowed to
+// shrink away to nothing: under about a pixel canvas renders it as part-covered and it goes grey,
+// which is the one thing that mass was there to prevent.
+const SHOT_LIT_MIN = 0.85;
+
 // ---- the player's view ----
 //
 // What a captain sees is a square laid on the middle of the screen: its side is the shorter side of
@@ -1237,7 +1248,13 @@ export default function App() {
       if (weapon === "broadside") {
         // 4 guns a side at full hull, down to 3 once she's holed below half
         const offs = s.hull < s.maxHull * 0.5 ? [-10, 0, 10] : [-13, -5, 5, 13];
-        const FAN = 0.011; // whole volley fans out along the hull as it travels
+        // The volley opens out along the hull as it travels, but it used to open out a long way:
+        // at the range these fights are actually fought, about 150 paces, the four balls arrived
+        // spread across 76 of them, more than two hull lengths, so a broadside laid dead on a ship
+        // still had most of itself pass either side of her. Tightened to this the same volley
+        // covers 51, near enough one hull and a half, and a shot lined up properly lands more of
+        // itself. It is deliberately not nothing: a broadside is a wall of iron, not a rifle.
+        const FAN = 0.0045;
         for (const sd of [-1, 1]) {
           const dir = h + (sd * Math.PI) / 2;
           for (const off of offs) push(s.x + Math.cos(h) * off, s.y + Math.sin(h) * off, dir - sd * FAN * off + (Math.random() - 0.5) * (0.05 + noise));
@@ -1253,8 +1270,9 @@ export default function App() {
           muzzle(s.x, s.y, dir);
         }
       } else if (weapon === "bow") {
-        // 3 bow chasers at full hull, down to 2 below half
-        const angs = s.hull < s.maxHull * 0.5 ? [-0.06, 0.06] : [-0.09, 0, 0.09];
+        // 3 bow chasers at full hull, down to 2 below half, opened out by half what they were:
+        // they are round shot too, and a chase gun that sprays is no use to anybody
+        const angs = s.hull < s.maxHull * 0.5 ? [-0.03, 0.03] : [-0.045, 0, 0.045];
         for (const o of angs) push(bx, by, h + o + (Math.random() - 0.5) * noise);
         muzzle(bx, by, h);
         smoke(bx, by, h, 4, 0.92);
@@ -2454,6 +2472,7 @@ export default function App() {
           // moment it lands under a pixel, where a shape narrowing to a point keeps its weight at
           // the ball and simply runs out. Two wedges, a long faint one and a short bright one,
           // give it a falling-off without a gradient per ball per frame.
+          const dr = b.r * SHOT_DRAW; // what it looks like, which is not what it bites
           const tail = 0.06; // seconds of her flight lie behind her
           const px = -b.vx * tail, py = -b.vy * tail * TILT; // astern, in screen terms
           const nx = -py, ny = px; // across the trail, to give the wedge its width at the ball
@@ -2462,22 +2481,22 @@ export default function App() {
             ctx.globalAlpha = alpha;
             ctx.fillStyle = C.smoke;
             ctx.beginPath();
-            ctx.moveTo(sx + (nx / nl) * b.r * wide, sy + (ny / nl) * b.r * wide);
+            ctx.moveTo(sx + (nx / nl) * dr * wide, sy + (ny / nl) * dr * wide);
             ctx.lineTo(sx + px * reach, sy + py * reach);
-            ctx.lineTo(sx - (nx / nl) * b.r * wide, sy - (ny / nl) * b.r * wide);
+            ctx.lineTo(sx - (nx / nl) * dr * wide, sy - (ny / nl) * dr * wide);
             ctx.closePath();
             ctx.fill();
           }
           ctx.globalAlpha = 1;
           // cast iron, with the light off the top of it. No outline: a dark ball on this sea has
-          // the contrast to stand on its own, and a hairline round something 3px across is a
+          // the contrast to stand on its own, and a hairline round something this small is a
           // smudge rather than an edge
           ctx.beginPath();
-          ctx.arc(sx, sy, b.r, 0, Math.PI * 2);
+          ctx.arc(sx, sy, dr, 0, Math.PI * 2);
           ctx.fillStyle = C.ball;
           ctx.fill();
           ctx.beginPath();
-          ctx.arc(sx - b.r * 0.3, sy - b.r * 0.34, b.r * 0.42, 0, Math.PI * 2);
+          ctx.arc(sx - dr * 0.3, sy - dr * 0.34, Math.max(SHOT_LIT_MIN, dr * 0.42), 0, Math.PI * 2);
           ctx.fillStyle = C.ballLit;
           ctx.fill();
         }
