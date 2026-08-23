@@ -109,8 +109,22 @@ const C = {
   grid: "rgba(9,52,50,0.10)",
   player: "#ece2cc",
   playerStroke: "#b3a684",
-  ball: "#f2c14e",
-  ballEdge: "#3a2c1a",
+  // Round shot is cast iron, and going dark reads better than the gold it replaces almost
+  // everywhere, because every ground it crosses but one is lighter than it. Against the gold, by
+  // ground: open water 2.93 to 2.32, the shallows 4.44 to 1.53, grass 4.27 to 1.59, sand 5.88 to
+  // 1.15, the rim where the water meets the sand 6.32 to 1.07. A gold ball crossing an island was
+  // very nearly not there at all.
+  //
+  // The exception is dark water: 1.70 out past the buoys, and as little as 1.08 where the weather
+  // has the sea darkened outside the ring, which is a ball nobody can see. So the ball is not one
+  // mass but two, and the second is the answer to the first. The light off the top of it scores
+  // 2.96 to 5.45 on exactly those dark grounds, where the body has nothing, and falls to 1.55 on
+  // open water, where the body has 2.93. Whichever ground it crosses, one of the two is holding it.
+  // The trail does the same job again from further out, 5.73 to 11.66 on the dark grounds, and a
+  // round shot is only ever on screen while it is flying, so the trail is always there.
+  ball: "#333b42",
+  ballLit: "#9aa5af",   // the light off the top of it, which is what makes it a sphere and not a hole
+  smoke: "#e6efec",     // powder smoke: what a gun leaves behind and what a ball drags after it
   pellet: "#dfefff",
   hull: "#d99a3c",
   // Mast reads on three grounds: the enemy bar's 50%-black backing, the player's HUD bar, and the
@@ -1055,6 +1069,28 @@ export default function App() {
     function muzzle(x, y, ang) {
       gameRef.current.parts.push({ x, y, ang, life: 0.12, max: 0.12, kind: "muzzle" });
     }
+    // A gun going off leaves a bank of smoke hanging where it fired. It is thrown out along the
+    // barrel, slows almost at once, and then swells and thins where it stands, which is why the
+    // puffs carry heavy drag rather than a short life: what says "a gun fired here" is the smoke
+    // still sitting there a second later, well after the flash has gone.
+    //
+    // It has to stay on her rail to read as her smoke. Thrown any harder than this the puffs end up
+    // a full beam off the hull, where they stop looking like gunsmoke and start looking like the
+    // foam on a shoal. Drag being what it is, a puff settles about a third of its starting speed
+    // away from the gun, so these numbers put the bank within a few paces of her side.
+    function smoke(x, y, ang, n, power) {
+      const parts = gameRef.current.parts;
+      for (let i = 0; i < n; i++) {
+        const a = ang + (Math.random() - 0.5) * 1.1;
+        const sp = (11 + Math.random() * 15) * power;
+        const life = (0.55 + Math.random() * 0.45) * power;
+        parts.push({
+          x: x + (Math.random() - 0.5) * 2.5, y: y + (Math.random() - 0.5) * 2.5,
+          vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, drag: 3.4,
+          life, max: life, r0: 1.2 * power, r1: (5.6 + Math.random() * 3) * power, kind: "puff",
+        });
+      }
+    }
     function burst(x, y, bar) {
       const col = bar === "hull" ? C.splinter : bar === "mast" ? "#d8e6e0" : C.crew;
       const parts = gameRef.current.parts;
@@ -1206,16 +1242,26 @@ export default function App() {
           const dir = h + (sd * Math.PI) / 2;
           for (const off of offs) push(s.x + Math.cos(h) * off, s.y + Math.sin(h) * off, dir - sd * FAN * off + (Math.random() - 0.5) * (0.05 + noise));
         }
-        muzzle(s.x, s.y, h + Math.PI / 2);
-        muzzle(s.x, s.y, h - Math.PI / 2);
+        // and every gun that fired leaves its own smoke, spaced down her side, so a broadside
+        // reads as a bank rolling off the whole length of her rather than one puff amidships.
+        // It starts at the rail she fired over, not on her keel, or the bank comes up through
+        // the middle of the deck.
+        for (const sd of [-1, 1]) {
+          const dir = h + (sd * Math.PI) / 2;
+          const rx = Math.cos(dir) * (HULL_W / 2), ry = Math.sin(dir) * (HULL_W / 2);
+          for (const off of offs) smoke(s.x + Math.cos(h) * off + rx, s.y + Math.sin(h) * off + ry, dir, 2, 1);
+          muzzle(s.x, s.y, dir);
+        }
       } else if (weapon === "bow") {
         // 3 bow chasers at full hull, down to 2 below half
         const angs = s.hull < s.maxHull * 0.5 ? [-0.06, 0.06] : [-0.09, 0, 0.09];
         for (const o of angs) push(bx, by, h + o + (Math.random() - 0.5) * noise);
         muzzle(bx, by, h);
+        smoke(bx, by, h, 4, 0.92);
       } else {
         for (let i = 0; i < 6; i++) push(bx, by, h + (Math.random() - 0.5) * (0.8 + noise));
         muzzle(bx, by, h);
+        smoke(bx, by, h, 2, 0.45); // muskets make little enough of it, and fire often
       }
     }
 
@@ -1751,7 +1797,14 @@ export default function App() {
       for (let i = g.parts.length - 1; i >= 0; i--) {
         const p = g.parts[i];
         p.life -= dt;
-        if (p.vx !== undefined) { p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= 0.9; p.vy *= 0.9; }
+        // Smoke says how fast it slows in its own terms, so a bank of it stands the same on a phone
+        // dropping frames as on a screen holding sixty. The sparks keep the old per-frame damping,
+        // which is brief enough that nobody was ever going to catch it drifting.
+        if (p.vx !== undefined) {
+          p.x += p.vx * dt; p.y += p.vy * dt;
+          const k = p.drag !== undefined ? Math.exp(-dt * p.drag) : 0.9;
+          p.vx *= k; p.vy *= k;
+        }
         if (p.life <= 0) g.parts.splice(i, 1);
       }
       for (let i = g.texts.length - 1; i >= 0; i--) {
@@ -2396,13 +2449,37 @@ export default function App() {
           ctx.lineTo(sx - b.vx * 0.012, sy - b.vy * 0.012 * TILT);
           ctx.stroke();
         } else {
+          // The smoke she drags comes first, so the ball sits on the head of it. It is drawn as a
+          // wedge tapering to nothing astern rather than a line: a stroke this thin goes grey the
+          // moment it lands under a pixel, where a shape narrowing to a point keeps its weight at
+          // the ball and simply runs out. Two wedges, a long faint one and a short bright one,
+          // give it a falling-off without a gradient per ball per frame.
+          const tail = 0.06; // seconds of her flight lie behind her
+          const px = -b.vx * tail, py = -b.vy * tail * TILT; // astern, in screen terms
+          const nx = -py, ny = px; // across the trail, to give the wedge its width at the ball
+          const nl = Math.hypot(nx, ny) || 1;
+          for (const [reach, wide, alpha] of [[1, 0.85, 0.2], [0.45, 0.62, 0.28]]) {
+            ctx.globalAlpha = alpha;
+            ctx.fillStyle = C.smoke;
+            ctx.beginPath();
+            ctx.moveTo(sx + (nx / nl) * b.r * wide, sy + (ny / nl) * b.r * wide);
+            ctx.lineTo(sx + px * reach, sy + py * reach);
+            ctx.lineTo(sx - (nx / nl) * b.r * wide, sy - (ny / nl) * b.r * wide);
+            ctx.closePath();
+            ctx.fill();
+          }
+          ctx.globalAlpha = 1;
+          // cast iron, with the light off the top of it. No outline: a dark ball on this sea has
+          // the contrast to stand on its own, and a hairline round something 3px across is a
+          // smudge rather than an edge
           ctx.beginPath();
           ctx.arc(sx, sy, b.r, 0, Math.PI * 2);
           ctx.fillStyle = C.ball;
           ctx.fill();
-          ctx.lineWidth = 0.8;
-          ctx.strokeStyle = C.ballEdge;
-          ctx.stroke();
+          ctx.beginPath();
+          ctx.arc(sx - b.r * 0.3, sy - b.r * 0.34, b.r * 0.42, 0, Math.PI * 2);
+          ctx.fillStyle = C.ballLit;
+          ctx.fill();
         }
       }
     }
@@ -2425,6 +2502,26 @@ export default function App() {
           ctx.fill();
           ctx.globalAlpha = 1;
           ctx.restore();
+        } else if (p.kind === "puff") {
+          // It swells the whole way and thins as it goes, so what fades out is a wide soft bank
+          // rather than a hard dot winking out. Squashed like everything else lying on the water.
+          //
+          // Three rings of the one puff, each drawn over the last, in place of a soft-edged brush.
+          // A single flat disc has a hard rim, and a dozen hard rims over a hull read as spots on
+          // the water rather than as smoke; stacking them thickens the middle and lets the edge go
+          // off gradually, which is the whole difference between a cloud and a blob. Three fills
+          // beat building a gradient for every puff of every frame.
+          const k = 1 - p.life / p.max;
+          const rr = p.r0 + (p.r1 - p.r0) * Math.sqrt(k);
+          const fade = (1 - k) * Math.min(1, k * 5); // a beat to bloom, then away
+          ctx.fillStyle = C.smoke;
+          for (const step of [1, 0.7, 0.44]) {
+            ctx.globalAlpha = 0.26 * fade;
+            ctx.beginPath();
+            ctx.ellipse(sx, sy, rr * step, rr * step * TILT, 0, 0, Math.PI * 2);
+            ctx.fill();
+          }
+          ctx.globalAlpha = 1;
         } else if (p.kind === "ring") {
           const k = 1 - p.life / p.max;
           ctx.globalAlpha = (1 - k) * 0.8;
