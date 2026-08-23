@@ -3,7 +3,7 @@
  *
  * Coins are two different things and it matters which one you mean. The purse a ship carries into a
  * battle is spent at sea on her own upgrades and goes down with her: that lives on the ship object in
- * `BroadsideIso.jsx` and is gone the moment the round ends. The hold is the other one — a record that
+ * `SternchaseIso.jsx` and is gone the moment the round ends. The hold is the other one — a record that
  * outlives any single round, holds coins across arena and free-for-all alike, and is written to
  * `localStorage` so it survives a reload. Nothing spends from the hold yet; this is the collection
  * side, and `spendFromHold` is the door the rest of it will come through.
@@ -17,7 +17,7 @@
  * a stat not recorded from the start is a stat that can never be backfilled.
  */
 
-const KEY = "broadside.hold";
+const KEY = "sternchase.hold";
 const VERSION = 1;
 
 // Share of a voyage's earnings that reaches the hold. At 1 every coin you earn at sea is also logged
