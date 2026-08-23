@@ -1,7 +1,11 @@
-# Ship Battle Game — Broadside
+# Sternchase: Helm & Hull
 
 Pirate ship combat on a tilted (isometric-ish) sea, rendered to a single HTML canvas from React.
-`src/BroadsideIso.jsx` is the whole game and serves as the base for further development.
+`src/SternchaseIso.jsx` is the whole game and serves as the base for further development.
+
+The repository is still called `Ship-Battle-Game`, which is where the Pages URL and the Vite base
+path come from. "Broadside" appears throughout as the name of the side guns; that is the weapon,
+not the game.
 
 ## Run it
 
@@ -136,7 +140,7 @@ Coins sit at two depths, and keeping them apart is the whole of it:
 - **The hold** (`src/hold.js`) is the captain's, not the ship's. Every voyage that reaches an end
   screen banks what it *earned* — 25 a kill and one a point of damage dealt, a rammed hull included —
   and the total carries across every mode alike and through a reload, kept in `localStorage` under
-  `broadside.hold`.
+  `sternchase.hold`.
 
 Banking counts earnings, not leftovers, so an upgrade bought at sea costs nothing ashore and there is
 never a reason to sit on coins you could be fighting with. A voyage banks whether you win it or sink:
@@ -269,7 +273,7 @@ Ships track three separate pools instead of one health bar:
 index.html            # Vite entry
 src/main.jsx          # React root
 src/index.css         # full-bleed, no-scroll page shell
-src/BroadsideIso.jsx  # game: simulation, canvas renderer, and UI
+src/SternchaseIso.jsx  # game: simulation, canvas renderer, and UI
 src/galleon.js        # the galleon turning on the menu
 src/hold.js           # coins and records that outlive a single round
 vite.config.js
@@ -283,11 +287,11 @@ honours `prefers-reduced-motion` by holding a three-quarter view instead of
 turning.
 
 The game has no dependencies beyond React — all rendering is hand-rolled canvas drawing and all UI is
-inline-styled, so `BroadsideIso.jsx` can be dropped into any React app as-is.
+inline-styled, so `SternchaseIso.jsx` can be dropped into any React app as-is.
 
 ### Tuning constants
 
-The balance knobs sit at the top of `src/BroadsideIso.jsx`: `WORLD` and `TILT` for the arena and
+The balance knobs sit at the top of `src/SternchaseIso.jsx`: `WORLD` and `TILT` for the arena and
 camera, `VIEW`/`MAX_ZOOM` for how much sea the square view holds and `EDGE_PEEK` for how far the
 boundary is let inside it, `BASE`/`HP_GAIN` for the health
 pools, `WP` for per-weapon cooldown, projectile speed, and lifetime, `RAM_*` for ramming, and `TRACKS`/`COST` for the upgrade economy. `BASE_SPEED` is a fresh

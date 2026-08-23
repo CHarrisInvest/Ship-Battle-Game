@@ -1,8 +1,12 @@
-# Broadside
+# Sternchase: Helm & Hull
 
 An isometric age-of-sail combat game. Canvas 2D, React shell, no engine.
 
-- `src/BroadsideIso.jsx` is the game: state, AI, rendering, and the React HUD.
+The game is Sternchase; `Helm & Hull` is the second line of the title and never stands alone. The
+repository keeps its old name, `Ship-Battle-Game`, which is what the Pages URL and the Vite base path
+are built from. `broadside` in the code is the side guns, not the old title, and stays.
+
+- `src/SternchaseIso.jsx` is the game: state, AI, rendering, and the React HUD.
 - `src/galleon.js` draws the rotating ship on the menu.
 - `src/hold.js` persists coins and lifetime stats to localStorage. Nothing else is saved;
   worlds and islands are generated fresh every match.
@@ -33,7 +37,8 @@ These exist because the copy had accumulated machine tells. Anything a player re
 Caps and letterspacing stopped meaning anything when everything had them. The split is by what the
 text *is*, not by where it sits:
 
-- **Caps** for the game's proper nouns: the title `BROADSIDE`, the three mode names, and the five
+- **Caps** for the game's proper nouns: the title, both lines of it (`STERNCHASE` over
+  `HELM & HULL`), the three mode names, and the five
   ship systems (`MAST` `HULL` `CREW` `SIDE` `FRONT`). Outcome headlines set in the display face at
   title size count here too, so `SUNK` and `LAST AFLOAT` keep their caps; they name the moment
   rather than instruct.

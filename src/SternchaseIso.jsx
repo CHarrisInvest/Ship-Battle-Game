@@ -3,7 +3,9 @@ import { drawGalleon } from "./galleon.js";
 import { getHold, bankVoyage, resetHold, subscribeHold, modeRecord } from "./hold.js";
 
 /**
- * BROADSIDE — pirate battles at sea, on a tilted (isometric-ish) sea with tall wooden ships.
+ * STERNCHASE: HELM & HULL — pirate battles at sea, on a tilted (isometric-ish) sea with tall wooden
+ * ships. "Broadside" survives below as the name of the side guns, which is the job it was always
+ * doing in the simulation; the game's own name is Sternchase.
  * ARENA: endless survival. One hunter to start, matched to the player gun for gun; kills bring
  * reinforcements in from the edge of the map, well clear of your bow, 1-2-1-2 and then two a kill.
  * They never get stronger, there just get to be more of them, and only you upgrade.
@@ -715,7 +717,10 @@ const MODES = {
     winBonus: 75,
   },
 };
-const MODE_LIST = ["arena", "ffa", "derby"]; // menu order
+// Menu order, and the order the hold's per-mode bests are listed in. Arena sits last for now: it is
+// the hardest opening a new captain can pick, since it is the one mode where the sea keeps filling
+// up behind every ship she sinks. The first card is the one most players will take.
+const MODE_LIST = ["ffa", "derby", "arena"];
 const modeOf = (m) => MODES[m] || MODES.arena;
 
 function norm(a) {
@@ -2916,7 +2921,14 @@ function ScuttleHold({ onScuttle }) {
 function StartOverlay({ onStart, hold, onScuttle }) {
   return (
     <Shell>
-      <div style={{ fontFamily: DISPLAY, fontSize: 44, color: C.gold, letterSpacing: 2 }}>BROADSIDE</div>
+      {/* The name is a lockup of two lines, and the first one carries it. STERNCHASE is the word a
+          captain says; HELM & HULL sits under it at a third the size, in the same gold run dim, so
+          the pair reads as one title rather than as a title and a tagline competing for the eye. */}
+      {/* 44px is the size the title wants, but STERNCHASE at 44 measures wider than the 272px a
+          320px phone leaves inside the shell's padding, and the last letter went off the screen.
+          It gives size back on a narrow screen rather than being set small everywhere. */}
+      <div style={{ fontFamily: DISPLAY, fontSize: "clamp(34px, 12vw, 44px)", color: C.gold, letterSpacing: 2, lineHeight: 1.05 }}>STERNCHASE</div>
+      <div style={{ fontFamily: DISPLAY, fontSize: 15, color: "rgba(232,200,119,0.62)", letterSpacing: 3, marginTop: 4 }}>HELM &amp; HULL</div>
       <MenuGalleon />
       <HoldPanel hold={hold} />
       {/* No prompt over the modes. Three named cards under the game's own title are visibly the
