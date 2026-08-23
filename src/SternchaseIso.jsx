@@ -613,20 +613,55 @@ function keelGap(a, b) {
   return { d, nx: gx / d, ny: gy / d };
 }
 
-// Did a shot's flight this frame cross a ship's hull? Works on the whole step from where the ball
+// How far along this frame's flight does a shot bite? Works on the whole step from where the ball
 // was to where it is, so a fast ball cannot skip through a hull only thirteen paces across. `pad`
 // widens the hull by the radius of what is arriving: a heavy round shot bites where a musket ball
-// would whistle past her rail. Scaling the hull's ellipse to a unit circle makes it one dot product.
+// would whistle past her rail. Scaling the hull's ellipse to a unit circle makes it one quadratic.
+// It answers with the share of the step at which the ball first touches her, so the shots can tell
+// which of two hulls on one step is the nearer, and -1 for a clean miss.
+//
+// The flight is measured against the hull as the hull herself sees it, which means carrying the
+// ball's starting point forward by the ground the ship made this frame. Testing it against where
+// the frame left her was near enough for a ship under sail, but a ship in a melee does not move
+// like one: a ram throws her aside at better than her own top speed, and hulls foul of each other
+// are shoved apart bodily every frame, all of it done before the shots are stepped. A hull moved
+// half her own beam in one frame slid out from under a ball that had gone through her amidships,
+// and the ball sailed on. That is why it happened to ships in company and rarely anywhere else.
+//
+// Her turn within the frame is not counted, only her passage. A hull under helm sweeps her bow
+// through about a pace at the worst of it, against the ten or more the shoving throws her.
 const shotHitsHull = (s, x0, y0, x1, y1, pad) => {
   const c = Math.cos(s.heading), sn = Math.sin(s.heading);
   const A = HULL_A + pad, B = HULL_B + pad;
-  const px = ((x0 - s.x) * c + (y0 - s.y) * sn) / A, py = ((y0 - s.y) * c - (x0 - s.x) * sn) / B;
+  const wx = s.x - (s.px ?? s.x), wy = s.y - (s.py ?? s.y); // the ground she made this frame
+  const px = ((x0 + wx - s.x) * c + (y0 + wy - s.y) * sn) / A;
+  const py = ((y0 + wy - s.y) * c - (x0 + wx - s.x) * sn) / B;
   const qx = ((x1 - s.x) * c + (y1 - s.y) * sn) / A, qy = ((y1 - s.y) * c - (x1 - s.x) * sn) / B;
   const dx = qx - px, dy = qy - py;
+  const out = px * px + py * py - 1;
+  if (out < 0) return 0; // the ball began the step already inside her timbers
   const len2 = dx * dx + dy * dy;
-  const u = len2 > 0 ? clamp(-(px * dx + py * dy) / len2, 0, 1) : 0; // closest approach to her centre
-  const nx = px + dx * u, ny = py + dy * u;
-  return nx * nx + ny * ny < 1;
+  if (len2 <= 1e-12) return -1;
+  const half = px * dx + py * dy;
+  const disc = half * half - len2 * out;
+  if (disc < 0) return -1; // the flight passes her by
+  const t = (-half - Math.sqrt(disc)) / len2;
+  return t >= 0 && t <= 1 ? t : -1; // she is touched within this step, or not this frame
+};
+
+// The same question for an island, which is a plain circle and never moves. Asked of the whole
+// step for the same reason: a ball tested only where the frame left it can step over a shoal.
+const shotHitsCircle = (cx, cy, r, x0, y0, x1, y1) => {
+  const px = x0 - cx, py = y0 - cy, dx = x1 - x0, dy = y1 - y0;
+  const out = px * px + py * py - r * r;
+  if (out < 0) return 0;
+  const len2 = dx * dx + dy * dy;
+  if (len2 <= 1e-12) return -1;
+  const half = px * dx + py * dy;
+  const disc = half * half - len2 * out;
+  if (disc < 0) return -1;
+  const t = (-half - Math.sqrt(disc)) / len2;
+  return t >= 0 && t <= 1 ? t : -1;
 };
 
 // Each track says what it actually buys, in words. SIDE and FRONT both read "cannon dmg" before,
@@ -1685,20 +1720,28 @@ export default function App() {
         const b = s[i];
         const fromX = b.x, fromY = b.y;
         b.x += b.vx * dt; b.y += b.vy * dt; b.life -= dt;
-        let hit = false;
+        // A ball takes the first thing in its road, which is the nearest along the flight and not
+        // whichever hull the ships happen to be listed in first. Hulls are held far enough apart
+        // that a single step rarely reaches across two of them, so this is a rare case rather than
+        // a common one, but when it did come up the near ship, the one the ball plainly went
+        // through, was as likely as not the one that felt nothing.
+        let struck = null, shoal = false, when = 2;
         for (const isl of g.islands) {
-          if (Math.hypot(b.x - isl.x, b.y - isl.y) < isl.r) { splash(b.x, b.y); hit = true; break; }
+          const t = shotHitsCircle(isl.x, isl.y, isl.r, fromX, fromY, b.x, b.y);
+          if (t >= 0 && t < when) { when = t; shoal = true; }
         }
-        if (!hit)
-          for (const target of g.ships) {
-            if (!canHit(b.owner, target)) continue;
-            if (shotHitsHull(target, fromX, fromY, b.x, b.y, b.r)) {
-              applyHit(target, b.bar, b.dmg, b.owner);
-              burst(b.x, b.y, b.bar);
-              hit = true;
-              break;
-            }
-          }
+        for (const target of g.ships) {
+          if (!canHit(b.owner, target)) continue;
+          const t = shotHitsHull(target, fromX, fromY, b.x, b.y, b.r);
+          if (t >= 0 && t < when) { when = t; struck = target; shoal = false; }
+        }
+        const hit = struck !== null || shoal;
+        if (hit) {
+          // and it breaks where it bit her, not at the end of a step it never finished
+          const hx = fromX + (b.x - fromX) * when, hy = fromY + (b.y - fromY) * when;
+          if (struck) { applyHit(struck, b.bar, b.dmg, b.owner); burst(hx, hy, b.bar); }
+          else splash(hx, hy);
+        }
         if (hit || b.life <= 0 || b.x < 0 || b.x > WORLD || b.y < 0 || b.y > WORLD) s.splice(i, 1);
       }
     }
