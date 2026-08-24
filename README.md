@@ -192,6 +192,13 @@ sea is still the same hull. `docs/SHIPYARD.md` is the design note; the short ver
   another hull costs nothing to step.
 - `src/galleon.js` draws a rig rather than *the* rig. `drawGalleon(ctx, w, h, deg, spec)` builds
   whatever is stepped and bent on; called without a spec it builds the galleon it always drew.
+- **The menu ship is a control.** Her plate carries the class she is and `Tap to edit`, and opens the
+  yard: what she rates, her tier, her rigging socket by socket with bare berths marked, her guns
+  against what she bears, and what she still wants. Reading only for now; buying and fitting get built
+  into that screen.
+- **Manoeuvrability is `hand`**, a hull figure separate from `speed`, moved by the sails she carries
+  (`hand` again, negative on square canvas) and the guns weighing her down. `rate()` folds it into
+  `turn`. In the fight the rudder also goes heavy with the way she carries.
 - **A ship's tier comes off her stat line, not her class.** `measure()` turns a rating into throw
   weight, endurance and mobility, blends them into one figure, and `TIERS` bands that into five rungs.
   A fully found cutter genuinely outclasses a bare brig, so matching on class would call that an even

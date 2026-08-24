@@ -1,7 +1,7 @@
 import React, { useRef, useState, useEffect, useCallback, useMemo } from "react";
 import { drawGalleon } from "./galleon.js";
-import { getHold, bankVoyage, resetHold, subscribeHold, modeRecord, shipLoadout } from "./hold.js";
-import { STARTER, mastRebuildCost, resolve, rigSpec } from "./shipyard.js";
+import { getHold, bankVoyage, resetHold, subscribeHold, modeRecord, shipLoadout, shortfall } from "./hold.js";
+import { STARTER, mastRebuildCost, measure, rate, resolve, rigSpec, tierAt } from "./shipyard.js";
 
 /**
  * STERNCHASE: HELM & HULL — pirate battles at sea, on a tilted (isometric-ish) sea with tall wooden
@@ -2886,7 +2886,8 @@ export default function App() {
         </>
       )}
 
-      {phase === "start" && <StartOverlay onStart={(m) => startRef.current(m)} hold={hold} onScuttle={() => resetHold()} />}
+      {phase === "start" && <StartOverlay onStart={(m) => startRef.current(m)} onEdit={() => setPhase("yard")} hold={hold} onScuttle={() => resetHold()} />}
+      {phase === "yard" && <YardScreen hold={hold} onBack={() => setPhase("start")} />}
       {phase === "won" && <EndOverlay title="LAST AFLOAT" titleColor={C.gold} result={result} stats={stats} mode={mode} place={place} hold={hold} banked={banked} onAgain={() => startRef.current(mode)} onMenu={() => setPhase("start")} />}
       {phase === "dead" && (
         <EndOverlay title="SUNK" titleColor={C.crew} result={result} stats={stats} mode={mode} place={place} hold={hold} banked={banked} onAgain={() => startRef.current(mode)} onMenu={() => setPhase("start")} />
@@ -3175,9 +3176,182 @@ function ScuttleHold({ onScuttle }) {
   );
 }
 
-function StartOverlay({ onStart, hold, onScuttle }) {
+/**
+ * THE YARD — what the captain's own ship is, part by part.
+ *
+ * First screen of the shipyard, and deliberately the reading half of it. Everything here is already
+ * worked out by `shipyard.js`: what she rates, what tier that puts her in, what is in every berth,
+ * and what she still wants. None of it had anywhere to be shown, and a captain cannot make a decision
+ * about a ship she cannot see. Buying and fitting come next, against a design that is still to come;
+ * this is the screen they will be built into rather than a placeholder for it.
+ *
+ * The rig is listed socket by socket from the bow aft, because that is how a ship is rigged and how
+ * `masts` reads in the catalogue. An empty socket and an empty berth are both shown rather than
+ * skipped: the gaps are the whole point of the screen.
+ */
+function YardScreen({ hold, onBack }) {
+  const loadout = useMemo(() => shipLoadout(hold), [hold]);
+  const rig = useMemo(() => rigSpec(loadout), [loadout]);
+  const stats = useMemo(() => rate(loadout), [loadout]);
+  const strength = useMemo(() => measure(stats), [stats]);
+  const want = useMemo(() => shortfall(hold), [hold]);
+  const tier = tierAt(strength.overall);
+
+  // Named for the parts rather than for the HUD buttons: this is the shipyard, where a captain is
+  // looking at guns she owns, not at the three keys she fires them with.
+  const guns = [
+    ["Broadside guns, a side", stats.broadside.count, loadout.hull.guns.broadside],
+    ["Bow chasers", stats.bow.count, loadout.hull.guns.bow],
+    ["Swivel guns", stats.swivel.count, loadout.hull.guns.swivel],
+  ];
+
+  return (
+    <Shell>
+      <div style={{ fontFamily: DISPLAY, fontSize: 30, color: C.gold, letterSpacing: 1 }}>THE YARD</div>
+      <div style={{ fontSize: 12, color: "rgba(238,244,242,0.7)", margin: "6px 0 2px" }}>
+        {loadout.hull.name}, rated {Math.round(strength.overall)} and sailing as {tier.name.toLowerCase()}.
+      </div>
+      <MenuGalleon rig={rig} />
+
+      <Slab title="How she sails">
+        <TallyRow label="Top speed" value={stats.speed.toFixed(2)} />
+        <TallyRow label="Handling" value={stats.turn.toFixed(2)} rule="hair" />
+        <TallyRow label="Hull" value={stats.hull} rule="hair" />
+        <TallyRow label="Crew" value={stats.crew} rule="hair" />
+        <TallyRow label="Muskets in a volley" value={stats.muskets} rule="hair" />
+      </Slab>
+
+      <Slab title="Her rigging">
+        {loadout.hull.sockets.map((socket) => {
+          const entry = loadout.rig[socket.id];
+          const mast = entry && entry.mast;
+          return (
+            <div key={socket.id} style={{ borderTop: `1px solid rgba(160,224,210,0.14)`, padding: "7px 0 6px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: C.mast }}>{socket.station.toUpperCase()}</span>
+                <span style={{ fontSize: 11, color: mast ? C.ink : "rgba(238,244,242,0.4)" }}>
+                  {mast ? mast.name : "no mast stepped"}
+                </span>
+              </div>
+              {mast &&
+                mast.berths.map((berth, i) => {
+                  const sail = entry.sails[i];
+                  return (
+                    <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 8, marginTop: 3, paddingLeft: 10 }}>
+                      <span style={{ fontSize: 9, color: "rgba(238,244,242,0.45)" }}>
+                        {berth.size} {berth.cut}
+                      </span>
+                      <span style={{ fontSize: 10, color: sail ? "rgba(238,244,242,0.8)" : "rgba(238,244,242,0.35)" }}>
+                        {sail ? sail.name : "bare"}
+                      </span>
+                    </div>
+                  );
+                })}
+            </div>
+          );
+        })}
+      </Slab>
+
+      <Slab title="Her guns">
+        {/* Green once a mount is full, and the ordinary gold otherwise. Colouring a short mount by its
+            system read as an alarm: no swivels is not a fault, it is a purchase she has not made. */}
+        {guns.map(([label, has, bears], i) => (
+          <TallyRow
+            key={label}
+            label={label}
+            value={`${has} of ${bears}`}
+            rule={i > 0 ? "hair" : ""}
+            valueColor={bears > 0 && has >= bears ? C.grass : undefined}
+          />
+        ))}
+      </Slab>
+
+      {/* What she is short, and what of it is already lying in the hold. The cheapest legal fill is a
+          floor, not a recommendation: a pole mast is free and fits any socket. */}
+      <Slab title={want.gaps.length ? `She wants ${want.gaps.length} more ${want.gaps.length === 1 ? "part" : "parts"}` : "Fully found"}>
+        {want.gaps.length ? (
+          <>
+            <TallyRow label="Cheapest way to fill her out" value={<Coins n={want.cost} />} />
+            <TallyRow
+              label="Of those, already in the hold"
+              value={want.gaps.filter((g) => g.owned.length).length}
+              rule="hair"
+            />
+          </>
+        ) : (
+          <div style={{ fontSize: 11, color: "rgba(238,244,242,0.6)", padding: "6px 0", lineHeight: 1.6 }}>
+            Every socket stepped, every berth bent on, every port run out.
+          </div>
+        )}
+      </Slab>
+
+      <div style={{ fontSize: 11, color: "rgba(238,244,242,0.5)", lineHeight: 1.6, margin: "2px 0 16px" }}>
+        Buying and fitting come to this screen next. For now she is what the hold says she is, and the
+        ship on the menu turns whatever you have bent on her.
+      </div>
+      <StartButton onClick={onBack} label="Back to the sea" />
+    </Shell>
+  );
+}
+
+// A titled group inside the shell. The end screen's tally uses the same rules and radius, so the two
+// screens read as one game rather than two.
+function Slab({ title, children }) {
+  return (
+    <div style={{ background: "rgba(11,51,49,0.6)", border: `1px solid ${C.hair}`, borderRadius: 10, padding: "8px 12px 10px", margin: "12px 0", textAlign: "left" }}>
+      <div style={{ fontSize: 10, letterSpacing: 1, color: "rgba(238,244,242,0.55)", marginBottom: 2 }}>{title}</div>
+      {children}
+    </div>
+  );
+}
+
+const Coins = ({ n }) => (
+  <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+    <CoinIcon size={12} />
+    {fmtCoins(n)}
+  </span>
+);
+
+/**
+ * The ship on the menu, framed as the control it now is.
+ *
+ * She was decoration: a ship turning under the title, and nothing you could do with her. She is also
+ * the only picture of the captain's own ship anywhere in the game, which makes her the obvious way in
+ * to the yard, and a turning ship that does nothing when tapped is a worse answer than a still one.
+ *
+ * So she gets a frame and a line saying what tapping does. The line sits above her rather than below
+ * because that is where the eye lands coming down from the title, and it names the ship on the same
+ * row, so the plate answers "what am I sailing" and "what can I do about it" in one look.
+ *
+ * The whole plate is one button. A frame you have to hit the middle of is a frame that feels broken
+ * on a phone, and the ship inside it is a canvas with transparent corners.
+ */
+function ShipPlate({ loadout, rig, onEdit }) {
+  const [lit, setLit] = useState(false);
+  return (
+    <button
+      onClick={onEdit}
+      onPointerEnter={() => setLit(true)}
+      onPointerLeave={() => setLit(false)}
+      style={{
+        display: "block", width: "100%", margin: "10px 0 0", padding: "7px 8px 2px",
+        borderRadius: 10, border: `1px solid ${lit ? C.gold : C.hair}`, background: C.panel,
+        color: C.ink, cursor: "pointer", WebkitTapHighlightColor: "transparent",
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10, padding: "0 4px" }}>
+        <span style={{ fontSize: 11, color: C.ink, fontWeight: 700 }}>{loadout.hull.name}</span>
+        <span style={{ fontSize: 10, color: lit ? C.gold : "rgba(232,200,119,0.7)" }}>Tap to edit</span>
+      </div>
+      <MenuGalleon rig={rig} />
+    </button>
+  );
+}
+
+function StartOverlay({ onStart, onEdit, hold, onScuttle }) {
   // What she is sailing, resolved from the hold every time it changes.
-  const rig = useMemo(() => rigSpec(shipLoadout(hold)), [hold]);
+  const loadout = useMemo(() => shipLoadout(hold), [hold]);
+  const rig = useMemo(() => rigSpec(loadout), [loadout]);
   return (
     <Shell>
       {/* The name is a lockup of two lines, and the first one carries it. STERNCHASE is the word a
@@ -3188,7 +3362,7 @@ function StartOverlay({ onStart, hold, onScuttle }) {
           It gives size back on a narrow screen rather than being set small everywhere. */}
       <div style={{ fontFamily: DISPLAY, fontSize: "clamp(34px, 12vw, 44px)", color: C.gold, letterSpacing: 2, lineHeight: 1.05 }}>STERNCHASE</div>
       <div style={{ fontFamily: DISPLAY, fontSize: 15, color: "rgba(232,200,119,0.62)", letterSpacing: 3, marginTop: 4 }}>HELM &amp; HULL</div>
-      <MenuGalleon rig={rig} />
+      <ShipPlate loadout={loadout} rig={rig} onEdit={onEdit} />
       <HoldPanel hold={hold} />
       {/* No prompt over the modes. Three named cards under the game's own title are visibly the
           choice, and a line telling you to choose is the kind of thing only a template asks for. */}

@@ -21,7 +21,7 @@ are cheap to change and are deliberately left rough.
 | `src/shipyard.js` | The catalogue and the maths. Hulls, masts, sails, guns as data; what fits what; what a set of them rates. No state, no storage, no imports. |
 | `src/hold.js` | What a captain owns. The yard sits in the same record as the coins, so a purchase moves both in one write. |
 | `src/galleon.js` | Draws a rig rather than *the* rig. Given a spec it builds the ship; given nothing it builds the galleon it always drew. |
-| `src/SternchaseIso.jsx` | Passes the active ship's rig to the menu, and carries the repair rail that replaced the upgrade rail. |
+| `src/SternchaseIso.jsx` | The menu ship plate and the yard screen, plus the repair rail that replaced the upgrade rail. |
 | `data/hulls.tsv`, `data/masts.tsv` | The tables a person edits. One row per class and per mast type. |
 | `tools/import.mjs` | `npm run import`. Writes those tables into the generated blocks in `shipyard.js`. |
 | `tools/catalogue.mjs` | `npm run catalogue`. Checks the fleet is riggable and drawable, then prints every class side by side for calibration. |
@@ -32,6 +32,18 @@ Four kinds of thing, and the shape of each is what makes the shipyard behave the
 
 **Hulls** fix maximum hull and crew, base speed and handling, how many guns of each kind she bears,
 and her mast sockets. A socket has a station along the keel (`fore`, `main`, `mizzen`) and a size.
+
+**Manoeuvrability is `hand`, and it is separate from `speed`.** Both are hull figures around 1, both
+are columns in `data/hulls.tsv`, and nothing in the model runs one off the other: a cutter is 1.22 on
+the helm and 1.08 on pace, a galleon 0.78 and 0.87. Three things then move it. Sails carry their own
+`hand`, so square canvas stiffens her and fore-and-aft canvas helps her round; guns weigh her down by
+`LOAD_BITE` as she fills her ports; and in the fight the rudder itself goes heavy with the way she
+carries, so a ship at a run turns wider than the same ship at a crawl. `rate()` folds the first two
+into `turn`, and the yard screen shows it as `Handling`.
+
+The one part of handling that is *not* modelled is heft: every ship gathers way and loses it at the
+same rate, so a galleon whose own blurb says she is slow to start and slow to stop is neither. That
+wants either a column of its own or to come off `tons`, which already says what she carries.
 
 **Masts** fit a socket of their own size or larger, and carry a fixed set of *berths* decided when the
 mast is built. A berth names the cut and the size of the one sail that goes in it. That is what makes
@@ -303,6 +315,22 @@ broken pair of hulls and caught all nine faults in them.
 Then it prints the whole fleet: the stat bands, what each class rates bare and fully found, what she
 costs to fill out, the same hull at rising quality, and the stock ladder with tier occupancy. That
 table is the calibration surface. The numbers only mean anything next to each other.
+
+### The yard screen
+
+The ship on the menu was decoration: the only picture of a captain's own ship in the game, and nothing
+you could do with her. She is now a plate with her class on one side and `Tap to edit` on the other,
+and the whole plate is the button, because a frame you have to hit the middle of feels broken on a
+phone.
+
+Tapping opens **the yard**, which is the reading half of the shipyard. Everything on it was already
+worked out and had nowhere to be shown: what she rates, the tier that puts her in, her rigging socket
+by socket with every berth named and every empty one marked bare, how many guns of each kind she bears
+against how many she has, and what `shortfall()` says she still wants. Empty sockets and bare berths
+are listed rather than skipped, because the gaps are the point of the screen.
+
+Buying and fitting are not on it yet. The model behind them is complete, so what they are waiting on
+is the design, and this is the screen they get built into rather than a placeholder to be thrown away.
 
 ### What the shipyard screen will ask
 
