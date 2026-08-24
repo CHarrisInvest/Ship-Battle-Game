@@ -1,0 +1,167 @@
+# The shipyard
+
+Groundwork for buying and fitting ships. This is the foundation only: the data model, the persistence
+and the plumbing that lets the menu turn the captain's own ship. There is no shipyard screen yet, and
+the fight is untouched.
+
+The point of doing it this way round is that the parts of a feature that are expensive to change late
+are the ones settled first. A stat that is not recorded from the beginning cannot be backfilled; a
+save format that has to change costs everyone their progress; a renderer that can only draw one ship
+has to be taken apart before it can draw two. Those three are done. Balance numbers, prices and art
+are cheap to change and are deliberately left rough.
+
+## Where things live
+
+| | |
+|---|---|
+| `src/shipyard.js` | The catalogue and the maths. Hulls, masts, sails, guns as data; what fits what; what a set of them rates. No state, no storage, no imports. |
+| `src/hold.js` | What a captain owns. The yard sits in the same record as the coins, so a purchase moves both in one write. |
+| `src/galleon.js` | Draws a rig rather than *the* rig. Given a spec it builds the ship; given nothing it builds the galleon it always drew. |
+| `src/SternchaseIso.jsx` | Passes the active ship's rig to the menu. Otherwise unchanged. |
+
+## The model
+
+Four kinds of thing, and the shape of each is what makes the shipyard behave the way the brief asks.
+
+**Hulls** fix maximum hull and crew, base speed and handling, how many guns of each kind she bears,
+and her mast sockets. A socket has a station along the keel (`fore`, `main`, `mizzen`) and a size.
+
+**Masts** fit a socket of their own size or larger, and carry a fixed set of *berths* decided when the
+mast is built. A berth names the cut and the size of the one sail that goes in it. That is what makes
+buying a mast a choice of rig shape rather than a choice of size: `lateenMast` will carry one large
+triangle and one small square for as long as it exists, and no amount of money changes it into a
+topgallant.
+
+**Sails** fit a berth of the same cut and the same size. This is the whole of "a sloop's triangular
+canvas is no use on a square-rigged ship": a frigate has no triangular berth below her mizzen, so the
+sail simply does not go in. Each sail has a `drive` (pull) and a `hand` (what it does to her helm).
+Square canvas drives hardest and stiffens her; fore-and-aft canvas drives less and helps her round.
+
+**Guns** fit by the piece up to the hull's bearing. `broadside` counts guns *a side*, because that is
+how a volley fires, and runs 2 on the cutter to 10 on the galleon. Bow guns run 1 to 3. Muskets are
+not bought at all: they come off the crew the hull musters, with swivels adding to the volley.
+
+Parts are catalogue **types**; a captain owns **instances**. `hold.js` keeps a flat table of every
+spar, sail and gun owned, and a ship record says which instance sits in which slot. An instance is in
+one slot or in none, never two, so fitting is a move: that is what lets rigging and guns travel
+between hulls, and what stops one good suit of sails rigging three ships at once. Anything no ship
+references is loose, and loose is the inventory.
+
+## What the brief asked for, and where it landed
+
+- **Buy hulls and components with the coins from any mode.** `hold.js` already banked coins from every
+  mode into one record. The yard is a field of that record, and every writer spends through the same
+  ledger, so `coins` and `spent` still reconstruct what was earned.
+- **An inventory of interchangeable components.** `loosePartIds()`, and fitting as a move.
+- **Start with one ship, a basic sail, one front gun and no broadside.** `STARTER` in `shipyard.js`.
+  A cutter, a pole mast with one small square sail, one bow chaser. The first broadside gun a captain
+  buys is the first time she can fire at anything abeam, and she should feel it.
+- **Rigging and guns move ship to ship.** Falls out of instances.
+- **A mast only ever carries the sails it was built for.** `berths`, fixed on the mast type.
+- **Triangular and square, large and small.** `cut` and `size` on both berth and sail, checked as a
+  pair. Smaller ships start on small sails; the head of a tall mast takes a small one.
+- **Sails affect speed and agility differently.** `drive` and `hand`.
+- **Hull type drives speed, and hull and crew maximums.** `speed`, `hand`, `canvas`, `maxHull`,
+  `maxCrew`. `canvas` is the one worth pointing at: it is how much sail a hull *wants*, so the same
+  suit drives a cutter hard and barely stirs a galleon. It is what makes a bigger hull a commitment
+  rather than a straight upgrade, and why a half-rigged galleon is genuinely bad.
+- **Diminishing returns past 2 sails on a mast, 3 on the main.** `canvasFalloff()`. The first two up a
+  mast are worth their full drive, three on the main, and each one above that keeps 58% of the one
+  below it. Note that no mast in the catalogue yet has a fourth berth, so the rule is in place before
+  anything reaches it.
+- **A stat range per ship, bare to fully found.** `statBand()`. Both ends are real loadouts run
+  through the same `rate()` the fight will use, rather than a second set of numbers that can drift.
+- **The menu ship is the captain's ship.** Done, and it is the part worth looking at.
+
+## Ratings, not speeds
+
+`rate()` returns dimensionless multipliers around 1, not world units. A well-found hull of any class
+rates near 1 for speed and turn, so adopting it in the fight is multiplying `BASE_SPEED` and the turn
+constant by a rating rather than replacing the numbers wholesale. Nothing about how the game feels
+moves on the day the shipyard opens, and each hull can then be pulled around one at a time.
+
+`maxHull` and `maxCrew` are the exception and come out in the same points the health bars already use.
+
+## As it stands
+
+Bare means one mast, one sail, one bow gun. Fully found means the dearest mast in every socket, the
+dearest sail in every berth, every gun port filled.
+
+| | price | speed | turn | hull | crew | broadside | bow | muskets |
+|---|---|---|---|---|---|---|---|---|
+| Cutter | 0 | 0.69 to 0.81 | 1.18 down to 0.98 | 90 | 55 | 0 to 2 | 1 | 2 to 3 |
+| Sloop | 900 | 0.65 to 0.97 | 1.12 down to 0.88 | 120 | 72 | 0 to 4 | 1 | 3 to 4 |
+| Brig | 2400 | 0.50 to 0.95 | 0.98 down to 0.75 | 155 | 96 | 0 to 6 | 1 to 2 | 4 to 5 |
+| Frigate | 5200 | 0.44 to 0.94 | 0.89 down to 0.66 | 195 | 124 | 0 to 8 | 1 to 2 | 5 to 7 |
+| Galleon | 9600 | 0.37 to 0.79 | 0.77 down to 0.57 | 250 | 155 | 0 to 10 | 1 to 3 | 6 to 9 |
+
+Handling is the one stat that runs *backwards*: a ship carrying every gun she can bear under a full
+press of square canvas is stiffer on the helm than the same hull with one sail and one gun. That is
+the trade the shipyard exists to make, so `statBand()` reports which end the fully found ship sits at
+and a card can say so rather than printing a range that looks like a mistake.
+
+## The renderer
+
+`buildShip()` used to be a list of literals: three masts at fixed heights, five calls to `sail()` with
+hand-tuned corners, three stays written out end to end. Fine for one ship, useless for a shipyard.
+
+It is now driven by data. A **station** owns the geometry belonging to the *place* a mast stands: the
+x along the keel, the thickness of the pole, where the shrouds are made fast, and the bands of air a
+sail occupies going up. A **mast** owns only its height. Put the two together and you have a rig.
+
+Three things fall out of it that were hard-coded before and had to stop being:
+
+- The pole is cut down to the canvas actually bent on it. Leave a mast at its nominal height and a
+  boat carrying one small sail stands a bare spar twice the height of her rig, which reads as a mast
+  that has lost its sails rather than a boat that never had them.
+- The masthead pennant flies from the truck of the tallest mast stepped, and from nothing if there is
+  none. It used to be pinned to the height the galleon's main mast happened to reach, which left it
+  hanging in the sky above a cutter.
+- Stays chain off the masts that are actually there, rather than running between fixed points where a
+  mast used to be.
+
+The station numbers are the galleon's own, so handing her rig back reproduces the ship this file has
+always drawn. Verified against the pre-change code through the same renderer: 6 pixels of 177,952
+differ, which is one stay moving 0.014 model units.
+
+**Hull shapes per class are not drawn yet.** Every class turns on the galleon's hull for now; the rig
+on top of it is the part that is real. A cutter therefore reads as a small rig on a large hull, which
+is the most visible thing still outstanding.
+
+## Deliberately not done
+
+- No shipyard screen. The model is what a screen is built against, and building the screen first would
+  have fixed the model to whatever the first layout happened to need.
+- **The fight does not read any of this.** `rate()` is not wired to `speedCap`, `turnCap`, `sideDmg`
+  or `maxHP`; the in-round upgrade rail (MAST, HULL, CREW, SIDE, FRONT) is exactly as it was. Two
+  economies at once needs the modes reworked, and that is its own piece of work.
+- No per-class hull art, and no sail designs or cloth patterns. Those hang off ids without touching
+  any of the numbers here.
+- No selling parts back. Easy to add; wanted a decision on whether it refunds in full first.
+
+## Open questions
+
+Things a design document should settle, listed with what the code currently assumes so that agreeing
+with it is as cheap as changing it.
+
+1. **The economy.** Prices are placed relative to each other and are not tuned against what a voyage
+   actually pays. At the current rate (25 a kill, a coin a point of damage, a derby win about 250) a
+   sloop is roughly three voyages and a galleon roughly thirty. Fully outfitting a cutter costs more
+   than a bare sloop, which reads as "move up rather than max out your first boat" and may or may not
+   be the intent.
+2. **Broadside guns: a side, or in total?** Read here as *a side*, mirrored, because that is how the
+   volley fires. If 10 means 5 a side, every hull's number halves.
+3. **Do the modes carry the owned ship, or keep issuing a stock one?** Free-for-all starts every
+   captain dead equal, which is the whole of that mode; arena matches the first hunter to the player's
+   ship. Both mean something different once she brings her own galleon.
+4. **What happens to the in-round upgrade rail?** It buys the same five things the shipyard now sells
+   permanently. Options are dropping it, keeping it as consumable repairs, or keeping it in arena only.
+5. **Muskets.** Currently crew capacity over 26, plus half a musket per swivel, floor of 1. Gives 2 to
+   9 across the fleet. The brief was unsure and this is a guess.
+6. **Diminishing returns past a third sail** are unreachable until a mast has four berths. Worth
+   confirming a four-berth mast is wanted before tuning the falloff.
+7. **A sail's size versus its berth's slot.** A sail drawn in berth 1 takes berth 1's geometry, on the
+   assumption that large sails sit low and small ones high. A mast that puts a large sail above a small
+   one would draw wrong.
+8. **Bowsprits.** Hulls carry a `bowsprit` flag and the renderer honours it, but nothing yet makes an
+   upgraded bowsprit a purchasable part with a spritsail on it.

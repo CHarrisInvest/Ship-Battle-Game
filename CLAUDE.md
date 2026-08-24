@@ -7,9 +7,16 @@ repository keeps its old name, `Ship-Battle-Game`, which is what the Pages URL a
 are built from. `broadside` in the code is the side guns, not the old title, and stays.
 
 - `src/SternchaseIso.jsx` is the game: state, AI, rendering, and the React HUD.
-- `src/galleon.js` draws the rotating ship on the menu.
-- `src/hold.js` persists coins and lifetime stats to localStorage. Nothing else is saved;
+- `src/galleon.js` draws the rotating ship on the menu. It draws a rig rather than *the* rig:
+  `drawGalleon(ctx, w, h, deg, spec)` builds whatever is stepped and bent on, and falls back to the
+  galleon it was written around when given no spec.
+- `src/shipyard.js` is the catalogue and the maths for buying ships and parts. Hulls, masts, sails
+  and guns as data, what fits what, and `rate()` turning a set of them into the figures a fight
+  reads. It holds no state, touches no storage and imports nothing, and it should stay that way.
+- `src/hold.js` persists coins, lifetime stats and the yard to localStorage. Nothing else is saved;
   worlds and islands are generated fresh every match.
+- `docs/SHIPYARD.md` is the design note for the shipyard: the model, what is deliberately not built
+  yet, and the open questions. Read it before extending any of the above.
 
 ## The rule that outranks the others
 
@@ -92,4 +99,9 @@ comes from a replica rather than a real frame, say so.
 
 Rules above that the code does not yet satisfy. Tracked cleanups, not exceptions.
 
-None open. The last one was the emoji HUD; it is now four drawn icons.
+- **Hull art is one hull.** The menu turns the captain's own rig, but every class turns it on the
+  galleon's hull, so a cutter reads as a small rig on a large ship. Per-class hulls are the design
+  work this is waiting on; `STATION_GEOM` in `galleon.js` is where a hull's mast positions live.
+- **The catalogue's names and blurbs have not been read at 1x in the game.** They follow the copy
+  rules above on the page, but nothing displays them yet, so no line has been checked for length in
+  a real card. Check them when the shipyard screen exists rather than trusting them now.

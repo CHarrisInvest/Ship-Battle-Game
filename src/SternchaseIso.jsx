@@ -1,6 +1,7 @@
-import React, { useRef, useState, useEffect, useCallback } from "react";
+import React, { useRef, useState, useEffect, useCallback, useMemo } from "react";
 import { drawGalleon } from "./galleon.js";
-import { getHold, bankVoyage, resetHold, subscribeHold, modeRecord } from "./hold.js";
+import { getHold, bankVoyage, resetHold, subscribeHold, modeRecord, shipLoadout } from "./hold.js";
+import { rigSpec } from "./shipyard.js";
 
 /**
  * STERNCHASE: HELM & HULL — pirate battles at sea, on a tilted (isometric-ish) sea with tall wooden
@@ -2989,10 +2990,20 @@ const GALLEON_W = 268;
 const GALLEON_ASPECT = 0.62; // the projection is drawn into a 1 : 0.62 box
 const GALLEON_DEG_PER_MS = 0.012; // ~30s per revolution
 
-// The galleon on the menu: a 3-D hull re-projected to isometric every frame, so
-// it turns rather than spinning a flat sprite.
-function MenuGalleon() {
+// The ship on the menu: a 3-D hull re-projected to isometric every frame, so it
+// turns rather than spinning a flat sprite.
+//
+// She is the captain's own ship, not a stock galleon: `rig` is what is actually
+// stepped and bent on aboard whichever hull she is sailing, so buying a sail
+// shows up here. Hull shapes per class are still to be drawn, so for now every
+// class turns on this one hull and the rig on top of it is the part that is real.
+function MenuGalleon({ rig }) {
   const cvs = useRef(null);
+  // The rig changes rarely and the object is rebuilt on every render, so the
+  // effect keys off the shape of it rather than its identity. Without this the
+  // canvas tears down and restarts on every parent render, and the ship jumps
+  // back to bearing zero mid-turn.
+  const key = JSON.stringify(rig);
 
   useEffect(() => {
     const c = cvs.current;
@@ -3007,7 +3018,7 @@ function MenuGalleon() {
     const paint = (deg) => {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, w, h);
-      drawGalleon(ctx, w, h, deg);
+      drawGalleon(ctx, w, h, deg, rig);
     };
 
     // A perpetually turning ship is exactly what reduced-motion asks us to drop,
@@ -3028,7 +3039,8 @@ function MenuGalleon() {
     };
     raf = requestAnimationFrame(frame);
     return () => cancelAnimationFrame(raf);
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
 
   return (
     <canvas
@@ -3078,6 +3090,8 @@ function ScuttleHold({ onScuttle }) {
 }
 
 function StartOverlay({ onStart, hold, onScuttle }) {
+  // What she is sailing, resolved from the hold every time it changes.
+  const rig = useMemo(() => rigSpec(shipLoadout(hold)), [hold]);
   return (
     <Shell>
       {/* The name is a lockup of two lines, and the first one carries it. STERNCHASE is the word a
@@ -3088,7 +3102,7 @@ function StartOverlay({ onStart, hold, onScuttle }) {
           It gives size back on a narrow screen rather than being set small everywhere. */}
       <div style={{ fontFamily: DISPLAY, fontSize: "clamp(34px, 12vw, 44px)", color: C.gold, letterSpacing: 2, lineHeight: 1.05 }}>STERNCHASE</div>
       <div style={{ fontFamily: DISPLAY, fontSize: 15, color: "rgba(232,200,119,0.62)", letterSpacing: 3, marginTop: 4 }}>HELM &amp; HULL</div>
-      <MenuGalleon />
+      <MenuGalleon rig={rig} />
       <HoldPanel hold={hold} />
       {/* No prompt over the modes. Three named cards under the game's own title are visibly the
           choice, and a line telling you to choose is the kind of thing only a template asks for. */}

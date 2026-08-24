@@ -156,10 +156,33 @@ blank one, so an added stat never costs anyone their coins and a corrupt field c
 `localStorage` refuses (private browsing, a full quota) the hold falls back to memory for the session
 instead of failing.
 
-Nothing spends from it yet. `spendFromHold` is the door the rest of it comes through: it refuses
-rather than overdraws, and keeps `spent` alongside `coins` so the two always reconstruct what was
-earned. `HOLD_SHARE` scales what a voyage deposits if the meta economy ever wants slowing down without
-touching the fight.
+`spendFromHold` is the door spending comes through: it refuses rather than overdraws, and keeps
+`spent` alongside `coins` so the two always reconstruct what was earned. `HOLD_SHARE` scales what a
+voyage deposits if the meta economy ever wants slowing down without touching the fight.
+
+## The shipyard
+
+Groundwork only so far: the data model, the save format and the plumbing that lets the menu turn the
+captain's own ship. There is no shipyard screen, and **the fight reads none of it** — the in-round
+upgrade rail is exactly as it was. `docs/SHIPYARD.md` is the design note; the short version:
+
+- `src/shipyard.js` is the catalogue and the maths. Hulls, masts, sails and guns as data, what fits
+  what, and `rate()` turning a set of them into the figures a fight would read. It holds no state and
+  imports nothing.
+- A hull fixes maximum hull and crew, base speed and handling, how many guns of each kind she bears,
+  and her mast sockets. A mast fits a socket and carries a fixed set of berths decided when it was
+  built. A sail fits a berth of the same cut and size. Guns fit by the piece up to the hull's bearing;
+  muskets come off the crew rather than being bought.
+- Parts are catalogue *types*, and a captain owns *instances*. An instance is in one slot or in none,
+  which is what lets rigging and guns move between ships and stops one suit of sails rigging three at
+  once. Anything no ship references is loose in the hold, and loose is the inventory.
+- The yard lives in the same `localStorage` record as the coins, so a purchase moves both in one
+  write. A record from before it existed folds forward and is granted a first ship.
+- `src/galleon.js` draws a rig rather than *the* rig. `drawGalleon(ctx, w, h, deg, spec)` builds
+  whatever is stepped and bent on; called without a spec it builds the galleon it always drew.
+
+`rate()` returns ratings, not speeds: dimensionless multipliers near 1 that the fight's own constants
+get multiplied by when the shipyard opens, so adopting it is a substitution rather than a rebalance.
 
 ## Controls
 
@@ -274,17 +297,22 @@ index.html            # Vite entry
 src/main.jsx          # React root
 src/index.css         # full-bleed, no-scroll page shell
 src/SternchaseIso.jsx  # game: simulation, canvas renderer, and UI
-src/galleon.js        # the galleon turning on the menu
-src/hold.js           # coins and records that outlive a single round
+src/galleon.js        # the ship turning on the menu
+src/hold.js           # coins, records and the yard, all outliving a round
+src/shipyard.js       # what a captain can buy, and what it makes of her ship
+docs/SHIPYARD.md      # design note for the shipyard groundwork
 vite.config.js
 ```
 
 `galleon.js` defines the hull as 3-D stations and re-projects it to isometric on
 every frame, so the menu ship genuinely turns rather than cycling sprite frames.
-`drawGalleon(ctx, w, h, deg)` draws one bearing; the pivot is the hull centre at
-the waterline, so the ship holds the centre of the box as it comes about. It
-honours `prefers-reduced-motion` by holding a three-quarter view instead of
-turning.
+`drawGalleon(ctx, w, h, deg, spec)` draws one bearing of whatever rig `spec`
+describes, or of the galleon the file was written around when given none; the
+pivot is the hull centre at the waterline, so the ship holds the centre of the
+box as it comes about. It honours `prefers-reduced-motion` by holding a
+three-quarter view instead of turning. The model is rebuilt once per rig and
+cached, so changing ships costs one build and every frame after it costs
+nothing.
 
 The game has no dependencies beyond React — all rendering is hand-rolled canvas drawing and all UI is
 inline-styled, so `SternchaseIso.jsx` can be dropped into any React app as-is.
