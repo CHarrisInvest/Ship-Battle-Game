@@ -2,7 +2,11 @@
 
 Groundwork for buying and fitting ships. This is the foundation only: the data model, the persistence
 and the plumbing that lets the menu turn the captain's own ship. There is no shipyard screen yet, and
-the fight is untouched.
+the fight still puts every captain in the same hull.
+
+What *has* changed at sea is that nothing is bought there any more. The five-track upgrade rail is
+gone from the modes and from the AI, and repairs took its place: a purse now buys patches and nothing
+else, out of the voyage's own takings, so what she spends staying afloat is what she does not bank.
 
 The point of doing it this way round is that the parts of a feature that are expensive to change late
 are the ones settled first. A stat that is not recorded from the beginning cannot be backfilled; a
@@ -17,7 +21,7 @@ are cheap to change and are deliberately left rough.
 | `src/shipyard.js` | The catalogue and the maths. Hulls, masts, sails, guns as data; what fits what; what a set of them rates. No state, no storage, no imports. |
 | `src/hold.js` | What a captain owns. The yard sits in the same record as the coins, so a purchase moves both in one write. |
 | `src/galleon.js` | Draws a rig rather than *the* rig. Given a spec it builds the ship; given nothing it builds the galleon it always drew. |
-| `src/SternchaseIso.jsx` | Passes the active ship's rig to the menu. Otherwise unchanged. |
+| `src/SternchaseIso.jsx` | Passes the active ship's rig to the menu, and carries the repair rail that replaced the upgrade rail. |
 
 ## The model
 
@@ -40,6 +44,14 @@ Square canvas drives hardest and stiffens her; fore-and-aft canvas drives less a
 **Guns** fit by the piece up to the hull's bearing. `broadside` counts guns *a side*, because that is
 how a volley fires, and runs 2 on the cutter to 10 on the galleon. Bow guns run 1 to 3. Muskets are
 not bought at all: they come off the crew the hull musters, with swivels adding to the volley.
+
+**Size** is `scale`, and the cutter sets it at 1. The hull the game is drawn and balanced around today
+is a *small* ship, so every class above her is bigger rather than the same boat with better numbers.
+The menu draws at this scale already, which is why a cutter turns at about half the galleon. The
+fight's own hull geometry — `HULL_L`, `HULL_W`, `SHIP_R` and the collision ellipse — is still the
+cutter's at 1, and multiplies by `scale` when the shipyard is wired in. That is the change that makes
+a galleon take up the sea room a galleon should: harder to miss, harder to turn out of a ram, and
+harder to hide behind an island.
 
 Parts are catalogue **types**; a captain owns **instances**. `hold.js` keeps a flat table of every
 spar, sail and gun owned, and a ship record says which instance sits in which slot. An instance is in
@@ -72,6 +84,7 @@ references is loose, and loose is the inventory.
 - **A stat range per ship, bare to fully found.** `statBand()`. Both ends are real loadouts run
   through the same `rate()` the fight will use, rather than a second set of numbers that can drift.
 - **The menu ship is the captain's ship.** Done, and it is the part worth looking at.
+- **Upgrades are gone from the modes and the AI.** Nothing is bought at sea but repairs. See below.
 
 ## Ratings, not speeds
 
@@ -128,13 +141,42 @@ differ, which is one stay moving 0.014 model units.
 on top of it is the part that is real. A cutter therefore reads as a small rig on a large hull, which
 is the most visible thing still outstanding.
 
+## What replaced the upgrade rail
+
+Nothing is bought at sea any more except repairs, so a ship is what she was when she sailed and what
+she is comes from the shipyard between voyages. Every trace of the old five-track economy is out:
+`TRACKS`, `COST`, `applyUpgrade`, `shipPower`, `HP_GAIN`, `ship.up`, the AI's shopping and its
+per-captain bias, and the mode flag that switched it on.
+
+Two AI decisions used to compare levels and now do not. Prey selection weighed a rival's guns against
+its own, and a captain fled from a stronger ship as well as from her own wounds. With every hull at
+sea identical both terms weighed exactly nothing, so they are gone rather than left in as dead
+arithmetic. What is left is range, reputation, blood in the water, and the state of her own ship,
+all of which are still true. They come back off the *loadout* when the shipyard reaches the fight,
+which is a better comparison than levels ever were.
+
+**Repairs** take the rail's place, in the modes that have a purse. A patch is bought by the point:
+pressing HULL puts back up to `REPAIR_SHARE` of that system's maximum and charges `REPAIR_RATE` for
+what it actually put back. Two things follow, and both are the point. A ship barely scratched pays
+almost nothing to top herself up, so there is no wrong moment to repair. And a captain who cannot
+afford a whole patch gets as much of one as her purse covers rather than being refused, which matters
+most in the round where she is down to her last coins and taking fire. Mast is dearest a point,
+because losing a mast is the one hit that takes a ship out of a fight while leaving her afloat, and
+repairing it re-rigs her rather than leaving a stump.
+
+What makes it a decision rather than a tax is where the money comes from: **repairs are paid out of
+the voyage's own takings, so every coin spent staying afloat is a coin that never reaches the hold.**
+Fighting carefully is worth money. Arena's opening stake pays the carpenter first and costs a captain
+nothing, since it never reached the hold either; only what the stake does not cover is billed, which
+is also what keeps the end-of-voyage column adding up on the page.
+
 ## Deliberately not done
 
 - No shipyard screen. The model is what a screen is built against, and building the screen first would
   have fixed the model to whatever the first layout happened to need.
-- **The fight does not read any of this.** `rate()` is not wired to `speedCap`, `turnCap`, `sideDmg`
-  or `maxHP`; the in-round upgrade rail (MAST, HULL, CREW, SIDE, FRONT) is exactly as it was. Two
-  economies at once needs the modes reworked, and that is its own piece of work.
+- **The fight still does not read the catalogue.** `rate()` is not wired to `speedCap`, `turnCap` or
+  `sideDmg`, and `scale` is not wired to the hull geometry, so every ship at sea is the same ship.
+  That is the modes rework, and it is its own piece of work.
 - No per-class hull art, and no sail designs or cloth patterns. Those hang off ids without touching
   any of the numbers here.
 - No selling parts back. Easy to add; wanted a decision on whether it refunds in full first.
@@ -145,17 +187,20 @@ Things a design document should settle, listed with what the code currently assu
 with it is as cheap as changing it.
 
 1. **The economy.** Prices are placed relative to each other and are not tuned against what a voyage
-   actually pays. At the current rate (25 a kill, a coin a point of damage, a derby win about 250) a
-   sloop is roughly three voyages and a galleon roughly thirty. Fully outfitting a cutter costs more
-   than a bare sloop, which reads as "move up rather than max out your first boat" and may or may not
-   be the intent.
-2. **Broadside guns: a side, or in total?** Read here as *a side*, mirrored, because that is how the
-   volley fires. If 10 means 5 a side, every hull's number halves.
-3. **Do the modes carry the owned ship, or keep issuing a stock one?** Free-for-all starts every
+   actually pays, and repairs now take a bite out of that too. At the current rate (25 a kill, a coin
+   a point of damage, a derby win about 250) a sloop is roughly three voyages and a galleon roughly
+   thirty, before the carpenter. Fully outfitting a cutter costs more than a bare sloop, which reads
+   as "move up rather than max out your first boat" and may or may not be the intent.
+2. **Do the modes carry the owned ship, or keep issuing a stock one?** Free-for-all starts every
    captain dead equal, which is the whole of that mode; arena matches the first hunter to the player's
-   ship. Both mean something different once she brings her own galleon.
-4. **What happens to the in-round upgrade rail?** It buys the same five things the shipyard now sells
-   permanently. Options are dropping it, keeping it as consumable repairs, or keeping it in arena only.
+   ship. Both mean something different once she brings her own galleon. This is the question the whole
+   modes rework turns on.
+3. **How far up should `scale` go?** The galleon is 1.95, chosen so the class ladder reads clearly on
+   the menu rather than from anything about the fight. Once hull geometry multiplies by it, a galleon
+   nearly twice a cutter's length is a very large target in a sea 2000 across.
+4. **Should the derby have repairs?** It has none today, because "only one hand needed" is that mode's
+   whole promise and a rail is a second thing to think about. But trading coins for crew after a spell
+   in the storm is a genuinely good decision, and the derby is the mode that pays by the second.
 5. **Muskets.** Currently crew capacity over 26, plus half a musket per swivel, floor of 1. Gives 2 to
    9 across the fleet. The brief was unsure and this is a guess.
 6. **Diminishing returns past a third sail** are unreachable until a mast has four berths. Worth

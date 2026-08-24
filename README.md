@@ -40,11 +40,11 @@ serves from the domain root instead — Netlify, Vercel, a plain static host —
   water, matched to your ship gun for gun and reload for reload. Kills bring reinforcements in from
   the edge of the map, spawned well clear of your bow: one for the first kill, then 1-2-1-2 through
   the fourth, then two for every kill after that up to the fleet cap. The second ship of a wave holds
-  off five seconds before it sails in. Enemies always spawn at base strength and never upgrade, so
-  the pressure comes from the count. Score by ships sunk.
+  off five seconds before it sails in. Every hull on the water is the same hull, so the pressure comes
+  from the count. Score by ships sunk.
 - **Demolition derby** — ten captains and not a gun between them. Hulls are broken open by ramming
   alone, there is nothing to buy, and a squall closes on the middle of the sea. Last afloat wins.
-- **Free-for-all** — up to 10 rival captains starting equal. The AI upgrades like a real player, hunts
+- **Free-for-all** — up to 10 rival captains starting equal, and equal is where they stay. The AI hunts
   whoever is weakest, and gangs up on a runaway leader. For the first `OPENING_WINDOW` seconds it
   simply takes the nearest hull, since nobody has a reputation yet. It also fires on ships it is not
   hunting when one drifts into a weapon's arc, with a per-captain pause afterwards so the sea isn't
@@ -55,7 +55,7 @@ handicap is a touch of spread on every shot.
 
 A mode is a row in the `MODES` table rather than a name to compare against — `melee` (is every hull
 hostile to every other, or only the player's), `ranked`, `lastAfloatWins`, `reinforcements`, `guns`,
-`upgrades`, `flees`, `storm`, what it pays for time afloat and for winning, plus the field size and
+`repairs`, `flees`, `storm`, what it pays for time afloat and for winning, plus the field size and
 opening purse. The simulation, the HUD, the menu cards, and the end screen all read those rules, so a
 new mode is a new row rather than a dozen scattered checks that have to be taught about it.
 
@@ -134,22 +134,31 @@ winner's bounty — so the tally adds up to what actually reaches the hold.
 
 Coins sit at two depths, and keeping them apart is the whole of it:
 
-- **A ship's purse** is what she carries into one battle. It buys her upgrades at sea and goes down
-  with her. Arena opens one at `ARENA_START_COINS`; the other modes open at nothing. This is the
-  number in the HUD.
+- **A ship's purse** is what she carries into one battle. It buys repairs at sea and nothing else,
+  and it goes down with her. Arena opens one at `ARENA_START_COINS`; the other modes open at nothing.
+  This is the number in the HUD.
 - **The hold** (`src/hold.js`) is the captain's, not the ship's. Every voyage that reaches an end
   screen banks what it *earned* — 25 a kill and one a point of damage dealt, a rammed hull included —
   and the total carries across every mode alike and through a reload, kept in `localStorage` under
   `sternchase.hold`.
 
-Banking counts earnings, not leftovers, so an upgrade bought at sea costs nothing ashore and there is
-never a reason to sit on coins you could be fighting with. A voyage banks whether you win it or sink:
-coins are earned by fighting, and a captain who fought well and went down anyway earned them the same.
-Only a round abandoned mid-fight — a reload, a closed tab — banks nothing, because nothing ended.
-Arena's opening purse is a loan against the round rather than earnings, so it never reaches the hold.
+Banking counts earnings, not leftovers, so a voyage banks whether you win it or sink: coins are earned
+by fighting, and a captain who fought well and went down anyway earned them the same. Only a round
+abandoned mid-fight — a reload, a closed tab — banks nothing, because nothing ended.
+
+**Repairs are the exception, and they are the point of carrying a purse.** What she pays the carpenter
+at sea comes off what the voyage banks, so a captain who fought carelessly and patched her way through
+has less to show for it than one who did not need to. Never below nothing, though: a bad round costs a
+captain the round, not her savings. Arena's opening purse is a stake against the round rather than
+earnings, and it has never reached the hold, so it pays the carpenter first and costs her nothing —
+patch a scratch out of the stake and the end screen shows no bill at all. Only what the stake does not
+cover is billed against her earnings, which is also the figure that keeps the end-of-voyage column
+adding up.
 
 The stored record is wider than the coin count on purpose: lifetime voyages, ships sunk, damage, time
-afloat, and per-mode bests, because a stat not recorded from the first voyage can never be backfilled.
+afloat, coins paid to carpenters, and per-mode bests, because a stat not recorded from the first
+voyage can never be backfilled. Repair spend is recorded rather than derived, because unlike shore
+spending it never passes through `coins` and so cannot be reconstructed from the ledger.
 It is read through a small API rather than touched directly — `getHold`, `bankVoyage`, `spendFromHold`,
 `resetHold`, `subscribeHold` — and a record written by an older build is folded field by field onto a
 blank one, so an added stat never costs anyone their coins and a corrupt field costs only itself. If
@@ -163,16 +172,21 @@ voyage deposits if the meta economy ever wants slowing down without touching the
 ## The shipyard
 
 Groundwork only so far: the data model, the save format and the plumbing that lets the menu turn the
-captain's own ship. There is no shipyard screen, and **the fight reads none of it** — the in-round
-upgrade rail is exactly as it was. `docs/SHIPYARD.md` is the design note; the short version:
+captain's own ship. There is no shipyard screen, and **the fight reads none of it yet**: every hull at
+sea is still the same hull. `docs/SHIPYARD.md` is the design note; the short version:
 
 - `src/shipyard.js` is the catalogue and the maths. Hulls, masts, sails and guns as data, what fits
   what, and `rate()` turning a set of them into the figures a fight would read. It holds no state and
   imports nothing.
 - A hull fixes maximum hull and crew, base speed and handling, how many guns of each kind she bears,
-  and her mast sockets. A mast fits a socket and carries a fixed set of berths decided when it was
-  built. A sail fits a berth of the same cut and size. Guns fit by the piece up to the hull's bearing;
-  muskets come off the crew rather than being bought.
+  her mast sockets, and how big she is. A mast fits a socket and carries a fixed set of berths decided
+  when it was built. A sail fits a berth of the same cut and size. Guns fit by the piece up to the
+  hull's bearing; `broadside` counts guns **a side**, mirrored, because that is how a volley fires, and
+  runs 2 on the cutter to 10 on the galleon. Muskets come off the crew rather than being bought.
+- The ship the game is drawn and balanced around today is the *smallest* class, the cutter, at
+  `scale` 1. Every class above her is a bigger ship rather than the same boat with better numbers, up
+  to the galleon at 1.95, and the menu draws at that scale already. The fight's own hull geometry is
+  still the cutter's and multiplies by `scale` when the shipyard is wired in.
 - Parts are catalogue *types*, and a captain owns *instances*. An instance is in one slot or in none,
   which is what lets rigging and guns move between ships and stops one suit of sails rigging three at
   once. Anything no ship references is loose in the hold, and loose is the inventory.
@@ -191,8 +205,11 @@ Pointer/touch driven, so it works the same with a mouse or on a phone:
 - **Virtual joystick** (bottom left) — steer and throttle.
 - **SIDE / FRONT / MUSKET** (bottom right) — hold to fire; each has its own cooldown, range, and
   damages a different system. Absent in a mode that carries no guns.
-- **Upgrade rail** (top) — spend gold across MAST, HULL, CREW, SIDE, FRONT. Costs scale `45 × 1.55^level`.
-  Absent in a mode with nothing to buy, which leaves the stick as the only control on the screen.
+- **Repair rail** (top) — spend the ship's purse to patch HULL, MAST or CREW. Each button puts back up
+  to `REPAIR_SHARE` of that system and charges for what it actually put back, so a light patch is
+  cheap and a purse that will not cover a whole one buys the share it covers. A button reads `Sound`
+  when the system is whole and `No coin` when it is not but she cannot pay. Absent in a mode with
+  nothing to buy, which leaves the stick as the only control on the screen.
 
 A ship's rudder grows heavier the more way she carries. The loss is weighted to the top of her speed
 range: under half stick it is within a few percent of what it ever was, so handling at close quarters
@@ -276,7 +293,7 @@ how much sea she has left on that hand. On an upright phone that puts her about 
 the screen when she is hard against the wall, with the whole map in front of her.
 
 Up and down, where the screen runs longer than the square, the boundary is let in as far as the edge
-of the square instead — that strip of screen is the one the pills, the upgrade rail, the stick and
+of the square instead — that strip of screen is the one the pills, the repair rail, the stick and
 the gun buttons sit on, and it is hers to spend. It is what keeps her out from under them at the top
 and bottom of the map, where she used to end up pinned against the glass.
 
@@ -322,7 +339,8 @@ inline-styled, so `SternchaseIso.jsx` can be dropped into any React app as-is.
 The balance knobs sit at the top of `src/SternchaseIso.jsx`: `WORLD` and `TILT` for the arena and
 camera, `VIEW`/`MAX_ZOOM` for how much sea the square view holds and `EDGE_PEEK` for how far the
 boundary is let inside it, `BASE`/`HP_GAIN` for the health
-pools, `WP` for per-weapon cooldown, projectile speed, and lifetime, `RAM_*` for ramming, and `TRACKS`/`COST` for the upgrade economy. `BASE_SPEED` is a fresh
+pools, `WP` for per-weapon cooldown, projectile speed, and lifetime, `RAM_*` for ramming, and
+`REPAIR_SHARE`/`REPAIR_RATE` for what a patch puts back and what it costs a point. `BASE_SPEED` is a whole
 ship's top speed and the yardstick the heavy rudder measures against; `RUDDER_HEAVY` is how much
 rudder she loses at it and `RUDDER_CURVE` how late in the range the loss starts to bite — raising the
 curve keeps more of her handling until she is truly running.

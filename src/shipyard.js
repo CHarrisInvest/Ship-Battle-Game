@@ -54,6 +54,12 @@ export const STATIONS = ["fore", "main", "mizzen"];
  *
  * `broadside` is guns *a side*, mirrored, because that is how she fires: the number in the shipyard
  * is the number that goes off in one volley. It runs 2 on the first hull to 10 on the last.
+ *
+ * `scale` is how big she is, and the cutter sets it at 1: the hull the game is drawn and balanced
+ * around today is a small ship, and every class above her is bigger rather than the same boat with
+ * better numbers. The menu draws at this scale already. The fight's own hull geometry — `HULL_L`,
+ * `HULL_W`, `SHIP_R` and the collision ellipse — is still the cutter's at 1 and multiplies by it when
+ * the shipyard is wired in, which is when a galleon starts taking up the sea room a galleon should.
  */
 export const HULLS = {
   cutter: {
@@ -68,6 +74,7 @@ export const HULLS = {
     hand: 1.22,
     canvas: 1.0,
     tons: 1.0, // what she can carry before the guns start telling on her handling
+    scale: 1.0, // the hull the game is drawn around today, and the yardstick every other is cut to
     guns: { broadside: 2, bow: 1, swivel: 1 },
     bowsprit: false,
     sockets: [{ id: "main", station: "main", size: "small" }],
@@ -84,6 +91,7 @@ export const HULLS = {
     hand: 1.15,
     canvas: 1.35,
     tons: 1.5,
+    scale: 1.18,
     guns: { broadside: 4, bow: 1, swivel: 2 },
     bowsprit: true,
     sockets: [{ id: "main", station: "main", size: "medium" }],
@@ -100,6 +108,7 @@ export const HULLS = {
     hand: 1.0,
     canvas: 2.1,
     tons: 2.4,
+    scale: 1.40,
     guns: { broadside: 6, bow: 2, swivel: 3 },
     bowsprit: true,
     sockets: [
@@ -119,6 +128,7 @@ export const HULLS = {
     hand: 0.9,
     canvas: 2.9,
     tons: 3.4,
+    scale: 1.65,
     guns: { broadside: 8, bow: 2, swivel: 4 },
     bowsprit: true,
     sockets: [
@@ -139,6 +149,7 @@ export const HULLS = {
     hand: 0.78,
     canvas: 3.8,
     tons: 4.6,
+    scale: 1.95,
     guns: { broadside: 10, bow: 3, swivel: 6 },
     bowsprit: true,
     sockets: [
@@ -160,8 +171,9 @@ export const HULL_LIST = Object.values(HULLS).sort((a, b) => a.tier - b.tier);
  * cut and size of the one sail that goes in it, listed from the deck up, so the last berth on a tall
  * mast is the small sail at the head. Buying a mast is buying a shape.
  *
- * `size` is the smallest socket the mast fits. `hoist` is how far up the pole the shrouds are made
- * fast, which is rigging geometry the menu ship reads and the fight ignores.
+ * `size` is the smallest socket the mast fits. `height` is how tall she stands as a share of a full
+ * mast at her station, which is the one thing the renderer takes from a mast; where the shrouds and
+ * stays land belongs to the station she is stepped in, so `galleon.js` owns it.
  */
 export const MASTS = {
   poleMast: {
@@ -172,7 +184,6 @@ export const MASTS = {
     blurb: "A single spar and a single sail. Everything starts here.",
     size: "small",
     height: 0.62,
-    hoist: 0.8,
     berths: [{ cut: "square", size: "small" }],
   },
   bermudaMast: {
@@ -183,7 +194,6 @@ export const MASTS = {
     blurb: "Tall and bare, cut for one big triangular sail. Points closer to the wind than square canvas.",
     size: "small",
     height: 0.86,
-    hoist: 0.86,
     berths: [{ cut: "triangle", size: "large" }],
   },
   lowerMast: {
@@ -194,7 +204,6 @@ export const MASTS = {
     blurb: "One heavy square sail on a stout pole. The plain way to move a big hull.",
     size: "medium",
     height: 0.70,
-    hoist: 0.80,
     berths: [{ cut: "square", size: "large" }],
   },
   topmast: {
@@ -205,7 +214,6 @@ export const MASTS = {
     blurb: "A lower mast with a second spar fidded above it: a course below, a topsail over.",
     size: "medium",
     height: 0.88,
-    hoist: 0.80,
     berths: [
       { cut: "square", size: "large" },
       { cut: "square", size: "small" },
@@ -219,7 +227,6 @@ export const MASTS = {
     blurb: "Three spars, and the highest sail is a small one. Every hand aboard is up there in a blow.",
     size: "large",
     height: 1.0,
-    hoist: 0.80,
     berths: [
       { cut: "square", size: "large" },
       { cut: "square", size: "small" },
@@ -234,7 +241,6 @@ export const MASTS = {
     blurb: "A long raking yard for the after station, with room for a small square sail above it.",
     size: "medium",
     height: 0.74,
-    hoist: 1.0,
     berths: [
       { cut: "triangle", size: "large" },
       { cut: "square", size: "small" },
@@ -771,8 +777,9 @@ export function resolve(record, lookup) {
  * hangs on them. `galleon.js` turns this into geometry; the shipyard has no opinion about how a sail
  * is drawn, only that there is one and what cut it is.
  *
- * Hull shapes per class are still to be designed, so every class is drawn on the one hull the
- * renderer has. The rig on top of it is real: a cutter with one small sail draws one small sail.
+ * Hull *shapes* per class are still to be designed, so every class is drawn on the one hull the
+ * renderer has, but the `scale` it is drawn at is real, and so is the rig: a cutter with one small
+ * sail draws one small sail on a small hull.
  */
 export function rigSpec(loadout) {
   const masts = [];
@@ -782,11 +789,10 @@ export function rigSpec(loadout) {
     masts.push({
       station: socket.station,
       height: entry.mast.height,
-      hoist: entry.mast.hoist,
       sails: sailsOn(entry).map((sail, i) =>
         sail ? { cut: sail.cut, size: sail.size, berth: i } : null,
       ).filter(Boolean),
     });
   }
-  return { hull: loadout.hull.id, bowsprit: loadout.hull.bowsprit, masts };
+  return { hull: loadout.hull.id, scale: loadout.hull.scale, bowsprit: loadout.hull.bowsprit, masts };
 }

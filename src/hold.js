@@ -49,7 +49,9 @@ function blank() {
     v: VERSION,
     coins: 0, // unspent, the balance the shipyard draws on
     spent: 0, // taken back out again, so the two sides of the ledger always reconstruct `earned`
-    lifetime: { earned: 0, runs: 0, wins: 0, sunk: 0, dmg: 0, afloat: 0 },
+    // `repaired` is coins spent at sea that never reached the hold, so it is not reconstructible
+    // from `earned` and `spent` the way shore spending is. Recorded from the day the feature exists.
+    lifetime: { earned: 0, runs: 0, wins: 0, sunk: 0, dmg: 0, afloat: 0, repaired: 0 },
     modes: {}, // keyed by mode name, created on demand so a new mode needs no schema change
     yard: starterYard(),
   };
@@ -276,21 +278,30 @@ export function modeRecord(rec, mode) {
   return rec.modes[mode] || blankMode();
 }
 
-/** Coins a voyage would bank, before it is banked. Same rounding the real thing uses. */
-export function voyageValue(earned) {
-  return Math.max(0, Math.round(num(earned) * HOLD_SHARE));
+/**
+ * Coins a voyage would bank, before it is banked. Same rounding the real thing uses.
+ *
+ * `repaired` is what she paid the carpenter at sea, and it comes off the top. That is the whole of
+ * the repair economy: a purse spent staying afloat is a purse that never reaches the hold, so a
+ * captain who fought carelessly and patched her way through has less to show for it than one who did
+ * not need to. Never below nothing, though. A bad round costs a captain the round, not her savings.
+ */
+export function voyageValue(earned, repaired = 0) {
+  return Math.max(0, Math.round((num(earned) - num(repaired)) * HOLD_SHARE));
 }
 
 /**
  * Bank one finished voyage and return the new hold alongside the coins it added.
  *
- * `run` is the end-of-round summary: `{ mode, earned, kills, dmg, time, won, rank }`. `earned` is what
- * the ship took in at sea, not what she had left — an upgrade bought at sea is not a coin lost here.
+ * `run` is the end-of-round summary: `{ mode, earned, repaired, kills, dmg, time, won, rank }`.
+ * `earned` is what the ship took in at sea, not what she had left; `repaired` is the part of it she
+ * handed to the carpenter, and only the difference reaches the hold.
  */
 export function bankVoyage(run) {
   const rec = current();
   const mode = typeof run.mode === "string" && run.mode ? run.mode : "unknown";
-  const banked = voyageValue(run.earned);
+  const repaired = num(run.repaired);
+  const banked = voyageValue(run.earned, repaired);
   const kills = num(run.kills);
   const time = num(run.time);
   const won = !!run.won;
@@ -306,6 +317,7 @@ export function bankVoyage(run) {
       sunk: rec.lifetime.sunk + kills,
       dmg: rec.lifetime.dmg + num(run.dmg),
       afloat: rec.lifetime.afloat + time,
+      repaired: rec.lifetime.repaired + repaired,
     },
     modes: { ...rec.modes },
   };

@@ -15,6 +15,10 @@ are built from. `broadside` in the code is the side guns, not the old title, and
   reads. It holds no state, touches no storage and imports nothing, and it should stay that way.
 - `src/hold.js` persists coins, lifetime stats and the yard to localStorage. Nothing else is saved;
   worlds and islands are generated fresh every match.
+- **Nothing is bought at sea but repairs.** A ship is what she was when she sailed; what she is comes
+  from the shipyard between voyages. Repairs are paid out of the voyage's own takings, so a coin spent
+  on the carpenter is a coin that never reaches the hold. If you find yourself adding a stat that
+  grows mid-round, that is the upgrade rail coming back and it was deliberately removed.
 - `docs/SHIPYARD.md` is the design note for the shipyard: the model, what is deliberately not built
   yet, and the open questions. Read it before extending any of the above.
 

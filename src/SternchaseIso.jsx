@@ -9,21 +9,24 @@ import { rigSpec } from "./shipyard.js";
  * doing in the simulation; the game's own name is Sternchase.
  * ARENA: endless survival. One hunter to start, matched to the player gun for gun; kills bring
  * reinforcements in from the edge of the map, well clear of your bow, 1-2-1-2 and then two a kill.
- * They never get stronger, there just get to be more of them, and only you upgrade.
- * FREE-FOR-ALL: up to 10 rival captains, equal start, they upgrade too, open on the nearest hull
- * before they start shopping for weak prey, loose the odd volley at whatever drifts into the arc,
- * and turn on a runaway leader. Last afloat wins.
+ * They never get stronger, there just get to be more of them.
+ * FREE-FOR-ALL: up to 10 rival captains, equal start, opening on the nearest hull before they start
+ * shopping for weak prey, loosing the odd volley at whatever drifts into the arc, and turning on a
+ * runaway leader. Last afloat wins.
  * Every AI reloads on the same clock as the player, in both modes.
- * Coins run at two depths: a purse spent at sea on this ship's upgrades, which sinks with her, and the
- * hold (`hold.js`), which takes what every finished voyage earned and keeps it across modes and
- * reloads alike.
+ *
+ * NOBODY UPGRADES AT SEA. A ship is what she was when she sailed, and what she is comes from the
+ * shipyard between voyages (`shipyard.js`), which is where a captain's money now goes. What a purse
+ * buys during a round is repairs and nothing else, and it buys them out of the voyage's own takings:
+ * every coin spent patching her is a coin that does not reach the hold. So the stat functions below
+ * read only her damage, not any notion of a level, and their shape is the seam the shipyard's
+ * `rate()` plugs into when the modes are reworked.
  */
 
 const WORLD = 2000;
 const TILT = 0.6; // vertical squash -> high-angle / isometric feel
 const ZUP = Math.sqrt(1 - TILT * TILT); // how world-height maps to screen-up
 const BASE = { hull: 100, mast: 55, crew: 70 };
-const HP_GAIN = { hull: 30, mast: 25, crew: 25 };
 const FFA_AI = 10;
 const ISLAND_COUNT = 4;
 const OPENING_WINDOW = 30; // seconds the ffa AI weights range over reputation when picking prey
@@ -34,7 +37,7 @@ const ARENA_RAMP = [1, 2, 1, 2]; // reinforcements for the first four kills, the
 const ARENA_SPAWN_CLEAR = 620; // keep a respawn at least this far from the player
 const ARENA_MAX_ENEMIES = 14; // ceiling so the fleet stays drawable
 const ARENA_SPAWN_GAP = 5; // the second ship of a wave holds off this long
-const ARENA_START_COINS = 50; // opening purse, enough for one upgrade before first contact
+const ARENA_START_COINS = 50; // opening purse: one good patch in hand before the first hunter closes
 
 // nth kill (1-indexed) -> how many ships sail in to replace the one that sank
 const arenaReinforcements = (n) => ARENA_RAMP[n - 1] ?? 2;
@@ -690,18 +693,43 @@ const shotHitsCircle = (cx, cy, r, x0, y0, x1, y1) => {
   return t >= 0 && t <= 1 ? t : -1;
 };
 
-// Each track says what it actually buys, in words. SIDE and FRONT both read "cannon dmg" before,
-// which told a captain nothing about which one to spend on: the side guns hole a hull, the bow gun
-// brings a rig down. The dot-separated shorthand went with it.
-const TRACKS = [
-  { key: "mast", label: "MAST", sub: "faster, turns harder", color: C.mast },
-  { key: "hull", label: "HULL", sub: "takes and gives a ram", color: C.hull },
-  { key: "crew", label: "CREW", sub: "musket fire, more hands", color: C.crew },
-  { key: "side", label: "SIDE", sub: "heavier broadside", color: C.side },
-  { key: "front", label: "FRONT", sub: "bow gun bites deeper", color: C.front },
+/**
+ * REPAIRS — the one thing a purse buys at sea, and the only reason to carry coins into a fight.
+ *
+ * A patch is bought by the point, not by the button: pressing HULL puts back up to `REPAIR_SHARE` of
+ * that system's maximum and charges for what it actually put back. Two things follow from pricing it
+ * that way, and both are the point. A ship barely scratched pays almost nothing to top herself up, so
+ * there is no wrong moment to repair. And a captain who cannot afford a whole patch gets as much of
+ * one as her purse covers rather than being refused, which matters most in the round where she is
+ * down to her last coins and taking fire.
+ *
+ * The rates differ because the systems are not worth the same. A mast is dearest: losing it is the
+ * one hit that takes a ship out of the fight while leaving her afloat, so putting one back is the
+ * most valuable thing she can buy. Hull is cheapest per point because she has the most of it.
+ *
+ * What makes this a real decision rather than a tax is where the money comes from. Repairs are paid
+ * out of the voyage's own takings, so every coin spent staying afloat is a coin that does not reach
+ * the hold and does not buy a ship. Fighting carefully is worth money.
+ */
+const REPAIR_SHARE = 0.35; // of a system's maximum, per patch
+const REPAIR_RATE = { hull: 1.2, mast: 1.7, crew: 1.35 }; // coins a point put back
+const REPAIRS = [
+  { key: "hull", label: "HULL", sub: "plug the shot holes", color: C.hull },
+  { key: "mast", label: "MAST", sub: "fish the spars, make sail", color: C.mast },
+  { key: "crew", label: "CREW", sub: "bind up and close ranks", color: C.crew },
 ];
 
-const COST = (lvl) => Math.round(45 * Math.pow(1.55, lvl));
+// What a system is short, what a full patch would put back, and what that would cost. Everything the
+// repair rail needs to draw itself, and everything `repair()` needs to charge for, from one place.
+function repairQuote(s, sys) {
+  const max = sys === "hull" ? s.maxHull : sys === "mast" ? s.maxMast : s.maxCrew;
+  const now = s[sys];
+  const points = Math.min(max - now, max * REPAIR_SHARE);
+  const cost = Math.ceil(points * REPAIR_RATE[sys]);
+  // what her purse actually reaches, so the button can price the patch she would really get
+  const afford = Math.min(cost, Math.floor(s.coins));
+  return { max, now, points, cost, afford, full: points <= 0.001 };
+}
 
 /**
  * A mode is a set of rules, not a name to compare against. Everything that used to ask "are we in
@@ -716,11 +744,11 @@ const MODES = {
     title: "ARENA",
     short: "arena",
     color: C.side,
-    desc: "Endless survival. One hunter to start, matched to your ship. Sink ships and reinforcements sail in from the horizon. Upgrade your ship. Score by ships sunk.",
+    desc: "Endless survival. One hunter to start, matched to your ship. Sink ships and reinforcements sail in from the horizon. Patch her up between waves, out of what you have taken. Score by ships sunk.",
     rivals: ARENA_START, // hulls on the water at the drop, besides the player
     startCoins: ARENA_START_COINS,
     guns: true, // cannons and muskets aboard
-    upgrades: true, // the upgrade rail, and AI captains shopping
+    repairs: true, // the repair rail, paid for out of the voyage's own earnings
     melee: false, // every hull hostile to every other, rather than only to the player
     ranked: false, // placements, a leader, and the rank badge
     lastAfloatWins: false,
@@ -736,11 +764,11 @@ const MODES = {
     title: "FREE-FOR-ALL",
     short: "free-for-all",
     color: C.mast,
-    desc: "Last afloat wins. 10 rival captains, all dead equal at the start. Enemies upgrade like real players and hunt for weak prey.",
+    desc: "Last afloat wins. 10 rival captains, all dead equal at the start, hunting for weak prey and turning on whoever pulls ahead. Spend what you take on repairs, or keep it.",
     rivals: FFA_AI,
     startCoins: 0,
     guns: true,
-    upgrades: true,
+    repairs: true,
     melee: true,
     ranked: true,
     lastAfloatWins: true,
@@ -756,11 +784,11 @@ const MODES = {
     title: "DEMOLITION DERBY",
     short: "derby",
     color: C.crew,
-    desc: "Only one hand needed. Last afloat wins. 10 captains, no guns, no upgrades. Sink rivals by ramming. Drive your bow into her beam, and turn to face anyone charging yours. A storm closes in and takes the crew of any ship caught.",
+    desc: "Only one hand needed. Last afloat wins. 10 captains, no guns, nothing to buy. Sink rivals by ramming. Drive your bow into her beam, and turn to face anyone charging yours. A storm closes in and takes the crew of any ship caught.",
     rivals: DERBY_AI,
     startCoins: 0,
     guns: false,
-    upgrades: false,
+    repairs: false,
     melee: true,
     ranked: true,
     lastAfloatWins: true,
@@ -793,41 +821,55 @@ const clamp = (v, a, b) => Math.min(Math.max(v, a), b);
 const fmtTime = (sec) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, "0")}`;
 const fmtCoins = (n) => Math.round(n || 0).toLocaleString();
 
-const maxHP = (up) => ({
-  hull: BASE.hull + up.hull * HP_GAIN.hull,
-  mast: BASE.mast + up.mast * HP_GAIN.mast,
-  crew: BASE.crew + up.crew * HP_GAIN.crew,
-});
 // A hull with way on her does not answer her rudder as she does at a crawl. The loss is weighted to
 // the top of the range: handling in and out of a fight is left where it was, and only a ship running
 // flat out finds she cannot turn inside her own wake. It keys off the way she actually carries rather
 // than the stick, so easing off the throttle hands the rudder back as she slows: coming round hard
 // means spending some of her way to do it, and a charge at full sail is a commitment.
-const BASE_SPEED = 94; // top speed of a fresh, unupgraded ship, and the yardstick for a heavy rudder
+const BASE_SPEED = 94; // top speed of a whole ship, and the yardstick for a heavy rudder
 const RUDDER_HEAVY = 0.22; // rudder lost at that speed
 const RUDDER_CURVE = 2.2; // how late in the range it starts to bite
 
+/**
+ * What a ship can do, and the seam the shipyard fits into.
+ *
+ * Every one of these used to open with the level she had bought in that track. Nothing buys a level
+ * any more, so what is left is the plain figure and the one thing that still varies at sea: how much
+ * of her rig is standing. A ship shot to pieces sails and turns worse, and that is the whole of it.
+ *
+ * They keep taking the ship rather than being constants, because that is the shape they need when
+ * `rate()` from `shipyard.js` starts feeding them. The change then is `BASE_SPEED * s.rating.speed`
+ * in place of `BASE_SPEED`, at these six lines and nowhere else.
+ */
 const rudder = (s) => 1 - RUDDER_HEAVY * Math.pow(clamp(s.spdCur / BASE_SPEED, 0, 1), RUDDER_CURVE);
-const speedCap = (s) => (BASE_SPEED + s.up.mast * 13) * (0.5 + 0.5 * (s.mast / s.maxMast));
-const turnCap = (s) => (2.4 + s.up.mast * 0.28) * (0.22 + 0.78 * (s.mast / s.maxMast)) * rudder(s);
-const sideDmg = (s) => 9 + s.up.side * 4;
-const frontDmg = (s) => 9 + s.up.front * 4;
-const musketDmg = (s) => 3.2 + s.up.crew * 1.4;
-const ramDmg = (s) => 26 + s.up.hull * 4;
-const shipPower = (s) => s.up.mast + s.up.hull + s.up.crew + s.up.side + s.up.front;
+const speedCap = (s) => BASE_SPEED * (0.5 + 0.5 * (s.mast / s.maxMast));
+const turnCap = (s) => 2.4 * (0.22 + 0.78 * (s.mast / s.maxMast)) * rudder(s);
+const sideDmg = () => 9;
+const frontDmg = () => 9;
+const musketDmg = () => 3.2;
+const ramDmg = () => 26;
 
-function applyUpgrade(s, track) {
-  s.up[track] += 1;
-  if (track === "hull") {
-    s.maxHull += HP_GAIN.hull;
-    s.hull = Math.min(s.maxHull, s.hull + HP_GAIN.hull);
-  } else if (track === "mast") {
-    s.maxMast += HP_GAIN.mast;
-    s.mast = Math.min(s.maxMast, s.mast + HP_GAIN.mast);
-  } else if (track === "crew") {
-    s.maxCrew += HP_GAIN.crew;
-    s.crew = Math.min(s.maxCrew, s.crew + HP_GAIN.crew);
-  }
+/**
+ * Put points back into one system and charge her purse for them.
+ *
+ * She is charged for what she actually gets: if her purse will not cover a full patch it buys the
+ * share it covers, and a ship with no coins buys nothing. `repaired` is banked separately from
+ * `coins` because the two answer different questions at the end of the round — what she has left,
+ * and what she spent staying afloat, which is the figure that comes off her earnings.
+ */
+function repair(s, sys) {
+  const q = repairQuote(s, sys);
+  if (q.full || q.afford <= 0) return 0;
+  const share = q.afford / q.cost; // a part-paid patch puts back its share and no more
+  const points = q.points * share;
+  s[sys] = Math.min(q.max, s[sys] + points);
+  s.coins -= q.afford;
+  s.repaired += q.afford;
+  s.patches += 1;
+  // A rig fished and re-rigged is a rig again. Without this a mast shot away stayed away however
+  // much canvas she bent on, and the one repair worth buying most was the one that did nothing.
+  if (sys === "mast" && s.mast > 0) s.mastDown = false;
+  return q.afford;
 }
 
 export default function App() {
@@ -845,12 +887,14 @@ export default function App() {
   const [mode, setMode] = useState("arena");
   const [result, setResult] = useState("");
   const [place, setPlace] = useState({ rank: 0, total: 0 });
-  const [stats, setStats] = useState({ time: 0, kills: 0, dmg: 0, coins: 0, upgrades: 0 });
+  const [stats, setStats] = useState({ time: 0, kills: 0, dmg: 0, coins: 0, patches: 0, repaired: 0, billed: 0, kept: 0 });
   const [coins, setCoins] = useState(0);
   const [sunk, setSunk] = useState(0);
   const [left, setLeft] = useState(0);
   const [rank, setRank] = useState({ rank: 1, total: 1 });
-  const [up, setUp] = useState({ mast: 0, hull: 0, crew: 0, side: 0, front: 0 });
+  // What each repair would cost and put back, recomputed with the rest of the HUD so the rail prices
+  // the patch she would get right now rather than the one she could have afforded a second ago.
+  const [mend, setMend] = useState({});
   const [ph, setPh] = useState({ ...BASE });
   const [phMax, setPhMax] = useState({ ...BASE });
   const [storm, setStorm] = useState({ closes: 0, out: false, closing: false });
@@ -868,23 +912,22 @@ export default function App() {
     const aliveCount = g.ships.filter((s) => s.alive).length;
     setLeft(aliveCount);
     setRank({ rank: p.rank || 1, total: g.aliveCount || aliveCount });
-    setUp({ ...p.up });
+    if (g.rules.repairs) {
+      const q = {};
+      for (const r of REPAIRS) q[r.key] = repairQuote(p, r.key);
+      setMend(q);
+    }
     setPh({ hull: p.hull, mast: p.mast, crew: p.crew });
     setPhMax({ hull: p.maxHull, mast: p.maxMast, crew: p.maxCrew });
     if (g.rules.storm) setStorm({ closes: Math.max(0, STORM_GRACE - g.time), out: g.playerOut, closing: g.stormR > STORM_R1 });
   }, []);
   syncRef.current = syncHUD;
 
-  const buy = useCallback(
-    (track) => {
+  const mendNow = useCallback(
+    (sys) => {
       const g = gameRef.current;
-      if (!g || !g.running) return;
-      const p = g.player;
-      const cost = COST(p.up[track]);
-      if (p.coins < cost) return;
-      p.coins -= cost;
-      applyUpgrade(p, track);
-      syncHUD();
+      if (!g || !g.running || !g.rules.repairs) return;
+      if (repair(g.player, sys) > 0) syncHUD();
     },
     [syncHUD]
   );
@@ -929,15 +972,13 @@ export default function App() {
     const SY = (y, cam) => (y - cam.y) * TILT;
 
     function makeShip(x, y, heading, opts) {
-      const up = opts.up || { mast: 0, hull: 0, crew: 0, side: 0, front: 0 };
-      const m = maxHP(up);
       const pal = AI_COLORS[opts.ci % AI_COLORS.length];
       const s = {
         x, y, heading, spdCur: 0, alive: true,
         isPlayer: !!opts.isPlayer,
-        up: { ...up }, coins: 0, earned: 0, rank: 0, kills: 0, dmgDealt: 0, rams: 0, exposure: 0,
-        maxHull: m.hull, maxMast: m.mast, maxCrew: m.crew,
-        hull: m.hull, mast: m.mast, crew: m.crew,
+        coins: 0, earned: 0, repaired: 0, patches: 0, rank: 0, kills: 0, dmgDealt: 0, rams: 0, exposure: 0,
+        maxHull: BASE.hull, maxMast: BASE.mast, maxCrew: BASE.crew,
+        hull: BASE.hull, mast: BASE.mast, crew: BASE.crew,
         cd: { broadside: Math.random() * 0.5, bow: Math.random() * 0.5, musket: Math.random() * 0.5 },
         mastDown: false, flash: 0, ramCd: 0, locked: new Map(), wakeT: 0, sprayT: 0,
         roll: 0, rollPhase: Math.random() * Math.PI * 2, turnVel: 0, kx: 0, ky: 0,
@@ -948,7 +989,6 @@ export default function App() {
       if (!opts.isPlayer) {
         s.wander = Math.random() * Math.PI * 2;
         s.wanderT = 0;
-        s.aiUpT = 1 + Math.random() * 2;
         s.oppT = 0;
         s.oppHold = 1.8 + Math.random() * 2.6; // trigger discipline: some captains waste less powder
         s.nerve = Math.random(); // how late she leaves it before turning to face a charge
@@ -957,7 +997,6 @@ export default function App() {
         s.sheerHeading = 0; // and the course out of the heap she picked when she began it
         s.retargetT = 0;
         s.target = null;
-        s.bias = TRACKS[Math.floor(Math.random() * TRACKS.length)].key;
       }
       return s;
     }
@@ -1128,15 +1167,35 @@ export default function App() {
       const timePay = Math.round((paidInFull ? r.fullRound : time) * r.timeCoins);
       const winPay = won ? r.winBonus : 0;
       const fought = Math.round(p.earned || 0);
+      const repaired = Math.round(p.repaired || 0);
+      const total = fought + timePay + winPay;
+      /**
+       * The carpenter is paid out of the opening stake first, and only then out of what she took.
+       *
+       * Arena hands a captain a purse at the drop that was never hers to keep: it is a stake against
+       * the round, and it has never reached the hold. So spending it has to cost her nothing, or the
+       * tally ends up billing her for money she was given. Without this a round that took 118 and
+       * spent 168 (the 50 of it borrowed) printed a bill bigger than the earnings above it, and the
+       * column stopped adding up on the page.
+       *
+       * What is left is the honest figure: what repairs actually cost her. Patch a scratch out of the
+       * stake and the row does not appear at all, which is the truth of it.
+       */
+      const billed = Math.max(0, repaired - (r.startCoins || 0));
       return {
         time,
         kills: p.kills || 0,
         dmg: Math.round(p.dmgDealt || 0),
         coins: fought, // what her bow and her guns took
-        upgrades: p.up.mast + p.up.hull + p.up.crew + p.up.side + p.up.front,
+        patches: p.patches || 0,
+        repaired, // every coin handed to the carpenter, stake and takings alike
+        billed, // ...and the part of it that was her own money
         rams: p.rams || 0,
         timePay, winPay,
-        total: fought + timePay + winPay,
+        total,
+        // What the hold will actually see. A voyage that spent everything it took on staying afloat
+        // banks nothing, and never less than nothing: a round cannot cost a captain her savings.
+        kept: Math.max(0, total - billed),
       };
     }
 
@@ -1148,7 +1207,7 @@ export default function App() {
       if (g.banked) return;
       g.banked = true;
       const s = finalStats(won);
-      const { banked: got } = bankVoyage({ mode: g.mode, earned: s.total, kills: s.kills, dmg: s.dmg, time: s.time, won, rank });
+      const { banked: got } = bankVoyage({ mode: g.mode, earned: s.total, repaired: s.billed, kills: s.kills, dmg: s.dmg, time: s.time, won, rank });
       setBanked(got);
     }
 
@@ -1347,9 +1406,11 @@ export default function App() {
         let score = -dist * distW;
         const isLead = leaderSnow && c === g.leader;
         if (isLead) score += 130 * shop;
-        const dP = shipPower(c) - shipPower(s);
-        if (!isLead && dP > 2) score -= dP * 18 * shop;
-        if (dP < 0) score += -dP * 7 * shop;
+        // A term weighing her guns against theirs used to sit here, and it measured levels bought.
+        // With nothing bought at sea every hull in the water is the same hull, so it weighed nothing
+        // and reads as a comparison the game no longer makes. What is left is range, reputation and
+        // blood in the water, all of which are still true. It comes back off the ship she sailed in
+        // when the shipyard reaches the fight, and that is a better comparison than levels were.
         const hpR = Math.min(c.hull / c.maxHull, c.crew / c.maxCrew);
         if (hpR < 0.5) score += (0.5 - hpR) * 120 * shop;
         if (score > bestScore) { bestScore = score; best = c; }
@@ -1379,22 +1440,6 @@ export default function App() {
       return bystander;
     }
 
-    function aiUpgrade(s, dt) {
-      s.aiUpT -= dt;
-      if (s.aiUpT > 0) return;
-      s.aiUpT = 1.4 + Math.random() * 1.2;
-      const hpR = Math.min(s.hull / s.maxHull, s.crew / s.maxCrew);
-      let best = null, bestScore = 1e9;
-      for (const t of ["mast", "hull", "crew", "side", "front"]) {
-        let score = s.up[t] * 10 + Math.random() * 4;
-        if (t === s.bias) score -= 6;
-        if (hpR < 0.45 && (t === "hull" || t === "crew")) score -= 16;
-        if (score < bestScore) { bestScore = score; best = t; }
-      }
-      const cost = COST(s.up[best]);
-      if (s.coins >= cost) { s.coins -= cost; applyUpgrade(s, best); }
-    }
-
     // ---- ram-only captains -------------------------------------------------------------------
     // With nothing to shoot, a captain's whole trade is where her bow is pointed and how much way she
     // has behind it. She wants a rival's beam, because that is where a hull is staved in; she wants to
@@ -1413,7 +1458,7 @@ export default function App() {
         const aspect = Math.abs(Math.sin(c.heading - toC)); // 1 when her beam is square to us
         const facing = Math.abs(norm(toC + Math.PI - c.heading)); // 0 when her bow is on us
         // ...and whether we are gaining on her at all. Every hull holds the same top speed in a mode
-        // with no upgrades and no gunnery to bring a mast down, so a stern chase is one nobody ever
+        // with no gunnery to bring a mast down, so a stern chase is one nobody ever
         // wins: without this a captain will happily follow a fleeing rival across the whole sea while
         // the beam of a ship crossing her bow goes begging.
         const closing =
@@ -1575,7 +1620,6 @@ export default function App() {
         s.wanderT -= dt;
         if (s.wanderT <= 0) { s.wander += (Math.random() - 0.5) * 1.2; s.wanderT = 1.5 + Math.random(); }
         moveShip(s, dt, avoidIslands(s, nearWall ? Math.atan2(WORLD / 2 - s.y, WORLD / 2 - s.x) : s.wander), 0.4);
-        if (g.rules.upgrades) aiUpgrade(s, dt);
         return;
       }
 
@@ -1584,14 +1628,15 @@ export default function App() {
       const toT = Math.atan2(dy, dx);
       const bearing = norm(toT - s.heading);
       const hpR = Math.min(s.hull / s.maxHull, s.crew / s.maxCrew);
-      const scary = shipPower(tgt) - shipPower(s) > 2;
-      const fleeing = g.rules.flees && (hpR < 0.3 || (scary && hpR < 0.55));
+      // She used to run from a ship carrying more levels than her as well as from her own wounds.
+      // Levels are gone and every hull is equal, so what is left is the wound, which was always the
+      // better half of it: a captain runs because of the state of her own ship.
+      const fleeing = g.rules.flees && hpR < 0.34;
 
       if (fleeing) {
         let away = Math.atan2(s.y - tgt.y, s.x - tgt.x);
         if (nearWall) away = Math.atan2(WORLD / 2 - s.y, WORLD / 2 - s.x);
         moveShip(s, dt, avoidIslands(s, away), 0.95);
-        if (g.rules.upgrades) aiUpgrade(s, dt);
         return;
       }
 
@@ -1622,7 +1667,6 @@ export default function App() {
         fire(s, wk);
         s.cd[wk] = WP[wk].cd; // AI reloads on the player's clock, every mode
       }
-      if (g.rules.upgrades) aiUpgrade(s, dt);
     }
 
     function stepRam() {
@@ -2758,22 +2802,34 @@ export default function App() {
             </div>
           </div>
 
-          {rules.upgrades && (
-          <div style={{ position: "absolute", top: 110, left: 8, right: 8, display: "flex", gap: 6, overflowX: "auto", paddingBottom: 2 }}>
-            {TRACKS.map((t) => {
-              const lvl = up[t.key];
-              const cost = COST(lvl);
-              const can = coins >= cost;
+          {/* The repair rail, where the upgrade rail used to be. Three buttons instead of five, and
+              each one prices the patch she would get this second: whole if she can pay for it, part
+              of one if she cannot, and none at all when the system is already sound. A button that
+              can do nothing says which of the two reasons it is rather than only going dim. */}
+          {rules.repairs && (
+          <div style={{ position: "absolute", top: 110, left: 8, right: 8, display: "flex", gap: 6, paddingBottom: 2 }}>
+            {REPAIRS.map((t) => {
+              const q = mend[t.key] || { full: true, afford: 0, cost: 0 };
+              const can = !q.full && q.afford > 0;
+              const part = can && q.afford < q.cost; // her purse buys some of this patch, not all
               return (
+                // A dimmed button keeps its own ground and dims only what is written on it. Fading
+                // the whole control put a half-transparent panel over a 50%-alpha ground, which came
+                // to a quarter opaque: the sea showed straight through, and 8px of label landed on an
+                // island and stopped being readable. The border goes neutral to say it is dead.
                 <button
                   key={t.key}
-                  onPointerDown={(e) => { e.preventDefault(); buy(t.key); }}
-                  style={{ flex: "1 0 62px", minWidth: 62, borderRadius: 10, border: `1px solid ${t.color}`, background: can ? "rgba(13,58,56,0.9)" : "rgba(13,58,56,0.5)", opacity: can ? 1 : 0.55, color: C.ink, padding: "5px 4px", display: "flex", flexDirection: "column", alignItems: "center", gap: 1, cursor: "pointer", WebkitTapHighlightColor: "transparent" }}
+                  disabled={!can}
+                  onPointerDown={(e) => { e.preventDefault(); mendNow(t.key); }}
+                  style={{ flex: "1 1 0", minWidth: 0, borderRadius: 10, border: `1px solid ${can ? t.color : C.hair}`, background: C.panel, color: C.ink, padding: "5px 4px", cursor: can ? "pointer" : "default", WebkitTapHighlightColor: "transparent" }}
                 >
-                  <span style={{ fontSize: 11, fontWeight: 700, color: t.color }}>{t.label}</span>
-                  <span style={{ fontSize: 8, color: "rgba(238,244,242,0.55)" }}>{t.sub}</span>
-                  <span style={{ fontSize: 9 }}>Level {lvl}</span>
-                  <span style={{ fontSize: 9, color: C.gold, display: "inline-flex", alignItems: "center", gap: 3 }}><CoinIcon size={9} />{cost}</span>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 1, opacity: can ? 1 : 0.6 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: t.color }}>{t.label}</span>
+                    <span style={{ fontSize: 8, color: "rgba(238,244,242,0.55)", textAlign: "center", lineHeight: 1.25 }}>{t.sub}</span>
+                    <span style={{ fontSize: 9, color: q.full ? "rgba(238,244,242,0.6)" : C.gold, display: "inline-flex", alignItems: "center", gap: 3 }}>
+                      {q.full ? "Sound" : can ? <><CoinIcon size={9} />{q.afford}{part ? " part" : ""}</> : "No coin"}
+                    </span>
+                  </div>
                 </button>
               );
             })}
@@ -3070,7 +3126,7 @@ function HoldPanel({ hold }) {
       <div style={{ fontSize: 10, color: "rgba(238,244,242,0.5)", lineHeight: 1.6, marginTop: 4 }}>
         {lt.runs > 0
           ? [`${lt.runs} voyage${lt.runs === 1 ? "" : "s"}`, `${lt.sunk} sunk`, ...(lt.wins > 0 ? [`${lt.wins} won`] : []), `${fmtTime(lt.afloat)} afloat`, ...bests].join(", ")
-          : "Every coin you earn at sea comes back here, from every mode, and keeps between sessions."}
+          : "What you earn at sea comes back here, from every mode, less anything you spent on repairs. It keeps between sessions."}
       </div>
     </div>
   );
@@ -3151,22 +3207,27 @@ function EndOverlay({ title, titleColor, result, stats, mode, place, hold, banke
   statRows.push(["Time survived", fmtTime(stats.time)]);
   statRows.push(["Ships sunk", stats.kills]);
   statRows.push(["Damage dealt", stats.dmg]);
-  statRows.push(rules.upgrades ? ["Upgrades bought", stats.upgrades] : ["Rams landed", stats.rams || 0]);
+  statRows.push(rules.repairs ? ["Repairs bought", stats.patches || 0] : ["Rams landed", stats.rams || 0]);
 
-  // What she was paid, kept apart from the stats and put directly above the total it makes. These
-  // three are the whole of it: total = fought + timePay + winPay, and the hold takes all of it, so
-  // the column adds up on the page. "Coins earned" used to sit up among the stats, three rows from
-  // its own subtotal, and named as though it were the lot when it was only what the guns took.
-  const payRows = [["From fighting", `+${fmtCoins(stats.coins)}`]];
-  if (rules.timeCoins > 0) payRows.push(["For time at sea", `+${fmtCoins(stats.timePay)}`]);
-  if (stats.winPay > 0) payRows.push(["For winning", `+${fmtCoins(stats.winPay)}`]);
+  // What she was paid, kept apart from the stats and put directly above the total it makes, so the
+  // column adds up on the page. "Coins earned" used to sit up among the stats, three rows from its
+  // own subtotal, and named as though it were the lot when it was only what the guns took.
+  //
+  // The carpenter's bill is the one row that goes the other way, and it belongs here rather than
+  // among the stats for exactly that reason: it is the last thing between what she took and what she
+  // keeps, and a captain should be able to read straight down the column and see where the money
+  // went. It is drawn in the same red as a sunk ship, and it is only shown when there is one.
+  const payRows = [["From fighting", `+${fmtCoins(stats.coins)}`, null]];
+  if (rules.timeCoins > 0) payRows.push(["For time at sea", `+${fmtCoins(stats.timePay)}`, null]);
+  if (stats.winPay > 0) payRows.push(["For winning", `+${fmtCoins(stats.winPay)}`, null]);
+  if (stats.billed > 0) payRows.push(["Paid to the carpenter", `-${fmtCoins(stats.billed)}`, C.crew]);
   return (
     <Shell>
       <div style={{ fontFamily: DISPLAY, fontSize: 40, color: titleColor, letterSpacing: 1 }}>{title}</div>
       <div style={{ fontSize: 13, color: "rgba(238,244,242,0.85)", margin: "10px 0 14px", lineHeight: 1.6 }}>{result}</div>
       <div style={{ background: "rgba(11,51,49,0.6)", border: `1px solid ${C.hair}`, borderRadius: 10, padding: "6px 12px", marginBottom: 18, textAlign: "left" }}>
         {statRows.map(([l, v], i) => <TallyRow key={l} label={l} value={v} rule={i > 0 ? "hair" : ""} />)}
-        {payRows.map(([l, v], i) => <TallyRow key={l} label={l} value={v} rule={i === 0 ? "group" : "hair"} />)}
+        {payRows.map(([l, v, col], i) => <TallyRow key={l} label={l} value={v} valueColor={col} rule={i === 0 ? "group" : "hair"} />)}
         {/* The voyage is over and the ship's purse with it; this is the part that sails on. */}
         <TallyRow label="Into the hold" value={`+${fmtCoins(banked)}`} rule="group"
           valueColor={banked > 0 ? C.grass : "rgba(238,244,242,0.5)"} />
