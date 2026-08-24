@@ -180,7 +180,11 @@ sea is still the same hull. `docs/SHIPYARD.md` is the design note; the short ver
   imports nothing.
 - A hull fixes maximum hull and crew, base speed and handling, how many guns of each kind she bears,
   her mast sockets, and how big she is. A mast fits a socket and carries a fixed set of berths decided
-  when it was built. A sail fits a berth of the same cut and size. Guns fit by the piece up to the
+  when it was built. Every berth and every sail names one of six categories, large square, small
+  square, triangular, gaff, lugsail and studdingsail, and a sail fits a berth of its own category.
+  Studdingsails are the exception and never fill a berth: one booms out beyond a square sail already
+  set, so it wants an attachment to a sail rather than a place on a mast, and nothing models that yet.
+  Guns fit by the piece up to the
   hull's bearing; `broadside` counts guns **a side**, mirrored, because that is how a volley fires, and
   runs 2 on the cutter to 10 on the galleon. Muskets come off the crew rather than being bought.
 - Parts are catalogue *types*, and a captain owns *instances*. An instance is in one slot or in none,

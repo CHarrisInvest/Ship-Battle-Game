@@ -1,7 +1,7 @@
 import React, { useRef, useState, useEffect, useCallback, useMemo } from "react";
 import { drawGalleon } from "./galleon.js";
 import { getHold, bankVoyage, resetHold, subscribeHold, modeRecord, shipLoadout, shortfall } from "./hold.js";
-import { STARTER, mastRebuildCost, measure, rate, resolve, rigSpec, tierAt } from "./shipyard.js";
+import { STARTER, kindOf, mastRebuildCost, measure, rate, resolve, rigSpec, tierAt } from "./shipyard.js";
 
 /**
  * STERNCHASE: HELM & HULL — pirate battles at sea, on a tilted (isometric-ish) sea with tall wooden
@@ -3239,7 +3239,7 @@ function YardScreen({ hold, onBack }) {
                   return (
                     <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 8, marginTop: 3, paddingLeft: 10 }}>
                       <span style={{ fontSize: 9, color: "rgba(238,244,242,0.45)" }}>
-                        {berth.size} {berth.cut}
+                        {kindOf(berth.kind)?.name || berth.kind}
                       </span>
                       <span style={{ fontSize: 10, color: sail ? "rgba(238,244,242,0.8)" : "rgba(238,244,242,0.35)" }}>
                         {sail ? sail.name : "bare"}

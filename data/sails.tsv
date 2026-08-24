@@ -1,0 +1,45 @@
+# THE SAILS. One row per sail a captain can buy.
+# Edit here, then: npm run import && npm run catalogue
+#
+# A sail belongs to ONE category and fits a berth of that category. That is the whole fitting rule.
+# Area is not the category: a lateen can rival a course and a staysail is a scrap, and both are TRI.
+#
+#   LSQ  Large square    courses, lower topsails            driving power, low on the mast
+#   SSQ  Small square    topgallants, royals, skysails,     light-air lift, high up
+#                        spritsails, sprit-topsails
+#   TRI  Triangular      jibs, flying jibs, staysails,      headsail drive, balance, pointing
+#                        lateen sails
+#   GAF  Gaff            gaff mainsails, spankers,          fore-and-aft drive aft, manoeuvre
+#                        drivers, trysails, gaff topsails
+#   LUG  Lugsail         dipping and standing lug,          the main drive of a lugger
+#                        lug topsail
+#   STU  Studdingsail    boomed-out extensions             ADDITIVE. Not a berth: see below.
+#
+# STU does not go in a berth. A studdingsail booms out beyond a square sail that is already set and
+# its area comes off that sail, so it is an attachment rather than a place in the rig. Nothing models
+# that yet and `npm run catalogue` refuses a berth that asks for one, deliberately, so that a mast
+# cannot pretend to carry studdingsails in a slot.
+#
+# id      short camelCase name, unique.
+# name    what a captain reads.
+# kind    one of the six labels above.
+# price   coins.
+# drive   what she pulls, as a share of a course's. Physical area is where this number starts, and
+#         the proportions to use are: course 1.00, lower topsail 0.70, topgallant 0.40, royal 0.22,
+#         skysail 0.12, studdingsail 0.50 to 0.80 of the square sail it booms out from. Better cloth
+#         holds its shape and adds to it, which is why two sails of one area can differ here.
+# hand    what it does to her helm. Square canvas stiffens her, so it is negative; fore-and-aft
+#         canvas helps her round, so it is positive.
+# blurb   one line a captain reads.
+#
+# These eight are placeholders standing in until the real sail list arrives. Their categories are
+# right; their prices and figures are only placed relative to each other.
+id	name	kind	price	drive	hand	blurb
+course	Square course	LSQ	180	1.00	-0.10	The big lower sail. Plain flax, and it pulls.
+courseFine	Duck canvas course	LSQ	640	1.32	-0.08	The same sail in heavier cloth. Holds its shape when the plain one is bellying out of it.
+topsail	Square topsail	SSQ	120	0.58	-0.04	Half the cloth of a course, and it sits where the wind is cleaner.
+topsailFine	Duck canvas topsail	SSQ	430	0.78	-0.03	A topsail worth setting in weather that would split the plain one.
+staysail	Staysail	TRI	130	0.40	0.12	A small triangle set on a stay. Not much pull, and she feels it in the rudder.
+staysailFine	Cut staysail	TRI	460	0.55	0.15	The staysail a captain keeps when she changes ships.
+lateen	Lateen sail	TRI	210	0.72	0.14	A long triangle on a raking yard. Less pull than a course, and she comes round on it.
+lateenFine	Cut lateen sail	TRI	720	0.95	0.18	Cut flat rather than full, so it holds an edge to the wind the plain one spills.

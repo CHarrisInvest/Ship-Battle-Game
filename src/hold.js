@@ -121,10 +121,10 @@ function sanitizeYard(raw) {
   }
 
   const used = new Set();
-  const take = (id, kind) => {
+  const take = (id, sort) => {
     const part = yard.parts[id];
     if (!part || used.has(id)) return null;
-    if (PARTS[part.type].kind !== kind) return null;
+    if (PARTS[part.type].part !== sort) return null;
     used.add(id);
     return id;
   };
@@ -470,14 +470,14 @@ export function shortfall(rec, shipId) {
   for (const socket of hull.sockets) {
     const slot = ship.rig[socket.id] || { mast: null, sails: [] };
     if (!slot.mast) {
-      gaps.push(gap({ kind: "mast", socket: socket.id, station: socket.station, size: socket.size },
+      gaps.push(gap({ part: "mast", socket: socket.id, station: socket.station, size: socket.size },
         (t) => mastFitsSocket(t, socket), mastsForSocket(socket)));
       continue;
     }
     const mast = partOf(rec, slot.mast);
     mast.berths.forEach((berth, i) => {
       if (slot.sails[i]) return;
-      gaps.push(gap({ kind: "sail", socket: socket.id, berth: i, cut: berth.cut, size: berth.size },
+      gaps.push(gap({ part: "sail", socket: socket.id, berth: i, kind: berth.kind },
         (t) => sailFitsBerth(t, berth), sailsForBerth(berth)));
     });
   }
@@ -485,7 +485,7 @@ export function shortfall(rec, shipId) {
   for (const mount of ["broadside", "bow", "swivel"]) {
     const short = hull.guns[mount] - ship.guns[mount].length;
     for (let i = 0; i < short; i++) {
-      gaps.push(gap({ kind: "gun", mount }, (t) => t.kind === "gun" && t.mount === mount, gunsForMount(mount)));
+      gaps.push(gap({ part: "gun", mount }, (t) => t.part === "gun" && t.mount === mount, gunsForMount(mount)));
     }
   }
 

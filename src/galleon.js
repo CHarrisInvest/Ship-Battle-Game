@@ -169,12 +169,23 @@ const STATION_GEOM = {
 
 const BOWSPRIT = { heel: [50, 0, 22.6], tip: [88, 0, 33.5], r0: 1.3, r1: 0.66 };
 
+/* The sail categories drawn as a triangle. Everything else takes the square, and
+   RIG_KINDS at the foot of this file is what says which categories are settling
+   for it. */
+const TRIANGULAR = new Set(["TRI"]);
+
 /**
  * Turn a shipyard rig spec into the geometry buildShip wants.
  *
- * `spec` is `{ bowsprit, masts: [{ station, height, sails: [{ cut, size }] }] }`,
+ * `spec` is `{ bowsprit, masts: [{ station, height, sails: [{ kind }] }] }`,
  * which is what `shipyard.js` hands over: what is rigged, not where it goes.
  * Masts come out ordered bow to stern so the stays can be chained down the line.
+ *
+ * A sail's `kind` is its shipyard category and this file knows two shapes to draw
+ * it in, a square one and a triangle. LSQ and SSQ are square canvas and get the
+ * square; TRI gets the triangle. A gaff sail and a lugsail are neither, and until
+ * this file is taught their shapes they draw as square canvas, which is closer
+ * than a triangle and is what the bench reports rather than hides.
  */
 function rigFromSpec(spec) {
   const masts = (spec.masts || [])
@@ -184,7 +195,7 @@ function rigFromSpec(spec) {
       const pole = Math.round(g.pole * (m.height || 1) * 100) / 100;
       const k = pole / g.ref; // a shorter mast carries its canvas proportionally lower
       const sails = (m.sails || []).map((s, i) => {
-        if (s.cut === "triangle") {
+        if (TRIANGULAR.has(s.kind)) {
           const band = g.tri[Math.min(i, g.tri.length - 1)];
           return { cut: "triangle", zb: pole * band.zb, zt: pole * band.zt };
         }
@@ -217,9 +228,9 @@ function rigFromSpec(spec) {
 const GALLEON_RIG = rigFromSpec({
   bowsprit: true,
   masts: [
-    { station: "fore", height: 0.88, sails: [{ cut: "square" }, { cut: "square" }] },
-    { station: "main", height: 1.0, sails: [{ cut: "square" }, { cut: "square" }, { cut: "square" }] },
-    { station: "mizzen", height: 0.74, sails: [{ cut: "triangle" }] },
+    { station: "fore", height: 0.88, sails: [{ kind: "LSQ" }, { kind: "SSQ" }] },
+    { station: "main", height: 1.0, sails: [{ kind: "LSQ" }, { kind: "SSQ" }, { kind: "SSQ" }] },
+    { station: "mizzen", height: 0.74, sails: [{ kind: "TRI" }] },
   ],
 });
 
@@ -846,11 +857,11 @@ function drawGalleon(ctx,W,H,deg,spec){
    nobody has drawn yet is caught in the catalogue rather than on the menu. */
 const RIG_STATIONS = Object.keys(STATION_GEOM);
 
-/* The sail cuts this renderer draws as their own shape. Anything else falls
-   back to a square sail, which is a wrong-looking ship rather than a broken one:
-   the bench says which cuts are in that position so a rig nobody has drawn yet
-   is a known gap rather than a surprise. */
-const RIG_CUTS = ["square", "triangle"];
+/* The sail categories this renderer draws in a shape of their own. Anything else
+   falls back to a square sail, which is a wrong-looking ship rather than a broken
+   one: the bench says which categories are in that position so a rig nobody has
+   drawn yet is a known gap rather than a surprise. */
+const RIG_KINDS = ["LSQ", "SSQ", "TRI"];
 
 /* How many sails this renderer can place up one mast and have them land in
    different places. Each station carries that many authored bands, and a berth
@@ -863,4 +874,4 @@ const RIG_BERTHS = Math.min(
   ...Object.values(STATION_GEOM).map((g) => Math.min(g.slots.length, g.tri.length)),
 );
 
-export { drawGalleon, RIG_STATIONS, RIG_CUTS, RIG_BERTHS };
+export { drawGalleon, RIG_STATIONS, RIG_KINDS, RIG_BERTHS };

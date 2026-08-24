@@ -23,9 +23,20 @@ are built from. `broadside` in the code is the side guns, not the old title, and
   from the shipyard between voyages. Repairs are paid out of the voyage's own takings, so a coin spent
   on the carpenter is a coin that never reaches the hold. If you find yourself adding a stat that
   grows mid-round, that is the upgrade rail coming back and it was deliberately removed.
-- **The hull and mast tables are generated.** `data/hulls.tsv` and `data/masts.tsv` are the source;
-  `npm run import` writes them into the marked blocks in `shipyard.js`. Editing those blocks by hand
-  works until the next import throws it away, so edit the table.
+- **The hull, mast and sail tables are generated.** `data/hulls.tsv`, `data/masts.tsv` and
+  `data/sails.tsv` are the source; `npm run import` writes them into the marked blocks in
+  `shipyard.js`. Editing those blocks by hand works until the next import throws it away, so edit the
+  table.
+- **A sail's category is the whole of the fitting rule.** A berth names one of the six in
+  `SAIL_KINDS` and a sail belongs to one, and they are compared as a single key. Area is not the
+  category: a lateen can rival a course and a staysail is a scrap, and both are `TRI`, so the range
+  inside a category belongs in `drive` rather than in a second field. This replaced a cut-and-size
+  pair that produced combinations no real rig has; do not reintroduce one.
+- **A studdingsail is not a berth.** It booms out beyond a square sail already set and its area comes
+  off that sail, so `STU` is marked `additive` and the bench fails a berth that asks for one. Wiring
+  it up means an attachment on a sail, not a slot on a mast.
+- **A part's `part` says what sort of thing it is; a sail's `kind` says which category.** They were
+  one field, and the two meanings collided the moment the categories arrived.
 - **The renderer draws three sails up a mast, and no more.** A fourth or fifth berth is clamped to the
   third band and draws on top of it, invisible. The bench fails on it; the fix is generating the
   bands from the pole height rather than adding a row to `STATION_GEOM`.

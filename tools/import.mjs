@@ -1,8 +1,8 @@
 /**
  * THE IMPORTER — `npm run import`
  *
- * Reads `data/hulls.tsv` and `data/masts.tsv` and writes them into `src/shipyard.js`, between the
- * markers that fence off the generated blocks.
+ * Reads `data/hulls.tsv`, `data/masts.tsv` and `data/sails.tsv` and writes them into
+ * `src/shipyard.js`, between the markers that fence off the generated blocks.
  *
  * Why generate into the source rather than have the game read a table at runtime: `shipyard.js`
  * imports nothing and holds no state, and that is worth keeping. A parser in the bundle to read a
@@ -96,21 +96,39 @@ function mastRows() {
     const berths = need(r, "berths", file)
       .split(/\s+/)
       .filter(Boolean)
-      .map((b) => {
-        const [cut, size] = b.split("/");
-        if (!cut || !size) throw new Error(`${file}: "${id}" has a berth "${b}" that is not cut/size`);
-        return `{ cut: ${str(cut)}, size: ${str(size)} }`;
-      });
+      .map((b) => `{ kind: ${str(b.toUpperCase())} }`);
     return [
       `  ${id}: {`,
       `    id: ${str(id)},`,
-      `    kind: "mast",`,
+      `    part: "mast",`,
       `    name: ${str(need(r, "name", file))},`,
       `    price: ${number(r, "price", file)},`,
       `    blurb: ${str(need(r, "blurb", file))},`,
       `    size: ${str(need(r, "size", file))},`,
       `    height: ${number(r, "height", file)},`,
-      berths.length === 1 ? `    berths: [${berths[0]}],` : `    berths: [\n      ${berths.join(",\n      ")},\n    ],`,
+      `    berths: [${berths.join(", ")}],`,
+      "  },",
+    ].join("\n");
+  });
+}
+
+function sailRows() {
+  const file = "sails.tsv";
+  const seen = new Set();
+  return readTable(file).map((r) => {
+    const id = need(r, "id", file);
+    if (seen.has(id)) throw new Error(`${file}: two sails share the id "${id}"`);
+    seen.add(id);
+    return [
+      `  ${id}: {`,
+      `    id: ${str(id)},`,
+      `    part: "sail",`,
+      `    kind: ${str(need(r, "kind", file).toUpperCase())},`,
+      `    name: ${str(need(r, "name", file))},`,
+      `    price: ${number(r, "price", file)},`,
+      `    blurb: ${str(need(r, "blurb", file))},`,
+      `    drive: ${number(r, "drive", file)},`,
+      `    hand: ${number(r, "hand", file)},`,
       "  },",
     ].join("\n");
   });
@@ -128,11 +146,13 @@ function splice(text, tag, body) {
 
 const hulls = hullRows();
 const masts = mastRows();
+const sails = sailRows();
 
 let out = readFileSync(src, "utf8");
 out = splice(out, "hulls", `const FLEET = [\n${hulls.join("\n")}\n];`);
 out = splice(out, "masts", `export const MASTS = {\n${masts.join("\n")}\n};`);
+out = splice(out, "sails", `export const SAILS = {\n${sails.join("\n")}\n};`);
 writeFileSync(src, out);
 
-console.log(`Wrote ${hulls.length} classes and ${masts.length} masts into src/shipyard.js.`);
+console.log(`Wrote ${hulls.length} classes, ${masts.length} masts and ${sails.length} sails into src/shipyard.js.`);
 console.log("Now run `npm run catalogue` to check the fleet is riggable and see where it lands.");

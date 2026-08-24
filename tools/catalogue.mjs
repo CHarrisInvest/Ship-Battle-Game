@@ -17,12 +17,12 @@
  */
 
 import {
-  HULLS, HULL_LIST, STATIONS, CUTS, MAST_LIST, SAIL_LIST, GUN_LIST,
+  HULLS, HULL_LIST, STATIONS, SAIL_KINDS, KIND_LIST, MAST_LIST, SAIL_LIST, GUN_LIST,
   mastsForSocket, sailsForBerth, berthsOf, gunsForMount,
   rate, measure, statBand, fitOut, minimumLoadout, maximumLoadout, loadoutValue, outfitCost,
   TIERS, tierAt, ladder, stockOfTier, resolve, STARTER, STOCK, riggingValue, mastRebuildCost,
 } from "../src/shipyard.js";
-import { RIG_STATIONS, RIG_CUTS, RIG_BERTHS } from "../src/galleon.js";
+import { RIG_STATIONS, RIG_KINDS, RIG_BERTHS } from "../src/galleon.js";
 
 // A set, not a list. The same fault reached from forty hulls is one fault about one part, and a
 // bench that printed it forty times would bury the other thirty-nine.
@@ -80,8 +80,8 @@ for (const st of STATIONS) {
 }
 
 // Masts are checked once each rather than once per socket they happen to fit. A berth no sail fits is
-// a fact about the mast, and a cut nobody declared is almost always a typo: neither throws, they just
-// produce a berth that stays empty forever.
+// a fact about the mast, and a category nobody declared is almost always a typo: neither throws, they
+// just produce a berth that stays empty forever.
 for (const m of MAST_LIST) {
   if (!m.berths.length) fault(`mast "${m.id}"`, "no berths, so she can carry no sail at all");
   if (m.berths.length > RIG_BERTHS) {
@@ -89,21 +89,32 @@ for (const m of MAST_LIST) {
     fault(`mast "${m.id}"`, `carries ${m.berths.length} sails and the renderer has bands for ${RIG_BERTHS}, so ${lost} of them would draw on top of the topmost one and be invisible. Adding a band is not a new row in STATION_GEOM: three sails already reach the masthead, so the bands have to be generated from the pole height and the berth count instead`);
   }
   for (const b of berthsOf(m)) {
-    if (!CUTS.includes(b.cut)) fault(`mast "${m.id}"`, `berth ${b.index} has cut "${b.cut}", which is not in CUTS`);
-    if (!sailsForBerth(b).length) fault(`mast "${m.id}"`, `berth ${b.index} wants a ${b.size} ${b.cut} sail and the catalogue has none`);
+    const kind = SAIL_KINDS[b.kind];
+    if (!kind) {
+      fault(`mast "${m.id}"`, `berth ${b.index} asks for "${b.kind}", which is not one of the sail categories (${KIND_LIST.map((k) => k.id).join(", ")})`);
+      continue;
+    }
+    // A studdingsail booms out beyond a square sail already set and its area comes off that sail, so
+    // it attaches to a sail rather than filling a place in the rig. Nothing models that yet, and a
+    // berth asking for one would let a mast pretend otherwise.
+    if (kind.additive) {
+      fault(`mast "${m.id}"`, `berth ${b.index} asks for ${kind.id}, and a ${kind.name.toLowerCase()} is not a berth: it booms out beyond a square sail that is already set, so it wants an attachment to a sail rather than a place on the mast`);
+      continue;
+    }
+    if (!sailsForBerth(b).length) fault(`mast "${m.id}"`, `berth ${b.index} wants a ${kind.name.toLowerCase()} sail and the catalogue has none`);
   }
 }
 for (const s of SAIL_LIST) {
-  if (!CUTS.includes(s.cut)) fault(`sail "${s.id}"`, `cut "${s.cut}" is not in CUTS`);
+  if (!SAIL_KINDS[s.kind]) fault(`sail "${s.id}"`, `category "${s.kind}" is not one of the sail categories`);
 }
-const undrawn = CUTS.filter((c) => !RIG_CUTS.includes(c) && SAIL_LIST.some((s) => s.cut === c));
+const undrawn = KIND_LIST.filter((k) => !RIG_KINDS.includes(k.id) && SAIL_LIST.some((s) => s.kind === k.id)).map((k) => k.id);
 
 
 /* ---- the fleet ------------------------------------------------------------------------------- */
 
 console.log(`\nPARTS  ${MAST_LIST.length} masts, ${SAIL_LIST.length} sails, ${GUN_LIST.length} guns`);
 console.log(`STATIONS  ${STATIONS.join(", ")}   drawn: ${RIG_STATIONS.join(", ")}`);
-console.log(`CUTS      ${CUTS.join(", ")}   drawn as their own shape: ${RIG_CUTS.join(", ")}`);
+console.log(`SAILS     ${KIND_LIST.map((k) => k.id + (k.additive ? "*" : "")).join(", ")}   drawn as their own shape: ${RIG_KINDS.join(", ")}   (* attaches to a sail, never a berth)`);
 console.log(`BERTHS    the renderer can place ${RIG_BERTHS} sails up one mast in different places`);
 if (undrawn.length) {
   console.log(`          note: ${undrawn.join(", ")} will draw as square canvas until galleon.js learns the shape`);

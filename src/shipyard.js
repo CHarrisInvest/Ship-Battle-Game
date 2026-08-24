@@ -13,15 +13,20 @@
  *   MASTS   fitted into a socket. A mast is bought as a whole and its sail berths are fixed at the
  *           moment it is built: a mast that carries one lateen sail will never carry two square
  *           ones. Choosing a mast is choosing a shape of rig, not just a size.
- *   SAILS   fitted into a berth. A berth states a cut (square or triangle) and a size, and only a
- *           sail matching both goes in it, which is why a sloop's triangular canvas is no use on a
- *           square-rigged frigate and why the head of a tall mast wants a small sail.
+ *   SAILS   fitted into a berth. A berth names one of the six sail categories and only a sail of
+ *           that category goes in it, which is why a sloop's triangular canvas is no use on a
+ *           square-rigged frigate and why the head of a tall mast wants a small square sail.
  *   GUNS    fitted by the piece up to the hull's bearing. Muskets are not bought: they come off the
  *           crew she can muster, with the swivels adding to the weight of small arms.
  *
  * Parts are catalogue *types*. A captain owns *instances* of them, which is `hold.js`'s business,
  * and an instance moves between ships freely — the rule that rigging and guns travel is a rule
  * about instances, so nothing here needs to know about it.
+ *
+ * Every part carries `part`, which is one of `"mast"`, `"sail"` or `"gun"` and says what sort of
+ * thing it is. A sail also carries `kind`, which is its sail category and is a different question
+ * with a different answer: `part: "sail", kind: "LSQ"`. They were one field for a while and the two
+ * meanings collided the moment the categories arrived, so they are two fields now.
  *
  * Nothing in this file is wired into combat yet. `rate()` returns ratings, not speeds: dimensionless
  * multipliers around 1 that the fight's own constants will be multiplied by when the shipyard opens,
@@ -43,10 +48,34 @@ const sizeRank = (s) => SIZES.indexOf(s);
 // a name added here AND geometry in `galleon.js`, or that mast is silently left off the menu ship.
 export const STATIONS = ["fore", "main", "mizzen"];
 
-// How a sail is cut, which is the only thing that decides whether it goes in a berth. Declared rather
-// than left implicit in the rows so adding a rig is a data change and the bench can check for typos:
-// a berth wanting a `sqaure` sail would otherwise just be a berth nothing ever fits.
-export const CUTS = ["square", "triangle", "lug"];
+/**
+ * THE SAIL CATEGORIES, and the only thing that decides whether a sail goes in a berth.
+ *
+ * A berth names one of these and a sail belongs to one, and that is the whole of the fitting rule.
+ * It used to be a pair, a cut and a size, which produced combinations no real rig has: a `triangle`
+ * and a `small` crossed to make a berth that a jib and a staysail both filled and a lateen did not,
+ * for no reason anybody could state. Six named categories say the same thing without the phantoms,
+ * and a mast's berths read as what a rigger would call them.
+ *
+ * Area is NOT the category. A lateen can rival a course and a staysail is a scrap, and both are TRI;
+ * a topgallant is nearly four times a skysail and both are SSQ. What a sail pulls is its own figure,
+ * so the range inside a category is carried by `drive` rather than by splitting the category.
+ *
+ * STU is the odd one and is marked `additive`. A studdingsail is not a berth on a mast: it booms out
+ * beyond a square sail already set, and its area comes off that sail rather than off a place in the
+ * rig. Nothing models that yet, so the bench refuses a berth that asks for one rather than letting a
+ * mast pretend to carry studdingsails in a slot.
+ */
+export const SAIL_KINDS = {
+  LSQ: { id: "LSQ", name: "Large square", blurb: "Courses and lower topsails. The driving power, low on the mast." },
+  SSQ: { id: "SSQ", name: "Small square", blurb: "Topgallants, royals and skysails. Light-air lift, high up." },
+  TRI: { id: "TRI", name: "Triangular", blurb: "Jibs, staysails and lateens. Headsail drive, and pointing." },
+  GAF: { id: "GAF", name: "Gaff", blurb: "Spankers, drivers and gaff mainsails. Fore-and-aft drive aft." },
+  LUG: { id: "LUG", name: "Lugsail", blurb: "Four sided, on a slung yard. What a lugger drives on." },
+  STU: { id: "STU", name: "Studdingsail", additive: true, blurb: "Boomed out beyond a square sail, for light airs." },
+};
+export const KIND_LIST = Object.values(SAIL_KINDS);
+export const kindOf = (id) => SAIL_KINDS[id] || null;
 
 /* ---------------------------------------------------------------------------------------------- */
 /* Hulls                                                                                           */
@@ -151,7 +180,7 @@ export const HULL_LIST = Object.values(HULLS).sort((a, b) => a.order - b.order);
 
 /**
  * `berths` is the whole point of a mast and it never changes after the build. Each berth names the
- * cut and size of the one sail that goes in it, listed from the deck up, so the last berth on a tall
+ * category of the one sail that goes in it, listed from the deck up, so the last berth on a tall
  * mast is the small sail at the head. Buying a mast is buying a shape.
  *
  * `size` is the smallest socket the mast fits. `height` is how tall she stands as a share of a full
@@ -162,73 +191,63 @@ export const HULL_LIST = Object.values(HULLS).sort((a, b) => a.order - b.order);
 export const MASTS = {
   poleMast: {
     id: "poleMast",
-    kind: "mast",
+    part: "mast",
     name: "Pole mast",
     price: 0,
     blurb: "A single spar and a single sail. Everything starts here.",
     size: "small",
     height: 0.62,
-    berths: [{ cut: "square", size: "small" }],
+    berths: [{ kind: "SSQ" }],
   },
   bermudaMast: {
     id: "bermudaMast",
-    kind: "mast",
+    part: "mast",
     name: "Bermuda mast",
     price: 320,
     blurb: "Tall and bare, cut for one big triangular sail. Points closer to the wind than square canvas.",
     size: "small",
     height: 0.86,
-    berths: [{ cut: "triangle", size: "large" }],
+    berths: [{ kind: "TRI" }],
   },
   lowerMast: {
     id: "lowerMast",
-    kind: "mast",
+    part: "mast",
     name: "Lower mast",
     price: 420,
     blurb: "One heavy square sail on a stout pole. The plain way to move a big hull.",
     size: "medium",
     height: 0.7,
-    berths: [{ cut: "square", size: "large" }],
+    berths: [{ kind: "LSQ" }],
   },
   lateenMast: {
     id: "lateenMast",
-    kind: "mast",
+    part: "mast",
     name: "Lateen mast",
     price: 760,
     blurb: "A long raking yard for the after station, with room for a small square sail above it.",
     size: "medium",
     height: 0.74,
-    berths: [
-      { cut: "triangle", size: "large" },
-      { cut: "square", size: "small" },
-    ],
+    berths: [{ kind: "TRI" }, { kind: "SSQ" }],
   },
   topmast: {
     id: "topmast",
-    kind: "mast",
+    part: "mast",
     name: "Topmast",
     price: 980,
     blurb: "A lower mast with a second spar fidded above it: a course below, a topsail over.",
     size: "medium",
     height: 0.88,
-    berths: [
-      { cut: "square", size: "large" },
-      { cut: "square", size: "small" },
-    ],
+    berths: [{ kind: "LSQ" }, { kind: "SSQ" }],
   },
   topgallantMast: {
     id: "topgallantMast",
-    kind: "mast",
+    part: "mast",
     name: "Topgallant mast",
     price: 2100,
     blurb: "Three spars, and the highest sail is a small one. Every hand aboard is up there in a blow.",
     size: "large",
     height: 1,
-    berths: [
-      { cut: "square", size: "large" },
-      { cut: "square", size: "small" },
-      { cut: "square", size: "small" },
-    ],
+    berths: [{ kind: "LSQ" }, { kind: "SSQ" }, { kind: "SSQ" }],
   },
 };
 /* end:masts */
@@ -245,100 +264,95 @@ export const MAST_LIST = Object.values(MASTS);
  * round, which is the trade that makes a sloop's rig worth having on a sloop and worth nothing on a
  * frigate that cannot fit it.
  *
- * Two grades of each cut and size: the plain one a captain can afford early, and a fine one that is
- * strictly better and priced accordingly. Designs and cloth patterns are cosmetic and come later;
- * they hang off `id` without touching these numbers.
+ * `kind` is the sail's category and the only thing a berth asks about. Two grades of each so far:
+ * the plain one a captain can afford early, and a fine one that is strictly better and priced
+ * accordingly. Designs and cloth patterns are cosmetic and come later; they hang off `id` without
+ * touching these numbers.
  */
+/* generated:sails -- edit data/sails.tsv and run `npm run import` */
 export const SAILS = {
   course: {
     id: "course",
-    kind: "sail",
+    part: "sail",
+    kind: "LSQ",
     name: "Square course",
     price: 180,
     blurb: "The big lower sail. Plain flax, and it pulls.",
-    cut: "square",
-    size: "large",
-    drive: 1.0,
-    hand: -0.10,
+    drive: 1,
+    hand: -0.1,
   },
   courseFine: {
     id: "courseFine",
-    kind: "sail",
+    part: "sail",
+    kind: "LSQ",
     name: "Duck canvas course",
     price: 640,
     blurb: "The same sail in heavier cloth. Holds its shape when the plain one is bellying out of it.",
-    cut: "square",
-    size: "large",
     drive: 1.32,
     hand: -0.08,
   },
   topsail: {
     id: "topsail",
-    kind: "sail",
+    part: "sail",
+    kind: "SSQ",
     name: "Square topsail",
     price: 120,
     blurb: "Half the cloth of a course, and it sits where the wind is cleaner.",
-    cut: "square",
-    size: "small",
     drive: 0.58,
     hand: -0.04,
   },
   topsailFine: {
     id: "topsailFine",
-    kind: "sail",
+    part: "sail",
+    kind: "SSQ",
     name: "Duck canvas topsail",
     price: 430,
     blurb: "A topsail worth setting in weather that would split the plain one.",
-    cut: "square",
-    size: "small",
     drive: 0.78,
     hand: -0.03,
   },
+  staysail: {
+    id: "staysail",
+    part: "sail",
+    kind: "TRI",
+    name: "Staysail",
+    price: 130,
+    blurb: "A small triangle set on a stay. Not much pull, and she feels it in the rudder.",
+    drive: 0.4,
+    hand: 0.12,
+  },
+  staysailFine: {
+    id: "staysailFine",
+    part: "sail",
+    kind: "TRI",
+    name: "Cut staysail",
+    price: 460,
+    blurb: "The staysail a captain keeps when she changes ships.",
+    drive: 0.55,
+    hand: 0.15,
+  },
   lateen: {
     id: "lateen",
-    kind: "sail",
+    part: "sail",
+    kind: "TRI",
     name: "Lateen sail",
     price: 210,
     blurb: "A long triangle on a raking yard. Less pull than a course, and she comes round on it.",
-    cut: "triangle",
-    size: "large",
     drive: 0.72,
     hand: 0.14,
   },
   lateenFine: {
     id: "lateenFine",
-    kind: "sail",
+    part: "sail",
+    kind: "TRI",
     name: "Cut lateen sail",
     price: 720,
     blurb: "Cut flat rather than full, so it holds an edge to the wind the plain one spills.",
-    cut: "triangle",
-    size: "large",
     drive: 0.95,
     hand: 0.18,
   },
-  staysail: {
-    id: "staysail",
-    kind: "sail",
-    name: "Staysail",
-    price: 130,
-    blurb: "A small triangle set on a stay. Not much pull, and she feels it in the rudder.",
-    cut: "triangle",
-    size: "small",
-    drive: 0.40,
-    hand: 0.12,
-  },
-  staysailFine: {
-    id: "staysailFine",
-    kind: "sail",
-    name: "Cut staysail",
-    price: 460,
-    blurb: "The staysail a captain keeps when she changes ships.",
-    cut: "triangle",
-    size: "small",
-    drive: 0.55,
-    hand: 0.15,
-  },
 };
+/* end:sails */
 
 export const SAIL_LIST = Object.values(SAILS);
 
@@ -356,7 +370,7 @@ export const SAIL_LIST = Object.values(SAILS);
 export const GUNS = {
   carriageGun: {
     id: "carriageGun",
-    kind: "gun",
+    part: "gun",
     name: "Carriage gun",
     price: 260,
     blurb: "The gun a broadside is made of. Fires fast enough to keep a hull holed.",
@@ -367,7 +381,7 @@ export const GUNS = {
   },
   demiCannon: {
     id: "demiCannon",
-    kind: "gun",
+    part: "gun",
     name: "Demi-cannon",
     price: 880,
     blurb: "Heavier iron, slower to serve. One of these does what two carriage guns do, in one blow.",
@@ -378,7 +392,7 @@ export const GUNS = {
   },
   bowChaser: {
     id: "bowChaser",
-    kind: "gun",
+    part: "gun",
     name: "Bow chaser",
     price: 240,
     blurb: "Points where the bow points. Aimed high, it brings a rig down.",
@@ -389,7 +403,7 @@ export const GUNS = {
   },
   longNine: {
     id: "longNine",
-    kind: "gun",
+    part: "gun",
     name: "Long nine",
     price: 810,
     blurb: "A long barrel on the bow. Reaches further than anything else aboard and hits what it reaches.",
@@ -400,7 +414,7 @@ export const GUNS = {
   },
   swivelGun: {
     id: "swivelGun",
-    kind: "gun",
+    part: "gun",
     name: "Swivel gun",
     price: 190,
     blurb: "Mounted on the rail and served by one hand. Clears a deck rather than holing a hull.",
@@ -426,17 +440,17 @@ export const socketOf = (hull, socketId) => hull.sockets.find((s) => s.id === so
 
 /** A mast goes in a socket of its own size or larger. */
 export function mastFitsSocket(mast, socket) {
-  if (!mast || !socket || mast.kind !== "mast") return false;
+  if (!mast || !socket || mast.part !== "mast") return false;
   return sizeRank(mast.size) <= sizeRank(socket.size);
 }
 
-/** A sail goes in a berth of the same cut and the same size. Neither is negotiable. */
+/** A sail goes in a berth of its own category, and that is the whole of the rule. */
 export function sailFitsBerth(sail, berth) {
-  if (!sail || !berth || sail.kind !== "sail") return false;
-  return sail.cut === berth.cut && sail.size === berth.size;
+  if (!sail || !berth || sail.part !== "sail") return false;
+  return sail.kind === berth.kind;
 }
 
-/** Every berth on a mast, as `{ index, cut, size }`, deck upward. */
+/** Every berth on a mast, as `{ index, kind }`, deck upward. */
 export function berthsOf(mast) {
   return mast ? mast.berths.map((b, index) => ({ index, ...b })) : [];
 }
@@ -1095,7 +1109,7 @@ export function resolve(record, lookup) {
 /**
  * What the menu ship needs to know, and nothing else: where masts stand, how tall they are, and what
  * hangs on them. `galleon.js` turns this into geometry; the shipyard has no opinion about how a sail
- * is drawn, only that there is one and what cut it is.
+ * is drawn, only that there is one and what category it belongs to.
  *
  * Hulls per class are still to be modelled, so every class is drawn on the one hull the renderer has,
  * at the one size it was drawn at. The rig on top of it is real: a cutter with one small sail draws
@@ -1110,7 +1124,7 @@ export function rigSpec(loadout) {
       station: socket.station,
       height: entry.mast.height,
       sails: sailsOn(entry).map((sail, i) =>
-        sail ? { cut: sail.cut, size: sail.size, berth: i } : null,
+        sail ? { kind: sail.kind, berth: i } : null,
       ).filter(Boolean),
     });
   }

@@ -46,15 +46,48 @@ same rate, so a galleon whose own blurb says she is slow to start and slow to st
 wants either a column of its own or to come off `tons`, which already says what she carries.
 
 **Masts** fit a socket of their own size or larger, and carry a fixed set of *berths* decided when the
-mast is built. A berth names the cut and the size of the one sail that goes in it. That is what makes
-buying a mast a choice of rig shape rather than a choice of size: `lateenMast` will carry one large
-triangle and one small square for as long as it exists, and no amount of money changes it into a
+mast is built. A berth names the *category* of the one sail that goes in it. That is what makes buying
+a mast a choice of rig shape rather than a choice of size: `lateenMast` will carry one triangular sail
+and one small square one for as long as it exists, and no amount of money changes it into a
 topgallant.
 
-**Sails** fit a berth of the same cut and the same size. This is the whole of "a sloop's triangular
-canvas is no use on a square-rigged ship": a frigate has no triangular berth below her mizzen, so the
-sail simply does not go in. Each sail has a `drive` (pull) and a `hand` (what it does to her helm).
-Square canvas drives hardest and stiffens her; fore-and-aft canvas drives less and helps her round.
+**Sails** fit a berth of their own category, and that is the whole of the rule. This is also the whole
+of "a sloop's triangular canvas is no use on a square-rigged ship": a frigate has no triangular berth
+below her mizzen, so the sail simply does not go in. Each sail has a `drive` (pull) and a `hand` (what
+it does to her helm). Square canvas drives hardest and stiffens her; fore-and-aft canvas drives less
+and helps her round.
+
+### The six sail categories
+
+`SAIL_KINDS` is the vocabulary, and a sail's `kind` is the only thing a berth asks about.
+
+| | | |
+|---|---|---|
+| `LSQ` | Large square | Courses and lower topsails. The driving power, low on the mast. |
+| `SSQ` | Small square | Topgallants, royals, skysails, spritsails. Light-air lift, high up. |
+| `TRI` | Triangular | Jibs, flying jibs, staysails, lateens. Headsail drive, balance, pointing. |
+| `GAF` | Gaff | Gaff mainsails, spankers, drivers, trysails. Fore-and-aft drive aft. |
+| `LUG` | Lugsail | Dipping and standing lug, lug topsail. What a lugger drives on. |
+| `STU` | Studdingsail | Boomed out beyond a square sail already set. Additive, and not a berth. |
+
+Two things this settles that the code got wrong for a while.
+
+**Area is not the category.** It was a pair for a while, a cut and a size, and crossing them produced
+combinations no real rig has: `triangle` and `small` made a berth a jib and a staysail both filled and
+a lateen did not, for no reason anybody could state. A lateen can rival a course and a staysail is a
+scrap, and both are `TRI`; a topgallant is nearly four times a skysail and both are `SSQ`. The range
+inside a category is carried by `drive`, which is where it belonged all along, and the fitting rule is
+one comparison instead of two.
+
+**`STU` is not a berth**, and it is the one category that does not fit the model. A studdingsail booms
+out beyond a square sail that is already set, and its area comes off that sail rather than off a place
+in the rig: roughly half to four fifths of the square sail it extends. So it wants an attachment to a
+sail, not a slot on a mast. Nothing models that yet, `SAIL_KINDS.STU` is marked `additive`, and the
+bench refuses a berth that asks for one rather than letting a mast pretend otherwise.
+
+A part carries `part`, one of `"mast"`, `"sail"` or `"gun"`, for what sort of thing it is. A sail also
+carries `kind` for its category. Those were one field until the categories arrived and collided with
+it, which is worth knowing when reading an old branch.
 
 **Guns** fit by the piece up to the hull's bearing. `broadside` counts guns *a side*, because that is
 how a volley fires, and runs 2 on the cutter to 10 on the galleon. Bow guns run 1 to 3. Muskets are
@@ -82,8 +115,9 @@ references is loose, and loose is the inventory.
   buys is the first time she can fire at anything abeam, and she should feel it.
 - **Rigging and guns move ship to ship.** Falls out of instances.
 - **A mast only ever carries the sails it was built for.** `berths`, fixed on the mast type.
-- **Triangular and square, large and small.** `cut` and `size` on both berth and sail, checked as a
-  pair. Smaller ships start on small sails; the head of a tall mast takes a small one.
+- **Various sail types.** Six categories, `LSQ` `SSQ` `TRI` `GAF` `LUG` `STU`, one on each berth and
+  one on each sail, compared as a single key. The head of a tall mast takes a small square sail
+  because that is what the berth up there asks for.
 - **Sails affect speed and agility differently.** `drive` and `hand`.
 - **Hull type drives speed, and hull and crew maximums.** `speed`, `hand`, `canvas`, `maxHull`,
   `maxCrew`. `canvas` is the one worth pointing at: it is how much sail a hull *wants*, so the same
@@ -358,11 +392,12 @@ nothing. So the table is what a person edits, the source is what the game reads,
 closes the gap. The generated block is committed, so a diff still shows what actually changed.
 
 The importer writes; it does not judge. It fails on the things that make a row unreadable (a stray tab
-so the columns do not line up, a duplicate id, a berth that is not `cut/size`) and leaves everything
-else to the bench, which is the next command and the one that says whether the result is a fleet.
+so the columns do not line up, a duplicate id, a missing column) and leaves everything else to the
+bench, which is the next command and the one that says whether the result is a fleet.
 
-`data/masts.tsv` is the same for mast types, and the two go in together: a hull's socket sizes mean
-nothing until masts exist that fit them, and the bench will say so.
+`data/masts.tsv` and `data/sails.tsv` are the same for mast and sail types, and the three go in
+together: a hull's socket sizes mean nothing until masts exist that fit them, and a mast's berths mean
+nothing until sails exist of those categories. The bench will say so in both directions.
 
 ### What the 38 will need
 
@@ -389,10 +424,11 @@ Three things to decide alongside them:
 - **Sizes beyond small, medium and large.** `SIZES` is ordered and a mast fits its own size or larger,
   so a wide fleet may want a fourth rung rather than crowding forty classes into three.
 
-`CUTS` now declares the vocabulary of sail cuts, `square`, `triangle` and `lug`, so a lugsail rig is a
-row rather than a code change, and the bench catches a berth whose cut is a typo. The renderer draws
-square and triangle as their own shapes; anything else falls back to square canvas, which is a
-wrong-looking ship rather than a broken one, and the bench says which cuts are in that position.
+The six categories mean a lugsail mast or a gaff-rigged ketch is a row in `data/masts.tsv` rather than
+a code change, and the bench catches a berth whose category is a typo. The renderer draws `LSQ`, `SSQ`
+and `TRI` in shapes of their own; `GAF` and `LUG` fall back to square canvas until `galleon.js` learns
+them, which is a wrong-looking ship rather than a broken one, and the bench prints which categories
+are in that position rather than letting it pass unremarked.
 
 ## Open questions
 
