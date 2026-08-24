@@ -590,20 +590,41 @@ export function rate(loadout) {
   };
 }
 
-/** What a loadout is worth in coins: the hull, every mast, every sail, every gun aboard her. */
-export function loadoutValue(loadout) {
-  let total = loadout.hull.price;
+/** What her rigging is worth: every mast and every sail aboard, at what they cost to buy. */
+export function riggingValue(loadout) {
+  let total = 0;
   for (const socket of loadout.hull.sockets) {
     const entry = loadout.rig[socket.id];
     if (!entry || !entry.mast) continue;
     total += entry.mast.price;
     for (const sail of sailsOn(entry)) if (sail) total += sail.price;
   }
+  return total;
+}
+
+/** What a loadout is worth in coins: the hull, her whole rigging, and every gun aboard her. */
+export function loadoutValue(loadout) {
+  let total = loadout.hull.price + riggingValue(loadout);
   for (const mount of ["broadside", "bow", "swivel"]) {
     for (const gun of loadout.guns[mount]) if (gun) total += gun.price;
   }
   return total;
 }
+
+/**
+ * What it costs to step a new mast at sea: a tenth of what her whole rigging is worth.
+ *
+ * There is no base and no per-point charge. A mast is stepped or it is not, so the price is flat
+ * whether she lost the whole thing or sprung it, and what sets it is the rig she is carrying rather
+ * than the damage she took. A captain who has spent two thousand coins getting a topgallant aloft
+ * pays to put it back; one sailing a free pole and a single topsail pays almost nothing, which is
+ * right, because that is nearly all a new rig would cost her anyway.
+ *
+ * It lives here rather than in the fight because it is a fact about the catalogue: it is derived from
+ * shop prices, and it moves the moment a price does.
+ */
+export const RIG_REBUILD_SHARE = 0.10;
+export const mastRebuildCost = (loadout) => Math.ceil(RIG_REBUILD_SHARE * riggingValue(loadout));
 
 /* ---------------------------------------------------------------------------------------------- */
 /* Stat ranges                                                                                     */

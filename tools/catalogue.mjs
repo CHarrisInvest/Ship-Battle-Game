@@ -20,7 +20,7 @@ import {
   HULLS, HULL_LIST, STATIONS, CUTS, MAST_LIST, SAIL_LIST, GUN_LIST,
   mastsForSocket, sailsForBerth, berthsOf, gunsForMount,
   rate, measure, statBand, fitOut, minimumLoadout, maximumLoadout, loadoutValue, outfitCost,
-  TIERS, tierAt, ladder, stockOfTier, resolve, STARTER, STOCK,
+  TIERS, tierAt, ladder, stockOfTier, resolve, STARTER, STOCK, riggingValue, mastRebuildCost,
 } from "../src/shipyard.js";
 import { RIG_STATIONS, RIG_CUTS } from "../src/galleon.js";
 
@@ -144,7 +144,7 @@ for (const h of HULL_LIST) {
 }
 
 console.log("\nTHE STOCK LADDER  (what the modes issue, in ascending strength)");
-console.log("  ship             tier               overall     ram   throw  endurance  mobility    value");
+console.log("  ship             tier               overall     ram   throw  endurance  mobility    value   rigging  rebuild");
 for (const s of ladder()) {
   console.log(
     "  " + pad(s.name, 16),
@@ -155,6 +155,8 @@ for (const s of ladder()) {
     num(s.measure.endurance, 10),
     num(n2(s.measure.mobility), 9),
     num(loadoutValue(s.loadout), 8),
+    num(riggingValue(s.loadout), 9),
+    num(mastRebuildCost(s.loadout), 8),
   );
 }
 
@@ -165,8 +167,11 @@ for (const t of TIERS) {
   if (!inTier.length) fault("tiers", `rung ${t.tier} (${t.name}) has no stock ship, so no mode can field one`);
 }
 
-const start = measure(rate(resolve(STARTER)));
+const first = resolve(STARTER);
+const start = measure(rate(first));
 console.log(`\nTHE FIRST SHIP  overall ${n1(start.overall)}, ram ${n1(start.ram)}, tier ${tierAt(start.overall).tier}`);
+console.log(`  her rigging is worth ${riggingValue(first)}, so a new mast at sea costs her ${mastRebuildCost(first)}.`);
+console.log("  Every hull in a fight carries this rig today, so that is what a mast rebuild costs anybody.");
 
 /* ---- verdict --------------------------------------------------------------------------------- */
 

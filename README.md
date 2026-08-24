@@ -44,11 +44,13 @@ serves from the domain root instead — Netlify, Vercel, a plain static host —
   from the count. Score by ships sunk.
 - **Demolition derby** — ten captains and not a gun between them. Hulls are broken open by ramming
   alone, there is nothing to buy, and a squall closes on the middle of the sea. Last afloat wins.
-- **Free-for-all** — up to 10 rival captains starting equal, and equal is where they stay. The AI hunts
-  whoever is weakest, and gangs up on a runaway leader. For the first `OPENING_WINDOW` seconds it
-  simply takes the nearest hull, since nobody has a reputation yet. It also fires on ships it is not
-  hunting when one drifts into a weapon's arc, with a per-captain pause afterwards so the sea isn't
-  wall-to-wall powder smoke. Last afloat wins.
+- **Free-for-all** — last afloat wins, out of up to 10 rival captains starting equal, and equal is
+  where they stay. The AI hunts whoever is weakest and gangs up on a runaway leader. For the first
+  `OPENING_WINDOW` seconds it simply takes the nearest hull, since nobody has a reputation yet. It
+  also fires on ships it is not hunting when one drifts into a weapon's arc, with a per-captain pause
+  afterwards so the sea isn't wall-to-wall powder smoke. Outlasting the field pays a `winBonus` of 25
+  on top of what her guns took, which is smaller than the derby's because a free-for-all captain has
+  been paid all round for the fighting that got her there.
 
 AI ships reload on exactly the same cooldowns as the player in every mode that has guns; their only
 handicap is a touch of spread on every shot.
@@ -225,16 +227,18 @@ Pointer/touch driven, so it works the same with a mouse or on a phone:
 - **SIDE / FRONT / MUSKET** (bottom right) — hold to fire; each has its own cooldown, range, and
   damages a different system. Absent in a mode that carries no guns.
 - **Repair rail** (top) — two buttons, priced on opposite principles because they are opposite jobs.
-  **HULL** is bought by the point and only up to `HULL_MARK`, 80%: a carpenter can plug shot holes at
-  sea but cannot re-timber a ship on open water. She pays `HULL_RATE` for every point of damage below
-  the mark and the work puts her exactly on it, so a light patch is cheap and a purse short of the
-  whole bill buys the part it reaches (`27 of 91`). **MAST** is flat and puts the rig back whole,
-  because a mast is stepped or it is not: no half a mast, no half price, no part payment. Since speed
-  and helm both read how much of her rig is standing, a rebuilt mast hands back full sail at once.
+  **HULL** is a coin a point, flat, up to `HULL_MARK`, 80%: a carpenter can plug shot holes at sea but
+  cannot re-timber a ship on open water. A coin buys back exactly the damage a coin of gunnery earned,
+  so a light patch is cheap and a purse short of the whole bill buys the part it reaches (`27 of 91`).
+  **MAST** is flat and puts the rig back whole, because a mast is stepped or it is not: no half a
+  mast, no half price, no part payment. What sets the price is the rig she carries rather than the
+  damage she took, at `RIG_REBUILD_SHARE` of what her whole rigging is worth. Since speed and helm
+  both read how much of her rig is standing, a rebuilt mast hands back full sail at once.
   **CREW cannot be repaired at all** — hands lost are lost, so the crew bar is a clock that runs one
   way for the length of a round. A button with nothing to do reads `At the mark` or `Sound`; one she
   cannot yet afford shows the price muted, so there is a figure to save towards. Absent in a mode with
-  nothing to buy, which leaves the stick as the only control on the screen.
+  nothing to buy, which is the derby: there, nothing is repaired or rebuilt at all and the stick is
+  the only control on the screen.
 
 A ship's rudder grows heavier the more way she carries. The loss is weighted to the top of her speed
 range: under half stick it is within a few percent of what it ever was, so handling at close quarters
@@ -366,8 +370,8 @@ camera, `VIEW`/`MAX_ZOOM` for how much sea the square view holds and `EDGE_PEEK`
 boundary is let inside it, `BASE`/`HP_GAIN` for the health
 pools, `WP` for per-weapon cooldown, projectile speed, and lifetime, `RAM_*` for ramming, and
 `HULL_MARK`/`HULL_RATE` for how whole a carpenter gets her at sea and what that costs a point, and
-`MAST_REBUILD`/`MAST_REBUILD_SHARE` for the flat price of a new mast and how it scales with a better
-one. `BASE_SPEED` is a whole
+`RIG_REBUILD_SHARE` in `src/shipyard.js` for the flat price of a new mast as a share of what her
+rigging is worth. `BASE_SPEED` is a whole
 ship's top speed and the yardstick the heavy rudder measures against; `RUDDER_HEAVY` is how much
 rudder she loses at it and `RUDDER_CURVE` how late in the range the loss starts to bite — raising the
 curve keeps more of her handling until she is truly running.

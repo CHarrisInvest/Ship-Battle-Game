@@ -1,7 +1,7 @@
 import React, { useRef, useState, useEffect, useCallback, useMemo } from "react";
 import { drawGalleon } from "./galleon.js";
 import { getHold, bankVoyage, resetHold, subscribeHold, modeRecord, shipLoadout } from "./hold.js";
-import { rigSpec } from "./shipyard.js";
+import { STARTER, mastRebuildCost, resolve, rigSpec } from "./shipyard.js";
 
 /**
  * STERNCHASE: HELM & HULL — pirate battles at sea, on a tilted (isometric-ish) sea with tall wooden
@@ -700,18 +700,19 @@ const shotHitsCircle = (cx, cy, r, x0, y0, x1, y1) => {
  *
  * HULL is bought by the point and only up to a mark. A carpenter can plug shot holes and fish a
  * strake at sea; he cannot re-timber a ship on open water, so `HULL_MARK` is as whole as she gets
- * until she is in a yard. She pays `HULL_RATE` for every point of damage below that mark and the
- * work puts her exactly on it. Two things follow and both are the point: a ship barely scratched
- * pays almost nothing, so there is no wrong moment to repair, and a captain who cannot cover the
- * whole bill buys as much of it as her purse reaches rather than being refused, which matters most
- * in the round where she is down to her last coins and still taking fire.
+ * until she is in a yard. Below that mark she pays a coin for a point, flat: no base, no scaling,
+ * a coin buys back exactly the damage a coin of gunnery earned. Two things follow and both are the
+ * point: a ship barely scratched pays almost nothing, so there is no wrong moment to repair, and a
+ * captain who cannot cover the whole bill buys as much of it as her purse reaches rather than being
+ * refused, which matters most in the round where she is down to her last coins and still taking fire.
  *
  * MAST is flat, and it puts the rig back whole. A mast is stepped or it is not: there is no half a
- * mast, so there is no half price and no part payment. What she pays is a new spar and the labour of
- * getting it up, which is the same whether she lost the whole thing or sprung it. Because speed and
- * helm both read how much of her rig is standing, a rebuilt mast hands her back full sail at once,
- * and that is what makes it the most valuable thing a purse can buy: it is the one hit that takes a
- * ship out of a fight while leaving her afloat.
+ * mast, so there is no half price and no part payment, and the charge is the same whether she lost
+ * the whole thing or sprung it. What sets the price is the rig she carries rather than the damage she
+ * took, at `RIG_REBUILD_SHARE` of what her whole rigging is worth, which is the shipyard's figure and
+ * not the fight's. Because speed and helm both read how much of her rig is standing, a rebuilt mast
+ * hands her back full sail at once, and that is what makes it worth the money: losing a mast is the
+ * one hit that takes a ship out of a fight while leaving her afloat.
  *
  * CREW cannot be bought back at all. Hands lost over the rail are lost, and no coin brings them
  * back, so the crew bar is a clock that only runs one way for the length of a round. It is why
@@ -722,18 +723,18 @@ const shotHitsCircle = (cx, cy, r, x0, y0, x1, y1) => {
  * the hold and does not buy a ship. Fighting carefully is worth money.
  */
 const HULL_MARK = 0.8; // as whole as a carpenter gets her at sea
-const HULL_RATE = 1.2; // coins for every point of damage below that mark
-const MAST_REBUILD = 85; // flat, to step a new mast and make sail again
+const HULL_RATE = 1; // a coin a point, so repairing costs exactly what the damage earned
+
 /**
- * ...and a better mast costs more to put back, as a share of what the mast itself is worth.
+ * The rig every hull at sea is carrying, and what it costs to step a new mast.
  *
- * Every hull at sea carries the same stock rig for now, so there is nothing to read and every captain
- * pays the base. It becomes the real figure the day loadouts reach the fight, at this line and no
- * other: a captain who has spent two thousand coins on a topgallant should not re-step it for the
- * price of a pole.
+ * Nothing in a fight has a loadout yet: every captain sails the one stock ship, which is the same
+ * ship a new captain starts with, so her rigging is worth what `STARTER`'s is and the rebuild is
+ * priced off that. The day loadouts reach the fight a ship brings her own, and `mastRebuild` reads it
+ * at this line and nowhere else.
  */
-const MAST_REBUILD_SHARE = 0.25;
-const mastRebuild = (s) => Math.ceil(MAST_REBUILD + MAST_REBUILD_SHARE * (s.rigValue || 0));
+const STOCK_LOADOUT = resolve(STARTER);
+const mastRebuild = (s) => mastRebuildCost(s.loadout || STOCK_LOADOUT);
 
 const REPAIRS = [
   { key: "hull", label: "HULL", sub: "planks and pitch, back up to 80%", color: C.hull, whole: "At the mark" },
@@ -803,9 +804,12 @@ const MODES = {
     reinforcements: false,
     flees: true,
     storm: false,
-    timeCoins: 0,
+    timeCoins: 0, // she is paid for what she sinks, not for the time it takes
     fullRound: 0,
-    winBonus: 0,
+    // ...and a purse for outlasting ten rivals. Smaller than the derby's, because a free-for-all
+    // captain has been paid all round for the fighting that got her there and a derby captain has
+    // not: there are no guns in that mode, so the win is most of what it pays.
+    winBonus: 25,
   },
   derby: {
     key: "derby",
