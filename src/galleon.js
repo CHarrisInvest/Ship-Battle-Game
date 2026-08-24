@@ -210,16 +210,8 @@ function rigFromSpec(spec) {
     })
     .filter(Boolean)
     .sort((a, b) => b.x - a.x);
-  return { bowsprit: spec.bowsprit !== false, scale: spec.scale || SCALE_REF, masts };
+  return { bowsprit: spec.bowsprit !== false, masts };
 }
-
-/* Classes differ in size, not only in numbers, and the box on the menu does not
-   grow: so the biggest hull is the one that fills it and everything else is
-   drawn against her. SCALE_REF is that hull's `scale` from the catalogue, which
-   makes a cutter draw at about half the galleon and the first upgrade a captain
-   buys visible from across the room. A rig given no scale is drawn full size,
-   because the only rig without one is the galleon this file was written around. */
-const SCALE_REF = 1.95;
 
 /** The ship this file has always drawn, and what it falls back to when asked for no rig in particular. */
 const GALLEON_RIG = rigFromSpec({
@@ -807,16 +799,10 @@ const SPAN=248, NEAR_W=0.35;
  */
 function drawGalleon(ctx,W,H,deg,spec){
  const rig=rigFor(spec);
- /* The pivot is the hull centre at the waterline, which is not the middle of the
-    ship: masts stand well above it and only the bottom of the hull is below, so
-    the box puts it at 0.71 of the way down. Shrink a hull around a fixed pivot
-    and that lopsidedness comes with it — a cutter at half scale keeps her
-    waterline where a galleon's was and sits in the bottom of an empty box. So
-    the pivot rises with the scale, back toward the middle, and lands on 0.71
-    exactly at full size. */
- const k=rig.scale/SCALE_REF;
- const a=deg*Math.PI/180,ca=Math.cos(a),sa=Math.sin(a),
-  scale=(W/SPAN)*k,ox=W/2,oy=H*(0.5+0.21*k),items=[];
+ /* Every rig is drawn at the one size the box was cut for. Classes really do
+    differ in size, but a hull is going to be modelled per class rather than
+    scaled off this one, so the size comes with the model when it is built. */
+ const a=deg*Math.PI/180,ca=Math.cos(a),sa=Math.sin(a),scale=W/SPAN,ox=W/2,oy=H*0.71,items=[];
  for(const f of facesFor(rig)){
   let bias=f.bias||0;
   if(f.cull){const cx=f.cull[0]*ca-f.cull[1]*sa,cy=f.cull[0]*sa+f.cull[1]*ca;

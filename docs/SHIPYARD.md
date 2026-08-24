@@ -45,13 +45,10 @@ Square canvas drives hardest and stiffens her; fore-and-aft canvas drives less a
 how a volley fires, and runs 2 on the cutter to 10 on the galleon. Bow guns run 1 to 3. Muskets are
 not bought at all: they come off the crew the hull musters, with swivels adding to the volley.
 
-**Size** is `scale`, and the cutter sets it at 1. The hull the game is drawn and balanced around today
-is a *small* ship, so every class above her is bigger rather than the same boat with better numbers.
-The menu draws at this scale already, which is why a cutter turns at about half the galleon. The
-fight's own hull geometry — `HULL_L`, `HULL_W`, `SHIP_R` and the collision ellipse — is still the
-cutter's at 1, and multiplies by `scale` when the shipyard is wired in. That is the change that makes
-a galleon take up the sea room a galleon should: harder to miss, harder to turn out of a ram, and
-harder to hide behind an island.
+**Size** is deliberately absent. Classes differ in how big they are, but each hull is to be modelled
+in its own right rather than scaled off one shape, so a class's size arrives with its art and there is
+nothing here for the catalogue to multiply. Every rig is drawn on the one hull the renderer has, at the
+one size it was drawn at.
 
 Parts are catalogue **types**; a captain owns **instances**. `hold.js` keeps a flat table of every
 spar, sail and gun owned, and a ship record says which instance sits in which slot. An instance is in
@@ -166,17 +163,20 @@ repairing it re-rigs her rather than leaving a stump.
 
 What makes it a decision rather than a tax is where the money comes from: **repairs are paid out of
 the voyage's own takings, so every coin spent staying afloat is a coin that never reaches the hold.**
-Fighting carefully is worth money. Arena's opening stake pays the carpenter first and costs a captain
-nothing, since it never reached the hold either; only what the stake does not cover is billed, which
-is also what keeps the end-of-voyage column adding up on the page.
+Fighting carefully is worth money. No mode hands out an opening purse, so every coin she can spend was
+earned in that round and the end-of-voyage column reads straight down: what she took, less what the
+carpenter took, is what reaches the hold. Never below nothing, though. A bad round costs a captain the
+round, not her savings.
 
 ## Deliberately not done
 
 - No shipyard screen. The model is what a screen is built against, and building the screen first would
   have fixed the model to whatever the first layout happened to need.
 - **The fight still does not read the catalogue.** `rate()` is not wired to `speedCap`, `turnCap` or
-  `sideDmg`, and `scale` is not wired to the hull geometry, so every ship at sea is the same ship.
-  That is the modes rework, and it is its own piece of work.
+  `sideDmg`, so every ship at sea is the same ship. That is the modes rework, and it is its own piece
+  of work.
+- No per-class hulls, and so no per-class size. Each one is to be modelled rather than scaled off the
+  hull the renderer has, which is why there is no size figure in the catalogue to go stale first.
 - No per-class hull art, and no sail designs or cloth patterns. Those hang off ids without touching
   any of the numbers here.
 - No selling parts back. Easy to add; wanted a decision on whether it refunds in full first.
@@ -195,9 +195,10 @@ with it is as cheap as changing it.
    captain dead equal, which is the whole of that mode; arena matches the first hunter to the player's
    ship. Both mean something different once she brings her own galleon. This is the question the whole
    modes rework turns on.
-3. **How far up should `scale` go?** The galleon is 1.95, chosen so the class ladder reads clearly on
-   the menu rather than from anything about the fight. Once hull geometry multiplies by it, a galleon
-   nearly twice a cutter's length is a very large target in a sea 2000 across.
+3. **How big should the classes actually get?** A question for whoever models the hulls, not for the
+   catalogue. Worth settling early anyway: a galleon twice a cutter's length is a very large target in
+   a sea 2000 across, and the fight's hull geometry, the collision ellipse and the camera all have an
+   opinion about it.
 4. **Should the derby have repairs?** It has none today, because "only one hand needed" is that mode's
    whole promise and a rail is a second thing to think about. But trading coins for crew after a spell
    in the storm is a genuinely good decision, and the derby is the mode that pays by the second.

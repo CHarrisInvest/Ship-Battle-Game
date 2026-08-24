@@ -55,11 +55,9 @@ export const STATIONS = ["fore", "main", "mizzen"];
  * `broadside` is guns *a side*, mirrored, because that is how she fires: the number in the shipyard
  * is the number that goes off in one volley. It runs 2 on the first hull to 10 on the last.
  *
- * `scale` is how big she is, and the cutter sets it at 1: the hull the game is drawn and balanced
- * around today is a small ship, and every class above her is bigger rather than the same boat with
- * better numbers. The menu draws at this scale already. The fight's own hull geometry — `HULL_L`,
- * `HULL_W`, `SHIP_R` and the collision ellipse — is still the cutter's at 1 and multiplies by it when
- * the shipyard is wired in, which is when a galleon starts taking up the sea room a galleon should.
+ * How big she is is deliberately not a number here. Classes differ in size, but each hull is to be
+ * modelled in its own right rather than scaled off one shape, so her size arrives with her art and
+ * there is nothing for the catalogue to multiply.
  */
 export const HULLS = {
   cutter: {
@@ -74,7 +72,6 @@ export const HULLS = {
     hand: 1.22,
     canvas: 1.0,
     tons: 1.0, // what she can carry before the guns start telling on her handling
-    scale: 1.0, // the hull the game is drawn around today, and the yardstick every other is cut to
     guns: { broadside: 2, bow: 1, swivel: 1 },
     bowsprit: false,
     sockets: [{ id: "main", station: "main", size: "small" }],
@@ -91,7 +88,6 @@ export const HULLS = {
     hand: 1.15,
     canvas: 1.35,
     tons: 1.5,
-    scale: 1.18,
     guns: { broadside: 4, bow: 1, swivel: 2 },
     bowsprit: true,
     sockets: [{ id: "main", station: "main", size: "medium" }],
@@ -108,7 +104,6 @@ export const HULLS = {
     hand: 1.0,
     canvas: 2.1,
     tons: 2.4,
-    scale: 1.40,
     guns: { broadside: 6, bow: 2, swivel: 3 },
     bowsprit: true,
     sockets: [
@@ -128,7 +123,6 @@ export const HULLS = {
     hand: 0.9,
     canvas: 2.9,
     tons: 3.4,
-    scale: 1.65,
     guns: { broadside: 8, bow: 2, swivel: 4 },
     bowsprit: true,
     sockets: [
@@ -149,7 +143,6 @@ export const HULLS = {
     hand: 0.78,
     canvas: 3.8,
     tons: 4.6,
-    scale: 1.95,
     guns: { broadside: 10, bow: 3, swivel: 6 },
     bowsprit: true,
     sockets: [
@@ -777,9 +770,9 @@ export function resolve(record, lookup) {
  * hangs on them. `galleon.js` turns this into geometry; the shipyard has no opinion about how a sail
  * is drawn, only that there is one and what cut it is.
  *
- * Hull *shapes* per class are still to be designed, so every class is drawn on the one hull the
- * renderer has, but the `scale` it is drawn at is real, and so is the rig: a cutter with one small
- * sail draws one small sail on a small hull.
+ * Hulls per class are still to be modelled, so every class is drawn on the one hull the renderer has,
+ * at the one size it was drawn at. The rig on top of it is real: a cutter with one small sail draws
+ * one small sail.
  */
 export function rigSpec(loadout) {
   const masts = [];
@@ -794,5 +787,5 @@ export function rigSpec(loadout) {
       ).filter(Boolean),
     });
   }
-  return { hull: loadout.hull.id, scale: loadout.hull.scale, bowsprit: loadout.hull.bowsprit, masts };
+  return { hull: loadout.hull.id, bowsprit: loadout.hull.bowsprit, masts };
 }

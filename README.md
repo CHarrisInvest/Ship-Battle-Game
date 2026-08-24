@@ -36,8 +36,8 @@ serves from the domain root instead — Netlify, Vercel, a plain static host —
 
 ## Modes
 
-- **Arena** — endless survival against a growing swarm. You open with 50 coins and one hunter on the
-  water, matched to your ship gun for gun and reload for reload. Kills bring reinforcements in from
+- **Arena** — endless survival against a growing swarm. You open with an empty purse and one hunter on
+  the water, matched to your ship gun for gun and reload for reload. Kills bring reinforcements in from
   the edge of the map, spawned well clear of your bow: one for the first kill, then 1-2-1-2 through
   the fourth, then two for every kill after that up to the fleet cap. The second ship of a wave holds
   off five seconds before it sails in. Every hull on the water is the same hull, so the pressure comes
@@ -55,9 +55,9 @@ handicap is a touch of spread on every shot.
 
 A mode is a row in the `MODES` table rather than a name to compare against — `melee` (is every hull
 hostile to every other, or only the player's), `ranked`, `lastAfloatWins`, `reinforcements`, `guns`,
-`repairs`, `flees`, `storm`, what it pays for time afloat and for winning, plus the field size and
-opening purse. The simulation, the HUD, the menu cards, and the end screen all read those rules, so a
-new mode is a new row rather than a dozen scattered checks that have to be taught about it.
+`repairs`, `flees`, `storm`, what it pays for time afloat and for winning, plus the field size. The
+simulation, the HUD, the menu cards, and the end screen all read those rules, so a new mode is a new
+row rather than a dozen scattered checks that have to be taught about it.
 
 ### The derby
 
@@ -134,9 +134,9 @@ winner's bounty — so the tally adds up to what actually reaches the hold.
 
 Coins sit at two depths, and keeping them apart is the whole of it:
 
-- **A ship's purse** is what she carries into one battle. It buys repairs at sea and nothing else,
-  and it goes down with her. Arena opens one at `ARENA_START_COINS`; the other modes open at nothing.
-  This is the number in the HUD.
+- **A ship's purse** is what she takes during one battle. It buys repairs at sea and nothing else, and
+  it goes down with her. Every mode opens it at nothing, so the first patch of a round is always paid
+  for by something she did in it. This is the number in the HUD.
 - **The hold** (`src/hold.js`) is the captain's, not the ship's. Every voyage that reaches an end
   screen banks what it *earned* — 25 a kill and one a point of damage dealt, a rammed hull included —
   and the total carries across every mode alike and through a reload, kept in `localStorage` under
@@ -146,14 +146,12 @@ Banking counts earnings, not leftovers, so a voyage banks whether you win it or 
 by fighting, and a captain who fought well and went down anyway earned them the same. Only a round
 abandoned mid-fight — a reload, a closed tab — banks nothing, because nothing ended.
 
-**Repairs are the exception, and they are the point of carrying a purse.** What she pays the carpenter
-at sea comes off what the voyage banks, so a captain who fought carelessly and patched her way through
-has less to show for it than one who did not need to. Never below nothing, though: a bad round costs a
-captain the round, not her savings. Arena's opening purse is a stake against the round rather than
-earnings, and it has never reached the hold, so it pays the carpenter first and costs her nothing —
-patch a scratch out of the stake and the end screen shows no bill at all. Only what the stake does not
-cover is billed against her earnings, which is also the figure that keeps the end-of-voyage column
-adding up.
+**Repairs are the exception, and they are the whole reason a purse matters.** What she pays the
+carpenter at sea comes off what the voyage banks, so a captain who fought carelessly and patched her
+way through has less to show for it than one who did not need to. Never below nothing, though: a bad
+round costs a captain the round, not her savings. Since no mode hands out an opening purse, every coin
+in it was earned in that round, and the end-of-voyage column reads straight down: what she took, less
+what the carpenter took, is what reaches the hold.
 
 The stored record is wider than the coin count on purpose: lifetime voyages, ships sunk, damage, time
 afloat, coins paid to carpenters, and per-mode bests, because a stat not recorded from the first
@@ -183,10 +181,6 @@ sea is still the same hull. `docs/SHIPYARD.md` is the design note; the short ver
   when it was built. A sail fits a berth of the same cut and size. Guns fit by the piece up to the
   hull's bearing; `broadside` counts guns **a side**, mirrored, because that is how a volley fires, and
   runs 2 on the cutter to 10 on the galleon. Muskets come off the crew rather than being bought.
-- The ship the game is drawn and balanced around today is the *smallest* class, the cutter, at
-  `scale` 1. Every class above her is a bigger ship rather than the same boat with better numbers, up
-  to the galleon at 1.95, and the menu draws at that scale already. The fight's own hull geometry is
-  still the cutter's and multiplies by `scale` when the shipyard is wired in.
 - Parts are catalogue *types*, and a captain owns *instances*. An instance is in one slot or in none,
   which is what lets rigging and guns move between ships and stops one suit of sails rigging three at
   once. Anything no ship references is loose in the hold, and loose is the inventory.
@@ -347,8 +341,8 @@ curve keeps more of her handling until she is truly running.
 
 Arena pacing has its own block: `ARENA_START` (hunters at the opening), `ARENA_RAMP` (reinforcements
 per kill for the opening kills, two a kill after it runs out), `ARENA_SPAWN_CLEAR` (minimum distance a
-respawn keeps from the player), `ARENA_MAX_ENEMIES` (ceiling on the swarm), `ARENA_SPAWN_GAP` (how long
-the second ship of a wave holds off), and `ARENA_START_COINS` (the opening purse). `OPENING_WINDOW`
+respawn keeps from the player), `ARENA_MAX_ENEMIES` (ceiling on the swarm), and `ARENA_SPAWN_GAP` (how
+long the second ship of a wave holds off). `OPENING_WINDOW`
 sets how long free-for-all captains fight whoever is nearest before they start picking their prey.
 `HOLD_SHARE` in `src/hold.js` is the one knob on the economy that outlives a round.
 

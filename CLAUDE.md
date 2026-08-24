@@ -103,9 +103,11 @@ comes from a replica rather than a real frame, say so.
 
 Rules above that the code does not yet satisfy. Tracked cleanups, not exceptions.
 
-- **Hull art is one hull.** The menu turns the captain's own rig, but every class turns it on the
-  galleon's hull, so a cutter reads as a small rig on a large ship. Per-class hulls are the design
-  work this is waiting on; `STATION_GEOM` in `galleon.js` is where a hull's mast positions live.
+- **Hull art is one hull, at one size.** The menu turns the captain's own rig, but every class turns
+  it on the galleon's hull, so a cutter reads as a small rig on a large ship. Each class is to be
+  modelled in its own right rather than scaled off this one, so its size comes with its art: do not
+  add a size multiplier to the catalogue in the meantime. `STATION_GEOM` in `galleon.js` is where a
+  hull's mast positions live.
 - **The catalogue's names and blurbs have not been read at 1x in the game.** They follow the copy
   rules above on the page, but nothing displays them yet, so no line has been checked for length in
   a real card. Check them when the shipyard screen exists rather than trusting them now.

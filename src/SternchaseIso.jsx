@@ -18,9 +18,10 @@ import { rigSpec } from "./shipyard.js";
  * NOBODY UPGRADES AT SEA. A ship is what she was when she sailed, and what she is comes from the
  * shipyard between voyages (`shipyard.js`), which is where a captain's money now goes. What a purse
  * buys during a round is repairs and nothing else, and it buys them out of the voyage's own takings:
- * every coin spent patching her is a coin that does not reach the hold. So the stat functions below
- * read only her damage, not any notion of a level, and their shape is the seam the shipyard's
- * `rate()` plugs into when the modes are reworked.
+ * every coin spent patching her is a coin that does not reach the hold. Every mode opens her purse at
+ * nothing, so the first patch of a round is always paid for by something she did in it. So the stat
+ * functions below read only her damage, not any notion of a level, and their shape is the seam the
+ * shipyard's `rate()` plugs into when the modes are reworked.
  */
 
 const WORLD = 2000;
@@ -37,7 +38,6 @@ const ARENA_RAMP = [1, 2, 1, 2]; // reinforcements for the first four kills, the
 const ARENA_SPAWN_CLEAR = 620; // keep a respawn at least this far from the player
 const ARENA_MAX_ENEMIES = 14; // ceiling so the fleet stays drawable
 const ARENA_SPAWN_GAP = 5; // the second ship of a wave holds off this long
-const ARENA_START_COINS = 50; // opening purse: one good patch in hand before the first hunter closes
 
 // nth kill (1-indexed) -> how many ships sail in to replace the one that sank
 const arenaReinforcements = (n) => ARENA_RAMP[n - 1] ?? 2;
@@ -746,7 +746,6 @@ const MODES = {
     color: C.side,
     desc: "Endless survival. One hunter to start, matched to your ship. Sink ships and reinforcements sail in from the horizon. Patch her up between waves, out of what you have taken. Score by ships sunk.",
     rivals: ARENA_START, // hulls on the water at the drop, besides the player
-    startCoins: ARENA_START_COINS,
     guns: true, // cannons and muskets aboard
     repairs: true, // the repair rail, paid for out of the voyage's own earnings
     melee: false, // every hull hostile to every other, rather than only to the player
@@ -766,7 +765,6 @@ const MODES = {
     color: C.mast,
     desc: "Last afloat wins. 10 rival captains, all dead equal at the start, hunting for weak prey and turning on whoever pulls ahead. Spend what you take on repairs, or keep it.",
     rivals: FFA_AI,
-    startCoins: 0,
     guns: true,
     repairs: true,
     melee: true,
@@ -786,7 +784,6 @@ const MODES = {
     color: C.crew,
     desc: "Only one hand needed. Last afloat wins. 10 captains, no guns, nothing to buy. Sink rivals by ramming. Drive your bow into her beam, and turn to face anyone charging yours. A storm closes in and takes the crew of any ship caught.",
     rivals: DERBY_AI,
-    startCoins: 0,
     guns: false,
     repairs: false,
     melee: true,
@@ -887,7 +884,7 @@ export default function App() {
   const [mode, setMode] = useState("arena");
   const [result, setResult] = useState("");
   const [place, setPlace] = useState({ rank: 0, total: 0 });
-  const [stats, setStats] = useState({ time: 0, kills: 0, dmg: 0, coins: 0, patches: 0, repaired: 0, billed: 0, kept: 0 });
+  const [stats, setStats] = useState({ time: 0, kills: 0, dmg: 0, coins: 0, patches: 0, repaired: 0, kept: 0 });
   const [coins, setCoins] = useState(0);
   const [sunk, setSunk] = useState(0);
   const [left, setLeft] = useState(0);
@@ -1098,7 +1095,6 @@ export default function App() {
       };
       const g = gameRef.current;
       const player = makeShip(WORLD / 2, WORLD / 2, -Math.PI / 2, { isPlayer: true });
-      player.coins = rules.startCoins; // a purse, not earnings — keeps it out of the end tally
       g.player = player;
       g.ships.push(player);
       genIslands(g);
@@ -1169,33 +1165,19 @@ export default function App() {
       const fought = Math.round(p.earned || 0);
       const repaired = Math.round(p.repaired || 0);
       const total = fought + timePay + winPay;
-      /**
-       * The carpenter is paid out of the opening stake first, and only then out of what she took.
-       *
-       * Arena hands a captain a purse at the drop that was never hers to keep: it is a stake against
-       * the round, and it has never reached the hold. So spending it has to cost her nothing, or the
-       * tally ends up billing her for money she was given. Without this a round that took 118 and
-       * spent 168 (the 50 of it borrowed) printed a bill bigger than the earnings above it, and the
-       * column stopped adding up on the page.
-       *
-       * What is left is the honest figure: what repairs actually cost her. Patch a scratch out of the
-       * stake and the row does not appear at all, which is the truth of it.
-       */
-      const billed = Math.max(0, repaired - (r.startCoins || 0));
       return {
         time,
         kills: p.kills || 0,
         dmg: Math.round(p.dmgDealt || 0),
         coins: fought, // what her bow and her guns took
         patches: p.patches || 0,
-        repaired, // every coin handed to the carpenter, stake and takings alike
-        billed, // ...and the part of it that was her own money
+        repaired, // ...and what she handed straight back to the carpenter, all of it her own money
         rams: p.rams || 0,
         timePay, winPay,
         total,
         // What the hold will actually see. A voyage that spent everything it took on staying afloat
         // banks nothing, and never less than nothing: a round cannot cost a captain her savings.
-        kept: Math.max(0, total - billed),
+        kept: Math.max(0, total - repaired),
       };
     }
 
@@ -1207,7 +1189,7 @@ export default function App() {
       if (g.banked) return;
       g.banked = true;
       const s = finalStats(won);
-      const { banked: got } = bankVoyage({ mode: g.mode, earned: s.total, repaired: s.billed, kills: s.kills, dmg: s.dmg, time: s.time, won, rank });
+      const { banked: got } = bankVoyage({ mode: g.mode, earned: s.total, repaired: s.repaired, kills: s.kills, dmg: s.dmg, time: s.time, won, rank });
       setBanked(got);
     }
 
@@ -3220,7 +3202,7 @@ function EndOverlay({ title, titleColor, result, stats, mode, place, hold, banke
   const payRows = [["From fighting", `+${fmtCoins(stats.coins)}`, null]];
   if (rules.timeCoins > 0) payRows.push(["For time at sea", `+${fmtCoins(stats.timePay)}`, null]);
   if (stats.winPay > 0) payRows.push(["For winning", `+${fmtCoins(stats.winPay)}`, null]);
-  if (stats.billed > 0) payRows.push(["Paid to the carpenter", `-${fmtCoins(stats.billed)}`, C.crew]);
+  if (stats.repaired > 0) payRows.push(["Paid to the carpenter", `-${fmtCoins(stats.repaired)}`, C.crew]);
   return (
     <Shell>
       <div style={{ fontFamily: DISPLAY, fontSize: 40, color: titleColor, letterSpacing: 1 }}>{title}</div>
