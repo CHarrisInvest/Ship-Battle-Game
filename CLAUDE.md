@@ -26,6 +26,9 @@ are built from. `broadside` in the code is the side guns, not the old title, and
 - **The hull and mast tables are generated.** `data/hulls.tsv` and `data/masts.tsv` are the source;
   `npm run import` writes them into the marked blocks in `shipyard.js`. Editing those blocks by hand
   works until the next import throws it away, so edit the table.
+- **The renderer draws three sails up a mast, and no more.** A fourth or fifth berth is clamped to the
+  third band and draws on top of it, invisible. The bench fails on it; the fix is generating the
+  bands from the pole height rather than adding a row to `STATION_GEOM`.
 - **`npm run catalogue` before and after touching the catalogue.** A hull that cannot be rigged or
   carries a station the renderer cannot draw fails silently at runtime; the bench fails loudly. It
   prints the whole fleet side by side, which is the only way the numbers mean anything.

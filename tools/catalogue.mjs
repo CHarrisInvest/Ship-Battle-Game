@@ -22,7 +22,7 @@ import {
   rate, measure, statBand, fitOut, minimumLoadout, maximumLoadout, loadoutValue, outfitCost,
   TIERS, tierAt, ladder, stockOfTier, resolve, STARTER, STOCK, riggingValue, mastRebuildCost,
 } from "../src/shipyard.js";
-import { RIG_STATIONS, RIG_CUTS } from "../src/galleon.js";
+import { RIG_STATIONS, RIG_CUTS, RIG_BERTHS } from "../src/galleon.js";
 
 // A set, not a list. The same fault reached from forty hulls is one fault about one part, and a
 // bench that printed it forty times would bury the other thirty-nine.
@@ -84,6 +84,10 @@ for (const st of STATIONS) {
 // produce a berth that stays empty forever.
 for (const m of MAST_LIST) {
   if (!m.berths.length) fault(`mast "${m.id}"`, "no berths, so she can carry no sail at all");
+  if (m.berths.length > RIG_BERTHS) {
+    const lost = m.berths.length - RIG_BERTHS;
+    fault(`mast "${m.id}"`, `carries ${m.berths.length} sails and the renderer has bands for ${RIG_BERTHS}, so ${lost} of them would draw on top of the topmost one and be invisible. Adding a band is not a new row in STATION_GEOM: three sails already reach the masthead, so the bands have to be generated from the pole height and the berth count instead`);
+  }
   for (const b of berthsOf(m)) {
     if (!CUTS.includes(b.cut)) fault(`mast "${m.id}"`, `berth ${b.index} has cut "${b.cut}", which is not in CUTS`);
     if (!sailsForBerth(b).length) fault(`mast "${m.id}"`, `berth ${b.index} wants a ${b.size} ${b.cut} sail and the catalogue has none`);
@@ -100,6 +104,7 @@ const undrawn = CUTS.filter((c) => !RIG_CUTS.includes(c) && SAIL_LIST.some((s) =
 console.log(`\nPARTS  ${MAST_LIST.length} masts, ${SAIL_LIST.length} sails, ${GUN_LIST.length} guns`);
 console.log(`STATIONS  ${STATIONS.join(", ")}   drawn: ${RIG_STATIONS.join(", ")}`);
 console.log(`CUTS      ${CUTS.join(", ")}   drawn as their own shape: ${RIG_CUTS.join(", ")}`);
+console.log(`BERTHS    the renderer can place ${RIG_BERTHS} sails up one mast in different places`);
 if (undrawn.length) {
   console.log(`          note: ${undrawn.join(", ")} will draw as square canvas until galleon.js learns the shape`);
 }

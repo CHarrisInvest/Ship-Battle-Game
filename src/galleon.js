@@ -852,4 +852,15 @@ const RIG_STATIONS = Object.keys(STATION_GEOM);
    is a known gap rather than a surprise. */
 const RIG_CUTS = ["square", "triangle"];
 
-export { drawGalleon, RIG_STATIONS, RIG_CUTS };
+/* How many sails this renderer can place up one mast and have them land in
+   different places. Each station carries that many authored bands, and a berth
+   past the last one is clamped to it, so a fourth and fifth sail draw exactly on
+   top of the third: bought, paid for, and invisible. Derived rather than written
+   down so it stays true if a band is ever added, and checked by the bench, which
+   is the only thing standing between that and a captain wondering where her
+   canvas went. */
+const RIG_BERTHS = Math.min(
+  ...Object.values(STATION_GEOM).map((g) => Math.min(g.slots.length, g.tri.length)),
+);
+
+export { drawGalleon, RIG_STATIONS, RIG_CUTS, RIG_BERTHS };

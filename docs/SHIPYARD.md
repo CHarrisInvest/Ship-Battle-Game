@@ -427,11 +427,19 @@ with it is as cheap as changing it.
    9 across the fleet. The brief was unsure and this is a guess.
 8. **Diminishing returns past a third sail** are unreachable until a mast has four berths. Worth
    confirming a four-berth mast is wanted before tuning the falloff.
-9. **A sail's size versus its berth's slot.** A sail drawn in berth 1 takes berth 1's geometry, on the
-   assumption that large sails sit low and small ones high. A mast that puts a large sail above a small
-   one would draw wrong.
-10. **Bowsprits.** Hulls carry a `bowsprit` flag and the renderer honours it, but nothing yet makes an
+9. **Four and five berth masts need the sail bands generated.** Each station carries three authored
+   bands and a berth past the last one is clamped to it, so a five sail mast draws as three with two
+   buried inside the topmost: bought, paid for and invisible. It does not clip the box, which is why
+   nothing else catches it. Adding a fourth row to `STATION_GEOM` does not fix it either, because
+   three sails already reach the masthead, so a taller stack has to be compressed rather than
+   extended: the bands want generating from the pole height and the berth count. `npm run catalogue`
+   fails on any mast with more berths than the renderer has bands for, so this cannot ship quietly,
+   and the work is best done once against the real mast list rather than twice.
+10. **A sail's size versus its berth's slot.** A sail drawn in berth 1 takes berth 1's geometry, on
+    the assumption that large sails sit low and small ones high. A mast that puts a large sail above a
+    small one would draw wrong.
+11. **Bowsprits.** Hulls carry a `bowsprit` flag and the renderer honours it, but nothing yet makes an
     upgraded bowsprit a purchasable part with a spritsail on it.
-11. **Tier names.** `Coastal`, `Privateer`, `Cruiser`, `Ship of the line`, `Flagship` have not been
+12. **Tier names.** `Coastal`, `Privateer`, `Cruiser`, `Ship of the line`, `Flagship` have not been
     read at 1x in the game, because nothing displays them. `Ship of the line` is much the longest and
     is the one to watch in a card.
