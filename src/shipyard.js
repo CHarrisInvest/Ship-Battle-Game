@@ -39,8 +39,14 @@ export const SIZES = ["small", "medium", "large"];
 const sizeRank = (s) => SIZES.indexOf(s);
 
 // Where a socket sits along the keel. The main mast is the tall one amidships and carries the
-// loosest diminishing return; fore and mizzen are shorter and tire sooner.
+// loosest diminishing return; fore and mizzen are shorter and tire sooner. Anything four-masted needs
+// a name added here AND geometry in `galleon.js`, or that mast is silently left off the menu ship.
 export const STATIONS = ["fore", "main", "mizzen"];
+
+// How a sail is cut, which is the only thing that decides whether it goes in a berth. Declared rather
+// than left implicit in the rows so adding a rig is a data change and the bench can check for typos:
+// a berth wanting a `sqaure` sail would otherwise just be a berth nothing ever fits.
+export const CUTS = ["square", "triangle", "lug"];
 
 /* ---------------------------------------------------------------------------------------------- */
 /* Hulls                                                                                           */
@@ -69,11 +75,12 @@ export const STATIONS = ["fore", "main", "mizzen"];
  * modelled in its own right rather than scaled off one shape, so her size arrives with her art and
  * there is nothing for the catalogue to multiply.
  */
+/* generated:hulls -- edit data/hulls.tsv and run `npm run import` */
 const FLEET = [
   {
-    id: "cutter", name: "Cutter", price: 0, // the ship a captain starts with, and the only one not bought
+    id: "cutter", name: "Cutter", price: 0,
     blurb: "One mast, a handful of guns, and nothing spare. She turns inside anything afloat.",
-    hull: 90, crew: 55, speed: 1.08, hand: 1.22, canvas: 1.0, tons: 1.0,
+    hull: 90, crew: 55, speed: 1.08, hand: 1.22, canvas: 1, tons: 1,
     guns: [2, 1, 1], masts: ["main/small"], bowsprit: false,
   },
   {
@@ -85,7 +92,7 @@ const FLEET = [
   {
     id: "brig", name: "Brig", price: 2400,
     blurb: "Two masts and a real broadside. The first hull that can take a beating and answer it.",
-    hull: 155, crew: 96, speed: 1.0, hand: 1.0, canvas: 2.1, tons: 2.4,
+    hull: 155, crew: 96, speed: 1, hand: 1, canvas: 2.1, tons: 2.4,
     guns: [6, 2, 3], masts: ["fore/medium", "main/large"],
   },
   {
@@ -101,6 +108,7 @@ const FLEET = [
     guns: [10, 3, 6], masts: ["fore/large", "main/large", "mizzen/medium"],
   },
 ];
+/* end:hulls */
 
 // `tons` is what she can carry before the guns start telling on her handling. Every row gets these
 // unless it says otherwise, so a class only states what is true of it in particular.
@@ -150,12 +158,13 @@ export const HULL_LIST = Object.values(HULLS).sort((a, b) => a.order - b.order);
  * mast at her station, which is the one thing the renderer takes from a mast; where the shrouds and
  * stays land belongs to the station she is stepped in, so `galleon.js` owns it.
  */
+/* generated:masts -- edit data/masts.tsv and run `npm run import` */
 export const MASTS = {
   poleMast: {
     id: "poleMast",
     kind: "mast",
     name: "Pole mast",
-    price: 0, // she comes with one; the shipyard prices a replacement at nothing so a lost rig is not a wall
+    price: 0,
     blurb: "A single spar and a single sail. Everything starts here.",
     size: "small",
     height: 0.62,
@@ -178,8 +187,21 @@ export const MASTS = {
     price: 420,
     blurb: "One heavy square sail on a stout pole. The plain way to move a big hull.",
     size: "medium",
-    height: 0.70,
+    height: 0.7,
     berths: [{ cut: "square", size: "large" }],
+  },
+  lateenMast: {
+    id: "lateenMast",
+    kind: "mast",
+    name: "Lateen mast",
+    price: 760,
+    blurb: "A long raking yard for the after station, with room for a small square sail above it.",
+    size: "medium",
+    height: 0.74,
+    berths: [
+      { cut: "triangle", size: "large" },
+      { cut: "square", size: "small" },
+    ],
   },
   topmast: {
     id: "topmast",
@@ -201,27 +223,15 @@ export const MASTS = {
     price: 2100,
     blurb: "Three spars, and the highest sail is a small one. Every hand aboard is up there in a blow.",
     size: "large",
-    height: 1.0,
+    height: 1,
     berths: [
       { cut: "square", size: "large" },
       { cut: "square", size: "small" },
       { cut: "square", size: "small" },
     ],
   },
-  lateenMast: {
-    id: "lateenMast",
-    kind: "mast",
-    name: "Lateen mast",
-    price: 760,
-    blurb: "A long raking yard for the after station, with room for a small square sail above it.",
-    size: "medium",
-    height: 0.74,
-    berths: [
-      { cut: "triangle", size: "large" },
-      { cut: "square", size: "small" },
-    ],
-  },
 };
+/* end:masts */
 
 export const MAST_LIST = Object.values(MASTS);
 

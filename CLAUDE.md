@@ -23,6 +23,9 @@ are built from. `broadside` in the code is the side guns, not the old title, and
   from the shipyard between voyages. Repairs are paid out of the voyage's own takings, so a coin spent
   on the carpenter is a coin that never reaches the hold. If you find yourself adding a stat that
   grows mid-round, that is the upgrade rail coming back and it was deliberately removed.
+- **The hull and mast tables are generated.** `data/hulls.tsv` and `data/masts.tsv` are the source;
+  `npm run import` writes them into the marked blocks in `shipyard.js`. Editing those blocks by hand
+  works until the next import throws it away, so edit the table.
 - **`npm run catalogue` before and after touching the catalogue.** A hull that cannot be rigged or
   carries a station the renderer cannot draw fails silently at runtime; the bench fails loudly. It
   prints the whole fleet side by side, which is the only way the numbers mean anything.

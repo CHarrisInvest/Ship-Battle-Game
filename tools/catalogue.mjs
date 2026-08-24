@@ -17,15 +17,17 @@
  */
 
 import {
-  HULLS, HULL_LIST, STATIONS, MAST_LIST, SAIL_LIST, GUN_LIST,
+  HULLS, HULL_LIST, STATIONS, CUTS, MAST_LIST, SAIL_LIST, GUN_LIST,
   mastsForSocket, sailsForBerth, berthsOf, gunsForMount,
   rate, measure, statBand, fitOut, minimumLoadout, maximumLoadout, loadoutValue, outfitCost,
   TIERS, tierAt, ladder, stockOfTier, resolve, STARTER, STOCK,
 } from "../src/shipyard.js";
-import { RIG_STATIONS } from "../src/galleon.js";
+import { RIG_STATIONS, RIG_CUTS } from "../src/galleon.js";
 
-const problems = [];
-const fault = (where, what) => problems.push(`${where}: ${what}`);
+// A set, not a list. The same fault reached from forty hulls is one fault about one part, and a
+// bench that printed it forty times would bury the other thirty-nine.
+const problems = new Set();
+const fault = (where, what) => problems.add(`${where}: ${what}`);
 
 const n1 = (v) => v.toFixed(1);
 const n2 = (v) => v.toFixed(2);
@@ -57,13 +59,7 @@ for (const h of HULL_LIST) {
     if (!RIG_STATIONS.includes(s.station)) {
       fault(at, `the renderer cannot draw a mast at "${s.station}" (it knows ${RIG_STATIONS.join(", ")}), so this mast would be missing from the menu ship`);
     }
-    const fits = mastsForSocket(s);
-    if (!fits.length) fault(at, `size "${s.size}" fits no mast in the catalogue`);
-    for (const m of fits) {
-      for (const b of berthsOf(m)) {
-        if (!sailsForBerth(b).length) fault(at, `mast "${m.id}" has a ${b.size} ${b.cut} berth no sail fits`);
-      }
-    }
+    if (!mastsForSocket(s).length) fault(at, `size "${s.size}" fits no mast in the catalogue`);
   }
 
   // she has to be riggable in practice, not only in principle
@@ -83,10 +79,30 @@ for (const st of STATIONS) {
   if (!RIG_STATIONS.includes(st)) fault("stations", `"${st}" is declared but the renderer cannot draw it`);
 }
 
+// Masts are checked once each rather than once per socket they happen to fit. A berth no sail fits is
+// a fact about the mast, and a cut nobody declared is almost always a typo: neither throws, they just
+// produce a berth that stays empty forever.
+for (const m of MAST_LIST) {
+  if (!m.berths.length) fault(`mast "${m.id}"`, "no berths, so she can carry no sail at all");
+  for (const b of berthsOf(m)) {
+    if (!CUTS.includes(b.cut)) fault(`mast "${m.id}"`, `berth ${b.index} has cut "${b.cut}", which is not in CUTS`);
+    if (!sailsForBerth(b).length) fault(`mast "${m.id}"`, `berth ${b.index} wants a ${b.size} ${b.cut} sail and the catalogue has none`);
+  }
+}
+for (const s of SAIL_LIST) {
+  if (!CUTS.includes(s.cut)) fault(`sail "${s.id}"`, `cut "${s.cut}" is not in CUTS`);
+}
+const undrawn = CUTS.filter((c) => !RIG_CUTS.includes(c) && SAIL_LIST.some((s) => s.cut === c));
+
+
 /* ---- the fleet ------------------------------------------------------------------------------- */
 
 console.log(`\nPARTS  ${MAST_LIST.length} masts, ${SAIL_LIST.length} sails, ${GUN_LIST.length} guns`);
 console.log(`STATIONS  ${STATIONS.join(", ")}   drawn: ${RIG_STATIONS.join(", ")}`);
+console.log(`CUTS      ${CUTS.join(", ")}   drawn as their own shape: ${RIG_CUTS.join(", ")}`);
+if (undrawn.length) {
+  console.log(`          note: ${undrawn.join(", ")} will draw as square canvas until galleon.js learns the shape`);
+}
 
 console.log(`\nTHE FLEET  (${HULL_LIST.length} classes)`);
 console.log("  class        price   masts                    guns a side/bow/sw   bare  ->  found   tier   outfit");
@@ -154,8 +170,8 @@ console.log(`\nTHE FIRST SHIP  overall ${n1(start.overall)}, ram ${n1(start.ram)
 
 /* ---- verdict --------------------------------------------------------------------------------- */
 
-if (problems.length) {
-  console.log(`\n${problems.length} PROBLEM${problems.length === 1 ? "" : "S"}`);
+if (problems.size) {
+  console.log(`\n${problems.size} PROBLEM${problems.size === 1 ? "" : "S"}`);
   for (const p of problems) console.log("  " + p);
   process.exit(1);
 }

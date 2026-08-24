@@ -22,6 +22,8 @@ are cheap to change and are deliberately left rough.
 | `src/hold.js` | What a captain owns. The yard sits in the same record as the coins, so a purchase moves both in one write. |
 | `src/galleon.js` | Draws a rig rather than *the* rig. Given a spec it builds the ship; given nothing it builds the galleon it always drew. |
 | `src/SternchaseIso.jsx` | Passes the active ship's rig to the menu, and carries the repair rail that replaced the upgrade rail. |
+| `data/hulls.tsv`, `data/masts.tsv` | The tables a person edits. One row per class and per mast type. |
+| `tools/import.mjs` | `npm run import`. Writes those tables into the generated blocks in `shipyard.js`. |
 | `tools/catalogue.mjs` | `npm run catalogue`. Checks the fleet is riggable and drawable, then prints every class side by side for calibration. |
 
 ## The model
@@ -290,6 +292,25 @@ The total is the cheapest *legal* fill, not a good rig: a pole mast is free and 
 bare frigate quotes nothing for masts and would get three bare poles. `fitOut` is what a decent fit
 costs. A screen showing both tells a captain the floor and the ceiling.
 
+### Getting them in
+
+**Edit `data/hulls.tsv`, run `npm run import`, run `npm run catalogue`.** That is the loop, and it is
+meant to be run dozens of times: the tables are tab separated so a spreadsheet exports straight into
+them, `#` lines are comments, and blurbs can hold commas and apostrophes without quoting.
+
+The import writes into `src/shipyard.js` between markers rather than the game reading a table at
+runtime. Two reasons. `shipyard.js` imports nothing and holds no state, which is worth keeping, and a
+CSV parser in the bundle to read a file that never changes while the game runs is machinery for
+nothing. So the table is what a person edits, the source is what the game reads, and the importer
+closes the gap. The generated block is committed, so a diff still shows what actually changed.
+
+The importer writes; it does not judge. It fails on the things that make a row unreadable (a stray tab
+so the columns do not line up, a duplicate id, a berth that is not `cut/size`) and leaves everything
+else to the bench, which is the next command and the one that says whether the result is a fleet.
+
+`data/masts.tsv` is the same for mast types, and the two go in together: a hull's socket sizes mean
+nothing until masts exist that fit them, and the bench will say so.
+
 ### What the 38 will need
 
 When the ship details arrive, each class needs: a name and a blurb, a price, hull and crew points,
@@ -297,14 +318,28 @@ When the ship details arrive, each class needs: a name and a blurb, a price, hul
 wants, which is what makes a big hull a commitment), `tons` (what she carries before the guns tell on
 her handling), gun bearing as `[broadside a side, bow, swivel]`, and her masts as `station/size`.
 
-Two things to decide alongside them:
+Anything you would rather not place by hand can be left blank. `speed`, `hand`, `canvas` and `tons`
+are abstract ratings around 1 rather than anything a real ship has written on it, and they can be
+derived from her size, rig and role and then tuned against the bench. The columns a person actually
+knows about a ship (how big, how many hands, how many guns, what rig, what she is for) are the ones
+worth filling in first.
 
-- **Stations beyond fore, main and mizzen.** Anything four-masted needs a new station name, and the
-  renderer needs geometry for it or that mast is silently left off the menu ship. The bench catches
-  it; adding the geometry is a `STATION_GEOM` entry in `galleon.js`.
-- **Mast sizes beyond small, medium and large.** `SIZES` is ordered and a mast fits its own size or
-  larger, so a wider range of classes may want a fourth rung rather than crowding everything into
-  three.
+Three things to decide alongside them:
+
+- **Mast types, which go in the same pass.** A mast's berths are fixed the moment it is built, so a
+  fleet wants a type per configuration rather than one mast with a slot count: one through four square
+  berths is four types. A four-berth mast is also the first thing that reaches the diminishing return
+  past a third sail, which nothing has been able to do until now.
+- **Stations beyond fore, main and mizzen.** Anything four-masted needs a new station name, and
+  `galleon.js` needs geometry for it or that mast is silently left off the menu ship. The bench
+  catches it; adding the geometry is a `STATION_GEOM` entry.
+- **Sizes beyond small, medium and large.** `SIZES` is ordered and a mast fits its own size or larger,
+  so a wide fleet may want a fourth rung rather than crowding forty classes into three.
+
+`CUTS` now declares the vocabulary of sail cuts, `square`, `triangle` and `lug`, so a lugsail rig is a
+row rather than a code change, and the bench catches a berth whose cut is a typo. The renderer draws
+square and triangle as their own shapes; anything else falls back to square canvas, which is a
+wrong-looking ship rather than a broken one, and the bench says which cuts are in that position.
 
 ## Open questions
 

@@ -846,4 +846,10 @@ function drawGalleon(ctx,W,H,deg,spec){
    nobody has drawn yet is caught in the catalogue rather than on the menu. */
 const RIG_STATIONS = Object.keys(STATION_GEOM);
 
-export { drawGalleon, RIG_STATIONS };
+/* The sail cuts this renderer draws as their own shape. Anything else falls
+   back to a square sail, which is a wrong-looking ship rather than a broken one:
+   the bench says which cuts are in that position so a rig nobody has drawn yet
+   is a known gap rather than a surprise. */
+const RIG_CUTS = ["square", "triangle"];
+
+export { drawGalleon, RIG_STATIONS, RIG_CUTS };
