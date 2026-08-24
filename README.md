@@ -227,9 +227,11 @@ Pointer/touch driven, so it works the same with a mouse or on a phone:
 - **SIDE / FRONT / MUSKET** (bottom right) — hold to fire; each has its own cooldown, range, and
   damages a different system. Absent in a mode that carries no guns.
 - **Repair rail** (top) — two buttons, priced on opposite principles because they are opposite jobs.
-  **HULL** is a coin a point, flat, up to `HULL_MARK`, 80%: a carpenter can plug shot holes at sea but
-  cannot re-timber a ship on open water. A coin buys back exactly the damage a coin of gunnery earned,
-  so a light patch is cheap and a purse short of the whole bill buys the part it reaches (`27 of 91`).
+  **HULL** is a coin a point and nothing else: no base, no rate, no ceiling short of whole. A coin buys
+  back exactly the damage a coin of gunnery earned, so a light patch is cheap and a purse short of the
+  whole bill buys the part it reaches (`27 of 91`). Because the bill is her damage and nothing else it
+  scales with her class without a scaling term anywhere: a hull with 250 points to lose can run up a
+  bill of 250, and a cutter with 90 can never be charged more than 90.
   **MAST** is flat and puts the rig back whole, because a mast is stepped or it is not: no half a
   mast, no half price, no part payment. What sets the price is the rig she carries rather than the
   damage she took, at `RIG_REBUILD_SHARE` of what her whole rigging is worth. Since speed and helm
@@ -369,7 +371,7 @@ The balance knobs sit at the top of `src/SternchaseIso.jsx`: `WORLD` and `TILT` 
 camera, `VIEW`/`MAX_ZOOM` for how much sea the square view holds and `EDGE_PEEK` for how far the
 boundary is let inside it, `BASE`/`HP_GAIN` for the health
 pools, `WP` for per-weapon cooldown, projectile speed, and lifetime, `RAM_*` for ramming, and
-`HULL_MARK`/`HULL_RATE` for how whole a carpenter gets her at sea and what that costs a point, and
+`HULL_RATE` for what a point of hull damage costs to put right (deliberately 1), and
 `RIG_REBUILD_SHARE` in `src/shipyard.js` for the flat price of a new mast as a share of what her
 rigging is worth. `BASE_SPEED` is a whole
 ship's top speed and the yardstick the heavy rudder measures against; `RUDDER_HEAVY` is how much

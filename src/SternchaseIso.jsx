@@ -698,13 +698,20 @@ const shotHitsCircle = (cx, cy, r, x0, y0, x1, y1) => {
  *
  * Two buttons, and they are priced on opposite principles because they are opposite jobs.
  *
- * HULL is bought by the point and only up to a mark. A carpenter can plug shot holes and fish a
- * strake at sea; he cannot re-timber a ship on open water, so `HULL_MARK` is as whole as she gets
- * until she is in a yard. Below that mark she pays a coin for a point, flat: no base, no scaling,
- * a coin buys back exactly the damage a coin of gunnery earned. Two things follow and both are the
- * point: a ship barely scratched pays almost nothing, so there is no wrong moment to repair, and a
- * captain who cannot cover the whole bill buys as much of it as her purse reaches rather than being
- * refused, which matters most in the round where she is down to her last coins and still taking fire.
+ * HULL is bought by the point, and by nothing else. A coin buys back a point of damage: no base, no
+ * rate, no share of anything, and no ceiling short of whole. What she pays is exactly what the damage
+ * she is undoing was worth to the ship that dealt it, which puts both halves of a round's economy in
+ * the same currency and means a captain can read her own hull bar as a price.
+ *
+ * Because the bill is her damage and nothing else, it scales with the class she is sailing without a
+ * scaling term anywhere: a hull with two hundred and fifty points to lose can run up a bill of two
+ * hundred and fifty, and the cutter that has ninety can never be charged more than ninety. Bigger
+ * ships cost more to keep afloat because there is more of them to hole.
+ *
+ * Two things follow and both are the point: a ship barely scratched pays almost nothing, so there is
+ * no wrong moment to repair, and a captain who cannot cover the whole bill buys as much of it as her
+ * purse reaches rather than being refused, which matters most in the round where she is down to her
+ * last coins and still taking fire.
  *
  * MAST is flat, and it puts the rig back whole. A mast is stepped or it is not: there is no half a
  * mast, so there is no half price and no part payment, and the charge is the same whether she lost
@@ -722,8 +729,7 @@ const shotHitsCircle = (cx, cy, r, x0, y0, x1, y1) => {
  * out of the voyage's own takings, so every coin spent staying afloat is a coin that does not reach
  * the hold and does not buy a ship. Fighting carefully is worth money.
  */
-const HULL_MARK = 0.8; // as whole as a carpenter gets her at sea
-const HULL_RATE = 1; // a coin a point, so repairing costs exactly what the damage earned
+const HULL_RATE = 1; // a coin a point. Deliberately 1, and the one place to change it if it ever moves
 
 /**
  * The rig every hull at sea is carrying, and what it costs to step a new mast.
@@ -737,7 +743,7 @@ const STOCK_LOADOUT = resolve(STARTER);
 const mastRebuild = (s) => mastRebuildCost(s.loadout || STOCK_LOADOUT);
 
 const REPAIRS = [
-  { key: "hull", label: "HULL", sub: "planks and pitch, back up to 80%", color: C.hull, whole: "At the mark" },
+  { key: "hull", label: "HULL", sub: "planks and pitch, back to whole", color: C.hull, whole: "Sound" },
   { key: "mast", label: "MAST", sub: "a new mast, and full sail again", color: C.mast, whole: "Sound" },
 ];
 
@@ -751,8 +757,7 @@ const REPAIRS = [
  */
 function repairQuote(s, sys) {
   if (sys === "hull") {
-    const mark = s.maxHull * HULL_MARK;
-    const points = Math.max(0, mark - s.hull);
+    const points = Math.max(0, s.maxHull - s.hull);
     const cost = Math.ceil(points * HULL_RATE);
     return { points, cost, afford: Math.min(cost, Math.floor(s.coins)), whole: points <= 0.001, part: true };
   }

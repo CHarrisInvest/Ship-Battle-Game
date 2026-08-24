@@ -160,12 +160,19 @@ which is a better comparison than levels ever were.
 **Repairs** take the rail's place, in the modes that have a purse, and the two buttons are priced on
 opposite principles because they are opposite jobs.
 
-**Hull** is a coin a point, and only up to `HULL_MARK`, 80%. A carpenter can plug shot holes and fish
-a strake at sea; he cannot re-timber a ship on open water, so that mark is as whole as she gets until
-she is in a yard. Below it there is no base and no scaling: a coin buys back exactly the damage a coin
-of gunnery earned, which makes the two halves of the round's economy the same currency. A ship barely
-scratched pays almost nothing, so there is no wrong moment to repair, and a captain who cannot cover
-the bill buys as much of it as her purse reaches rather than being refused.
+**Hull** is a coin a point, and by nothing else. No base, no rate, no share of anything, and no
+ceiling short of whole. What she pays is exactly what the damage she is undoing was worth to the ship
+that dealt it, which puts both halves of a round's economy in the same currency and lets a captain
+read her own hull bar as a price.
+
+Because the bill is her damage and nothing else, it scales with the class she is sailing without a
+scaling term anywhere in it. A hull with 250 points to lose can run up a bill of 250; a cutter with 90
+can never be charged more than 90. That property holds for whatever the fleet turns out to be, so
+classes carrying far more than a hundred points need nothing added for their repairs to cost more. It
+is not yet visible in play, because every ship in a fight still carries the same stock hull.
+
+A ship barely scratched pays almost nothing, so there is no wrong moment to repair, and a captain who
+cannot cover the bill buys as much of it as her purse reaches rather than being refused.
 
 **Mast** is flat and puts the rig back whole. A mast is stepped or it is not: no half a mast, so no
 half price and no part payment, and the charge is the same whether she lost the whole thing or sprung
