@@ -157,14 +157,29 @@ arithmetic. What is left is range, reputation, blood in the water, and the state
 all of which are still true. They come back off the *loadout* when the shipyard reaches the fight,
 which is a better comparison than levels ever were.
 
-**Repairs** take the rail's place, in the modes that have a purse. A patch is bought by the point:
-pressing HULL puts back up to `REPAIR_SHARE` of that system's maximum and charges `REPAIR_RATE` for
-what it actually put back. Two things follow, and both are the point. A ship barely scratched pays
-almost nothing to top herself up, so there is no wrong moment to repair. And a captain who cannot
-afford a whole patch gets as much of one as her purse covers rather than being refused, which matters
-most in the round where she is down to her last coins and taking fire. Mast is dearest a point,
-because losing a mast is the one hit that takes a ship out of a fight while leaving her afloat, and
-repairing it re-rigs her rather than leaving a stump.
+**Repairs** take the rail's place, in the modes that have a purse, and the two buttons are priced on
+opposite principles because they are opposite jobs.
+
+**Hull** is bought by the point and only up to `HULL_MARK`, 80%. A carpenter can plug shot holes and
+fish a strake at sea; he cannot re-timber a ship on open water, so that mark is as whole as she gets
+until she is in a yard. She pays `HULL_RATE` for every point of damage below it and the work puts her
+exactly on it. A ship barely scratched pays almost nothing, so there is no wrong moment to repair, and
+a captain who cannot cover the bill buys as much of it as her purse reaches rather than being refused,
+which matters most in the round where she is down to her last coins and still taking fire.
+
+**Mast** is flat and puts the rig back whole. A mast is stepped or it is not: no half a mast, so no
+half price and no part payment, and what she pays is a spar and the labour of getting it up whether
+she lost the whole thing or sprung it. Because `speedCap` and `turnCap` both read how much of her rig
+is standing, a rebuilt mast hands her back full sail in the same instant, which is what makes it the
+most valuable thing a purse can buy: losing a mast is the one hit that takes a ship out of a fight
+while leaving her afloat. `MAST_REBUILD_SHARE` is the seam where a better mast starts costing more to
+put back, as a share of what the mast itself is worth. Every hull at sea carries the same stock rig
+for now, so every captain pays the base; it becomes the real figure the day loadouts reach the fight,
+at that one line.
+
+**Crew cannot be bought back at all.** Hands lost over the rail are lost, so the crew bar is a clock
+that only runs one way for the length of a round. It is why musket fire and a spell in the weather are
+worth avoiding rather than paying off afterwards, and it is the change that shortens a bad round most.
 
 What makes it a decision rather than a tax is where the money comes from: **repairs are paid out of
 the voyage's own takings, so every coin spent staying afloat is a coin that never reaches the hold.**

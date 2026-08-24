@@ -224,10 +224,16 @@ Pointer/touch driven, so it works the same with a mouse or on a phone:
 - **Virtual joystick** (bottom left) — steer and throttle.
 - **SIDE / FRONT / MUSKET** (bottom right) — hold to fire; each has its own cooldown, range, and
   damages a different system. Absent in a mode that carries no guns.
-- **Repair rail** (top) — spend the ship's purse to patch HULL, MAST or CREW. Each button puts back up
-  to `REPAIR_SHARE` of that system and charges for what it actually put back, so a light patch is
-  cheap and a purse that will not cover a whole one buys the share it covers. A button reads `Sound`
-  when the system is whole and `No coin` when it is not but she cannot pay. Absent in a mode with
+- **Repair rail** (top) — two buttons, priced on opposite principles because they are opposite jobs.
+  **HULL** is bought by the point and only up to `HULL_MARK`, 80%: a carpenter can plug shot holes at
+  sea but cannot re-timber a ship on open water. She pays `HULL_RATE` for every point of damage below
+  the mark and the work puts her exactly on it, so a light patch is cheap and a purse short of the
+  whole bill buys the part it reaches (`27 of 91`). **MAST** is flat and puts the rig back whole,
+  because a mast is stepped or it is not: no half a mast, no half price, no part payment. Since speed
+  and helm both read how much of her rig is standing, a rebuilt mast hands back full sail at once.
+  **CREW cannot be repaired at all** — hands lost are lost, so the crew bar is a clock that runs one
+  way for the length of a round. A button with nothing to do reads `At the mark` or `Sound`; one she
+  cannot yet afford shows the price muted, so there is a figure to save towards. Absent in a mode with
   nothing to buy, which leaves the stick as the only control on the screen.
 
 A ship's rudder grows heavier the more way she carries. The loss is weighted to the top of her speed
@@ -359,7 +365,9 @@ The balance knobs sit at the top of `src/SternchaseIso.jsx`: `WORLD` and `TILT` 
 camera, `VIEW`/`MAX_ZOOM` for how much sea the square view holds and `EDGE_PEEK` for how far the
 boundary is let inside it, `BASE`/`HP_GAIN` for the health
 pools, `WP` for per-weapon cooldown, projectile speed, and lifetime, `RAM_*` for ramming, and
-`REPAIR_SHARE`/`REPAIR_RATE` for what a patch puts back and what it costs a point. `BASE_SPEED` is a whole
+`HULL_MARK`/`HULL_RATE` for how whole a carpenter gets her at sea and what that costs a point, and
+`MAST_REBUILD`/`MAST_REBUILD_SHARE` for the flat price of a new mast and how it scales with a better
+one. `BASE_SPEED` is a whole
 ship's top speed and the yardstick the heavy rudder measures against; `RUDDER_HEAVY` is how much
 rudder she loses at it and `RUDDER_CURVE` how late in the range the loss starts to bite — raising the
 curve keeps more of her handling until she is truly running.

@@ -696,39 +696,69 @@ const shotHitsCircle = (cx, cy, r, x0, y0, x1, y1) => {
 /**
  * REPAIRS — the one thing a purse buys at sea, and the only reason to carry coins into a fight.
  *
- * A patch is bought by the point, not by the button: pressing HULL puts back up to `REPAIR_SHARE` of
- * that system's maximum and charges for what it actually put back. Two things follow from pricing it
- * that way, and both are the point. A ship barely scratched pays almost nothing to top herself up, so
- * there is no wrong moment to repair. And a captain who cannot afford a whole patch gets as much of
- * one as her purse covers rather than being refused, which matters most in the round where she is
- * down to her last coins and taking fire.
+ * Two buttons, and they are priced on opposite principles because they are opposite jobs.
  *
- * The rates differ because the systems are not worth the same. A mast is dearest: losing it is the
- * one hit that takes a ship out of the fight while leaving her afloat, so putting one back is the
- * most valuable thing she can buy. Hull is cheapest per point because she has the most of it.
+ * HULL is bought by the point and only up to a mark. A carpenter can plug shot holes and fish a
+ * strake at sea; he cannot re-timber a ship on open water, so `HULL_MARK` is as whole as she gets
+ * until she is in a yard. She pays `HULL_RATE` for every point of damage below that mark and the
+ * work puts her exactly on it. Two things follow and both are the point: a ship barely scratched
+ * pays almost nothing, so there is no wrong moment to repair, and a captain who cannot cover the
+ * whole bill buys as much of it as her purse reaches rather than being refused, which matters most
+ * in the round where she is down to her last coins and still taking fire.
  *
- * What makes this a real decision rather than a tax is where the money comes from. Repairs are paid
+ * MAST is flat, and it puts the rig back whole. A mast is stepped or it is not: there is no half a
+ * mast, so there is no half price and no part payment. What she pays is a new spar and the labour of
+ * getting it up, which is the same whether she lost the whole thing or sprung it. Because speed and
+ * helm both read how much of her rig is standing, a rebuilt mast hands her back full sail at once,
+ * and that is what makes it the most valuable thing a purse can buy: it is the one hit that takes a
+ * ship out of a fight while leaving her afloat.
+ *
+ * CREW cannot be bought back at all. Hands lost over the rail are lost, and no coin brings them
+ * back, so the crew bar is a clock that only runs one way for the length of a round. It is why
+ * musket fire and a spell in the weather are worth avoiding rather than paying off afterwards.
+ *
+ * What makes any of it a decision rather than a tax is where the money comes from. Repairs are paid
  * out of the voyage's own takings, so every coin spent staying afloat is a coin that does not reach
  * the hold and does not buy a ship. Fighting carefully is worth money.
  */
-const REPAIR_SHARE = 0.35; // of a system's maximum, per patch
-const REPAIR_RATE = { hull: 1.2, mast: 1.7, crew: 1.35 }; // coins a point put back
+const HULL_MARK = 0.8; // as whole as a carpenter gets her at sea
+const HULL_RATE = 1.2; // coins for every point of damage below that mark
+const MAST_REBUILD = 85; // flat, to step a new mast and make sail again
+/**
+ * ...and a better mast costs more to put back, as a share of what the mast itself is worth.
+ *
+ * Every hull at sea carries the same stock rig for now, so there is nothing to read and every captain
+ * pays the base. It becomes the real figure the day loadouts reach the fight, at this line and no
+ * other: a captain who has spent two thousand coins on a topgallant should not re-step it for the
+ * price of a pole.
+ */
+const MAST_REBUILD_SHARE = 0.25;
+const mastRebuild = (s) => Math.ceil(MAST_REBUILD + MAST_REBUILD_SHARE * (s.rigValue || 0));
+
 const REPAIRS = [
-  { key: "hull", label: "HULL", sub: "plug the shot holes", color: C.hull },
-  { key: "mast", label: "MAST", sub: "fish the spars, make sail", color: C.mast },
-  { key: "crew", label: "CREW", sub: "bind up and close ranks", color: C.crew },
+  { key: "hull", label: "HULL", sub: "planks and pitch, back up to 80%", color: C.hull, whole: "At the mark" },
+  { key: "mast", label: "MAST", sub: "a new mast, and full sail again", color: C.mast, whole: "Sound" },
 ];
 
-// What a system is short, what a full patch would put back, and what that would cost. Everything the
-// repair rail needs to draw itself, and everything `repair()` needs to charge for, from one place.
+/**
+ * What one repair would put back and what it would cost. Everything the rail needs to draw itself and
+ * everything `repair()` needs to charge for, worked out in one place so the button cannot promise
+ * something different from what the purchase does.
+ *
+ * `afford` is what her purse actually reaches. For the hull that can be part of the bill; for the
+ * mast it is the whole price or nothing, because half a mast is not a thing.
+ */
 function repairQuote(s, sys) {
-  const max = sys === "hull" ? s.maxHull : sys === "mast" ? s.maxMast : s.maxCrew;
-  const now = s[sys];
-  const points = Math.min(max - now, max * REPAIR_SHARE);
-  const cost = Math.ceil(points * REPAIR_RATE[sys]);
-  // what her purse actually reaches, so the button can price the patch she would really get
-  const afford = Math.min(cost, Math.floor(s.coins));
-  return { max, now, points, cost, afford, full: points <= 0.001 };
+  if (sys === "hull") {
+    const mark = s.maxHull * HULL_MARK;
+    const points = Math.max(0, mark - s.hull);
+    const cost = Math.ceil(points * HULL_RATE);
+    return { points, cost, afford: Math.min(cost, Math.floor(s.coins)), whole: points <= 0.001, part: true };
+  }
+  const cost = mastRebuild(s);
+  const points = s.maxMast - s.mast;
+  const whole = points <= 0.001;
+  return { points, cost, afford: Math.floor(s.coins) >= cost ? cost : 0, whole, part: false };
 }
 
 /**
@@ -847,25 +877,30 @@ const musketDmg = () => 3.2;
 const ramDmg = () => 26;
 
 /**
- * Put points back into one system and charge her purse for them.
+ * Carry out one repair and charge her purse for it.
  *
- * She is charged for what she actually gets: if her purse will not cover a full patch it buys the
- * share it covers, and a ship with no coins buys nothing. `repaired` is banked separately from
- * `coins` because the two answer different questions at the end of the round — what she has left,
- * and what she spent staying afloat, which is the figure that comes off her earnings.
+ * The hull takes as much of the bill as she can pay and rises by that share of the work. The mast is
+ * all or nothing and comes back whole, which hands her back full sail in the same instant, because
+ * `speedCap` and `turnCap` both read how much of her rig is standing.
+ *
+ * `repaired` is banked apart from `coins` because the two answer different questions at the end of a
+ * round: what she has left, and what she spent staying afloat. Only the second comes off her
+ * earnings.
  */
 function repair(s, sys) {
   const q = repairQuote(s, sys);
-  if (q.full || q.afford <= 0) return 0;
-  const share = q.afford / q.cost; // a part-paid patch puts back its share and no more
-  const points = q.points * share;
-  s[sys] = Math.min(q.max, s[sys] + points);
+  if (q.whole || q.afford <= 0) return 0;
+  if (sys === "hull") {
+    s.hull = Math.min(s.maxHull, s.hull + q.points * (q.afford / q.cost));
+  } else {
+    s.mast = s.maxMast;
+    // A rig re-stepped is a rig again. Without this a mast shot away stayed away however much canvas
+    // she bent on, and the one repair worth buying most was the one that did nothing.
+    s.mastDown = false;
+  }
   s.coins -= q.afford;
   s.repaired += q.afford;
   s.patches += 1;
-  // A rig fished and re-rigged is a rig again. Without this a mast shot away stayed away however
-  // much canvas she bent on, and the one repair worth buying most was the one that did nothing.
-  if (sys === "mast" && s.mast > 0) s.mastDown = false;
   return q.afford;
 }
 
@@ -2784,16 +2819,18 @@ export default function App() {
             </div>
           </div>
 
-          {/* The repair rail, where the upgrade rail used to be. Three buttons instead of five, and
-              each one prices the patch she would get this second: whole if she can pay for it, part
-              of one if she cannot, and none at all when the system is already sound. A button that
-              can do nothing says which of the two reasons it is rather than only going dim. */}
+          {/* The repair rail, where the upgrade rail used to be. Two buttons, and each prices the
+              work she would get this second rather than a list price. The hull can be part paid, so
+              it shows what her purse actually buys; the mast cannot, so it shows the whole price
+              whether she has it or not, because a figure she is saving towards is more use than the
+              word "no". A button with nothing to do says which of the two reasons it is. */}
           {rules.repairs && (
           <div style={{ position: "absolute", top: 110, left: 8, right: 8, display: "flex", gap: 6, paddingBottom: 2 }}>
             {REPAIRS.map((t) => {
-              const q = mend[t.key] || { full: true, afford: 0, cost: 0 };
-              const can = !q.full && q.afford > 0;
-              const part = can && q.afford < q.cost; // her purse buys some of this patch, not all
+              const q = mend[t.key] || { whole: true, afford: 0, cost: 0, part: false };
+              const can = !q.whole && q.afford > 0;
+              const part = can && q.part && q.afford < q.cost; // her purse buys some of this bill, not all
+              const price = can ? q.afford : q.cost; // what she would pay now, or what she is saving for
               return (
                 // A dimmed button keeps its own ground and dims only what is written on it. Fading
                 // the whole control put a half-transparent panel over a 50%-alpha ground, which came
@@ -2808,8 +2845,10 @@ export default function App() {
                   <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 1, opacity: can ? 1 : 0.6 }}>
                     <span style={{ fontSize: 11, fontWeight: 700, color: t.color }}>{t.label}</span>
                     <span style={{ fontSize: 8, color: "rgba(238,244,242,0.55)", textAlign: "center", lineHeight: 1.25 }}>{t.sub}</span>
-                    <span style={{ fontSize: 9, color: q.full ? "rgba(238,244,242,0.6)" : C.gold, display: "inline-flex", alignItems: "center", gap: 3 }}>
-                      {q.full ? "Sound" : can ? <><CoinIcon size={9} />{q.afford}{part ? " part" : ""}</> : "No coin"}
+                    <span style={{ fontSize: 9, color: q.whole ? "rgba(238,244,242,0.6)" : can ? C.gold : "rgba(232,200,119,0.5)", display: "inline-flex", alignItems: "center", gap: 3 }}>
+                      {/* A part payment names the whole bill beside it. "18 part" left a captain to
+                          work out what part of what; "18 of 79" is the same width and answers it. */}
+                      {q.whole ? t.whole : <><CoinIcon size={9} />{part ? `${price} of ${q.cost}` : price}</>}
                     </span>
                   </div>
                 </button>
