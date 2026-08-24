@@ -185,7 +185,9 @@ sea is still the same hull. `docs/SHIPYARD.md` is the design note; the short ver
   which is what lets rigging and guns move between ships and stops one suit of sails rigging three at
   once. Anything no ship references is loose in the hold, and loose is the inventory.
 - The yard lives in the same `localStorage` record as the coins, so a purchase moves both in one
-  write. A record from before it existed folds forward and is granted a first ship.
+  write. A record from before it existed folds forward and is granted a first ship. `shortfall()`
+  answers what a ship still needs and how much of it the captain already owns, so a spare mast off
+  another hull costs nothing to step.
 - `src/galleon.js` draws a rig rather than *the* rig. `drawGalleon(ctx, w, h, deg, spec)` builds
   whatever is stepped and bent on; called without a spec it builds the galleon it always drew.
 - **A ship's tier comes off her stat line, not her class.** `measure()` turns a rating into throw
@@ -193,6 +195,16 @@ sea is still the same hull. `docs/SHIPYARD.md` is the design note; the short ver
   A fully found cutter genuinely outclasses a bare brig, so matching on class would call that an even
   fight. The derby matches on `ram` instead, which counts endurance and mobility and ignores guns
   nobody has aboard.
+- **The hull table is one terse row per class**, expanded by `buildHull` with defaults, with masts
+  written `station/size` and `order` defaulting to position. It is built for a fleet of around 38
+  classes rather than the five it holds: inserting a class is inserting a row.
+- **`fitOut(hullId, quality)` builds a coherent ship at a standard**, moving both the grade of part in
+  each slot and how much of her is filled. `maximumLoadout` is this at 1. Stock opponents for a large
+  catalogue are generated from it rather than written out and left to drift.
+- **`npm run catalogue`** checks the fleet is riggable and drawable, then prints every class side by
+  side: stat bands, what each rates bare and fully found, the same hull at rising quality, and the
+  stock ladder. A socket no mast fits, a berth no sail fits or a station the renderer cannot draw all
+  fail quietly at runtime, so the bench fails loudly instead and exits non-zero.
 - **`STOCK` is the fleet the modes issue**, in the same id-shaped form as a stored ship. Arena climbs
   `ladder()`; free-for-all fields `stockOfTier(n)`; the derby fields `peers(strength, tol, "ram")`.
   Nothing in the table declares a tier, so changing a fit moves that ship up or down the ladder on its

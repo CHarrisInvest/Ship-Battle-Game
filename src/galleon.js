@@ -839,4 +839,11 @@ function drawGalleon(ctx,W,H,deg,spec){
   if(!it.ns){ctx.strokeStyle=it.c;ctx.stroke();}}
 }
 
-export { drawGalleon };
+/* The stations this renderer can actually put a mast at. A spec naming any other
+   one has that mast quietly left off the ship, which is the right thing to do at
+   sixty frames a second and the wrong thing to find out that way: `npm run
+   catalogue` checks the whole fleet against this list so a class with a station
+   nobody has drawn yet is caught in the catalogue rather than on the menu. */
+const RIG_STATIONS = Object.keys(STATION_GEOM);
+
+export { drawGalleon, RIG_STATIONS };

@@ -47,111 +47,90 @@ export const STATIONS = ["fore", "main", "mizzen"];
 /* ---------------------------------------------------------------------------------------------- */
 
 /**
+ * One row per class, and there are going to be a great many of them.
+ *
  * `speed` and `hand` are the hull's own contribution, before a stitch of canvas: the lines of her,
  * and how she answers her rudder. `canvas` is how much sail she wants to move properly, so the same
  * suit of sails drives a cutter hard and barely stirs a galleon. That one number is what makes a big
  * hull a commitment rather than a straight upgrade.
  *
- * `broadside` is guns *a side*, mirrored, because that is how she fires: the number in the shipyard
- * is the number that goes off in one volley. It runs 2 on the first hull to 10 on the last.
+ * `guns` is `[broadside, bow, swivel]`, and broadside counts guns *a side*, mirrored, because that is
+ * how she fires: the number in the shipyard is the number that goes off in one volley.
+ *
+ * `masts` is where she can step one, written `station/size` from the bow aft. The station is also the
+ * socket's name, so a class carries at most one mast at each, which is what a rig actually is.
+ *
+ * `order` is her place on the shop shelf and defaults to her place in this list, so adding a class
+ * between two others is inserting a row rather than renumbering everything below it. It is *not* a
+ * tier: a tier is measured from a finished ship, and a bare galleon is the last class on the shelf
+ * and a second-rung ship at the same time.
  *
  * How big she is is deliberately not a number here. Classes differ in size, but each hull is to be
  * modelled in its own right rather than scaled off one shape, so her size arrives with her art and
  * there is nothing for the catalogue to multiply.
  */
-export const HULLS = {
-  cutter: {
-    id: "cutter",
-    name: "Cutter",
-    order: 0,
-    price: 0, // the ship a captain starts with, and the only one that is not bought
+const FLEET = [
+  {
+    id: "cutter", name: "Cutter", price: 0, // the ship a captain starts with, and the only one not bought
     blurb: "One mast, a handful of guns, and nothing spare. She turns inside anything afloat.",
-    maxHull: 90,
-    maxCrew: 55,
-    speed: 1.08,
-    hand: 1.22,
-    canvas: 1.0,
-    tons: 1.0, // what she can carry before the guns start telling on her handling
-    guns: { broadside: 2, bow: 1, swivel: 1 },
-    bowsprit: false,
-    sockets: [{ id: "main", station: "main", size: "small" }],
+    hull: 90, crew: 55, speed: 1.08, hand: 1.22, canvas: 1.0, tons: 1.0,
+    guns: [2, 1, 1], masts: ["main/small"], bowsprit: false,
   },
-  sloop: {
-    id: "sloop",
-    name: "Sloop",
-    order: 1,
-    price: 900,
+  {
+    id: "sloop", name: "Sloop", price: 900,
     blurb: "Still one mast, but a tall one, and enough deck to work four guns a side.",
-    maxHull: 120,
-    maxCrew: 72,
-    speed: 1.13,
-    hand: 1.15,
-    canvas: 1.35,
-    tons: 1.5,
-    guns: { broadside: 4, bow: 1, swivel: 2 },
-    bowsprit: true,
-    sockets: [{ id: "main", station: "main", size: "medium" }],
+    hull: 120, crew: 72, speed: 1.13, hand: 1.15, canvas: 1.35, tons: 1.5,
+    guns: [4, 1, 2], masts: ["main/medium"],
   },
-  brig: {
-    id: "brig",
-    name: "Brig",
-    order: 2,
-    price: 2400,
+  {
+    id: "brig", name: "Brig", price: 2400,
     blurb: "Two masts and a real broadside. The first hull that can take a beating and answer it.",
-    maxHull: 155,
-    maxCrew: 96,
-    speed: 1.0,
-    hand: 1.0,
-    canvas: 2.1,
-    tons: 2.4,
-    guns: { broadside: 6, bow: 2, swivel: 3 },
-    bowsprit: true,
-    sockets: [
-      { id: "fore", station: "fore", size: "medium" },
-      { id: "main", station: "main", size: "large" },
-    ],
+    hull: 155, crew: 96, speed: 1.0, hand: 1.0, canvas: 2.1, tons: 2.4,
+    guns: [6, 2, 3], masts: ["fore/medium", "main/large"],
   },
-  frigate: {
-    id: "frigate",
-    name: "Frigate",
-    order: 3,
-    price: 5200,
+  {
+    id: "frigate", name: "Frigate", price: 5200,
     blurb: "Three masts, eight guns a side, and the speed to choose her fights.",
-    maxHull: 195,
-    maxCrew: 124,
-    speed: 0.97,
-    hand: 0.9,
-    canvas: 2.9,
-    tons: 3.4,
-    guns: { broadside: 8, bow: 2, swivel: 4 },
-    bowsprit: true,
-    sockets: [
-      { id: "fore", station: "fore", size: "large" },
-      { id: "main", station: "main", size: "large" },
-      { id: "mizzen", station: "mizzen", size: "medium" },
-    ],
+    hull: 195, crew: 124, speed: 0.97, hand: 0.9, canvas: 2.9, tons: 3.4,
+    guns: [8, 2, 4], masts: ["fore/large", "main/large", "mizzen/medium"],
   },
-  galleon: {
-    id: "galleon",
-    name: "Galleon",
-    order: 4,
-    price: 9600,
+  {
+    id: "galleon", name: "Galleon", price: 9600,
     blurb: "Ten guns a side and a crew to work them. Slow to start, and slow to stop.",
-    maxHull: 250,
-    maxCrew: 155,
-    speed: 0.87,
-    hand: 0.78,
-    canvas: 3.8,
-    tons: 4.6,
-    guns: { broadside: 10, bow: 3, swivel: 6 },
-    bowsprit: true,
-    sockets: [
-      { id: "fore", station: "fore", size: "large" },
-      { id: "main", station: "main", size: "large" },
-      { id: "mizzen", station: "mizzen", size: "medium" },
-    ],
+    hull: 250, crew: 155, speed: 0.87, hand: 0.78, canvas: 3.8, tons: 4.6,
+    guns: [10, 3, 6], masts: ["fore/large", "main/large", "mizzen/medium"],
   },
-};
+];
+
+// `tons` is what she can carry before the guns start telling on her handling. Every row gets these
+// unless it says otherwise, so a class only states what is true of it in particular.
+const HULL_DEFAULTS = { bowsprit: true, tons: 1, canvas: 1, speed: 1, hand: 1 };
+
+function buildHull(row, index) {
+  const r = { ...HULL_DEFAULTS, ...row };
+  const [broadside = 0, bow = 0, swivel = 0] = r.guns || [];
+  return {
+    id: r.id,
+    name: r.name,
+    blurb: r.blurb,
+    order: r.order ?? index,
+    price: r.price,
+    maxHull: r.hull,
+    maxCrew: r.crew,
+    speed: r.speed,
+    hand: r.hand,
+    canvas: r.canvas,
+    tons: r.tons,
+    bowsprit: r.bowsprit,
+    guns: { broadside, bow, swivel },
+    sockets: (r.masts || []).map((m) => {
+      const [station, size] = m.split("/");
+      return { id: station, station, size };
+    }),
+  };
+}
+
+export const HULLS = Object.fromEntries(FLEET.map((row, i) => [row.id, buildHull(row, i)]));
 
 // Shop order, which is not the same thing as a tier: `order` says where a class sits on the shelf,
 // and a tier is measured from a finished ship. A bare galleon is the fifth class and a second-tier
@@ -621,7 +600,6 @@ export function loadoutValue(loadout) {
 /* ---------------------------------------------------------------------------------------------- */
 
 const cheapest = (list) => list.slice().sort((a, b) => a.price - b.price)[0] || null;
-const dearest = (list) => list.slice().sort((a, b) => b.price - a.price)[0] || null;
 
 /**
  * The barest legal ship of a class: one mast in her main socket carrying one sail, one bow gun, and
@@ -643,24 +621,58 @@ export function minimumLoadout(hullId) {
 }
 
 /**
- * The best she can be made: the dearest mast that fits every socket, the dearest sail in every berth
- * of it, and every gun port filled with the heaviest piece. The right-hand end of the range.
+ * A coherent ship of this class, fitted out to a standard.
+ *
+ * `quality` runs 0 to 1 and moves two things at once, because how well found a ship is genuinely
+ * means both: which grade of part goes in each slot, and how much of her is filled at all. A plain
+ * ship carries a course on each mast and leaves the topgallant berth bare with half her ports empty;
+ * a full one has good cloth on every yard and a gun in every port.
+ *
+ * This exists because the stock fleet has to scale. Writing out a plain and a full fit by hand for
+ * five classes was fine; doing it for a catalogue of forty is not, and hand-written fits drift out of
+ * step with the parts table the moment a price moves. `maximumLoadout` is this at 1.
  */
-export function maximumLoadout(hullId) {
+export function fitOut(hullId, quality = 1) {
+  const q = Math.min(1, Math.max(0, quality));
+  // parts are graded by what they cost, so price order is quality order
+  const grade = (list) => {
+    if (!list.length) return null;
+    const sorted = list.slice().sort((a, b) => a.price - b.price);
+    return sorted[Math.round(q * (sorted.length - 1))];
+  };
   const lo = emptyLoadout(hullId);
+
   for (const socket of lo.hull.sockets) {
-    const mast = dearest(mastsForSocket(socket));
+    const mast = grade(mastsForSocket(socket));
     if (!mast) continue;
     lo.rig[socket.id].mast = mast;
-    lo.rig[socket.id].sails = berthsOf(mast).map((b) => dearest(sailsForBerth(b)));
+    const berths = berthsOf(mast);
+    // canvas is bent on from the deck up, so a half-found ship is missing her topsails rather than
+    // her courses. At least one sail always, or she is not a ship under way.
+    const bent = Math.max(1, Math.ceil(q * berths.length));
+    lo.rig[socket.id].sails = berths.map((b, i) => (i < bent ? grade(sailsForBerth(b)) : null));
   }
+
   for (const mount of ["broadside", "bow", "swivel"]) {
-    const best = dearest(gunsForMount(mount));
-    if (!best) continue;
-    lo.guns[mount] = Array.from({ length: lo.hull.guns[mount] }, () => best);
+    const cap = lo.hull.guns[mount];
+    if (!cap) continue;
+    const piece = grade(gunsForMount(mount));
+    if (!piece) continue;
+    // she runs out what she can serve. Broadside and bow keep a floor of one, because a ship of the
+    // class with no guns at all on a mount she has ports for is not a plain ship, it is a wreck;
+    // swivels are genuinely optional and a cheap ship carries none.
+    const floor = mount === "swivel" ? 0 : 1;
+    const n = Math.max(floor, Math.round(q * cap));
+    lo.guns[mount] = Array.from({ length: n }, () => piece);
   }
   return lo;
 }
+
+/**
+ * The best she can be made: the dearest mast that fits every socket, the dearest sail in every berth
+ * of it, and every gun port filled with the heaviest piece. The right-hand end of the range.
+ */
+export const maximumLoadout = (hullId) => fitOut(hullId, 1);
 
 /**
  * The pair of ratings a ship card shows, so a captain sees what a class is at its barest and what it

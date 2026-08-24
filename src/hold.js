@@ -28,7 +28,10 @@
  * Anything no ship references is loose in the hold, which is the inventory.
  */
 
-import { HULLS, PARTS, STARTER, mastFitsSocket, resolve, sailFitsBerth, socketOf } from "./shipyard.js";
+import {
+  HULLS, PARTS, STARTER, gunsForMount, mastFitsSocket, mastsForSocket, resolve, sailFitsBerth,
+  sailsForBerth, socketOf,
+} from "./shipyard.js";
 
 const KEY = "sternchase.hold";
 const VERSION = 2;
@@ -424,6 +427,69 @@ export function shipLoadout(rec, shipId) {
     const p = rec.yard.parts[partId];
     return p ? p.type : null;
   });
+}
+
+/**
+ * What a ship still wants, and how much of it the captain already owns.
+ *
+ * Buying a hull gets you a hull. What turns it into a ship is a mast in every socket, a sail in every
+ * berth of every mast, and guns run out to what she bears, and a captain part of the way through that
+ * needs to be told two different things: what is missing, and whether it is already lying in the hold
+ * off some other ship. A spare topmast she owns costs nothing to step, and the answer to "what does
+ * this frigate need" is a different number depending on what is in her inventory.
+ *
+ * Each gap comes back with `owned`, the loose parts that would go straight in, and `buy`, the cheapest
+ * catalogue part that would fill it. `cost` is what the gap costs *her*: nothing when she owns
+ * something that fits, the price of the cheapest part when she does not.
+ *
+ * That total is the cheapest *legal* way to make her a ship, not a good rig and not a recommendation.
+ * A pole mast is free and fits any socket, so the quote for a bare frigate's masts is nothing at all,
+ * and it would give her three bare poles carrying one small sail each. `fitOut()` in the shipyard is
+ * what a decent fit costs. A screen showing both is telling a captain the floor and the ceiling.
+ *
+ * Berths on a mast she has not stepped yet are not counted. She cannot bend a sail onto a spar that
+ * is not there, and quoting for sails on a mast she has not chosen would price a rig she may not
+ * build.
+ */
+export function shortfall(rec, shipId) {
+  const id = shipId || rec.yard.active;
+  const ship = rec.yard.ships[id];
+  if (!ship) return { gaps: [], cost: 0 };
+  const hull = HULLS[ship.hull];
+  const loose = loosePartIds(rec).map((pid) => ({ pid, type: PARTS[rec.yard.parts[pid].type] }));
+  const claimed = new Set(); // a spare fills one gap, not every gap it happens to fit
+
+  const gap = (g, fits, options) => {
+    const owned = loose.filter((p) => !claimed.has(p.pid) && fits(p.type)).map((p) => p.pid);
+    if (owned.length) claimed.add(owned[0]);
+    const buy = options.slice().sort((a, b) => a.price - b.price)[0] || null;
+    return { ...g, owned, buy, cost: owned.length ? 0 : buy ? buy.price : 0 };
+  };
+
+  const gaps = [];
+  for (const socket of hull.sockets) {
+    const slot = ship.rig[socket.id] || { mast: null, sails: [] };
+    if (!slot.mast) {
+      gaps.push(gap({ kind: "mast", socket: socket.id, station: socket.station, size: socket.size },
+        (t) => mastFitsSocket(t, socket), mastsForSocket(socket)));
+      continue;
+    }
+    const mast = partOf(rec, slot.mast);
+    mast.berths.forEach((berth, i) => {
+      if (slot.sails[i]) return;
+      gaps.push(gap({ kind: "sail", socket: socket.id, berth: i, cut: berth.cut, size: berth.size },
+        (t) => sailFitsBerth(t, berth), sailsForBerth(berth)));
+    });
+  }
+
+  for (const mount of ["broadside", "bow", "swivel"]) {
+    const short = hull.guns[mount] - ship.guns[mount].length;
+    for (let i = 0; i < short; i++) {
+      gaps.push(gap({ kind: "gun", mount }, (t) => t.kind === "gun" && t.mount === mount, gunsForMount(mount)));
+    }
+  }
+
+  return { gaps, cost: gaps.reduce((t, g) => t + g.cost, 0) };
 }
 
 /**

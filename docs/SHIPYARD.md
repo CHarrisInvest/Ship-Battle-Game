@@ -22,6 +22,7 @@ are cheap to change and are deliberately left rough.
 | `src/hold.js` | What a captain owns. The yard sits in the same record as the coins, so a purchase moves both in one write. |
 | `src/galleon.js` | Draws a rig rather than *the* rig. Given a spec it builds the ship; given nothing it builds the galleon it always drew. |
 | `src/SternchaseIso.jsx` | Passes the active ship's rig to the menu, and carries the repair rail that replaced the upgrade rail. |
+| `tools/catalogue.mjs` | `npm run catalogue`. Checks the fleet is riggable and drawable, then prints every class side by side for calibration. |
 
 ## The model
 
@@ -247,6 +248,64 @@ None of it is wired yet — the fight still issues one stock hull to everybody, 
 piece that needs `rate()` feeding the combat constants. What the modes were waiting on was a way to
 say "an even fight" that survives the player bringing her own galleon, and that now exists.
 
+## Room for forty classes
+
+The catalogue is built for a fleet of around 38 classes rather than the five it currently holds, and
+three things had to change shape for that to be true.
+
+**One terse row per class.** A hull was seventeen lines of object literal; it is now six lines of the
+figures that differ between ships, expanded by `buildHull` with defaults for everything that does not.
+Masts are written `station/size` from the bow aft rather than as nested socket objects, and `order`
+defaults to a class's position in the list, so inserting a class between two others is inserting a row
+rather than renumbering everything below it. Forty classes is about 230 lines instead of 650.
+
+**Fits are generated, not written out.** `fitOut(hullId, quality)` builds a coherent ship at a
+standard: quality moves both the grade of part in each slot and how much of her is filled, because
+how well found a ship is genuinely means both. A plain ship carries a course on each mast and leaves
+the topgallant berth bare with half her ports empty; a full one has good cloth on every yard and a gun
+in every port. `maximumLoadout` is this at 1. Two hand-written fits each for forty classes would be
+eighty entries drifting out of step with the parts table every time a price moved.
+
+**`npm run catalogue` checks the fleet and prints it.** A hull is a row of numbers and a row of
+numbers can be quietly wrong in ways nothing else notices: a socket no mast fits, a berth no sail
+fits, a station the renderer has never been taught to draw. None of those throw — they produce a ship
+that cannot be rigged, or one that turns on the menu with a mast missing. With forty classes nobody
+spots that by reading, so the bench spots it and exits non-zero. It was tested against a deliberately
+broken pair of hulls and caught all nine faults in them.
+
+Then it prints the whole fleet: the stat bands, what each class rates bare and fully found, what she
+costs to fill out, the same hull at rising quality, and the stock ladder with tier occupancy. That
+table is the calibration surface. The numbers only mean anything next to each other.
+
+### What the shipyard screen will ask
+
+`shortfall(rec, shipId)` answers "what does this ship still need, and how much of it do I already
+own". Buying a hull gets you a hull; what makes it a ship is a mast in every socket, a sail in every
+berth, and guns run out to what she bears. Each gap says which loose parts would go straight in and
+what the cheapest catalogue part would cost, so a spare topmast off another ship costs nothing to
+step. Berths on a mast not yet stepped are not counted, since quoting for sails on a mast she has not
+chosen prices a rig she may not build.
+
+The total is the cheapest *legal* fill, not a good rig: a pole mast is free and fits any socket, so a
+bare frigate quotes nothing for masts and would get three bare poles. `fitOut` is what a decent fit
+costs. A screen showing both tells a captain the floor and the ceiling.
+
+### What the 38 will need
+
+When the ship details arrive, each class needs: a name and a blurb, a price, hull and crew points,
+`speed` and `hand` (her own contribution before canvas, both near 1), `canvas` (how much sail she
+wants, which is what makes a big hull a commitment), `tons` (what she carries before the guns tell on
+her handling), gun bearing as `[broadside a side, bow, swivel]`, and her masts as `station/size`.
+
+Two things to decide alongside them:
+
+- **Stations beyond fore, main and mizzen.** Anything four-masted needs a new station name, and the
+  renderer needs geometry for it or that mast is silently left off the menu ship. The bench catches
+  it; adding the geometry is a `STATION_GEOM` entry in `galleon.js`.
+- **Mast sizes beyond small, medium and large.** `SIZES` is ordered and a mast fits its own size or
+  larger, so a wider range of classes may want a fourth rung rather than crowding everything into
+  three.
+
 ## Open questions
 
 Things a design document should settle, listed with what the code currently assumes so that agreeing
@@ -256,30 +315,35 @@ with it is as cheap as changing it.
    actually pays, and repairs now take a bite out of that too. At the current rate (25 a kill, a coin
    a point of damage, a derby win about 250) a sloop is roughly three voyages and a galleon roughly
    thirty, before the carpenter. Fully outfitting a cutter costs more than a bare sloop, which reads
-   as "move up rather than max out your first boat" and may or may not be the intent.
-2. **Where the tier bands fall.** The five thresholds are placed so the stock fleet lands two or
-   three to a rung and the class overlaps straddle them, not from anything about how a fight plays.
-   The band edges are the knob that decides who meets whom.
-3. **How big should the classes actually get?** A question for whoever models the hulls, not for the
-   catalogue. Worth settling early anyway: a galleon twice a cutter's length is a very large target in
-   a sea 2000 across, and the fight's hull geometry, the collision ellipse and the camera all have an
-   opinion about it.
-4. **Should the derby have repairs?** It has none today, because "only one hand needed" is that mode's
-   whole promise and a rail is a second thing to think about. But trading coins for crew after a spell
-   in the storm is a genuinely good decision, and the derby is the mode that pays by the second.
-5. **Muskets.** Currently crew capacity over 26, plus half a musket per swivel, floor of 1. Gives 2 to
-   9 across the fleet. The brief was unsure and this is a guess.
-6. **Diminishing returns past a third sail** are unreachable until a mast has four berths. Worth
-   confirming a four-berth mast is wanted before tuning the falloff.
-7. **A sail's size versus its berth's slot.** A sail drawn in berth 1 takes berth 1's geometry, on the
-   assumption that large sails sit low and small ones high. A mast that puts a large sail above a small
-   one would draw wrong.
-8. **Bowsprits.** Hulls carry a `bowsprit` flag and the renderer honours it, but nothing yet makes an
-   upgraded bowsprit a purchasable part with a spritsail on it.
-9. **Does the player's own ship sail in every mode, or only some?** The stock fleet settles what she
+   as "move up rather than max out your first boat" and may or may not be the intent. Forty classes
+   need a price curve rather than five hand-placed numbers.
+2. **Where the tier bands fall.** The five thresholds were placed against eleven stock ships, so the
+   fleet lands two or three to a rung and the class overlaps straddle them. Nothing about how a fight
+   actually plays went into them, and a catalogue eight times the size will fill the range
+   differently. The band edges are the knob that decides who meets whom.
+3. **Does the player's own ship sail in every mode, or only some?** The stock fleet settles what she
    is matched *against*. Whether free-for-all puts her in her own ship against a same-tier field, or
    issues her a stock one so the field really is identical, is a separate call and the modes rework
    needs it.
-10. **Tier names.** `Coastal`, `Privateer`, `Cruiser`, `Ship of the line`, `Flagship` have not been
+4. **How big should the classes actually get?** A question for whoever models the hulls, not for the
+   catalogue. Worth settling early anyway: a galleon twice a cutter's length is a very large target in
+   a sea 2000 across, and the fight's hull geometry, the collision ellipse and the camera all have an
+   opinion about it.
+5. **Stations and sizes beyond the three of each.** Any four-masted class needs a new station, and
+   `galleon.js` needs geometry for it or that mast is silently left off the menu ship. A wide fleet
+   may also want a fourth mast size rather than crowding forty classes into small, medium and large.
+6. **Should the derby have repairs?** It has none today, because "only one hand needed" is that mode's
+   whole promise and a rail is a second thing to think about. But trading coins for crew after a spell
+   in the storm is a genuinely good decision, and the derby is the mode that pays by the second.
+7. **Muskets.** Currently crew capacity over 26, plus half a musket per swivel, floor of 1. Gives 2 to
+   9 across the fleet. The brief was unsure and this is a guess.
+8. **Diminishing returns past a third sail** are unreachable until a mast has four berths. Worth
+   confirming a four-berth mast is wanted before tuning the falloff.
+9. **A sail's size versus its berth's slot.** A sail drawn in berth 1 takes berth 1's geometry, on the
+   assumption that large sails sit low and small ones high. A mast that puts a large sail above a small
+   one would draw wrong.
+10. **Bowsprits.** Hulls carry a `bowsprit` flag and the renderer honours it, but nothing yet makes an
+    upgraded bowsprit a purchasable part with a spritsail on it.
+11. **Tier names.** `Coastal`, `Privateer`, `Cruiser`, `Ship of the line`, `Flagship` have not been
     read at 1x in the game, because nothing displays them. `Ship of the line` is much the longest and
     is the one to watch in a card.
