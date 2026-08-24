@@ -63,7 +63,7 @@ export const HULLS = {
   cutter: {
     id: "cutter",
     name: "Cutter",
-    tier: 0,
+    order: 0,
     price: 0, // the ship a captain starts with, and the only one that is not bought
     blurb: "One mast, a handful of guns, and nothing spare. She turns inside anything afloat.",
     maxHull: 90,
@@ -79,7 +79,7 @@ export const HULLS = {
   sloop: {
     id: "sloop",
     name: "Sloop",
-    tier: 1,
+    order: 1,
     price: 900,
     blurb: "Still one mast, but a tall one, and enough deck to work four guns a side.",
     maxHull: 120,
@@ -95,7 +95,7 @@ export const HULLS = {
   brig: {
     id: "brig",
     name: "Brig",
-    tier: 2,
+    order: 2,
     price: 2400,
     blurb: "Two masts and a real broadside. The first hull that can take a beating and answer it.",
     maxHull: 155,
@@ -114,7 +114,7 @@ export const HULLS = {
   frigate: {
     id: "frigate",
     name: "Frigate",
-    tier: 3,
+    order: 3,
     price: 5200,
     blurb: "Three masts, eight guns a side, and the speed to choose her fights.",
     maxHull: 195,
@@ -134,7 +134,7 @@ export const HULLS = {
   galleon: {
     id: "galleon",
     name: "Galleon",
-    tier: 4,
+    order: 4,
     price: 9600,
     blurb: "Ten guns a side and a crew to work them. Slow to start, and slow to stop.",
     maxHull: 250,
@@ -153,7 +153,10 @@ export const HULLS = {
   },
 };
 
-export const HULL_LIST = Object.values(HULLS).sort((a, b) => a.tier - b.tier);
+// Shop order, which is not the same thing as a tier: `order` says where a class sits on the shelf,
+// and a tier is measured from a finished ship. A bare galleon is the fifth class and a second-tier
+// ship at the same time, and both of those are true.
+export const HULL_LIST = Object.values(HULLS).sort((a, b) => a.order - b.order);
 
 /* ---------------------------------------------------------------------------------------------- */
 /* Masts                                                                                           */
@@ -704,6 +707,287 @@ export function statBand(hullId) {
 export function outfitCost(hullId) {
   const bare = HULLS[hullId] ? HULLS[hullId].price : 0;
   return loadoutValue(maximumLoadout(hullId)) - bare;
+}
+
+/* ---------------------------------------------------------------------------------------------- */
+/* How strong a ship is                                                                            */
+/* ---------------------------------------------------------------------------------------------- */
+
+/**
+ * A ship's tier comes off her stat line, not off her class.
+ *
+ * Tempting to use the hull's `tier` for matchmaking and wrong: that number orders the *catalogue*,
+ * and a fully found cutter genuinely outclasses a bare brig. A mode that wants "the same tier" or
+ * "similar stats" has to compare finished ships, so the comparison is made from what `rate()` already
+ * says about a loadout and nothing else.
+ *
+ * Three components, kept separate because different modes care about different ones:
+ *
+ *   throwWeight  what she does to another ship in a second, guns and small arms together
+ *   endurance    what she can take before she stops
+ *   mobility     how well she gets to the fight and out of it
+ *
+ * The derby has no guns at all, so throw weight is meaningless there and `ram` is the figure it wants
+ * instead: what she can take and how hard she can bring it, which is the whole of a ramming match.
+ *
+ * Swivels count once. `rate()` folds them into `muskets`, so the separate swivel volley is a count of
+ * what is fitted rather than a second battery, and reading both would arm every big hull twice.
+ */
+const MUSKET_DPS = 2.4; // one musket in a volley, averaged over its reload
+const BOTH_SIDES = 2; // a broadside goes off both sides at once
+
+// Round numbers, near a middling ship, chosen so the components come out around 1 and can be blended.
+// They set the scale of the answer and nothing else: moving them all moves every ship together.
+const REF = { throwWeight: 40, endurance: 250, mobility: 0.85 };
+// Weights on the blend. Guns and staying power carry it about equally; being able to choose your
+// range matters, but less than either, because a fast ship that cannot hurt anything still loses.
+const MIX = { throwWeight: 0.44, endurance: 0.41, mobility: 0.15 };
+
+export function measure(r) {
+  const dps = (v) => (v.count ? v.damage / v.reload : 0);
+  const throwWeight = dps(r.broadside) * BOTH_SIDES + dps(r.bow) + r.muskets * MUSKET_DPS;
+  const endurance = r.hull + r.crew;
+  const mobility = (r.speed + r.turn) / 2;
+
+  // A geometric blend, so being hopeless at one thing is not paid for by being splendid at another:
+  // a hull with a great battery and no crew to work her should not rate alongside a whole ship. It
+  // needs every component to be above zero, and every one of them is — `muskets` has a floor of 1,
+  // and a hull with no canvas still carries steerage way.
+  const norm = (v, k) => Math.pow(v / REF[k], MIX[k]);
+  const overall = 100 * norm(throwWeight, "throwWeight") * norm(endurance, "endurance") * norm(mobility, "mobility");
+
+  // The derby's measure: no guns aboard, so what matters is what she can take and how hard she can
+  // put her bow into somebody. Weighted to endurance, because in a ramming match the ship still
+  // floating is the ship that wins.
+  const ram = 100 * Math.pow(endurance / REF.endurance, 0.7) * Math.pow(mobility / REF.mobility, 0.3);
+
+  return { throwWeight, endurance, mobility, overall, ram };
+}
+
+/**
+ * Bands over `overall`. A tier is a rung, not a class: two different hulls fitted to the same
+ * strength are the same tier and belong in the same fight.
+ *
+ * `from` is the bottom of the band. The last one has no top, so a ship fitted beyond anything in the
+ * catalogue still lands somewhere rather than falling off the end.
+ *
+ * These names have not been read at 1x in the game, because nothing displays them yet.
+ */
+export const TIERS = [
+  { tier: 1, name: "Coastal", from: 0 },
+  { tier: 2, name: "Privateer", from: 78 },
+  { tier: 3, name: "Cruiser", from: 108 },
+  { tier: 4, name: "Ship of the line", from: 142 },
+  { tier: 5, name: "Flagship", from: 180 },
+];
+
+/** The band a strength figure falls in. */
+export function tierAt(overall) {
+  let found = TIERS[0];
+  for (const t of TIERS) if (overall >= t.from) found = t;
+  return found;
+}
+
+/** The band a finished ship falls in, straight from her loadout. */
+export const tierOf = (loadout) => tierAt(measure(rate(loadout)).overall);
+
+/* ---------------------------------------------------------------------------------------------- */
+/* The stock fleet                                                                                 */
+/* ---------------------------------------------------------------------------------------------- */
+
+/**
+ * Ships the game issues rather than ships a captain buys: the opponents a mode puts on the water, and
+ * the rungs arena climbs. Written in the same id-shaped form as a stored ship, so `resolve()` turns
+ * one into a loadout exactly as it does for the player's own.
+ *
+ * Two of most classes, a plain fit and a full one, because the interesting fights are the ones where
+ * the classes overlap: a full sloop is a harder ship than a plain brig, and a mode that matches on
+ * strength rather than on class will put them against each other.
+ *
+ * Nothing here says what tier a ship is. That is measured, so a fit changed in this table moves the
+ * ship up or down the ladder on its own and cannot disagree with its own stat line.
+ */
+export const STOCK = [
+  {
+    id: "cutterBare",
+    name: "Bare cutter",
+    blurb: "One sail, one gun on the bow, and nothing else aboard.",
+    hull: "cutter",
+    rig: { main: { mast: "poleMast", sails: ["topsail"] } },
+    guns: { broadside: [], bow: ["bowChaser"], swivel: [] },
+  },
+  {
+    id: "cutterCoastal",
+    name: "Coastal cutter",
+    blurb: "Better cloth than she needs and one gun a side. Somebody's first command.",
+    hull: "cutter",
+    rig: { main: { mast: "poleMast", sails: ["topsailFine"] } },
+    guns: { broadside: ["carriageGun"], bow: ["bowChaser"], swivel: [] },
+  },
+  {
+    id: "cutterArmed",
+    name: "Armed cutter",
+    blurb: "A working boat with a gun each side. Quick, and she bites.",
+    hull: "cutter",
+    rig: { main: { mast: "bermudaMast", sails: ["lateen"] } },
+    guns: { broadside: ["carriageGun", "carriageGun"], bow: ["bowChaser"], swivel: ["swivelGun"] },
+  },
+  {
+    id: "sloopPlain",
+    name: "Plain sloop",
+    blurb: "Tall triangular canvas and two guns a side. She comes round faster than she should.",
+    hull: "sloop",
+    rig: { main: { mast: "bermudaMast", sails: ["lateen"] } },
+    guns: { broadside: ["carriageGun", "carriageGun"], bow: ["bowChaser"], swivel: ["swivelGun"] },
+  },
+  {
+    id: "sloopFull",
+    name: "Full sloop",
+    blurb: "Square rigged for pace instead, with four guns a side and a long gun forward.",
+    hull: "sloop",
+    rig: { main: { mast: "topmast", sails: ["courseFine", "topsailFine"] } },
+    guns: {
+      broadside: ["carriageGun", "carriageGun", "carriageGun", "carriageGun"],
+      bow: ["longNine"],
+      swivel: ["swivelGun", "swivelGun"],
+    },
+  },
+  {
+    id: "brigPlain",
+    name: "Plain brig",
+    blurb: "Two masts, four guns a side, and enough timber to stand in a fight.",
+    hull: "brig",
+    rig: {
+      fore: { mast: "lowerMast", sails: ["course"] },
+      main: { mast: "topmast", sails: ["course", "topsail"] },
+    },
+    guns: {
+      broadside: ["carriageGun", "carriageGun", "carriageGun", "carriageGun"],
+      bow: ["bowChaser"],
+      swivel: ["swivelGun"],
+    },
+  },
+  {
+    id: "brigFull",
+    name: "Full brig",
+    blurb: "Heavy iron on both sides and good cloth above. Slow to sink and slow to forgive.",
+    hull: "brig",
+    rig: {
+      fore: { mast: "lowerMast", sails: ["courseFine"] },
+      main: { mast: "topmast", sails: ["courseFine", "topsailFine"] },
+    },
+    guns: {
+      broadside: ["demiCannon", "demiCannon", "demiCannon", "demiCannon", "demiCannon", "demiCannon"],
+      bow: ["longNine", "longNine"],
+      swivel: ["swivelGun", "swivelGun", "swivelGun"],
+    },
+  },
+  {
+    id: "frigatePlain",
+    name: "Plain frigate",
+    blurb: "Three masts and six guns a side, sailed by people with somewhere to be.",
+    hull: "frigate",
+    rig: {
+      fore: { mast: "topmast", sails: ["course", "topsail"] },
+      main: { mast: "topmast", sails: ["course", "topsail"] },
+      mizzen: { mast: "lateenMast", sails: ["lateen", "topsail"] },
+    },
+    guns: {
+      broadside: ["carriageGun", "carriageGun", "carriageGun", "carriageGun", "carriageGun", "carriageGun"],
+      bow: ["bowChaser", "bowChaser"],
+      swivel: ["swivelGun", "swivelGun"],
+    },
+  },
+  {
+    id: "frigateFull",
+    name: "Full frigate",
+    blurb: "Every port filled, every spar crossed. She picks her fight and she keeps it.",
+    hull: "frigate",
+    rig: {
+      fore: { mast: "topgallantMast", sails: ["courseFine", "topsailFine", "topsailFine"] },
+      main: { mast: "topgallantMast", sails: ["courseFine", "topsailFine", "topsailFine"] },
+      mizzen: { mast: "lateenMast", sails: ["lateenFine", "topsailFine"] },
+    },
+    guns: {
+      broadside: Array.from({ length: 8 }, () => "demiCannon"),
+      bow: ["longNine", "longNine"],
+      swivel: Array.from({ length: 4 }, () => "swivelGun"),
+    },
+  },
+  {
+    id: "galleonPlain",
+    name: "Plain galleon",
+    blurb: "A great deal of ship and not enough guns to justify her. Hard to sink all the same.",
+    hull: "galleon",
+    rig: {
+      fore: { mast: "topmast", sails: ["course", "topsail"] },
+      main: { mast: "topmast", sails: ["course", "topsail"] },
+      mizzen: { mast: "lateenMast", sails: ["lateen", null] },
+    },
+    guns: {
+      broadside: Array.from({ length: 6 }, () => "carriageGun"),
+      bow: ["bowChaser", "bowChaser"],
+      swivel: Array.from({ length: 3 }, () => "swivelGun"),
+    },
+  },
+  {
+    id: "galleonFull",
+    name: "Full galleon",
+    blurb: "Ten heavy guns a side and a crew to work them. Nothing afloat wants her attention.",
+    hull: "galleon",
+    rig: {
+      fore: { mast: "topmast", sails: ["courseFine", "topsailFine"] },
+      main: { mast: "topgallantMast", sails: ["courseFine", "topsailFine", "topsailFine"] },
+      mizzen: { mast: "lateenMast", sails: ["lateenFine", "topsailFine"] },
+    },
+    guns: {
+      broadside: Array.from({ length: 10 }, () => "demiCannon"),
+      bow: ["longNine", "longNine", "longNine"],
+      swivel: Array.from({ length: 6 }, () => "swivelGun"),
+    },
+  },
+];
+
+const STOCK_BY_ID = Object.fromEntries(STOCK.map((s) => [s.id, s]));
+export const stockShip = (id) => STOCK_BY_ID[id] || null;
+
+/** A stock ship's resolved loadout, its rating and its measure, worked out once and kept. */
+const sized = new Map();
+export function stockStats(id) {
+  if (!sized.has(id)) {
+    const s = stockShip(id);
+    if (!s) return null;
+    const loadout = resolve(s);
+    const rating = rate(loadout);
+    const m = measure(rating);
+    sized.set(id, { ...s, loadout, rating, measure: m, tier: tierAt(m.overall).tier });
+  }
+  return sized.get(id);
+}
+
+/**
+ * The stock fleet in ascending order of strength. This is arena's ladder: open on the weakest rung
+ * and work up, so the mode escalates by putting harder ships on the water rather than more of the
+ * same one.
+ */
+let rungs = null;
+export function ladder() {
+  if (!rungs) rungs = STOCK.map((s) => stockStats(s.id)).sort((a, b) => a.measure.overall - b.measure.overall);
+  return rungs;
+}
+
+/** Every stock ship in one tier. A field of these is what free-for-all wants: equal, and not identical. */
+export const stockOfTier = (tier) => ladder().filter((s) => s.tier === tier);
+
+/**
+ * Stock ships within `tolerance` of a given strength, by whichever measure the mode fights on.
+ *
+ * `key` is `overall` for a mode with guns and `ram` for one without, which is the difference between
+ * "an even fight" in free-for-all and in the derby: a galleon and a frigate are miles apart under
+ * gunfire and much closer when the only weapon is a bow.
+ */
+export function peers(strength, tolerance = 0.12, key = "overall") {
+  return ladder().filter((s) => Math.abs(s.measure[key] - strength) <= strength * tolerance);
 }
 
 /* ---------------------------------------------------------------------------------------------- */

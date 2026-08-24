@@ -188,6 +188,15 @@ sea is still the same hull. `docs/SHIPYARD.md` is the design note; the short ver
   write. A record from before it existed folds forward and is granted a first ship.
 - `src/galleon.js` draws a rig rather than *the* rig. `drawGalleon(ctx, w, h, deg, spec)` builds
   whatever is stepped and bent on; called without a spec it builds the galleon it always drew.
+- **A ship's tier comes off her stat line, not her class.** `measure()` turns a rating into throw
+  weight, endurance and mobility, blends them into one figure, and `TIERS` bands that into five rungs.
+  A fully found cutter genuinely outclasses a bare brig, so matching on class would call that an even
+  fight. The derby matches on `ram` instead, which counts endurance and mobility and ignores guns
+  nobody has aboard.
+- **`STOCK` is the fleet the modes issue**, in the same id-shaped form as a stored ship. Arena climbs
+  `ladder()`; free-for-all fields `stockOfTier(n)`; the derby fields `peers(strength, tol, "ram")`.
+  Nothing in the table declares a tier, so changing a fit moves that ship up or down the ladder on its
+  own and cannot disagree with its own stat line. Not wired into any mode yet.
 
 `rate()` returns ratings, not speeds: dimensionless multipliers near 1 that the fight's own constants
 get multiplied by when the shipyard opens, so adopting it is a substitution rather than a rebalance.

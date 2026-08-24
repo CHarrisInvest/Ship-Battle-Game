@@ -82,6 +82,8 @@ references is loose, and loose is the inventory.
   through the same `rate()` the fight will use, rather than a second set of numbers that can drift.
 - **The menu ship is the captain's ship.** Done, and it is the part worth looking at.
 - **Upgrades are gone from the modes and the AI.** Nothing is bought at sea but repairs. See below.
+- **Ships tiered by their stat lines, and a stock fleet for the modes to issue.** `measure()`,
+  `TIERS`, `STOCK` and the lookups each mode needs. See below.
 
 ## Ratings, not speeds
 
@@ -173,13 +175,77 @@ round, not her savings.
 - No shipyard screen. The model is what a screen is built against, and building the screen first would
   have fixed the model to whatever the first layout happened to need.
 - **The fight still does not read the catalogue.** `rate()` is not wired to `speedCap`, `turnCap` or
-  `sideDmg`, so every ship at sea is the same ship. That is the modes rework, and it is its own piece
-  of work.
+  `sideDmg`, so every ship at sea is the same ship, and no mode issues from `STOCK` yet. That is the
+  modes rework, and it is its own piece of work. The tiers and the stock fleet below say what each
+  mode is *to* do; this is the wiring that lets it.
 - No per-class hulls, and so no per-class size. Each one is to be modelled rather than scaled off the
   hull the renderer has, which is why there is no size figure in the catalogue to go stale first.
 - No per-class hull art, and no sail designs or cloth patterns. Those hang off ids without touching
   any of the numbers here.
 - No selling parts back. Easy to add; wanted a decision on whether it refunds in full first.
+
+## Tiers, the stock fleet, and what each mode does with them
+
+Settled. Every mode issues **stock ships**, and matches them to the player by **measured strength**
+rather than by class.
+
+**A tier comes off the stat line, not the class.** Using the hull's shelf position would have been
+the obvious move and it is wrong: a fully found cutter genuinely outclasses a bare brig, so a mode
+matching on class would call that an even fight. `measure()` takes what `rate()` already says about a
+finished ship and returns three components kept deliberately separate, because different modes fight
+on different ones:
+
+| | |
+|---|---|
+| `throwWeight` | what she does to another ship in a second, guns and small arms together |
+| `endurance` | what she can take before she stops |
+| `mobility` | how well she gets to a fight and out of it |
+| `overall` | the three blended, for a mode with guns |
+| `ram` | endurance and mobility only, for a mode without |
+
+The blend is geometric, so being hopeless at one thing is not paid for by being splendid at another.
+`TIERS` bands `overall` into five rungs and `tierOf(loadout)` places a finished ship on one.
+
+**`STOCK` is the fleet the game issues**, written in the same id-shaped form as a stored ship so
+`resolve()` turns one into a loadout exactly as it does the player's. Nothing in that table declares a
+tier: every rung is measured, so changing a fit moves the ship up or down the ladder on its own and
+cannot disagree with its own stat line.
+
+| ship | tier | overall | ram | throw | endurance | mobility |
+|---|---|---|---|---|---|---|
+| Bare cutter | 1 Coastal | 49.5 | 70.3 | 13.0 | 145 | 0.94 |
+| Coastal cutter | 1 Coastal | 65.1 | 70.4 | 24.2 | 145 | 0.94 |
+| Armed cutter | 2 Privateer | 78.8 | 69.6 | 37.9 | 145 | 0.90 |
+| Plain sloop | 2 Privateer | 88.1 | 84.0 | 37.9 | 192 | 0.88 |
+| Full sloop | 3 Cruiser | 113.4 | 85.8 | 65.7 | 192 | 0.94 |
+| Plain brig | 3 Cruiser | 121.8 | 99.7 | 62.8 | 251 | 0.83 |
+| Full brig | 4 Ship of the line | 162.2 | 99.0 | 121.5 | 251 | 0.81 |
+| Plain frigate | 4 Ship of the line | 162.7 | 116.5 | 98.3 | 319 | 0.80 |
+| Plain galleon | 4 Ship of the line | 176.9 | 131.1 | 100.7 | 405 | 0.68 |
+| Full frigate | 5 Flagship | 199.2 | 116.8 | 155.4 | 319 | 0.81 |
+| Full galleon | 5 Flagship | 239.8 | 131.4 | 200.4 | 405 | 0.69 |
+
+The overlaps are the point and they came out of the numbers rather than being placed. A full sloop
+outranks a bare brig. A full brig and a plain frigate are within a point of each other across two
+classes. And the two measures genuinely disagree: under gunfire a plain galleon towers over a plain
+brig, 177 to 122, while as ramming stock they are far closer at 131 to 100 — an armed cutter even
+rates *below* a bare one for ramming, because her guns are dead weight in a match where nobody fires.
+
+### What each mode is to do with it
+
+- **Arena** climbs the ladder. Open on the weakest rung and work up through the stock fleet, so the
+  mode escalates by putting harder ships on the water rather than more of the same one. `ladder()` is
+  that list, in ascending strength.
+- **Demolition derby** fields ships of similar stats, matched on `ram` rather than on tier, because
+  tier is banded on `overall` and `overall` counts guns nobody has. `peers(strength, tol, "ram")`.
+- **Free-for-all** fields stock ships of one tier: `stockOfTier(n)`. Equal without being identical,
+  which is what having more than one ship per rung is for.
+- **A ranked free-for-all**, later: win a rung to move up against the next. The ladder and the bands
+  are the same ones, so this needs no new model, only a record of the highest rung a captain has won.
+
+None of it is wired yet — the fight still issues one stock hull to everybody, because that is the
+piece that needs `rate()` feeding the combat constants. What the modes were waiting on was a way to
+say "an even fight" that survives the player bringing her own galleon, and that now exists.
 
 ## Open questions
 
@@ -191,10 +257,9 @@ with it is as cheap as changing it.
    a point of damage, a derby win about 250) a sloop is roughly three voyages and a galleon roughly
    thirty, before the carpenter. Fully outfitting a cutter costs more than a bare sloop, which reads
    as "move up rather than max out your first boat" and may or may not be the intent.
-2. **Do the modes carry the owned ship, or keep issuing a stock one?** Free-for-all starts every
-   captain dead equal, which is the whole of that mode; arena matches the first hunter to the player's
-   ship. Both mean something different once she brings her own galleon. This is the question the whole
-   modes rework turns on.
+2. **Where the tier bands fall.** The five thresholds are placed so the stock fleet lands two or
+   three to a rung and the class overlaps straddle them, not from anything about how a fight plays.
+   The band edges are the knob that decides who meets whom.
 3. **How big should the classes actually get?** A question for whoever models the hulls, not for the
    catalogue. Worth settling early anyway: a galleon twice a cutter's length is a very large target in
    a sea 2000 across, and the fight's hull geometry, the collision ellipse and the camera all have an
@@ -211,3 +276,10 @@ with it is as cheap as changing it.
    one would draw wrong.
 8. **Bowsprits.** Hulls carry a `bowsprit` flag and the renderer honours it, but nothing yet makes an
    upgraded bowsprit a purchasable part with a spritsail on it.
+9. **Does the player's own ship sail in every mode, or only some?** The stock fleet settles what she
+   is matched *against*. Whether free-for-all puts her in her own ship against a same-tier field, or
+   issues her a stock one so the field really is identical, is a separate call and the modes rework
+   needs it.
+10. **Tier names.** `Coastal`, `Privateer`, `Cruiser`, `Ship of the line`, `Flagship` have not been
+    read at 1x in the game, because nothing displays them. `Ship of the line` is much the longest and
+    is the one to watch in a card.

@@ -13,6 +13,10 @@ are built from. `broadside` in the code is the side guns, not the old title, and
 - `src/shipyard.js` is the catalogue and the maths for buying ships and parts. Hulls, masts, sails
   and guns as data, what fits what, and `rate()` turning a set of them into the figures a fight
   reads. It holds no state, touches no storage and imports nothing, and it should stay that way.
+- **A ship's tier is measured, never declared.** `measure()` derives it from the stat line `rate()`
+  gives, so a fully found cutter outranks a bare brig and the two cannot disagree. A hull's `order` is
+  its place on the shop shelf and is a different thing: do not match opponents on it. Nothing in
+  `STOCK` carries a tier of its own for the same reason.
 - `src/hold.js` persists coins, lifetime stats and the yard to localStorage. Nothing else is saved;
   worlds and islands are generated fresh every match.
 - **Nothing is bought at sea but repairs.** A ship is what she was when she sailed; what she is comes
