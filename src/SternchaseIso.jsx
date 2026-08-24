@@ -3319,9 +3319,11 @@ const Coins = ({ n }) => (
  * the only picture of the captain's own ship anywhere in the game, which makes her the obvious way in
  * to the yard, and a turning ship that does nothing when tapped is a worse answer than a still one.
  *
- * So she gets a frame and a line saying what tapping does. The line sits above her rather than below
- * because that is where the eye lands coming down from the title, and it names the ship on the same
- * row, so the plate answers "what am I sailing" and "what can I do about it" in one look.
+ * So she gets a frame, her class named in the corner and a line under her saying what tapping does.
+ * The name is set in the display face rather than as a small bold label, because it is the name of a
+ * ship and the game already sets its proper nouns that way: it reads as a plate on her transom
+ * instead of a caption. The instruction goes underneath and centred, where it reads as a footer to
+ * the whole picture rather than as a second thing competing with the name for the top line.
  *
  * The whole plate is one button. A frame you have to hit the middle of is a frame that feels broken
  * on a phone, and the ship inside it is a canvas with transparent corners.
@@ -3334,16 +3336,20 @@ function ShipPlate({ loadout, rig, onEdit }) {
       onPointerEnter={() => setLit(true)}
       onPointerLeave={() => setLit(false)}
       style={{
-        display: "block", width: "100%", margin: "10px 0 0", padding: "7px 8px 2px",
+        display: "block", width: "100%", margin: "10px 0 0", padding: "8px 10px 9px",
         borderRadius: 10, border: `1px solid ${lit ? C.gold : C.hair}`, background: C.panel,
         color: C.ink, cursor: "pointer", WebkitTapHighlightColor: "transparent",
       }}
     >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10, padding: "0 4px" }}>
-        <span style={{ fontSize: 11, color: C.ink, fontWeight: 700 }}>{loadout.hull.name}</span>
-        <span style={{ fontSize: 10, color: lit ? C.gold : "rgba(232,200,119,0.7)" }}>Tap to edit</span>
+      <div style={{ textAlign: "left", lineHeight: 1.1 }}>
+        <span style={{ fontFamily: DISPLAY, fontSize: 17, color: C.gold, letterSpacing: 0.4 }}>{loadout.hull.name}</span>
       </div>
       <MenuGalleon rig={rig} />
+      {/* MenuGalleon carries a -6px bottom margin to tuck itself up under whatever follows, so this
+          pays that back before spacing itself off her keel. */}
+      <div style={{ textAlign: "center", paddingTop: 14, fontSize: 10, letterSpacing: 0.5, color: lit ? C.gold : "rgba(232,200,119,0.72)" }}>
+        Tap to edit
+      </div>
     </button>
   );
 }
