@@ -3191,13 +3191,48 @@ function HoldPanel({ hold, onRecords }) {
   );
 }
 
-// Points the way into a screen. Drawn rather than a `›`, which sets in whatever the UI font has and
-// sits at a different weight and height on every platform.
-function ChevronIcon({ size = 11 }) {
+// Points the way into a screen, or back out of one. Drawn rather than a `›`, which sets in whatever
+// the UI font has and sits at a different weight and height on every platform.
+function ChevronIcon({ size = 11, back }) {
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden="true" style={{ flexShrink: 0 }}>
-      <path d="M6 3l5 5-5 5" stroke="rgba(238,244,242,0.55)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <path
+        d={back ? "M10 3l-5 5 5 5" : "M6 3l5 5-5 5"}
+        stroke="rgba(238,244,242,0.55)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+      />
     </svg>
+  );
+}
+
+/**
+ * The way out, at the top of a screen.
+ *
+ * These screens are read from the top and some of them are long: a captain who has opened the stats
+ * to glance at one figure should not have to scroll past three cards of tallies to leave. The button
+ * at the foot stays where it is, for the captain who *has* read to the bottom and is done there.
+ *
+ * The label is the same in both places. Two controls doing one thing under two names would read as
+ * two different exits.
+ */
+function BackLink({ label, onClick }) {
+  return (
+    <div style={{ textAlign: "left" }}>
+      <button
+        onClick={onClick}
+        style={{
+          display: "inline-flex", alignItems: "center", gap: 6,
+          // Pulled out by its own padding so the glyph lines up with the card edges below it while the
+          // tappable area stays a comfortable size on a phone.
+          margin: "0 0 4px -10px", padding: "8px 10px",
+          background: "transparent", border: "none",
+          fontFamily: UI, fontSize: 11, color: "rgba(238,244,242,0.78)",
+          cursor: "pointer", WebkitTapHighlightColor: "transparent",
+        }}
+      >
+        <ChevronIcon size={11} back />
+        <span>{label}</span>
+      </button>
+    </div>
   );
 }
 
@@ -3224,6 +3259,7 @@ function RecordsScreen({ hold, onBack, onAchievements }) {
 
   return (
     <Shell>
+      <BackLink label="Back to the menu" onClick={onBack} />
       <div style={{ fontFamily: DISPLAY, fontSize: "clamp(21px, 7vw, 26px)", color: C.gold, letterSpacing: 0.5 }}>
         Achievements and Stats
       </div>
@@ -3340,6 +3376,7 @@ function AchievementsScreen({ hold, onBack }) {
   const won = tally(hold);
   return (
     <Shell>
+      <BackLink label="Back to the stats" onClick={onBack} />
       <div style={{ fontFamily: DISPLAY, fontSize: "clamp(24px, 8vw, 30px)", color: C.gold, letterSpacing: 0.5 }}>
         Achievements
       </div>
@@ -3373,7 +3410,7 @@ function AchievementsScreen({ hold, onBack }) {
         More come as the game grows. Each is worked out from what the hold already keeps, so anything
         you have done counts from the day it is added.
       </div>
-      <StartButton onClick={onBack} label="Back to the tallies" />
+      <StartButton onClick={onBack} label="Back to the stats" />
     </Shell>
   );
 }
