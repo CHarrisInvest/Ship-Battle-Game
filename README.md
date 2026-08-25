@@ -164,6 +164,16 @@ toward the lifetime figure instead of quietly leaving the sum. Repair spend is r
 derived, because unlike shore spending it never passes through `coins` and so cannot be reconstructed
 from the ledger.
 
+It is read through a small API rather than touched directly — `getHold`, `bankVoyage`, `spendFromHold`,
+`resetHold`, `subscribeHold` — and a record written by an older build is folded field by field onto a
+blank one, so an added stat never costs anyone their coins and a corrupt field costs only itself. If
+`localStorage` refuses (private browsing, a full quota) the hold falls back to memory for the session
+instead of failing.
+
+`spendFromHold` is the door spending comes through: it refuses rather than overdraws, and keeps
+`spent` alongside `coins` so the two always reconstruct what was earned. `HOLD_SHARE` scales what a
+voyage deposits if the meta economy ever wants slowing down without touching the fight.
+
 All of it is read on the menu: the hold panel carries the purse and the one line saying what it is,
 and an **Achievements and Stats** row into a screen that shows the lifetime overview and then a
 breakdown per mode. What each mode shows follows what that mode is — a best finish where there are
@@ -184,17 +194,8 @@ are kept, so "sink fifty ships" is a row and "sink three in one voyage without t
 is not, because nothing counts that. Wanting one of those means first adding what it counts to the
 record, the way the per-mode tallies were added, and then it too is a row.
 
-The screen is reached from a button above the tallies, and the earned count also shows as a row in the
-overview, so a captain who only wanted the number does not have to open it.
-It is read through a small API rather than touched directly — `getHold`, `bankVoyage`, `spendFromHold`,
-`resetHold`, `subscribeHold` — and a record written by an older build is folded field by field onto a
-blank one, so an added stat never costs anyone their coins and a corrupt field costs only itself. If
-`localStorage` refuses (private browsing, a full quota) the hold falls back to memory for the session
-instead of failing.
-
-`spendFromHold` is the door spending comes through: it refuses rather than overdraws, and keeps
-`spent` alongside `coins` so the two always reconstruct what was earned. `HOLD_SHARE` scales what a
-voyage deposits if the meta economy ever wants slowing down without touching the fight.
+The screen is reached from a button above the tallies, which carries the earned count on its face so a
+captain who only wanted the number does not have to open it.
 
 ## The shipyard
 

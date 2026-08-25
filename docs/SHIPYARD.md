@@ -119,6 +119,12 @@ references is loose, and loose is the inventory.
   one on each sail, compared as a single key. The head of a tall mast takes a small square sail
   because that is what the berth up there asks for.
 - **Sails affect speed and agility differently.** `drive` and `hand`.
+- **Muskets come off the crew, and swivels correlate with them.** `rate()` returns one `muskets`
+  figure: crew capacity over 26, plus one per swivel on the rail, floor of 1. Small arms are one thing
+  aboard this ship rather than two, and that is settled — a swivel is never going to be a battery of
+  its own, which is why `measure()` reads `muskets` and ignores the swivel volley sitting next to it.
+  A better swivel is meant to make the volley *hit harder* rather than add to the count; nothing does
+  that yet, and `SWIVEL_MUSKETS` in `shipyard.js` says where it goes when something does.
 - **Hull type drives speed, and hull and crew maximums.** `speed`, `hand`, `canvas`, `maxHull`,
   `maxCrew`. `canvas` is the one worth pointing at: it is how much sail a hull *wants*, so the same
   suit drives a cutter hard and barely stirs a galleon. It is what makes a bigger hull a commitment
@@ -459,13 +465,10 @@ with it is as cheap as changing it.
 6. **Should the derby have repairs?** It has none today, because "only one hand needed" is that mode's
    whole promise and a rail is a second thing to think about. But trading coins for crew after a spell
    in the storm is a genuinely good decision, and the derby is the mode that pays by the second.
-7. **Muskets.** Currently crew capacity over 26, plus one musket per swivel, floor of 1. Gives 2 to 12
-   across the fleet. The crew divisor is still a guess; the swivel rate is not. It was half a musket,
-   which reads sensibly (a swivel is worth rather more than a musket, but one hand serves it and that
-   hand is off the rail) and behaved badly, because the count is rounded to whole shots: the first
-   swivel a captain bought could move nothing she could see and the second move it by one. A part that
-   does nothing until you own two of it is a part nobody buys. If a swivel later wants to be worth
-   more than one musket, the honest way is its own volley in `measure()` rather than a fraction here.
+7. **The crew divisor.** Muskets are crew capacity over 26, and the 26 is a guess. It gives a 55 hand
+   cutter two shots and a 155 hand galleon six before a single swivel is aboard, which feels about
+   right and has never been played against a tuned fight. What a swivel adds is *not* an open
+   question: see below.
 8. **Diminishing returns past a third sail** are unreachable until a mast has four berths. Worth
    confirming a four-berth mast is wanted before tuning the falloff.
 9. **Four and five berth masts need the sail bands generated.** Each station carries three authored

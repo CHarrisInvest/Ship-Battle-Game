@@ -534,11 +534,27 @@ const UNDER_SAIL = 0.92; // added to BARE as drive runs away, so a well-rigged h
 const HAND_PER_POINT = 0.16; // how much a point of sail handling moves her turn rate
 const LOAD_BITE = 0.22; // handling lost when she is loaded to her tonnage in guns
 const CREW_PER_MUSKET = 26; // hands to work one musket in a volley
-// A swivel is one more shot in the volley. It was half of one, which is a rate that reads sensibly on
-// paper (a swivel is worth rather more than a musket, but one hand serves it and that hand is off the
-// rail) and behaves badly in the shipyard: the count is rounded to whole shots, so the first swivel a
-// captain bought moved nothing she could see and the second moved it by one. A part that does nothing
-// until you own two of it is a part nobody buys. One for one is the rate she can watch working.
+
+/**
+ * A SWIVEL IS ONE MORE SHOT IN THE VOLLEY, and that is settled rather than provisional.
+ *
+ * Small arms are one thing aboard this ship: the hands at the rail and the swivels on it fire
+ * together, and `muskets` is the whole of it. A swivel is not a battery of its own and is not going to
+ * become one, which is why `measure()` reads `muskets` and ignores the swivel volley `rate()` returns
+ * beside it — reading both would arm every big hull twice.
+ *
+ * One for one, not the half it started at. Half reads sensibly on paper (a swivel is worth rather more
+ * than a musket, but one hand serves it and that hand is off the rail) and behaves badly in a
+ * shipyard, because the count is rounded to whole shots: the first swivel a captain bought could move
+ * nothing she could see and the second move it by one. A part that does nothing until you own two of
+ * it is a part nobody buys.
+ *
+ * A better swivel is meant to make the volley HIT HARDER rather than add to the count, and nothing
+ * does that yet. When it does, the change goes here and not in the fight: `rate()` starts returning
+ * what a musket does alongside how many there are, `measure()` multiplies by that instead of the
+ * `MUSKET_DPS` constant, and `musketDmg()` in the fight reads it off the loadout. The catalogue's
+ * `damage` and `reload` on a swivel are the numbers waiting for that, and are unread until then.
+ */
 const SWIVEL_MUSKETS = 1;
 
 const sum = (xs, f) => xs.reduce((a, x) => a + f(x), 0);
@@ -792,8 +808,9 @@ export function outfitCost(hullId) {
  * The derby has no guns at all, so throw weight is meaningless there and `ram` is the figure it wants
  * instead: what she can take and how hard she can bring it, which is the whole of a ramming match.
  *
- * Swivels count once. `rate()` folds them into `muskets`, so the separate swivel volley is a count of
- * what is fitted rather than a second battery, and reading both would arm every big hull twice.
+ * Swivels count once, through `muskets`. They are part of the small-arms volley by design and never a
+ * battery of their own, so the swivel volley `rate()` returns is a count of what is fitted and nothing
+ * reads its damage: adding it here would arm every big hull twice. See `SWIVEL_MUSKETS`.
  */
 const MUSKET_DPS = 2.4; // one musket in a volley, averaged over its reload
 const BOTH_SIDES = 2; // a broadside goes off both sides at once
