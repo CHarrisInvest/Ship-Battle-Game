@@ -19,6 +19,10 @@ are built from. `broadside` in the code is the side guns, not the old title, and
   `STOCK` carries a tier of its own for the same reason.
 - `src/hold.js` persists coins, lifetime stats and the yard to localStorage. Nothing else is saved;
   worlds and islands are generated fresh every match.
+- `src/achievements.js` is the achievement list, and **an achievement is a question asked of the hold,
+  never a stored flag**: a `count(hold)` and a `goal`. So one added tomorrow credits what a captain
+  did last week, and it can only ask what the hold actually keeps. Wanting one the record cannot
+  answer means adding what it counts to `hold.js` first, then the achievement is a row.
 - **Nothing is bought at sea but repairs.** A ship is what she was when she sailed; what she is comes
   from the shipyard between voyages. Repairs are paid out of the voyage's own takings, so a coin spent
   on the carpenter is a coin that never reaches the hold. If you find yourself adding a stat that

@@ -165,11 +165,27 @@ derived, because unlike shore spending it never passes through `coins` and so ca
 from the ledger.
 
 All of it is read on the menu: the hold panel carries the purse and the one line saying what it is,
-and an **Achievements and stats** row into a screen that shows the lifetime overview and then a
+and an **Achievements and Stats** row into a screen that shows the lifetime overview and then a
 breakdown per mode. What each mode shows follows what that mode is — a best finish where there are
 placements, ships sunk in a voyage for the arena, rams landed instead of repairs bought where there
-are no guns aboard, and no carpenter's line at all in the derby, which repairs nothing. Achievements
-are named there and are not built yet.
+are no guns aboard, and no carpenter's line at all in the derby, which repairs nothing.
+
+## Achievements
+
+`src/achievements.js` is the list, and every entry is a **question asked of the hold** rather than a
+flag written when it happens: a `count(hold)` and a `goal`, done when the first reaches the second.
+Nothing about an achievement is stored. A captain who sank her first ship long before the file existed
+holds *First Sunk Ship* the moment she opens the screen, the tallies beside it can never drift out of
+step because they are the same numbers, and adding one is a row rather than a row plus a write in
+`bankVoyage` plus a migration for everyone who already played.
+
+The cost is worth stating: an achievement can only ask what the hold actually keeps. Totals and bests
+are kept, so "sink fifty ships" is a row and "sink three in one voyage without touching the carpenter"
+is not, because nothing counts that. Wanting one of those means first adding what it counts to the
+record, the way the per-mode tallies were added, and then it too is a row.
+
+The screen is reached from a button above the tallies, and the earned count also shows as a row in the
+overview, so a captain who only wanted the number does not have to open it.
 It is read through a small API rather than touched directly — `getHold`, `bankVoyage`, `spendFromHold`,
 `resetHold`, `subscribeHold` — and a record written by an older build is folded field by field onto a
 blank one, so an added stat never costs anyone their coins and a corrupt field costs only itself. If
@@ -369,6 +385,7 @@ src/index.css         # full-bleed, no-scroll page shell
 src/SternchaseIso.jsx  # game: simulation, canvas renderer, and UI
 src/galleon.js        # the ship turning on the menu
 src/hold.js           # coins, records and the yard, all outliving a round
+src/achievements.js   # what a captain has done, worked out from the hold
 src/shipyard.js       # what a captain can buy, and what it makes of her ship
 docs/SHIPYARD.md      # design note for the shipyard groundwork
 vite.config.js

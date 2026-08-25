@@ -2,6 +2,7 @@ import React, { useRef, useState, useEffect, useCallback, useMemo } from "react"
 import { drawGalleon } from "./galleon.js";
 import { getHold, bankVoyage, resetHold, subscribeHold, modeRecord, shipLoadout, shortfall } from "./hold.js";
 import { STARTER, kindOf, mastRebuildCost, measure, rate, resolve, rigSpec, tierAt } from "./shipyard.js";
+import { roll, tally } from "./achievements.js";
 
 /**
  * STERNCHASE: HELM & HULL — pirate battles at sea, on a tilted (isometric-ish) sea with tall wooden
@@ -2897,7 +2898,8 @@ export default function App() {
 
       {phase === "start" && <StartOverlay onStart={(m) => startRef.current(m)} onEdit={() => setPhase("yard")} onRecords={() => setPhase("records")} hold={hold} onScuttle={() => resetHold()} />}
       {phase === "yard" && <YardScreen hold={hold} onBack={() => setPhase("start")} />}
-      {phase === "records" && <RecordsScreen hold={hold} onBack={() => setPhase("start")} />}
+      {phase === "records" && <RecordsScreen hold={hold} onBack={() => setPhase("start")} onAchievements={() => setPhase("achievements")} />}
+      {phase === "achievements" && <AchievementsScreen hold={hold} onBack={() => setPhase("records")} />}
       {phase === "won" && <EndOverlay title="LAST AFLOAT" titleColor={C.gold} result={result} stats={stats} mode={mode} place={place} hold={hold} banked={banked} onAgain={() => startRef.current(mode)} onMenu={() => setPhase("start")} />}
       {phase === "dead" && (
         <EndOverlay title="SUNK" titleColor={C.crew} result={result} stats={stats} mode={mode} place={place} hold={hold} banked={banked} onAgain={() => startRef.current(mode)} onMenu={() => setPhase("start")} />
@@ -3161,7 +3163,7 @@ function HoldPanel({ hold, onRecords }) {
   return (
     <div style={{ background: "rgba(11,51,49,0.6)", border: `1px solid ${C.hair}`, borderRadius: 10, padding: "9px 12px 0", margin: "14px 0 18px", textAlign: "left" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10 }}>
-        <span style={{ fontSize: 10, letterSpacing: 1, color: "rgba(238,244,242,0.55)" }}>The hold</span>
+        <span style={{ fontSize: 10, letterSpacing: 1, color: "rgba(238,244,242,0.55)" }}>The Hold</span>
         <span style={{ fontSize: 17, fontWeight: 800, color: C.gold, display: "inline-flex", alignItems: "center", gap: 4 }} aria-label={`${fmtCoins(hold.coins)} coins in the hold`}><CoinIcon size={17} />{fmtCoins(hold.coins)}</span>
       </div>
       <div style={{ fontSize: 10, color: "rgba(238,244,242,0.5)", lineHeight: 1.6, marginTop: 4 }}>
@@ -3180,7 +3182,7 @@ function HoldPanel({ hold, onRecords }) {
           cursor: "pointer", WebkitTapHighlightColor: "transparent",
         }}
       >
-        <span>Achievements and stats</span>
+        <span>Achievements and Stats</span>
         <ChevronIcon />
       </button>
     </div>
@@ -3210,20 +3212,18 @@ function ChevronIcon({ size = 11 }) {
  * repaired in the derby, so no carpenter's line appears there; there are no guns in it either, so it
  * counts rams where the other two count repairs, the same split the end-of-voyage tally makes.
  *
- * Achievements are named on the way in and are not built. Rather than a heading over an empty box,
- * the screen says so at the foot, in the place the yard says the same thing about buying.
+ * Achievements have a screen of their own, reached from the button above the tallies. What sits here
+ * is the count, in the overview alongside everything else that is counted.
  */
-function RecordsScreen({ hold, onBack }) {
+function RecordsScreen({ hold, onBack, onAchievements }) {
   const lt = hold.lifetime;
   const sailed = lt.runs > 0;
+  const won = tally(hold);
 
   return (
     <Shell>
-      {/* Sentence case in the display face. Caps are for the game's proper nouns, and THE YARD is one:
-          a place aboard a ship. This is a description of what is on the screen, not the name of a
-          place, so it takes the same treatment as any other thing the player is told. */}
       <div style={{ fontFamily: DISPLAY, fontSize: "clamp(21px, 7vw, 26px)", color: C.gold, letterSpacing: 0.5 }}>
-        Achievements and stats
+        Achievements and Stats
       </div>
       <div style={{ fontSize: 12, color: "rgba(238,244,242,0.7)", margin: "6px 0 2px" }}>
         {sailed
@@ -3231,12 +3231,17 @@ function RecordsScreen({ hold, onBack }) {
           : "Nothing to show until you have been to sea."}
       </div>
 
-      <Slab title="Overview">
+      {/* Above the tallies, because it is the way to somewhere rather than a figure to read, and a
+          control buried among nine rows of numbers is a control nobody finds. */}
+      <BigRow label="Achievements" value={`${won.done} of ${won.total}`} onClick={onAchievements} />
+
+      <Slab centred title="OVERVIEW">
         {sailed ? (
           <Rows
             rows={[
               // Zero rows stay. A totals table whose rows appear and vanish as a captain plays is
               // harder to read than one that always has the same shape, and a nought is an answer.
+              ["Achievements", `${won.done} of ${won.total}`],
               ["Voyages", fmtNum(lt.runs)],
               ["Voyages won", fmtNum(lt.wins)],
               ["Ships sunk", fmtNum(lt.sunk)],
@@ -3258,7 +3263,7 @@ function RecordsScreen({ hold, onBack }) {
           const m = MODES[key];
           const r = modeRecord(hold, key);
           return (
-            <Slab key={key} title={m.title}>
+            <Slab centred key={key} title={m.title}>
               {r.runs > 0 ? (
                 <Rows
                   rows={[
@@ -3287,12 +3292,112 @@ function RecordsScreen({ hold, onBack }) {
           );
         })}
 
-      <div style={{ fontSize: 11, color: "rgba(238,244,242,0.5)", lineHeight: 1.6, margin: "2px 0 16px" }}>
-        Achievements come to this screen next, above the tallies. What is here already is every figure
-        the hold keeps.
-      </div>
+      <div style={{ height: 6 }} />
       <StartButton onClick={onBack} label="Back to the menu" />
     </Shell>
+  );
+}
+
+/**
+ * A card that is a way into somewhere, sized and ruled like the slabs it sits among so a screen made
+ * of cards keeps one rhythm. It carries its own figure on the right, because a captain who only
+ * wanted the number should not have to open the screen to get it.
+ */
+function BigRow({ label, value, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10,
+        width: "100%", margin: "12px 0", padding: "12px", textAlign: "left",
+        background: "rgba(11,51,49,0.6)", border: `1px solid ${C.hair}`, borderRadius: 10,
+        fontFamily: UI, color: C.ink, cursor: "pointer", WebkitTapHighlightColor: "transparent",
+      }}
+    >
+      <span style={{ fontSize: 13, fontWeight: 700 }}>{label}</span>
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>
+        <span style={{ fontSize: 13, fontWeight: 700, color: C.gold }}>{value}</span>
+        <ChevronIcon size={12} />
+      </span>
+    </button>
+  );
+}
+
+/**
+ * THE ACHIEVEMENTS — one card each, earned first.
+ *
+ * Nothing here is stored. `achievements.js` asks the hold a question per achievement and the answer
+ * is the progress, which is why a captain who sank her first ship before any of this existed opens
+ * the screen already holding it.
+ */
+function AchievementsScreen({ hold, onBack }) {
+  const list = roll(hold);
+  const won = tally(hold);
+  return (
+    <Shell>
+      <div style={{ fontFamily: DISPLAY, fontSize: "clamp(24px, 8vw, 30px)", color: C.gold, letterSpacing: 0.5 }}>
+        Achievements
+      </div>
+      <div style={{ fontSize: 12, color: "rgba(238,244,242,0.7)", margin: "6px 0 2px" }}>
+        {won.done} of {won.total} earned.
+      </div>
+
+      {list.map((a) => (
+        <div
+          key={a.id}
+          style={{
+            display: "flex", alignItems: "center", gap: 11, textAlign: "left",
+            background: "rgba(11,51,49,0.6)", borderRadius: 10, padding: "11px 12px", margin: "12px 0",
+            border: `1px solid ${a.done ? C.grass : C.hair}`,
+          }}
+        >
+          <SealIcon done={a.done} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: a.done ? C.ink : "rgba(238,244,242,0.7)" }}>{a.name}</div>
+            <div style={{ fontSize: 11, color: "rgba(238,244,242,0.55)", lineHeight: 1.5, marginTop: 2 }}>{a.blurb}</div>
+          </div>
+          {/* The figure only earns its place while it is still moving. Once it is done the seal says
+              so, and "1 of 1" beside a struck seal is the same news twice. */}
+          {!a.done && a.goal > 1 && (
+            <span style={{ fontSize: 12, fontWeight: 700, color: C.gold, flexShrink: 0 }}>{a.count} of {a.goal}</span>
+          )}
+        </div>
+      ))}
+
+      <div style={{ fontSize: 11, color: "rgba(238,244,242,0.5)", lineHeight: 1.6, margin: "2px 0 16px" }}>
+        More come as the game grows. Each is worked out from what the hold already keeps, so anything
+        you have done counts from the day it is added.
+      </div>
+      <StartButton onClick={onBack} label="Back to the tallies" />
+    </Shell>
+  );
+}
+
+/**
+ * The mark on an achievement: a struck seal when it is earned, the empty ring it is struck into when
+ * it is not.
+ *
+ * Drawn as masses rather than strokes, so it holds at the 20px it runs at here: the earned seal is a
+ * filled disc with a notched ribbon under it and a tick knocked out of the body, and the unearned one
+ * is the same outline with nothing in it. Neither needs the detail read to say which it is, because
+ * the difference is a filled shape against an empty one.
+ */
+function SealIcon({ done, size = 20 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden="true" style={{ flexShrink: 0 }}>
+      {done ? (
+        <>
+          <path d="M4.6 9.8 L3.2 14.6 L8 12.6 L12.8 14.6 L11.4 9.8Z" fill={C.grass} opacity="0.75" />
+          <circle cx="8" cy="6.6" r="5.2" fill={C.grass} />
+          <path d="M5.7 6.7 L7.3 8.3 L10.3 4.9" stroke="#0b3331" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+        </>
+      ) : (
+        <>
+          <path d="M4.6 9.8 L3.2 14.6 L8 12.6 L12.8 14.6 L11.4 9.8" stroke="rgba(238,244,242,0.3)" strokeWidth="1.2" strokeLinejoin="round" fill="none" />
+          <circle cx="8" cy="6.6" r="4.6" stroke="rgba(238,244,242,0.3)" strokeWidth="1.4" fill="none" />
+        </>
+      )}
+    </svg>
   );
 }
 
@@ -3443,10 +3548,24 @@ function YardScreen({ hold, onBack }) {
 
 // A titled group inside the shell. The end screen's tally uses the same rules and radius, so the two
 // screens read as one game rather than two.
-function Slab({ title, children }) {
+//
+// `centred` is for a screen that is nothing but slabs. The yard's headings sit over a list they
+// introduce and belong at its left margin; the log's are the only thing telling one card from the
+// next, so they are centred and set brighter to read as the heading of a section rather than as the
+// first line of it.
+function Slab({ title, children, centred }) {
   return (
     <div style={{ background: "rgba(11,51,49,0.6)", border: `1px solid ${C.hair}`, borderRadius: 10, padding: "8px 12px 10px", margin: "12px 0", textAlign: "left" }}>
-      <div style={{ fontSize: 10, letterSpacing: 1, color: "rgba(238,244,242,0.55)", marginBottom: 2 }}>{title}</div>
+      <div
+        style={{
+          fontSize: 10, letterSpacing: 1, marginBottom: 2,
+          color: centred ? "rgba(238,244,242,0.8)" : "rgba(238,244,242,0.55)",
+          textAlign: centred ? "center" : "left",
+          padding: centred ? "2px 0 5px" : 0,
+        }}
+      >
+        {title}
+      </div>
       {children}
     </div>
   );
