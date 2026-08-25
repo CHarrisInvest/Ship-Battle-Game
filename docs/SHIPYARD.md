@@ -459,8 +459,13 @@ with it is as cheap as changing it.
 6. **Should the derby have repairs?** It has none today, because "only one hand needed" is that mode's
    whole promise and a rail is a second thing to think about. But trading coins for crew after a spell
    in the storm is a genuinely good decision, and the derby is the mode that pays by the second.
-7. **Muskets.** Currently crew capacity over 26, plus half a musket per swivel, floor of 1. Gives 2 to
-   9 across the fleet. The brief was unsure and this is a guess.
+7. **Muskets.** Currently crew capacity over 26, plus one musket per swivel, floor of 1. Gives 2 to 12
+   across the fleet. The crew divisor is still a guess; the swivel rate is not. It was half a musket,
+   which reads sensibly (a swivel is worth rather more than a musket, but one hand serves it and that
+   hand is off the rail) and behaved badly, because the count is rounded to whole shots: the first
+   swivel a captain bought could move nothing she could see and the second move it by one. A part that
+   does nothing until you own two of it is a part nobody buys. If a swivel later wants to be worth
+   more than one musket, the honest way is its own volley in `measure()` rather than a fraction here.
 8. **Diminishing returns past a third sail** are unreachable until a mast has four berths. Worth
    confirming a four-berth mast is wanted before tuning the falloff.
 9. **Four and five berth masts need the sail bands generated.** Each station carries three authored

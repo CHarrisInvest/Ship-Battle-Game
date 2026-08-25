@@ -534,7 +534,12 @@ const UNDER_SAIL = 0.92; // added to BARE as drive runs away, so a well-rigged h
 const HAND_PER_POINT = 0.16; // how much a point of sail handling moves her turn rate
 const LOAD_BITE = 0.22; // handling lost when she is loaded to her tonnage in guns
 const CREW_PER_MUSKET = 26; // hands to work one musket in a volley
-const SWIVEL_MUSKETS = 0.5; // and what a swivel adds to the weight of small arms
+// A swivel is one more shot in the volley. It was half of one, which is a rate that reads sensibly on
+// paper (a swivel is worth rather more than a musket, but one hand serves it and that hand is off the
+// rail) and behaves badly in the shipyard: the count is rounded to whole shots, so the first swivel a
+// captain bought moved nothing she could see and the second moved it by one. A part that does nothing
+// until you own two of it is a part nobody buys. One for one is the rate she can watch working.
+const SWIVEL_MUSKETS = 1;
 
 const sum = (xs, f) => xs.reduce((a, x) => a + f(x), 0);
 
