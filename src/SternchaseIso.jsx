@@ -3205,14 +3205,16 @@ function ChevronIcon({ size = 11, back }) {
 }
 
 /**
- * The way out, at the top of a screen.
+ * The way out, at the top of a screen. Every screen off the menu carries one.
  *
- * These screens are read from the top and some of them are long: a captain who has opened the stats
- * to glance at one figure should not have to scroll past three cards of tallies to leave. The button
- * at the foot stays where it is, for the captain who *has* read to the bottom and is done there.
+ * These screens are read from the top and some of them are long: a captain who opened the tallies to
+ * glance at one figure should not have to scroll past four cards to leave. The button at the foot
+ * stays where it is, for the captain who *has* read to the bottom and is done there, and the two
+ * carry the same words — one thing under two names would read as two different exits.
  *
- * The label is the same in both places. Two controls doing one thing under two names would read as
- * two different exits.
+ * The menu is "the sea", because that is what a captain is going back out to and it is what the yard
+ * has always called it. So the yard and the tallies both come back to the sea, and the achievements
+ * come back to the tallies, which is the screen they open from rather than a description of it.
  */
 function BackLink({ label, onClick }) {
   return (
@@ -3259,7 +3261,7 @@ function RecordsScreen({ hold, onBack, onAchievements }) {
 
   return (
     <Shell>
-      <BackLink label="Back to the menu" onClick={onBack} />
+      <BackLink label="Back to the sea" onClick={onBack} />
       <div style={{ fontFamily: DISPLAY, fontSize: "clamp(21px, 7vw, 26px)", color: C.gold, letterSpacing: 0.5 }}>
         Achievements and Stats
       </div>
@@ -3334,7 +3336,7 @@ function RecordsScreen({ hold, onBack, onAchievements }) {
         })}
 
       <div style={{ height: 6 }} />
-      <StartButton onClick={onBack} label="Back to the menu" />
+      <StartButton onClick={onBack} label="Back to the sea" />
     </Shell>
   );
 }
@@ -3376,7 +3378,7 @@ function AchievementsScreen({ hold, onBack }) {
   const won = tally(hold);
   return (
     <Shell>
-      <BackLink label="Back to the stats" onClick={onBack} />
+      <BackLink label="Back to the tallies" onClick={onBack} />
       <div style={{ fontFamily: DISPLAY, fontSize: "clamp(24px, 8vw, 30px)", color: C.gold, letterSpacing: 0.5 }}>
         Achievements
       </div>
@@ -3410,7 +3412,7 @@ function AchievementsScreen({ hold, onBack }) {
         More come as the game grows. Each is worked out from what the hold already keeps, so anything
         you have done counts from the day it is added.
       </div>
-      <StartButton onClick={onBack} label="Back to the stats" />
+      <StartButton onClick={onBack} label="Back to the tallies" />
     </Shell>
   );
 }
@@ -3508,6 +3510,7 @@ function YardScreen({ hold, onBack }) {
 
   return (
     <Shell>
+      <BackLink label="Back to the sea" onClick={onBack} />
       <div style={{ fontFamily: DISPLAY, fontSize: 30, color: C.gold, letterSpacing: 1 }}>THE YARD</div>
       <div style={{ fontSize: 12, color: "rgba(238,244,242,0.7)", margin: "6px 0 2px" }}>
         {loadout.hull.name}, rated {Math.round(strength.overall)} and sailing as {tier.name.toLowerCase()}.
