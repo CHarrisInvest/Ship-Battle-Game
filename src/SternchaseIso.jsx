@@ -3546,7 +3546,7 @@ function YardScreen({ hold, onBack }) {
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
                 <span style={{ fontSize: 11, fontWeight: 700, color: C.mast }}>{socket.station.toUpperCase()}</span>
                 <span style={{ fontSize: 11, color: mast ? C.ink : "rgba(238,244,242,0.4)" }}>
-                  {mast ? mast.name : "no mast stepped"}
+                  {mast ? mast.name : socket.spar ? "no spar rigged" : "no mast stepped"}
                 </span>
               </div>
               {mast &&

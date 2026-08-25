@@ -57,7 +57,7 @@ below her mizzen, so the sail simply does not go in. Each sail has a `drive` (pu
 it does to her helm). Square canvas drives hardest and stiffens her; fore-and-aft canvas drives less
 and helps her round.
 
-### The six sail categories
+### The seven sail categories
 
 `SAIL_KINDS` is the vocabulary, and a sail's `kind` is the only thing a berth asks about.
 
@@ -65,7 +65,8 @@ and helps her round.
 |---|---|---|
 | `LSQ` | Large square | Courses and lower topsails. The driving power, low on the mast. |
 | `SSQ` | Small square | Topgallants, royals, skysails, spritsails. Light-air lift, high up. |
-| `TRI` | Triangular | Jibs, flying jibs, staysails, lateens. Headsail drive, balance, pointing. |
+| `TRI` | Headsail | Jibs, flying jibs, staysails. Set on a stay forward: balance and pointing. |
+| `LAT` | Lateen | Lateen yards and the tall Bermuda mainsail. Triangular canvas driving from a mast. |
 | `GAF` | Gaff | Gaff mainsails, spankers, drivers, trysails. Fore-and-aft drive aft. |
 | `LUG` | Lugsail | Dipping and standing lug, lug topsail. What a lugger drives on. |
 | `STU` | Studdingsail | Boomed out beyond a square sail already set. Additive, and not a berth. |
@@ -74,10 +75,17 @@ Two things this settles that the code got wrong for a while.
 
 **Area is not the category.** It was a pair for a while, a cut and a size, and crossing them produced
 combinations no real rig has: `triangle` and `small` made a berth a jib and a staysail both filled and
-a lateen did not, for no reason anybody could state. A lateen can rival a course and a staysail is a
-scrap, and both are `TRI`; a topgallant is nearly four times a skysail and both are `SSQ`. The range
+a lateen did not, for no reason anybody could state. A topgallant is nearly four times a skysail and
+both are `SSQ`; a flying jib is a scrap beside the staysail under it and both are `TRI`. The range
 inside a category is carried by `drive`, which is where it belonged all along, and the fitting rule is
 one comparison instead of two.
+
+**A lateen is not a headsail**, and that is why there are seven categories rather than six. Both are
+triangles and they were one category until the bowsprit became a station: the moment a jib had a berth
+of its own a lateen fitted it, and a lateen pulls better than any staysail, so the choice made itself
+and the berth was decoration. They do different work, a lateen driving from a mast and a jib
+balancing her off a stay forward, so they are different categories. That is a split on what a sail
+*is*, which is what the categories are for, and not the size dimension the model threw out.
 
 **`STU` is not a berth**, and it is the one category that does not fit the model. A studdingsail booms
 out beyond a square sail that is already set, and its area comes off that sail rather than off a place
@@ -452,11 +460,11 @@ Three things to decide alongside them:
   fleet wants a type per configuration rather than one mast with a slot count: one through four square
   berths is four types. A four-berth mast is also the first thing that reaches the diminishing return
   past a third sail, which nothing has been able to do until now.
-- **Stations beyond fore, main and mizzen.** Anything four-masted needs a new station name, and
-  `galleon.js` needs geometry for it or that mast is silently left off the menu ship. The bench
-  catches it; adding the geometry is a `STATION_GEOM` entry.
-- **Sizes beyond small, medium and large.** `SIZES` is ordered and a mast fits its own size or larger,
-  so a wide fleet may want a fourth rung rather than crowding forty classes into three.
+- ~~**Stations beyond fore, main and mizzen.**~~ Done. `bowsprit` and `bonaventure` are stations now,
+  both drawn. A further one is still a `STATION_GEOM` entry and the bench still catches a station
+  nobody has drawn.
+- ~~**Sizes beyond small, medium and large.**~~ Done. `SIZES` runs `boat`, `small`, `medium`, `large`,
+  `heavy`.
 
 The six categories mean a lugsail mast or a gaff-rigged ketch is a row in `data/masts.tsv` rather than
 a code change, and the bench catches a berth whose category is a typo. The renderer draws `LSQ`, `SSQ`
@@ -487,9 +495,11 @@ with it is as cheap as changing it.
    catalogue. Worth settling early anyway: a galleon twice a cutter's length is a very large target in
    a sea 2000 across, and the fight's hull geometry, the collision ellipse and the camera all have an
    opinion about it.
-5. **Stations and sizes beyond the three of each.** Any four-masted class needs a new station, and
-   `galleon.js` needs geometry for it or that mast is silently left off the menu ship. A wide fleet
-   may also want a fourth mast size rather than crowding forty classes into small, medium and large.
+5. ~~**Stations and sizes beyond the three of each.**~~ **Settled.** Five stations, `bowsprit` `fore`
+   `main` `mizzen` `bonaventure`, and five sizes, `boat` `small` `medium` `large` `heavy`. The
+   bowsprit is a station rather than a flag, which is what gave headsails somewhere to live; it takes
+   a *spar* rather than a mast, and `mastFitsSocket` matches the sort of thing before the size rung so
+   a jibboom cannot be somebody's main mast.
 6. **Should the derby have repairs?** It has none today, because "only one hand needed" is that mode's
    whole promise and a rail is a second thing to think about. But trading coins for crew after a spell
    in the storm is a genuinely good decision, and the derby is the mode that pays by the second.
@@ -499,19 +509,23 @@ with it is as cheap as changing it.
    question: see below.
 8. **Diminishing returns past a third sail** are unreachable until a mast has four berths. Worth
    confirming a four-berth mast is wanted before tuning the falloff.
-9. **Four and five berth masts need the sail bands generated.** Each station carries three authored
-   bands and a berth past the last one is clamped to it, so a five sail mast draws as three with two
-   buried inside the topmost: bought, paid for and invisible. It does not clip the box, which is why
-   nothing else catches it. Adding a fourth row to `STATION_GEOM` does not fix it either, because
-   three sails already reach the masthead, so a taller stack has to be compressed rather than
-   extended: the bands want generating from the pole height and the berth count. `npm run catalogue`
-   fails on any mast with more berths than the renderer has bands for, so this cannot ship quietly,
-   and the work is best done once against the real mast list rather than twice.
+9. ~~**Four and five berth masts need the sail bands generated.**~~ **Done.** The authored bands are
+   now a profile rather than a list: how a sail's span, belly and height change going up, plus the
+   envelope the stack occupies. Any number of bands is that profile resampled and squeezed to fit, so
+   a five sail mast reaches the same masthead a three sail mast does. Three or fewer are left exactly
+   as authored, which keeps the galleon the ship she was and puts a single sail on the course band
+   rather than stretching it up the pole. Five is the ceiling: past that a stack is stripes on a
+   spar, and the bench fails a mast that asks for more. The bench also checks the generator itself,
+   every stack at every station, since two bands run together is a sail behind a sail.
 10. **A sail's size versus its berth's slot.** A sail drawn in berth 1 takes berth 1's geometry, on
     the assumption that large sails sit low and small ones high. A mast that puts a large sail above a
     small one would draw wrong.
-11. **Bowsprits.** Hulls carry a `bowsprit` flag and the renderer honours it, but nothing yet makes an
-    upgraded bowsprit a purchasable part with a spritsail on it.
+11. ~~**Bowsprits.**~~ **Settled, and built.** The bowsprit is a station, the spar in it is a part with
+    berths, and what goes on those berths is headsails or a spritsail. `galleon.js` draws both: a
+    headsail is tacked to the spar, hoisted to the head of the foremost mast and sheeted home half way
+    in, and square canvas on a bowsprit is slung under it on a yard athwart, the way a carrack carried
+    hers. The hull's `bowsprit` flag still says whether she has the spar at all, which is what decides
+    whether she has the socket to fit anything to.
 12. **Tier names.** `Coastal`, `Privateer`, `Cruiser`, `Ship of the line`, `Flagship` have not been
     read at 1x in the game, because nothing displays them. `Ship of the line` is much the longest and
     is the one to watch in a card.

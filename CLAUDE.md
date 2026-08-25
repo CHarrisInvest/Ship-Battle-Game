@@ -31,19 +31,29 @@ are built from. `broadside` in the code is the side guns, not the old title, and
   `data/sails.tsv` are the source; `npm run import` writes them into the marked blocks in
   `shipyard.js`. Editing those blocks by hand works until the next import throws it away, so edit the
   table.
-- **A sail's category is the whole of the fitting rule.** A berth names one of the six in
+- **A sail's category is the whole of the fitting rule.** A berth names one of the seven in
   `SAIL_KINDS` and a sail belongs to one, and they are compared as a single key. Area is not the
-  category: a lateen can rival a course and a staysail is a scrap, and both are `TRI`, so the range
-  inside a category belongs in `drive` rather than in a second field. This replaced a cut-and-size
-  pair that produced combinations no real rig has; do not reintroduce one.
+  category: a topgallant is nearly four times a skysail and both are `SSQ`, so the range inside a
+  category belongs in `drive` rather than in a second field. This replaced a cut-and-size pair that
+  produced combinations no real rig has; do not reintroduce one.
+- **A lateen is not a headsail**, which is why there are seven categories and not six. They were one
+  until the bowsprit became a station: the moment a jib had a berth, a lateen fitted it and pulled
+  better, so the choice made itself. `TRI` is jibs and staysails, `LAT` is lateens and the Bermuda
+  mainsail. Splitting on what a sail *is* is not the size dimension the model threw out.
+- **A spar is not a mast.** A jibboom goes on the bowsprit and nowhere else, and a topgallant mast
+  never goes over the bow. Size alone would allow both, since a spar is small and small fits
+  everything, so `mastFitsSocket` matches the sort of thing first and consults the size rung second.
+  `SPAR_STATIONS` is which stations take one.
 - **A studdingsail is not a berth.** It booms out beyond a square sail already set and its area comes
   off that sail, so `STU` is marked `additive` and the bench fails a berth that asks for one. Wiring
   it up means an attachment on a sail, not a slot on a mast.
 - **A part's `part` says what sort of thing it is; a sail's `kind` says which category.** They were
   one field, and the two meanings collided the moment the categories arrived.
-- **The renderer draws three sails up a mast, and no more.** A fourth or fifth berth is clamped to the
-  third band and draws on top of it, invisible. The bench fails on it; the fix is generating the
-  bands from the pole height rather than adding a row to `STATION_GEOM`.
+- **The renderer draws up to five sails up a mast, and the bands are generated.** Three or fewer are
+  the ones authored in `STATION_GEOM`, so the galleon is unchanged; a taller stack is that profile
+  resampled and squeezed into the same air, because three sails already reach the masthead and there
+  is nothing above them to extend into. Five is the ceiling and the bench holds the catalogue to it.
+  Adding a row to `STATION_GEOM` is not how a sixth would be added.
 - **`npm run catalogue` before and after touching the catalogue.** A hull that cannot be rigged or
   carries a station the renderer cannot draw fails silently at runtime; the bench fails loudly. It
   prints the whole fleet side by side, which is the only way the numbers mean anything.

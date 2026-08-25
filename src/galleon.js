@@ -30,6 +30,10 @@ const ST=[
  [ 52, 6.2,18.6, 5.4],[ 56, 4.4,19.9, 3.8],[ 60, 1.7,21.2, 1.2]
 ];
 const BULWARK=2.7, lerp=(a,b,t)=>a+(b-a)*t;
+/* The height of whatever a mast is stepped on at x: the quarterdeck aft, the
+   forecastle forward, and the open waist between them. Module level rather than
+   inside buildShip because the rig needs it too, to sheet a headsail home. */
+const deckZAt=x=>(x>=-58&&x<=-18)?23.6:(x>=24&&x<=50)?20.2:stationAt(x).sheer;
 const station=i=>({x:ST[i][0],w:ST[i][1],sheer:ST[i][2],wl:ST[i][3]});
 function stationAt(x){
  x=Math.max(ST[0][0],Math.min(60,x));
@@ -165,14 +169,59 @@ const STATION_GEOM = {
     ],
     tri: [{ zb: 0.4538, zt: 0.9 }, { zb: 0.72, zt: 0.97 }, { zb: 0.84, zt: 1.0 }],
   },
+  /* The fourth mast of a carrack or a great galleon, stepped on the poop abaft
+     the mizzen. Shorter than the mizzen and rigged like it: one shroud a side,
+     no ratlines, and a stay running forward to the mast ahead. Her bands are
+     written for a full-height mast, so `ref` is her whole pole and a shorter
+     mast carries its canvas proportionally lower. */
+  /* Set well inside the taffrail and given a short band for her lateen. A
+     lateen is cut from the height of the band it stands in, so the mizzen's own
+     proportions on a mast this far aft put the clew out over the stern and into
+     the water astern of her. */
+  bonaventure: {
+    x: -44, pole: 70, ref: 70, r0: 0.82, r1: 0.44, hoist: 1.0,
+    shrouds: [-3.0], ratlines: false, stay: { from: 0.92, to: 0.86 },
+    slots: [
+      { span: 10.5, zt: 42.0, zb: 28.0, bulge: 3.6, seg: 9 },
+      { span: 7.4, zt: 56.0, zb: 46.5, bulge: 2.7, seg: 8 },
+      { span: 5.0, zt: 63.5, zb: 57.5, bulge: 2.0, seg: 8 },
+    ],
+    tri: [{ zb: 0.55, zt: 0.86 }, { zb: 0.74, zt: 0.94 }, { zb: 0.86, zt: 1.0 }],
+  },
+  /* THE BOWSPRIT, which is a station like the others to the shipyard and unlike
+     any of them here: it is a spar sticking out over the bow, not a pole
+     standing on a deck, so nothing about a mast applies to it. No pole is drawn
+     (the hull's own bowsprit is), no shrouds are set up, it takes no place in
+     the chain of stays, and the pennant never flies from it.
+
+     What it carries is two different sails and they hang two different ways.
+     Triangular canvas is a HEADSAIL: tacked down to the spar, hoisted up the
+     stay to the head of the foremost mast, and sheeted home aft, which is three
+     corners in three different places rather than a band up a pole. Square
+     canvas is a SPRITSAIL, which is slung under the spar on a yard athwart it,
+     the way a carrack and a galleon carried theirs.
+
+     `tack` and `head` are the ranges those two corners run over, inner sail to
+     outer: a staysail near the stem is tacked close in and hoisted partway up
+     the mast, and the flying jib outside it is tacked at the boom end and goes
+     high. `foot` is how far in towards the mast the sheet comes, as a share of
+     the run from that sail's own tack, so each sail is cut to its own luff.
+     `slung` is where a spritsail hangs and how big it is. */
+  bowsprit: {
+    spar: true, x: 66,
+    tack: [0.34, 0.98], head: [0.40, 0.76], foot: 0.5,
+    slung: [0.42, 0.82], span: [9.0, 6.2], drop: [11.0, 7.6],
+  },
 };
 
 const BOWSPRIT = { heel: [50, 0, 22.6], tip: [88, 0, 33.5], r0: 1.3, r1: 0.66 };
+/* A point along the bowsprit, 0 at the heel and 1 at the boom end. */
+const sparAt = (f) => BOWSPRIT.heel.map((c, i) => lerp(c, BOWSPRIT.tip[i], f));
 
 /* The sail categories drawn as a triangle. Everything else takes the square, and
    RIG_KINDS at the foot of this file is what says which categories are settling
    for it. */
-const TRIANGULAR = new Set(["TRI"]);
+const TRIANGULAR = new Set(["TRI", "LAT"]);
 
 /* ---- how many sails, and where they sit ------------------------------------
    Each station above is authored with three bands, which was every stack the
@@ -257,6 +306,47 @@ function triBands(g, n) {
 }
 
 /**
+ * Where the sails on the bowsprit hang, given the masts already worked out.
+ *
+ * A headsail needs a mast to go to: it is hoisted up the stay to the head of the
+ * foremost one, so a ship with nothing stepped has nowhere to set one and simply
+ * does not. A spritsail needs no such thing, being slung under the spar, and is
+ * drawn whether she has a mast or not.
+ */
+function sparSails(g, list, foremost) {
+  const at = (range, i, n) => lerp(range[0], range[1], n > 1 ? i / (n - 1) : 0);
+  const n = list.length;
+  const out = [];
+  list.forEach((s, i) => {
+    if (TRIANGULAR.has(s.kind)) {
+      if (!foremost) return;
+      const tack = sparAt(at(g.tack, i, n));
+      /* The clew is taken off this sail's own tack rather than from a fixed
+         point aft. Written as a place on the deck it made the outer jib a sheet:
+         its tack is out at the boom end and its head at the masthead, so a clew
+         level with the mast gave it a foot the length of the ship and the three
+         of them together closed into one grey wall over the bow. Half way in to
+         the mast, each sail is a triangle the size of its own luff, and they
+         stand apart because their tacks do. */
+      const cx = lerp(tack[0], foremost.x, g.foot);
+      out.push({
+        cut: "headsail",
+        tack,
+        head: [foremost.x, 0, foremost.top * at(g.head, i, n)],
+        clew: [cx, 0, deckZAt(cx) + BULWARK + 1.6],
+      });
+      return;
+    }
+    // square canvas under a bowsprit is a spritsail: a yard athwart the spar
+    // with the cloth hanging below it
+    const p = sparAt(at(g.slung, i, n));
+    const span = at(g.span, i, n), drop = at(g.drop, i, n);
+    out.push({ cut: "square", mx: p[0], span, zt: p[2] - 1.2, zb: p[2] - 1.2 - drop, bulge: span * 0.34, seg: 9 });
+  });
+  return out;
+}
+
+/**
  * Turn a shipyard rig spec into the geometry buildShip wants.
  *
  * `spec` is `{ bowsprit, masts: [{ station, height, sails: [{ kind }] }] }`,
@@ -265,15 +355,19 @@ function triBands(g, n) {
  *
  * A sail's `kind` is its shipyard category and this file knows two shapes to draw
  * it in, a square one and a triangle. LSQ and SSQ are square canvas and get the
- * square; TRI gets the triangle. A gaff sail and a lugsail are neither, and until
- * this file is taught their shapes they draw as square canvas, which is closer
- * than a triangle and is what the bench reports rather than hides.
+ * square; TRI and LAT get the triangle. A gaff sail and a lugsail are neither,
+ * and until this file is taught their shapes they draw as square canvas, which
+ * is closer than a triangle and is what the bench reports rather than hides.
+ *
+ * A spar station comes back separately from the masts, because nothing done to a
+ * mast applies to it: see the bowsprit in STATION_GEOM.
  */
 function rigFromSpec(spec) {
-  const masts = (spec.masts || [])
+  const entries = spec.masts || [];
+  const masts = entries
     .map((m) => {
       const g = STATION_GEOM[m.station];
-      if (!g) return null;
+      if (!g || g.spar) return null;
       const pole = Math.round(g.pole * (m.height || 1) * 100) / 100;
       const k = pole / g.ref; // a shorter mast carries its canvas proportionally lower
       // The bands are cut for the stack she actually carries: three or fewer are
@@ -308,7 +402,15 @@ function rigFromSpec(spec) {
     })
     .filter(Boolean)
     .sort((a, b) => b.x - a.x);
-  return { bowsprit: spec.bowsprit !== false, masts };
+
+  // the spars, once the masts they hoist against are known
+  const spars = [];
+  for (const m of entries) {
+    const g = STATION_GEOM[m.station];
+    if (!g || !g.spar) continue;
+    spars.push({ x: g.x, sails: sparSails(g, m.sails || [], masts[0]) });
+  }
+  return { bowsprit: spec.bowsprit !== false, masts, spars };
 }
 
 /** The ship this file has always drawn, and what it falls back to when asked for no rig in particular. */
@@ -602,7 +704,6 @@ function buildShip(rig){
            {tag:"trim",flat:0.94,nearW:0,nostroke:true,bias:2.2});
   }
  }
- const deckZAt=x=>(x>=-58&&x<=-18)?23.6:(x>=24&&x<=50)?20.2:stationAt(x).sheer;
  const masts=rig.masts;
  for(const m of masts){
   const dz=deckZAt(m.x);
@@ -659,10 +760,20 @@ function buildShip(rig){
     own proportions, held against the height of the band, so the same shape
     serves a lateen on a big ship's after mast and the single standing sail of a
     boat that has nothing else. */
+ /* The cloth of a three-cornered sail: a panel fanned from corner B across the
+    edge between A and C, bellied out in y so it stands full rather than flat.
+    Both edges off B carry the belly and the far edge inherits it, so all three
+    corners come to a point and everything between them is under strain. */
+ const triPanel=(B,A,C,belly)=>{
+  const on=(p,q,t)=>[lerp(p[0],q[0],t),lerp(p[1],q[1],t)+belly*Math.sin(Math.PI*t),lerp(p[2],q[2],t)];
+  const mix=(p,q,s)=>[lerp(p[0],q[0],s),lerp(p[1],q[1],s),lerp(p[2],q[2],s)];
+  for(let i=0;i<12;i++){const t0=i/12,t1=(i+1)/12,a0=on(B,A,t0),a1=on(B,A,t1),c0=on(B,C,t0),c1=on(B,C,t1);
+   for(const[s0v,s1v]of[[0,1/3],[1/3,2/3],[2/3,1]])
+    addFace(F,[mix(a0,c0,s0v),mix(a1,c1,s0v),mix(a1,c1,s1v),mix(a0,c0,s1v)],P.sail,[0,1,0],{tag:"sail",double:true,back:P.back});}
+ };
  function lateen(mx,zb,zt){if(!OPT.sails)return;
   const h=zt-zb;
   const B=[mx+0.621*h,1.1,zb+0.310*h],A=[mx-0.690*h,1.1,zt],C=[mx-0.552*h,1.1,zb];
-  const on=(p,q,t)=>[lerp(p[0],q[0],t),lerp(p[1],q[1],t)+3.6*Math.sin(Math.PI*t),lerp(p[2],q[2],t)];
   const mix=(p,q,s)=>[lerp(p[0],q[0],s),lerp(p[1],q[1],s),lerp(p[2],q[2],s)];
   // straight lateen yard: a plain chord from tack to peak, so the bellied head
   // of the cloth stands off it rather than the spar bending with the canvas
@@ -671,13 +782,26 @@ function buildShip(rig){
   for(let i=0;i<YS;i++){const t0=i/YS,t1=(i+1)/YS;
    addPrism(F,yq(t0),yq(t1),lerp(0.55,0.42,t0),lerp(0.55,0.42,t1),P.dark,"mast");}
   addSpar(F,yq(1),[mx-0.828*h,1.1-0.75,zt+0.069*h],0.42,0.36,P.dark,"mast",0);
-  for(let i=0;i<12;i++){const t0=i/12,t1=(i+1)/12,a0=on(B,A,t0),a1=on(B,A,t1),c0=on(B,C,t0),c1=on(B,C,t1);
-   for(const[s0v,s1v]of[[0,1/3],[1/3,2/3],[2/3,1]])
-    addFace(F,[mix(a0,c0,s0v),mix(a1,c1,s0v),mix(a1,c1,s1v),mix(a0,c0,s1v)],P.sail,[0,1,0],{tag:"sail",double:true,back:P.back});}
+  triPanel(B,A,C,3.6);
+ }
+ /* A headsail has no spar at all: it is tacked down to the bowsprit, hoisted up
+    the stay to the masthead, and sheeted home to the deck aft of both. So it is
+    three loose corners and its luff is the stay it is hanked to, which is
+    already drawn. Fanned from the tack, which is the corner all of it hangs
+    forward of. */
+ function headsail(tack,head,clew){if(!OPT.sails)return;
+  const y=1.1, at=p=>[p[0],p[1]+y,p[2]];
+  triPanel(at(tack),at(head),at(clew),2.6);
  }
  for(const m of masts) for(const s of m.sails){
   if(s.cut==="triangle") lateen(m.x,s.zb,s.zt);
   else sail(m.x,s.span,s.zt,s.zb,s.bulge,s.seg);
+ }
+ // and whatever is set on the bowsprit: headsails out on the stay, a spritsail
+ // slung under the spar
+ for(const sp of rig.spars||[]) for(const s of sp.sails){
+  if(s.cut==="headsail") headsail(s.tack,s.head,s.clew);
+  else sail(s.mx,s.span,s.zt,s.zb,s.bulge,s.seg);
  }
  if(OPT.rig){const rope=P.dark,r=0.3;
   // shrouds land on the rail cap abreast of the mast, not out on the open deck
@@ -948,7 +1072,7 @@ const RIG_STATIONS = Object.keys(STATION_GEOM);
    falls back to a square sail, which is a wrong-looking ship rather than a broken
    one: the bench says which categories are in that position so a rig nobody has
    drawn yet is a known gap rather than a surprise. */
-const RIG_KINDS = ["LSQ", "SSQ", "TRI"];
+const RIG_KINDS = ["LSQ", "SSQ", "TRI", "LAT"];
 
 /* How many sails this renderer can place up one mast and have them land in
    different places. The bands are generated from the authored profile and the
@@ -967,6 +1091,19 @@ const RIG_BERTHS = MAX_BERTHS;
 function rigBands(station, n) {
   const g = STATION_GEOM[station];
   if (!g || n < 1) return null;
+  // A spar's sails are spread along it rather than up it, so what has to be
+  // distinct is where each one is tacked. Reported as bands so the same check
+  // covers both: two sails tacked at one point is two sails in one place.
+  if (g.spar) {
+    const run = (range) => {
+      const w = Math.abs(range[1] - range[0]) / Math.max(1, n) * 0.5;
+      return Array.from({ length: n }, (_, i) => {
+        const f = lerp(range[0], range[1], n > 1 ? i / (n - 1) : 0);
+        return { zb: f - w, zt: f + w };
+      }).sort((a, b) => a.zb - b.zb);
+    };
+    return { square: run(g.slung), tri: run(g.tack) };
+  }
   const squares = squareBands(g, n).slice(0, n).map((s) => ({ zb: s.zb, zt: s.zt }));
   const tris = triBands(g, n).slice(0, n).map((b) => ({ zb: b.zb * g.pole, zt: b.zt * g.pole }));
   return { square: squares, tri: tris };

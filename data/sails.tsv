@@ -7,8 +7,8 @@
 #   LSQ  Large square    courses, lower topsails            driving power, low on the mast
 #   SSQ  Small square    topgallants, royals, skysails,     light-air lift, high up
 #                        spritsails, sprit-topsails
-#   TRI  Triangular      jibs, flying jibs, staysails,      headsail drive, balance, pointing
-#                        lateen sails
+#   TRI  Headsail        jibs, flying jibs, staysails       set on a stay forward: balance, pointing
+#   LAT  Lateen          lateen yards, Bermuda mainsails    triangular canvas driving from a mast
 #   GAF  Gaff            gaff mainsails, spankers,          fore-and-aft drive aft, manoeuvre
 #                        drivers, trysails, gaff topsails
 #   LUG  Lugsail         dipping and standing lug,          the main drive of a lugger
@@ -41,5 +41,5 @@ topsail	Square topsail	SSQ	120	0.58	-0.04	Half the cloth of a course, and it sit
 topsailFine	Duck canvas topsail	SSQ	430	0.78	-0.03	A topsail worth setting in weather that would split the plain one.
 staysail	Staysail	TRI	130	0.40	0.12	A small triangle set on a stay. Not much pull, and she feels it in the rudder.
 staysailFine	Cut staysail	TRI	460	0.55	0.15	The staysail a captain keeps when she changes ships.
-lateen	Lateen sail	TRI	210	0.72	0.14	A long triangle on a raking yard. Less pull than a course, and she comes round on it.
-lateenFine	Cut lateen sail	TRI	720	0.95	0.18	Cut flat rather than full, so it holds an edge to the wind the plain one spills.
+lateen	Lateen sail	LAT	210	0.72	0.14	A long triangle on a raking yard. Less pull than a course, and she comes round on it.
+lateenFine	Cut lateen sail	LAT	720	0.95	0.18	Cut flat rather than full, so it holds an edge to the wind the plain one spills.

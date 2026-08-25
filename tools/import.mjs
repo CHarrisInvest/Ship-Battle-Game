@@ -105,6 +105,7 @@ function mastRows() {
       `    price: ${number(r, "price", file)},`,
       `    blurb: ${str(need(r, "blurb", file))},`,
       `    size: ${str(need(r, "size", file))},`,
+      ...(yesNo(r.spar) ? ['    spar: true,'] : []),
       `    height: ${number(r, "height", file)},`,
       `    berths: [${berths.join(", ")}],`,
       "  },",

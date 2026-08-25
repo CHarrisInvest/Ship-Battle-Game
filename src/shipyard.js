@@ -13,9 +13,9 @@
  *   MASTS   fitted into a socket. A mast is bought as a whole and its sail berths are fixed at the
  *           moment it is built: a mast that carries one lateen sail will never carry two square
  *           ones. Choosing a mast is choosing a shape of rig, not just a size.
- *   SAILS   fitted into a berth. A berth names one of the six sail categories and only a sail of
- *           that category goes in it, which is why a sloop's triangular canvas is no use on a
- *           square-rigged frigate and why the head of a tall mast wants a small square sail.
+ *   SAILS   fitted into a berth. A berth names one of the sail categories and only a sail of that
+ *           category goes in it, which is why a sloop's lateen is no use on a square-rigged frigate
+ *           and why the head of a tall mast wants a small square sail.
  *   GUNS    fitted by the piece up to the hull's bearing. Muskets are not bought: they come off the
  *           crew she can muster, with the swivels adding to the weight of small arms.
  *
@@ -40,13 +40,32 @@
 // Socket sizes are ordered, and a mast fits a socket of its own size or larger. A small mast in a
 // large socket is a legal, poor choice rather than an error, which keeps the first upgrade a captain
 // can afford from being blocked by a socket she cannot fill properly yet.
-export const SIZES = ["small", "medium", "large"];
+// Five rungs rather than three, because the fleet runs from a ship's launch to a first rate and
+// crowding that into small, medium and large would put a yawl's spar and a three-decker's main mast
+// in the same rung. `boat` is the bottom and `heavy` the top.
+export const SIZES = ["boat", "small", "medium", "large", "heavy"];
 const sizeRank = (s) => SIZES.indexOf(s);
 
-// Where a socket sits along the keel. The main mast is the tall one amidships and carries the
-// loosest diminishing return; fore and mizzen are shorter and tire sooner. Anything four-masted needs
-// a name added here AND geometry in `galleon.js`, or that mast is silently left off the menu ship.
-export const STATIONS = ["fore", "main", "mizzen"];
+/**
+ * Where a socket sits along the keel, from the bow aft.
+ *
+ * The main mast is the tall one amidships and carries the loosest diminishing return; fore and
+ * mizzen are shorter and tire sooner. `bonaventure` is the fourth mast of a carrack or a great
+ * galleon, stepped on the poop abaft the mizzen.
+ *
+ * `bowsprit` is a station too, and it is the odd one: it is a spar over the bow rather than a mast on
+ * a deck. What goes in it is headsails, which nearly every class in the fleet carries and which had
+ * nowhere to live while the bowsprit was a flag on the hull. The shipyard treats it exactly like the
+ * others (a socket, a spar fitted to it, berths on the spar) and `galleon.js` draws it differently,
+ * which is where that difference belongs.
+ *
+ * A name added here needs geometry in `galleon.js` or that mast is silently left off the menu ship.
+ * The bench checks both directions.
+ */
+export const STATIONS = ["bowsprit", "fore", "main", "mizzen", "bonaventure"];
+
+/** Stations that carry a spar rather than a mast. What fits one is decided by `mastFitsSocket`. */
+export const SPAR_STATIONS = new Set(["bowsprit"]);
 
 /**
  * THE SAIL CATEGORIES, and the only thing that decides whether a sail goes in a berth.
@@ -54,11 +73,19 @@ export const STATIONS = ["fore", "main", "mizzen"];
  * A berth names one of these and a sail belongs to one, and that is the whole of the fitting rule.
  * It used to be a pair, a cut and a size, which produced combinations no real rig has: a `triangle`
  * and a `small` crossed to make a berth that a jib and a staysail both filled and a lateen did not,
- * for no reason anybody could state. Six named categories say the same thing without the phantoms,
- * and a mast's berths read as what a rigger would call them.
+ * for no reason anybody could state. Named categories say the same thing without the phantoms, and a
+ * mast's berths read as what a rigger would call them.
  *
- * Area is NOT the category. A lateen can rival a course and a staysail is a scrap, and both are TRI;
- * a topgallant is nearly four times a skysail and both are SSQ. What a sail pulls is its own figure,
+ * A LATEEN IS NOT A HEADSAIL, which is why there are seven of these and not six. Both are triangles
+ * and they were one category until the bowsprit became a station: the moment a jib had a berth of its
+ * own, a lateen fitted it, and since a lateen pulls better than any staysail that is a free win
+ * rather than a choice. They are different sails doing different work — a lateen is driving canvas
+ * bent to a mast, a jib is set on a stay forward to balance her — so they are different categories.
+ * That is a category split and not the size dimension the model threw out: a lateen and a staysail
+ * differ in what they are, not in how big they are.
+ *
+ * Area is NOT the category. A topgallant is nearly four times a skysail and both are SSQ; a flying jib
+ * is a scrap beside the fore staysail under it and both are TRI. What a sail pulls is its own figure,
  * so the range inside a category is carried by `drive` rather than by splitting the category.
  *
  * STU is the odd one and is marked `additive`. A studdingsail is not a berth on a mast: it booms out
@@ -68,8 +95,9 @@ export const STATIONS = ["fore", "main", "mizzen"];
  */
 export const SAIL_KINDS = {
   LSQ: { id: "LSQ", name: "Large square", blurb: "Courses and lower topsails. The driving power, low on the mast." },
-  SSQ: { id: "SSQ", name: "Small square", blurb: "Topgallants, royals and skysails. Light-air lift, high up." },
-  TRI: { id: "TRI", name: "Triangular", blurb: "Jibs, staysails and lateens. Headsail drive, and pointing." },
+  SSQ: { id: "SSQ", name: "Small square", blurb: "Topgallants, royals, skysails and spritsails. Light-air lift." },
+  TRI: { id: "TRI", name: "Headsail", blurb: "Jibs, flying jibs and staysails. Set on a stay forward, for balance and pointing." },
+  LAT: { id: "LAT", name: "Lateen", blurb: "Lateen yards and the tall Bermuda mainsail. Triangular canvas driving from a mast of its own." },
   GAF: { id: "GAF", name: "Gaff", blurb: "Spankers, drivers and gaff mainsails. Fore-and-aft drive aft." },
   LUG: { id: "LUG", name: "Lugsail", blurb: "Four sided, on a slung yard. What a lugger drives on." },
   STU: { id: "STU", name: "Studdingsail", additive: true, blurb: "Boomed out beyond a square sail, for light airs." },
@@ -116,25 +144,25 @@ const FLEET = [
     id: "sloop", name: "Sloop", price: 900,
     blurb: "Still one mast, but a tall one, and enough deck to work four guns a side.",
     hull: 120, crew: 72, speed: 1.13, hand: 1.15, canvas: 1.35, tons: 1.5,
-    guns: [4, 1, 2], masts: ["main/medium"],
+    guns: [4, 1, 2], masts: ["bowsprit/small", "main/medium"],
   },
   {
     id: "brig", name: "Brig", price: 2400,
     blurb: "Two masts and a real broadside. The first hull that can take a beating and answer it.",
     hull: 155, crew: 96, speed: 1, hand: 1, canvas: 2.1, tons: 2.4,
-    guns: [6, 2, 3], masts: ["fore/medium", "main/large"],
+    guns: [6, 2, 3], masts: ["bowsprit/small", "fore/medium", "main/large"],
   },
   {
     id: "frigate", name: "Frigate", price: 5200,
     blurb: "Three masts, eight guns a side, and the speed to choose her fights.",
     hull: 195, crew: 124, speed: 0.97, hand: 0.9, canvas: 2.9, tons: 3.4,
-    guns: [8, 2, 4], masts: ["fore/large", "main/large", "mizzen/medium"],
+    guns: [8, 2, 4], masts: ["bowsprit/medium", "fore/large", "main/large", "mizzen/medium"],
   },
   {
     id: "galleon", name: "Galleon", price: 9600,
     blurb: "Ten guns a side and a crew to work them. Slow to start, and slow to stop.",
     hull: 250, crew: 155, speed: 0.87, hand: 0.78, canvas: 3.8, tons: 4.6,
-    guns: [10, 3, 6], masts: ["fore/large", "main/large", "mizzen/medium"],
+    guns: [10, 3, 6], masts: ["bowsprit/medium", "fore/large", "main/heavy", "mizzen/medium", "bonaventure/small"],
   },
 ];
 /* end:hulls */
@@ -162,7 +190,9 @@ function buildHull(row, index) {
     guns: { broadside, bow, swivel },
     sockets: (r.masts || []).map((m) => {
       const [station, size] = m.split("/");
-      return { id: station, station, size };
+      // the bowsprit takes a spar and every other station takes a mast, which is a fact about the
+      // place rather than something a row has to say twice
+      return { id: station, station, size, spar: SPAR_STATIONS.has(station) };
     }),
   };
 }
@@ -207,7 +237,7 @@ export const MASTS = {
     blurb: "Tall and bare, cut for one big triangular sail. Points closer to the wind than square canvas.",
     size: "small",
     height: 0.86,
-    berths: [{ kind: "TRI" }],
+    berths: [{ kind: "LAT" }],
   },
   lowerMast: {
     id: "lowerMast",
@@ -227,7 +257,7 @@ export const MASTS = {
     blurb: "A long raking yard for the after station, with room for a small square sail above it.",
     size: "medium",
     height: 0.74,
-    berths: [{ kind: "TRI" }, { kind: "SSQ" }],
+    berths: [{ kind: "LAT" }, { kind: "SSQ" }],
   },
   topmast: {
     id: "topmast",
@@ -248,6 +278,81 @@ export const MASTS = {
     size: "large",
     height: 1,
     berths: [{ kind: "LSQ" }, { kind: "SSQ" }, { kind: "SSQ" }],
+  },
+  royalMast: {
+    id: "royalMast",
+    part: "mast",
+    name: "Royal mast",
+    price: 3400,
+    blurb: "Four yards crossed, and a royal above the topgallant. A press of canvas for a ship that can carry it.",
+    size: "large",
+    height: 1,
+    berths: [{ kind: "LSQ" }, { kind: "SSQ" }, { kind: "SSQ" }, { kind: "SSQ" }],
+  },
+  skysailMast: {
+    id: "skysailMast",
+    part: "mast",
+    name: "Skysail mast",
+    price: 5200,
+    blurb: "Five yards, the last of them a handkerchief in the clouds. Only the tallest hulls can step one.",
+    size: "heavy",
+    height: 1,
+    berths: [{ kind: "LSQ" }, { kind: "SSQ" }, { kind: "SSQ" }, { kind: "SSQ" }, { kind: "SSQ" }],
+  },
+  standingBowsprit: {
+    id: "standingBowsprit",
+    part: "mast",
+    name: "Standing bowsprit",
+    price: 140,
+    blurb: "The spar over her stem, with a staysail hanked to it. Enough to balance her helm.",
+    size: "boat",
+    spar: true,
+    height: 0.55,
+    berths: [{ kind: "TRI" }],
+  },
+  jibboom: {
+    id: "jibboom",
+    part: "mast",
+    name: "Jibboom",
+    price: 520,
+    blurb: "Run out beyond the bowsprit, for a jib outside the staysail.",
+    size: "small",
+    spar: true,
+    height: 0.8,
+    berths: [{ kind: "TRI" }, { kind: "TRI" }],
+  },
+  flyingJibboom: {
+    id: "flyingJibboom",
+    part: "mast",
+    name: "Flying jibboom",
+    price: 1250,
+    blurb: "The whole head of her: staysail, jib and a flying jib at the boom end.",
+    size: "medium",
+    spar: true,
+    height: 1,
+    berths: [{ kind: "TRI" }, { kind: "TRI" }, { kind: "TRI" }],
+  },
+  spritsailYard: {
+    id: "spritsailYard",
+    part: "mast",
+    name: "Spritsail yard",
+    price: 380,
+    blurb: "A yard slung under the bowsprit, the way a carrack carried hers.",
+    size: "small",
+    spar: true,
+    height: 0.7,
+    berths: [{ kind: "SSQ" }],
+  },
+  spritTopmast: {
+    id: "spritTopmast",
+    part: "mast",
+    name: "Sprit topmast",
+    price: 900,
+    blurb: "A spritsail and a sprit-topsail above it. Old-fashioned, and it pulls her head round.",
+    size: "medium",
+    spar: true,
+    height: 0.95,
+    berths: [{ kind: "SSQ" }, { kind: "SSQ" }],
   },
 };
 /* end:masts */
@@ -334,7 +439,7 @@ export const SAILS = {
   lateen: {
     id: "lateen",
     part: "sail",
-    kind: "TRI",
+    kind: "LAT",
     name: "Lateen sail",
     price: 210,
     blurb: "A long triangle on a raking yard. Less pull than a course, and she comes round on it.",
@@ -344,7 +449,7 @@ export const SAILS = {
   lateenFine: {
     id: "lateenFine",
     part: "sail",
-    kind: "TRI",
+    kind: "LAT",
     name: "Cut lateen sail",
     price: 720,
     blurb: "Cut flat rather than full, so it holds an edge to the wind the plain one spills.",
@@ -438,9 +543,18 @@ export const hullType = (id) => HULLS[id] || null;
 
 export const socketOf = (hull, socketId) => hull.sockets.find((s) => s.id === socketId) || null;
 
-/** A mast goes in a socket of its own size or larger. */
+/**
+ * A mast goes in a socket of its own size or larger, and a spar goes on the bowsprit.
+ *
+ * The second half of that arrived with the bowsprit. Size alone would let a jibboom be stepped as a
+ * main mast and a topgallant mast be run out over the bow, because a spar is small and small fits
+ * everything: the same phantom the sail categories were built to stop, one level up. A spar and a
+ * mast are different sorts of thing, so they are matched as such and the size rung is only consulted
+ * once they agree.
+ */
 export function mastFitsSocket(mast, socket) {
   if (!mast || !socket || mast.part !== "mast") return false;
+  if (!!mast.spar !== !!socket.spar) return false;
   return sizeRank(mast.size) <= sizeRank(socket.size);
 }
 
