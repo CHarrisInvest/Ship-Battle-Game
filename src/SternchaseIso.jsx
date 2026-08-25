@@ -3163,9 +3163,12 @@ function HoldPanel({ hold, onRecords }) {
   return (
     <div style={{ background: "rgba(11,51,49,0.6)", border: `1px solid ${C.hair}`, borderRadius: 10, padding: "9px 12px 0", margin: "14px 0 18px", textAlign: "left" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10 }}>
-        {/* Same weight of ink as the row at the foot of this panel, so the box has one voice for the
-            two things it labels rather than a heading quieter than the control under it. */}
-        <span style={{ fontSize: 10, letterSpacing: 1, color: "rgba(238,244,242,0.78)" }}>The Hold</span>
+        {/* Set exactly as the row at the foot of this panel: same size, same ink, no tracking, so the
+            box has one voice for the two things it labels. It carried a size and a letterspacing of
+            its own, which made a heading and a control that sit one above the other in one box read
+            as two unrelated kinds of label. The tracking went rather than being copied down, because
+            the thing below it is a button and a button takes size over tracking. */}
+        <span style={{ fontSize: 11, color: "rgba(238,244,242,0.78)" }}>The Hold</span>
         <span style={{ fontSize: 17, fontWeight: 800, color: C.gold, display: "inline-flex", alignItems: "center", gap: 4 }} aria-label={`${fmtCoins(hold.coins)} coins in the hold`}><CoinIcon size={17} />{fmtCoins(hold.coins)}</span>
       </div>
       <div style={{ fontSize: 10, color: "rgba(238,244,242,0.5)", lineHeight: 1.6, marginTop: 4 }}>
@@ -3189,7 +3192,7 @@ function HoldPanel({ hold, onRecords }) {
         }}
       >
         <span>
-          <span style={{ display: "block", fontSize: 11 }}>Achievements and Tallies</span>
+          <span style={{ display: "block", fontSize: 11 }}>Achievements &amp; Tallies</span>
           <span style={{ display: "block", fontSize: 10, color: "rgba(238,244,242,0.5)", lineHeight: 1.6, marginTop: 2 }}>
             Track your stats and achievements across the game.
           </span>
@@ -3272,7 +3275,7 @@ function RecordsScreen({ hold, onBack, onAchievements }) {
     <Shell>
       <BackLink label="Back to the sea" onClick={onBack} />
       <div style={{ fontFamily: DISPLAY, fontSize: "clamp(21px, 7vw, 26px)", color: C.gold, letterSpacing: 0.5 }}>
-        Achievements and Tallies
+        Achievements &amp; Tallies
       </div>
       <div style={{ fontSize: 12, color: "rgba(238,244,242,0.7)", margin: "6px 0 2px" }}>
         {sailed
