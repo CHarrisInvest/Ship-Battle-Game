@@ -1,0 +1,30 @@
+# THE MASTS. One row per type, and a type is a SHAPE OF RIG, not a size.
+# Edit here, then: npm run import && npm run catalogue
+#
+# A mast's berths are fixed the moment it is built and never change. That is the whole point of the
+# part: buying a mast is choosing what she will be able to carry, so a mast with one lugsail berth
+# will never carry two square ones however much a captain spends. It is why the fleet wants a type
+# per configuration rather than one mast with a number of slots.
+#
+# id       short camelCase name, unique.
+# name     what a captain reads.
+# price    coins.
+# size     the SMALLEST socket it fits. A mast also fits any larger socket, which is a legal poor
+#          choice rather than an error: sizes are small, medium, large.
+# height   how tall she stands as a share of a full mast at her station, 0 to 1. The renderer cuts
+#          the pole down to the canvas actually bent on it, so this is an upper bound, not a look.
+# berths   the sails she can carry, DECK UPWARD, as category labels separated by spaces.
+#          LSQ large square   SSQ small square   TRI triangular   GAF gaff   LUG lugsail
+#          Canvas is bent on from the bottom, so berth 0 is the big low sail and the last is the
+#          small one at the head. A four berth mast is the first thing that reaches the diminishing
+#          return past a third sail, and also the first the renderer cannot draw: see the bench.
+#          STU is a studdingsail and is NOT a berth. It booms out beyond a square sail already set,
+#          so it attaches to a sail rather than filling a place in the rig, and the bench refuses it.
+# blurb    one line a captain reads.
+id	name	price	size	height	berths	blurb
+poleMast	Pole mast	0	small	0.62	SSQ	A single spar and a single sail. Everything starts here.
+bermudaMast	Bermuda mast	320	small	0.86	TRI	Tall and bare, cut for one big triangular sail. Points closer to the wind than square canvas.
+lowerMast	Lower mast	420	medium	0.70	LSQ	One heavy square sail on a stout pole. The plain way to move a big hull.
+lateenMast	Lateen mast	760	medium	0.74	TRI SSQ	A long raking yard for the after station, with room for a small square sail above it.
+topmast	Topmast	980	medium	0.88	LSQ SSQ	A lower mast with a second spar fidded above it: a course below, a topsail over.
+topgallantMast	Topgallant mast	2100	large	1.0	LSQ SSQ SSQ	Three spars, and the highest sail is a small one. Every hand aboard is up there in a blow.
