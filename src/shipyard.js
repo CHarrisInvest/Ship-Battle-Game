@@ -549,11 +549,26 @@ const CREW_PER_MUSKET = 26; // hands to work one musket in a volley
  * nothing she could see and the second move it by one. A part that does nothing until you own two of
  * it is a part nobody buys.
  *
- * A better swivel is meant to make the volley HIT HARDER rather than add to the count, and nothing
- * does that yet. When it does, the change goes here and not in the fight: `rate()` starts returning
- * what a musket does alongside how many there are, `measure()` multiplies by that instead of the
- * `MUSKET_DPS` constant, and `musketDmg()` in the fight reads it off the loadout. The catalogue's
- * `damage` and `reload` on a swivel are the numbers waiting for that, and are unread until then.
+ * A better swivel, and more of them, is to make the volley HIT HARDER and GROUP TIGHTER off the bow.
+ * Not add to the count: one swivel is one ball whatever it cost. Nothing does either yet, and the
+ * numbers to do it with have not been set, but all three figures already exist in the fight as
+ * constants, which is where they come from and what they are today:
+ *
+ *   count    `for (let i = 0; i < 6; i++)` in `fire()`. A flat six balls for every hull afloat, so a
+ *            cutter and a galleon throw the same volley and the `muskets` figure the yard screen
+ *            prints is a promise the fight does not keep. Substituting `rate().muskets` is the first
+ *            of these and is worth doing on its own, before any of the quality work.
+ *   damage   `musketDmg()`, a flat 3.2, beside `sideDmg()` and `frontDmg()` which are flat too.
+ *            Becomes what one ball does, off the swivels aboard.
+ *   spread   the `0.8` in that same line: the arc in radians the six balls are scattered across,
+ *            about 23 degrees either side of the bow. This is the one to tighten. Note it is added
+ *            to `noise`, the AI's own aiming error, so tightening the spread must not tighten that
+ *            as well or better swivels would quietly make every rival captain a better shot.
+ *
+ * `rate()` grows a musket damage and a musket spread beside the count, `measure()` multiplies by the
+ * damage instead of its own `MUSKET_DPS`, and the fight reads all three off the loadout. A swivel's
+ * `damage` and `reload` in the catalogue are the numbers waiting on the second of those; nothing
+ * carries a grouping figure yet, so that field arrives with the quality tiers.
  */
 const SWIVEL_MUSKETS = 1;
 

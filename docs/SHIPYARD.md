@@ -123,8 +123,7 @@ references is loose, and loose is the inventory.
   figure: crew capacity over 26, plus one per swivel on the rail, floor of 1. Small arms are one thing
   aboard this ship rather than two, and that is settled — a swivel is never going to be a battery of
   its own, which is why `measure()` reads `muskets` and ignores the swivel volley sitting next to it.
-  A better swivel is meant to make the volley *hit harder* rather than add to the count; nothing does
-  that yet, and `SWIVEL_MUSKETS` in `shipyard.js` says where it goes when something does.
+  What a *better* swivel buys is written up below.
 - **Hull type drives speed, and hull and crew maximums.** `speed`, `hand`, `canvas`, `maxHull`,
   `maxCrew`. `canvas` is the one worth pointing at: it is how much sail a hull *wants*, so the same
   suit drives a cutter hard and barely stirs a galleon. It is what makes a bigger hull a commitment
@@ -263,6 +262,35 @@ round, not her savings.
 - No per-class hull art, and no sail designs or cloth patterns. Those hang off ids without touching
   any of the numbers here.
 - No selling parts back. Easy to add; wanted a decision on whether it refunds in full first.
+- **Swivel quality.** Settled in intent, unbuilt, and with no numbers set: see below.
+
+### What a better swivel is to buy
+
+A swivel adds one ball to the volley whatever it cost. What quality buys, and how many quality swivels
+she carries, is that the volley **hits harder and groups tighter off the bow**. Nothing does either
+yet, but all three figures already exist in the fight, and they are all constants:
+
+| | where it is now | what it becomes |
+|---|---|---|
+| count | `for (let i = 0; i < 6; i++)` in `fire()` | `rate().muskets` |
+| damage | `musketDmg()`, a flat `3.2` | what one ball does, off the swivels aboard |
+| spread | the `0.8` in that same line, an arc in radians | tightened by swivel quality and number |
+
+The count one is worth doing on its own, ahead of any quality work, and is close to a bug already: a
+flat six balls for every hull afloat means a cutter and a galleon throw the same volley, so the
+`Muskets in a volley` figure the yard screen prints is a promise the fight does not keep. It also
+means the musket half of `measure()` is calibrated to nothing in particular — `MUSKET_DPS` of 2.4 a
+musket puts a 12-musket galleon at 28.8 against the fight's real 25.6, and a 2-musket cutter at 4.8
+against the same 25.6.
+
+One trap in the spread. That `0.8` has `noise` added to it, which is the AI's own aiming error and is
+zero for the player. Tightening the spread must leave `noise` alone, or better swivels aboard the
+player's ship would quietly make every rival captain a better shot as well.
+
+`rate()` grows a musket damage and a musket spread beside the count, `measure()` multiplies by the
+damage rather than its own constant, and the fight reads all three off the loadout. A swivel's
+`damage` and `reload` in the catalogue are already there for the middle row. Nothing carries a
+grouping figure, so that field arrives with the quality tiers rather than being guessed now.
 
 ## Tiers, the stock fleet, and what each mode does with them
 
