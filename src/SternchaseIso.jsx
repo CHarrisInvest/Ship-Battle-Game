@@ -3191,13 +3191,50 @@ function HoldPanel({ hold, onRecords }) {
   );
 }
 
-// Points the way into a screen. Drawn rather than a `›`, which sets in whatever the UI font has and
-// sits at a different weight and height on every platform.
-function ChevronIcon({ size = 11 }) {
+// Points the way into a screen, or back out of one. Drawn rather than a `›`, which sets in whatever
+// the UI font has and sits at a different weight and height on every platform.
+function ChevronIcon({ size = 11, back }) {
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden="true" style={{ flexShrink: 0 }}>
-      <path d="M6 3l5 5-5 5" stroke="rgba(238,244,242,0.55)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <path
+        d={back ? "M10 3l-5 5 5 5" : "M6 3l5 5-5 5"}
+        stroke="rgba(238,244,242,0.55)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+      />
     </svg>
+  );
+}
+
+/**
+ * The way out, at the top of a screen. Every screen off the menu carries one.
+ *
+ * These screens are read from the top and some of them are long: a captain who opened the tallies to
+ * glance at one figure should not have to scroll past four cards to leave. The button at the foot
+ * stays where it is, for the captain who *has* read to the bottom and is done there, and the two
+ * carry the same words — one thing under two names would read as two different exits.
+ *
+ * The menu is "the sea", because that is what a captain is going back out to and it is what the yard
+ * has always called it. So the yard and the tallies both come back to the sea, and the achievements
+ * come back to the tallies, which is the screen they open from rather than a description of it.
+ */
+function BackLink({ label, onClick }) {
+  return (
+    <div style={{ textAlign: "left" }}>
+      <button
+        onClick={onClick}
+        style={{
+          display: "inline-flex", alignItems: "center", gap: 6,
+          // Pulled out by its own padding so the glyph lines up with the card edges below it while the
+          // tappable area stays a comfortable size on a phone.
+          margin: "0 0 4px -10px", padding: "8px 10px",
+          background: "transparent", border: "none",
+          fontFamily: UI, fontSize: 11, color: "rgba(238,244,242,0.78)",
+          cursor: "pointer", WebkitTapHighlightColor: "transparent",
+        }}
+      >
+        <ChevronIcon size={11} back />
+        <span>{label}</span>
+      </button>
+    </div>
   );
 }
 
@@ -3224,6 +3261,7 @@ function RecordsScreen({ hold, onBack, onAchievements }) {
 
   return (
     <Shell>
+      <BackLink label="Back to the sea" onClick={onBack} />
       <div style={{ fontFamily: DISPLAY, fontSize: "clamp(21px, 7vw, 26px)", color: C.gold, letterSpacing: 0.5 }}>
         Achievements and Stats
       </div>
@@ -3298,7 +3336,7 @@ function RecordsScreen({ hold, onBack, onAchievements }) {
         })}
 
       <div style={{ height: 6 }} />
-      <StartButton onClick={onBack} label="Back to the menu" />
+      <StartButton onClick={onBack} label="Back to the sea" />
     </Shell>
   );
 }
@@ -3340,6 +3378,7 @@ function AchievementsScreen({ hold, onBack }) {
   const won = tally(hold);
   return (
     <Shell>
+      <BackLink label="Back to the tallies" onClick={onBack} />
       <div style={{ fontFamily: DISPLAY, fontSize: "clamp(24px, 8vw, 30px)", color: C.gold, letterSpacing: 0.5 }}>
         Achievements
       </div>
@@ -3471,6 +3510,7 @@ function YardScreen({ hold, onBack }) {
 
   return (
     <Shell>
+      <BackLink label="Back to the sea" onClick={onBack} />
       <div style={{ fontFamily: DISPLAY, fontSize: 30, color: C.gold, letterSpacing: 1 }}>THE YARD</div>
       <div style={{ fontSize: 12, color: "rgba(238,244,242,0.7)", margin: "6px 0 2px" }}>
         {loadout.hull.name}, rated {Math.round(strength.overall)} and sailing as {tier.name.toLowerCase()}.
