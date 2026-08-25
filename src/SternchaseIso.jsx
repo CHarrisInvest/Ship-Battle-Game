@@ -3172,7 +3172,7 @@ function HoldPanel({ hold, onRecords }) {
         <span style={{ fontSize: 17, fontWeight: 800, color: C.gold, display: "inline-flex", alignItems: "center", gap: 4 }} aria-label={`${fmtCoins(hold.coins)} coins in the hold`}><CoinIcon size={17} />{fmtCoins(hold.coins)}</span>
       </div>
       <div style={{ fontSize: 10, color: "rgba(238,244,242,0.5)", lineHeight: 1.6, marginTop: 4 }}>
-        Keep what you earn at sea, less anything spent.
+        Keep what you earn at sea, less any spent
       </div>
       {/* Full width and edge to edge inside the box, so the row is visibly the whole bottom of the
           panel rather than a word someone has underlined. The negative margins pay back the box's
@@ -3194,7 +3194,7 @@ function HoldPanel({ hold, onRecords }) {
         <span>
           <span style={{ display: "block", fontSize: 11 }}>Achievements &amp; Tallies</span>
           <span style={{ display: "block", fontSize: 10, color: "rgba(238,244,242,0.5)", lineHeight: 1.6, marginTop: 2 }}>
-            Track your stats and achievements across the game.
+            Track stats and achievements across the game
           </span>
         </span>
         <ChevronIcon />
