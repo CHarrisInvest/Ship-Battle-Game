@@ -3194,7 +3194,7 @@ function HoldPanel({ hold, onRecords }) {
         <span>
           <span style={{ display: "block", fontSize: 11 }}>Achievements &amp; Tallies</span>
           <span style={{ display: "block", fontSize: 10, color: "rgba(238,244,242,0.5)", lineHeight: 1.6, marginTop: 2 }}>
-            Track stats and achievements across the game
+            Track stats and achievements
           </span>
         </span>
         <ChevronIcon />
