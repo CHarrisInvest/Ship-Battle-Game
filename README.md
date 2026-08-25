@@ -175,7 +175,7 @@ instead of failing.
 voyage deposits if the meta economy ever wants slowing down without touching the fight.
 
 All of it is read on the menu: the hold panel carries the purse and the one line saying what it is,
-and an **Achievements and Stats** row into a screen that shows the lifetime overview and then a
+and an **Achievements & Tallies** row into a screen that shows the lifetime overview and then a
 breakdown per mode. What each mode shows follows what that mode is — a best finish where there are
 placements, ships sunk in a voyage for the arena, rams landed instead of repairs bought where there
 are no guns aboard, and no carpenter's line at all in the derby, which repairs nothing.
