@@ -781,6 +781,7 @@ const MODES = {
     short: "arena",
     color: C.side,
     desc: "Endless survival. One hunter to start, matched to your ship. Sink ships and reinforcements sail in from the horizon. Patch her up between waves, out of what you have taken. Score by ships sunk.",
+    unsailed: "No wave has come for you here yet.", // the log, where a mode has no voyages in it
     rivals: ARENA_START, // hulls on the water at the drop, besides the player
     guns: true, // cannons and muskets aboard
     repairs: true, // the repair rail, paid for out of the voyage's own earnings
@@ -800,6 +801,7 @@ const MODES = {
     short: "free-for-all",
     color: C.mast,
     desc: "Last afloat wins. 10 rival captains, all dead equal at the start, hunting for weak prey and turning on whoever pulls ahead. Spend what you take on repairs, or keep it.",
+    unsailed: "You have not taken on the ten.",
     rivals: FFA_AI,
     guns: true,
     repairs: true,
@@ -822,6 +824,7 @@ const MODES = {
     short: "derby",
     color: C.crew,
     desc: "Only one hand needed. Last afloat wins. 10 captains, no guns, nothing to buy. Sink rivals by ramming. Drive your bow into her beam, and turn to face anyone charging yours. A storm closes in and takes the crew of any ship caught.",
+    unsailed: "Untried. Nothing in there but iron and weather.",
     rivals: DERBY_AI,
     guns: false,
     repairs: false,
@@ -855,7 +858,10 @@ function norm(a) {
 }
 const clamp = (v, a, b) => Math.min(Math.max(v, a), b);
 const fmtTime = (sec) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, "0")}`;
-const fmtCoins = (n) => Math.round(n || 0).toLocaleString();
+// Grouped, because a lifetime tally runs to five figures and 41203 is a number nobody reads at a
+// glance. `fmtCoins` is the same thing under the name the purse uses.
+const fmtNum = (n) => Math.round(n || 0).toLocaleString();
+const fmtCoins = fmtNum;
 
 // A hull with way on her does not answer her rudder as she does at a crawl. The loss is weighted to
 // the top of the range: handling in and out of a fight is left where it was, and only a ship running
@@ -1233,7 +1239,10 @@ export default function App() {
       if (g.banked) return;
       g.banked = true;
       const s = finalStats(won);
-      const { banked: got } = bankVoyage({ mode: g.mode, earned: s.total, repaired: s.repaired, kills: s.kills, dmg: s.dmg, time: s.time, won, rank });
+      const { banked: got } = bankVoyage({
+        mode: g.mode, earned: s.total, repaired: s.repaired, kills: s.kills, dmg: s.dmg,
+        time: s.time, rams: s.rams, patches: s.patches, won, rank,
+      });
       setBanked(got);
     }
 
@@ -2886,8 +2895,9 @@ export default function App() {
         </>
       )}
 
-      {phase === "start" && <StartOverlay onStart={(m) => startRef.current(m)} onEdit={() => setPhase("yard")} hold={hold} onScuttle={() => resetHold()} />}
+      {phase === "start" && <StartOverlay onStart={(m) => startRef.current(m)} onEdit={() => setPhase("yard")} onRecords={() => setPhase("records")} hold={hold} onScuttle={() => resetHold()} />}
       {phase === "yard" && <YardScreen hold={hold} onBack={() => setPhase("start")} />}
+      {phase === "records" && <RecordsScreen hold={hold} onBack={() => setPhase("start")} />}
       {phase === "won" && <EndOverlay title="LAST AFLOAT" titleColor={C.gold} result={result} stats={stats} mode={mode} place={place} hold={hold} banked={banked} onAgain={() => startRef.current(mode)} onMenu={() => setPhase("start")} />}
       {phase === "dead" && (
         <EndOverlay title="SUNK" titleColor={C.crew} result={result} stats={stats} mode={mode} place={place} hold={hold} banked={banked} onAgain={() => startRef.current(mode)} onMenu={() => setPhase("start")} />
@@ -3138,28 +3148,165 @@ function MenuGalleon({ rig }) {
   );
 }
 
-// The hold on the menu: the running total first, then what earned it. Before the first voyage there is
-// nothing to total, so it explains itself instead of showing a row of zeroes.
-function HoldPanel({ hold }) {
-  const lt = hold.lifetime;
-  const bests = [];
-  for (const key of MODE_LIST) {
-    const m = MODES[key], r = modeRecord(hold, key);
-    if (m.ranked && r.bestRank > 0) bests.push(`${m.short} best #${r.bestRank}`);
-    else if (!m.ranked && r.bestSunk > 0) bests.push(`${m.short} best ${r.bestSunk} sunk`);
-  }
+/**
+ * The hold on the menu: what she is worth, what that means, and the way into the log.
+ *
+ * The line under the total used to be a summary that appeared only once there was something to
+ * summarise, and it was doing two jobs badly. What the hold *is* wants saying every time, including
+ * to a captain fifty voyages in; the tallies want more room than one comma-spliced line and they now
+ * have a screen. So the line stays put and says the one thing, and the record sits below it as its
+ * own control.
+ */
+function HoldPanel({ hold, onRecords }) {
   return (
-    <div style={{ background: "rgba(11,51,49,0.6)", border: `1px solid ${C.hair}`, borderRadius: 10, padding: "9px 12px", margin: "14px 0 18px", textAlign: "left" }}>
+    <div style={{ background: "rgba(11,51,49,0.6)", border: `1px solid ${C.hair}`, borderRadius: 10, padding: "9px 12px 0", margin: "14px 0 18px", textAlign: "left" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10 }}>
         <span style={{ fontSize: 10, letterSpacing: 1, color: "rgba(238,244,242,0.55)" }}>The hold</span>
         <span style={{ fontSize: 17, fontWeight: 800, color: C.gold, display: "inline-flex", alignItems: "center", gap: 4 }} aria-label={`${fmtCoins(hold.coins)} coins in the hold`}><CoinIcon size={17} />{fmtCoins(hold.coins)}</span>
       </div>
       <div style={{ fontSize: 10, color: "rgba(238,244,242,0.5)", lineHeight: 1.6, marginTop: 4 }}>
-        {lt.runs > 0
-          ? [`${lt.runs} voyage${lt.runs === 1 ? "" : "s"}`, `${lt.sunk} sunk`, ...(lt.wins > 0 ? [`${lt.wins} won`] : []), `${fmtTime(lt.afloat)} afloat`, ...bests].join(", ")
-          : "What you earn at sea comes back here, from every mode, less anything you spent on repairs."}
+        Keep what you earn at sea, less anything spent.
       </div>
+      {/* Full width and edge to edge inside the box, so the row is visibly the whole bottom of the
+          panel rather than a word someone has underlined. The negative margins pay back the box's
+          own padding; the box gives none at the foot for the same reason. */}
+      <button
+        onClick={onRecords}
+        style={{
+          display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8,
+          width: "calc(100% + 24px)", margin: "8px -12px 0", padding: "9px 12px",
+          background: "transparent", border: "none", borderTop: `1px solid ${C.hair}`,
+          fontFamily: UI, fontSize: 11, color: "rgba(238,244,242,0.78)", textAlign: "left",
+          cursor: "pointer", WebkitTapHighlightColor: "transparent",
+        }}
+      >
+        <span>Achievements and stats</span>
+        <ChevronIcon />
+      </button>
     </div>
+  );
+}
+
+// Points the way into a screen. Drawn rather than a `›`, which sets in whatever the UI font has and
+// sits at a different weight and height on every platform.
+function ChevronIcon({ size = 11 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden="true" style={{ flexShrink: 0 }}>
+      <path d="M6 3l5 5-5 5" stroke="rgba(238,244,242,0.55)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+/**
+ * THE LOG — every voyage she has made, totalled and then broken out by mode.
+ *
+ * The overview is the honest total across everything, taken from `lifetime` rather than by adding the
+ * modes up: a voyage banked under a mode this build no longer lists would go missing from a sum and
+ * does not go missing from the total.
+ *
+ * What each mode shows is decided by what that mode *is*, not by what the record happens to hold.
+ * Placement only means something where there are placements, so the derby and the free-for-all show a
+ * best finish and the arena shows its own score, which is ships sunk in one voyage. Nothing is
+ * repaired in the derby, so no carpenter's line appears there; there are no guns in it either, so it
+ * counts rams where the other two count repairs, the same split the end-of-voyage tally makes.
+ *
+ * Achievements are named on the way in and are not built. Rather than a heading over an empty box,
+ * the screen says so at the foot, in the place the yard says the same thing about buying.
+ */
+function RecordsScreen({ hold, onBack }) {
+  const lt = hold.lifetime;
+  const sailed = lt.runs > 0;
+
+  return (
+    <Shell>
+      {/* Sentence case in the display face. Caps are for the game's proper nouns, and THE YARD is one:
+          a place aboard a ship. This is a description of what is on the screen, not the name of a
+          place, so it takes the same treatment as any other thing the player is told. */}
+      <div style={{ fontFamily: DISPLAY, fontSize: "clamp(21px, 7vw, 26px)", color: C.gold, letterSpacing: 0.5 }}>
+        Achievements and stats
+      </div>
+      <div style={{ fontSize: 12, color: "rgba(238,244,242,0.7)", margin: "6px 0 2px" }}>
+        {sailed
+          ? `Everything from ${lt.runs} voyage${lt.runs === 1 ? "" : "s"}, totalled and by mode.`
+          : "Nothing to show until you have been to sea."}
+      </div>
+
+      <Slab title="Overview">
+        {sailed ? (
+          <Rows
+            rows={[
+              // Zero rows stay. A totals table whose rows appear and vanish as a captain plays is
+              // harder to read than one that always has the same shape, and a nought is an answer.
+              ["Voyages", fmtNum(lt.runs)],
+              ["Voyages won", fmtNum(lt.wins)],
+              ["Ships sunk", fmtNum(lt.sunk)],
+              ["Damage dealt", fmtNum(lt.dmg)],
+              ["Rams landed", fmtNum(lt.rams)],
+              ["Time afloat", fmtTime(lt.afloat)],
+              ["Repairs bought", fmtNum(lt.patches)],
+              ["Paid to the carpenter", <Coins key="c" n={lt.repaired} />],
+              ["Into the hold", <Coins key="h" n={lt.earned} />],
+            ]}
+          />
+        ) : (
+          <Empty>Sail once and this fills in: what you sank, what it cost you, and what you kept.</Empty>
+        )}
+      </Slab>
+
+      {sailed &&
+        MODE_LIST.map((key) => {
+          const m = MODES[key];
+          const r = modeRecord(hold, key);
+          return (
+            <Slab key={key} title={m.title}>
+              {r.runs > 0 ? (
+                <Rows
+                  rows={[
+                    ["Voyages", fmtNum(r.runs)],
+                    ...(m.ranked
+                      ? [
+                          ["Voyages won", fmtNum(r.wins)],
+                          ["Best finish", r.bestRank > 0 ? `#${r.bestRank}` : "not yet placed"],
+                        ]
+                      : [["Most sunk in one voyage", fmtNum(r.bestSunk)]]),
+                    ["Ships sunk", fmtNum(r.sunk)],
+                    ["Damage dealt", fmtNum(r.dmg)],
+                    // The end-of-voyage tally makes this same split, and for the same reason: a mode
+                    // with no guns aboard is a mode where ramming is the whole of the fighting.
+                    m.guns ? ["Repairs bought", fmtNum(r.patches)] : ["Rams landed", fmtNum(r.rams)],
+                    ...(m.repairs ? [["Paid to the carpenter", <Coins key="c" n={r.repaired} />]] : []),
+                    ["Time afloat", fmtTime(r.afloat)],
+                    ["Longest voyage", fmtTime(r.bestTime)],
+                    ["Into the hold", <Coins key="h" n={r.earned} />],
+                  ]}
+                />
+              ) : (
+                <Empty>{m.unsailed}</Empty>
+              )}
+            </Slab>
+          );
+        })}
+
+      <div style={{ fontSize: 11, color: "rgba(238,244,242,0.5)", lineHeight: 1.6, margin: "2px 0 16px" }}>
+        Achievements come to this screen next, above the tallies. What is here already is every figure
+        the hold keeps.
+      </div>
+      <StartButton onClick={onBack} label="Back to the menu" />
+    </Shell>
+  );
+}
+
+// A run of tally rows, ruled between. Takes `[label, value]` pairs so a caller can build the list
+// conditionally without threading the rule through by hand and getting the first one wrong.
+function Rows({ rows }) {
+  return rows.map(([label, value], i) => (
+    <TallyRow key={label} label={label} value={value} rule={i === 0 ? undefined : "hair"} />
+  ));
+}
+
+function Empty({ children }) {
+  return (
+    <div style={{ fontSize: 11, color: "rgba(238,244,242,0.6)", padding: "6px 0", lineHeight: 1.6 }}>{children}</div>
   );
 }
 
@@ -3354,7 +3501,7 @@ function ShipPlate({ loadout, rig, onEdit }) {
   );
 }
 
-function StartOverlay({ onStart, onEdit, hold, onScuttle }) {
+function StartOverlay({ onStart, onEdit, onRecords, hold, onScuttle }) {
   // What she is sailing, resolved from the hold every time it changes.
   const loadout = useMemo(() => shipLoadout(hold), [hold]);
   const rig = useMemo(() => rigSpec(loadout), [loadout]);
@@ -3369,7 +3516,7 @@ function StartOverlay({ onStart, onEdit, hold, onScuttle }) {
       <div style={{ fontFamily: DISPLAY, fontSize: "clamp(34px, 12vw, 44px)", color: C.gold, letterSpacing: 2, lineHeight: 1.05 }}>STERNCHASE</div>
       <div style={{ fontFamily: DISPLAY, fontSize: 15, color: "rgba(232,200,119,0.62)", letterSpacing: 3, marginTop: 4 }}>HELM &amp; HULL</div>
       <ShipPlate loadout={loadout} rig={rig} onEdit={onEdit} />
-      <HoldPanel hold={hold} />
+      <HoldPanel hold={hold} onRecords={onRecords} />
       {/* No prompt over the modes. Three named cards under the game's own title are visibly the
           choice, and a line telling you to choose is the kind of thing only a template asks for. */}
       <div style={{ height: 14 }} />

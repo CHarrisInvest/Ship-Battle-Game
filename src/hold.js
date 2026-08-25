@@ -43,8 +43,25 @@ export const HOLD_SHARE = 1;
 
 const num = (v, d = 0) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : d);
 
+/**
+ * What one mode remembers. Running totals first, then the bests.
+ *
+ * Every total here has a twin in `lifetime`, deliberately: a captain wants to know both what she has
+ * done and where she did it, and totalling the modes to get the first would go wrong the moment a
+ * voyage is banked under a mode name this build does not have. Adding a field is safe at any time —
+ * `sanitize` folds a stored record onto a blank one field by field, so an older record simply reads
+ * zero for whatever is new rather than being thrown away.
+ *
+ * Not every field means something in every mode. There are no guns in the derby, so `dmg` there is
+ * all ramming, and nothing is repaired in it at all, so `repaired` and `patches` stay at zero. The
+ * screen decides what is worth showing per mode; the record just keeps it.
+ */
 function blankMode() {
-  return { runs: 0, wins: 0, earned: 0, bestSunk: 0, bestTime: 0, bestRank: 0 };
+  return {
+    runs: 0, wins: 0, earned: 0,
+    sunk: 0, dmg: 0, afloat: 0, repaired: 0, rams: 0, patches: 0,
+    bestSunk: 0, bestTime: 0, bestRank: 0,
+  };
 }
 
 function blank() {
@@ -54,7 +71,7 @@ function blank() {
     spent: 0, // taken back out again, so the two sides of the ledger always reconstruct `earned`
     // `repaired` is coins spent at sea that never reached the hold, so it is not reconstructible
     // from `earned` and `spent` the way shore spending is. Recorded from the day the feature exists.
-    lifetime: { earned: 0, runs: 0, wins: 0, sunk: 0, dmg: 0, afloat: 0, repaired: 0 },
+    lifetime: { earned: 0, runs: 0, wins: 0, sunk: 0, dmg: 0, afloat: 0, repaired: 0, rams: 0, patches: 0 },
     modes: {}, // keyed by mode name, created on demand so a new mode needs no schema change
     yard: starterYard(),
   };
@@ -296,7 +313,8 @@ export function voyageValue(earned, repaired = 0) {
 /**
  * Bank one finished voyage and return the new hold alongside the coins it added.
  *
- * `run` is the end-of-round summary: `{ mode, earned, repaired, kills, dmg, time, won, rank }`.
+ * `run` is the end-of-round summary:
+ * `{ mode, earned, repaired, kills, dmg, time, won, rank, rams, patches }`.
  * `earned` is what the ship took in at sea, not what she had left; `repaired` is the part of it she
  * handed to the carpenter, and only the difference reaches the hold.
  */
@@ -306,7 +324,10 @@ export function bankVoyage(run) {
   const repaired = num(run.repaired);
   const banked = voyageValue(run.earned, repaired);
   const kills = num(run.kills);
+  const dmg = num(run.dmg);
   const time = num(run.time);
+  const rams = num(run.rams);
+  const patches = num(run.patches);
   const won = !!run.won;
   const rank = num(run.rank);
 
@@ -318,9 +339,11 @@ export function bankVoyage(run) {
       runs: rec.lifetime.runs + 1,
       wins: rec.lifetime.wins + (won ? 1 : 0),
       sunk: rec.lifetime.sunk + kills,
-      dmg: rec.lifetime.dmg + num(run.dmg),
+      dmg: rec.lifetime.dmg + dmg,
       afloat: rec.lifetime.afloat + time,
       repaired: rec.lifetime.repaired + repaired,
+      rams: rec.lifetime.rams + rams,
+      patches: rec.lifetime.patches + patches,
     },
     modes: { ...rec.modes },
   };
@@ -330,6 +353,12 @@ export function bankVoyage(run) {
     runs: m.runs + 1,
     wins: m.wins + (won ? 1 : 0),
     earned: m.earned + banked,
+    sunk: m.sunk + kills,
+    dmg: m.dmg + dmg,
+    afloat: m.afloat + time,
+    repaired: m.repaired + repaired,
+    rams: m.rams + rams,
+    patches: m.patches + patches,
     bestSunk: Math.max(m.bestSunk, kills),
     bestTime: Math.max(m.bestTime, time),
     // placement counts down, not up, and 0 means "never placed" — so the first finish always takes it

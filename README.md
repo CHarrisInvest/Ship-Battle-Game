@@ -155,10 +155,21 @@ round costs a captain the round, not her savings. Since no mode hands out an ope
 in it was earned in that round, and the end-of-voyage column reads straight down: what she took, less
 what the carpenter took, is what reaches the hold.
 
-The stored record is wider than the coin count on purpose: lifetime voyages, ships sunk, damage, time
-afloat, coins paid to carpenters, and per-mode bests, because a stat not recorded from the first
-voyage can never be backfilled. Repair spend is recorded rather than derived, because unlike shore
-spending it never passes through `coins` and so cannot be reconstructed from the ledger.
+The stored record is wider than the coin count on purpose, because a stat not recorded from the first
+voyage can never be backfilled. Everything is kept twice: once as a lifetime total, and once under the
+mode that earned it — voyages, wins, ships sunk, damage dealt, rams landed, time afloat, repairs
+bought, coins paid to carpenters, coins banked, and per-mode bests. Twice rather than by totalling the
+modes on demand, so a voyage banked under a mode name a later build no longer lists still counts
+toward the lifetime figure instead of quietly leaving the sum. Repair spend is recorded rather than
+derived, because unlike shore spending it never passes through `coins` and so cannot be reconstructed
+from the ledger.
+
+All of it is read on the menu: the hold panel carries the purse and the one line saying what it is,
+and an **Achievements and stats** row into a screen that shows the lifetime overview and then a
+breakdown per mode. What each mode shows follows what that mode is — a best finish where there are
+placements, ships sunk in a voyage for the arena, rams landed instead of repairs bought where there
+are no guns aboard, and no carpenter's line at all in the derby, which repairs nothing. Achievements
+are named there and are not built yet.
 It is read through a small API rather than touched directly — `getHold`, `bankVoyage`, `spendFromHold`,
 `resetHold`, `subscribeHold` — and a record written by an older build is folded field by field onto a
 blank one, so an added stat never costs anyone their coins and a corrupt field costs only itself. If
