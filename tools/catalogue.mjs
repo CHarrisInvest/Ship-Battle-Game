@@ -22,7 +22,7 @@ import {
   rate, measure, statBand, fitOut, minimumLoadout, maximumLoadout, loadoutValue, outfitCost,
   TIERS, tierAt, ladder, stockOfTier, resolve, STARTER, STOCK, riggingValue, mastRebuildCost,
 } from "../src/shipyard.js";
-import { RIG_STATIONS, RIG_KINDS, RIG_BERTHS } from "../src/galleon.js";
+import { RIG_STATIONS, RIG_KINDS, RIG_BERTHS, rigBands } from "../src/galleon.js";
 
 // A set, not a list. The same fault reached from forty hulls is one fault about one part, and a
 // bench that printed it forty times would bury the other thirty-nine.
@@ -79,14 +79,36 @@ for (const st of STATIONS) {
   if (!RIG_STATIONS.includes(st)) fault("stations", `"${st}" is declared but the renderer cannot draw it`);
 }
 
+// Every sail up a mast has to land somewhere of its own. The bands are generated
+// from the authored profile now rather than clamped to the last one, and a
+// generator that ran two of them together would put a sail behind another sail:
+// paid for, drawn, and invisible, which is the fault the clamp used to produce
+// and the only one this file cannot see from the catalogue alone.
+for (const st of RIG_STATIONS) {
+  for (let n = 1; n <= RIG_BERTHS; n++) {
+    const bands = rigBands(st, n);
+    if (!bands) { fault(`station "${st}"`, `has no geometry for a stack of ${n}`); continue; }
+    for (const [cut, list] of Object.entries(bands)) {
+      if (list.length !== n) fault(`station "${st}"`, `${n} ${cut} sails come back as ${list.length} bands`);
+      list.forEach((b, i) => {
+        if (!(b.zt > b.zb)) fault(`station "${st}"`, `${cut} band ${i} of ${n} has no height`);
+        // triangular canvas overlaps by nature: a jib and a staysail share the
+        // same air. Square yards must not, or one hides behind another.
+        if (cut === "square" && i > 0 && b.zb < list[i - 1].zt - 1e-9) {
+          fault(`station "${st}"`, `${cut} band ${i} of ${n} starts inside band ${i - 1}, so that sail draws over the one below it`);
+        }
+      });
+    }
+  }
+}
+
 // Masts are checked once each rather than once per socket they happen to fit. A berth no sail fits is
 // a fact about the mast, and a category nobody declared is almost always a typo: neither throws, they
 // just produce a berth that stays empty forever.
 for (const m of MAST_LIST) {
   if (!m.berths.length) fault(`mast "${m.id}"`, "no berths, so she can carry no sail at all");
   if (m.berths.length > RIG_BERTHS) {
-    const lost = m.berths.length - RIG_BERTHS;
-    fault(`mast "${m.id}"`, `carries ${m.berths.length} sails and the renderer has bands for ${RIG_BERTHS}, so ${lost} of them would draw on top of the topmost one and be invisible. Adding a band is not a new row in STATION_GEOM: three sails already reach the masthead, so the bands have to be generated from the pole height and the berth count instead`);
+    fault(`mast "${m.id}"`, `carries ${m.berths.length} sails and the renderer places ${RIG_BERTHS} up one mast. The bands are generated and squeezed into the air the authored ones occupy, so the limit is where the squeeze stops being worth drawing rather than a row that can be added: past it a stack is stripes on a pole`);
   }
   for (const b of berthsOf(m)) {
     const kind = SAIL_KINDS[b.kind];

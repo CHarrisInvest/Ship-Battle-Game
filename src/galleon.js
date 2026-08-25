@@ -174,6 +174,88 @@ const BOWSPRIT = { heel: [50, 0, 22.6], tip: [88, 0, 33.5], r0: 1.3, r1: 0.66 };
    for it. */
 const TRIANGULAR = new Set(["TRI"]);
 
+/* ---- how many sails, and where they sit ------------------------------------
+   Each station above is authored with three bands, which was every stack the
+   catalogue could build. A four or five sail mast is a real rig -- course,
+   topsail, topgallant, royal, skysail -- and the old code clamped anything past
+   the third onto the third, so the fourth and fifth drew exactly on top of it:
+   bought, paid for and invisible.
+
+   Adding a fourth row to STATION_GEOM does not fix that, because three sails
+   already reach the masthead. There is no room above; a taller stack has to be
+   COMPRESSED into the same air. So a stack larger than the authored one is
+   generated: the authored bands become a profile (how a sail's span, belly and
+   height change as you go up) and the envelope they occupy, and any number of
+   bands is that profile resampled and squeezed to fit the envelope.
+
+   A stack of three or fewer is left exactly as authored. That is what keeps the
+   galleon the ship this file has always drawn, and it is also right on its own
+   terms: a mast carrying one sail wants that sail on the course band, not one
+   sail stretched over the whole pole. */
+const MAX_BERTHS = 5;
+
+/* Read a value off an authored list at `t`, 0 at the lowest band and 1 at the
+   highest, interpolating between the two it falls between. */
+function sample(list, t, read) {
+  const last = list.length - 1;
+  if (last <= 0) return read(list[0]);
+  const p = Math.min(last, Math.max(0, t)) * last;
+  const i = Math.min(last - 1, Math.floor(p));
+  const f = p - i;
+  return read(list[i]) * (1 - f) + read(list[i + 1]) * f;
+}
+
+/* The square-canvas bands for a stack of `n` sails at this station. */
+function squareBands(g, n) {
+  const slots = g.slots;
+  if (n <= slots.length) return slots;
+
+  const heights = slots.map((s) => ({ v: s.zt - s.zb }));
+  const gaps = slots.slice(1).map((s, i) => ({ v: s.zb - slots[i].zt }));
+  const val = (list, t) => sample(list, t, (x) => x.v);
+
+  // the profile, resampled to n bands
+  const bands = [];
+  for (let i = 0; i < n; i++) {
+    const t = i / (n - 1);
+    bands.push({
+      span: sample(slots, t, (s) => s.span),
+      bulge: sample(slots, t, (s) => s.bulge),
+      seg: Math.max(6, Math.round(sample(slots, t, (s) => s.seg))),
+      h: val(heights, t),
+    });
+  }
+  const gapOf = (j) => val(gaps, n > 2 ? j / (n - 2) : 0);
+
+  // then squeezed into the air the authored stack occupied, so five sails reach
+  // the same masthead three did rather than standing two bands into the sky
+  const bottom = slots[0].zb;
+  const envelope = slots[slots.length - 1].zt - bottom;
+  let want = bands.reduce((a, b) => a + b.h, 0);
+  for (let j = 0; j < n - 1; j++) want += gapOf(j);
+  const squeeze = envelope / want;
+
+  let z = bottom;
+  return bands.map((b, i) => {
+    const zb = z;
+    const zt = zb + b.h * squeeze;
+    z = zt + (i < n - 1 ? gapOf(i) * squeeze : 0);
+    return { span: b.span, bulge: b.bulge, seg: b.seg, zt, zb };
+  });
+}
+
+/* The same for fore-and-aft canvas, which is one tall band rather than a stack
+   of short ones, so only the foot and the head of it are interpolated. */
+function triBands(g, n) {
+  if (n <= g.tri.length) return g.tri;
+  const bands = [];
+  for (let i = 0; i < n; i++) {
+    const t = i / (n - 1);
+    bands.push({ zb: sample(g.tri, t, (b) => b.zb), zt: sample(g.tri, t, (b) => b.zt) });
+  }
+  return bands;
+}
+
 /**
  * Turn a shipyard rig spec into the geometry buildShip wants.
  *
@@ -194,12 +276,17 @@ function rigFromSpec(spec) {
       if (!g) return null;
       const pole = Math.round(g.pole * (m.height || 1) * 100) / 100;
       const k = pole / g.ref; // a shorter mast carries its canvas proportionally lower
+      // The bands are cut for the stack she actually carries: three or fewer are
+      // the authored ones, and a taller stack is squeezed into the same air.
+      const stack = (m.sails || []).length;
+      const squares = squareBands(g, stack);
+      const tris = triBands(g, stack);
       const sails = (m.sails || []).map((s, i) => {
         if (TRIANGULAR.has(s.kind)) {
-          const band = g.tri[Math.min(i, g.tri.length - 1)];
+          const band = tris[Math.min(i, tris.length - 1)];
           return { cut: "triangle", zb: pole * band.zb, zt: pole * band.zt };
         }
-        const slot = g.slots[Math.min(i, g.slots.length - 1)];
+        const slot = squares[Math.min(i, squares.length - 1)];
         return {
           cut: "square",
           span: slot.span * k, zt: slot.zt * k, zb: slot.zb * k,
@@ -864,14 +951,25 @@ const RIG_STATIONS = Object.keys(STATION_GEOM);
 const RIG_KINDS = ["LSQ", "SSQ", "TRI"];
 
 /* How many sails this renderer can place up one mast and have them land in
-   different places. Each station carries that many authored bands, and a berth
-   past the last one is clamped to it, so a fourth and fifth sail draw exactly on
-   top of the third: bought, paid for, and invisible. Derived rather than written
-   down so it stays true if a band is ever added, and checked by the bench, which
-   is the only thing standing between that and a captain wondering where her
-   canvas went. */
-const RIG_BERTHS = Math.min(
-  ...Object.values(STATION_GEOM).map((g) => Math.min(g.slots.length, g.tri.length)),
-);
+   different places. The bands are generated from the authored profile and the
+   number of sails bent on, so this is no longer the three that happen to be
+   written down: it is where the squeeze stops being worth drawing, since a stack
+   thin enough is a mast wearing stripes. Five is a course, topsail, topgallant,
+   royal and skysail, which is the tallest rig the fleet has. The bench holds the
+   catalogue to it. */
+const RIG_BERTHS = MAX_BERTHS;
 
-export { drawGalleon, RIG_STATIONS, RIG_KINDS, RIG_BERTHS };
+/* Where a stack of `n` sails would sit at a station, square canvas and
+   fore-and-aft alike, as `{ zb, zt }` in the station's own units. The bench asks
+   for this to check that every sail on a mast lands somewhere of its own: a band
+   that overlaps the one under it is a sail a captain paid for and cannot see,
+   and that is exactly the fault the old clamp produced. */
+function rigBands(station, n) {
+  const g = STATION_GEOM[station];
+  if (!g || n < 1) return null;
+  const squares = squareBands(g, n).slice(0, n).map((s) => ({ zb: s.zb, zt: s.zt }));
+  const tris = triBands(g, n).slice(0, n).map((b) => ({ zb: b.zb * g.pole, zt: b.zt * g.pole }));
+  return { square: squares, tri: tris };
+}
+
+export { drawGalleon, RIG_STATIONS, RIG_KINDS, RIG_BERTHS, rigBands };
