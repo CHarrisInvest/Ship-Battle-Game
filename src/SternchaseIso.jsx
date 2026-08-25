@@ -3163,7 +3163,9 @@ function HoldPanel({ hold, onRecords }) {
   return (
     <div style={{ background: "rgba(11,51,49,0.6)", border: `1px solid ${C.hair}`, borderRadius: 10, padding: "9px 12px 0", margin: "14px 0 18px", textAlign: "left" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10 }}>
-        <span style={{ fontSize: 10, letterSpacing: 1, color: "rgba(238,244,242,0.55)" }}>The Hold</span>
+        {/* Same weight of ink as the row at the foot of this panel, so the box has one voice for the
+            two things it labels rather than a heading quieter than the control under it. */}
+        <span style={{ fontSize: 10, letterSpacing: 1, color: "rgba(238,244,242,0.78)" }}>The Hold</span>
         <span style={{ fontSize: 17, fontWeight: 800, color: C.gold, display: "inline-flex", alignItems: "center", gap: 4 }} aria-label={`${fmtCoins(hold.coins)} coins in the hold`}><CoinIcon size={17} />{fmtCoins(hold.coins)}</span>
       </div>
       <div style={{ fontSize: 10, color: "rgba(238,244,242,0.5)", lineHeight: 1.6, marginTop: 4 }}>
@@ -3239,9 +3241,12 @@ function RecordsScreen({ hold, onBack, onAchievements }) {
         {sailed ? (
           <Rows
             rows={[
-              // Zero rows stay. A totals table whose rows appear and vanish as a captain plays is
-              // harder to read than one that always has the same shape, and a nought is an answer.
-              ["Achievements", `${won.done} of ${won.total}`],
+              // Achievements are not in here. The button above the card carries the same count, and
+              // a figure printed twice on one screen is one of them saying nothing.
+              //
+              // Zero rows stay, though. A totals table whose rows appear and vanish as a captain
+              // plays is harder to read than one that always has the same shape, and a nought is an
+              // answer.
               ["Voyages", fmtNum(lt.runs)],
               ["Voyages won", fmtNum(lt.wins)],
               ["Ships sunk", fmtNum(lt.sunk)],
@@ -3403,9 +3408,16 @@ function SealIcon({ done, size = 20 }) {
 
 // A run of tally rows, ruled between. Takes `[label, value]` pairs so a caller can build the list
 // conditionally without threading the rule through by hand and getting the first one wrong.
+//
+// Its labels sit a step brighter than the end screen's, because a card here is nothing but labels:
+// there is no prose around them to carry the reading, and a screen of nine dim rows under a bright
+// heading reads as a heading with a footnote under it. The end-of-voyage tally keeps the dimmer ink,
+// where the labels are a caption on a result the captain is already looking at.
+const ROW_LABEL = "rgba(238,244,242,0.8)";
+
 function Rows({ rows }) {
   return rows.map(([label, value], i) => (
-    <TallyRow key={label} label={label} value={value} rule={i === 0 ? undefined : "hair"} />
+    <TallyRow key={label} label={label} value={value} labelColor={ROW_LABEL} rule={i === 0 ? undefined : "hair"} />
   ));
 }
 
@@ -3551,15 +3563,16 @@ function YardScreen({ hold, onBack }) {
 //
 // `centred` is for a screen that is nothing but slabs. The yard's headings sit over a list they
 // introduce and belong at its left margin; the log's are the only thing telling one card from the
-// next, so they are centred and set brighter to read as the heading of a section rather than as the
-// first line of it.
+// next, so they are centred and set in full ink to read as the heading of a section rather than as
+// the first line of it. Full ink is what the button above them uses, which is the brightest thing on
+// that screen that is not a figure, and the headings are its equals.
 function Slab({ title, children, centred }) {
   return (
     <div style={{ background: "rgba(11,51,49,0.6)", border: `1px solid ${C.hair}`, borderRadius: 10, padding: "8px 12px 10px", margin: "12px 0", textAlign: "left" }}>
       <div
         style={{
           fontSize: 10, letterSpacing: 1, marginBottom: 2,
-          color: centred ? "rgba(238,244,242,0.8)" : "rgba(238,244,242,0.55)",
+          color: centred ? C.ink : "rgba(238,244,242,0.55)",
           textAlign: centred ? "center" : "left",
           padding: centred ? "2px 0 5px" : 0,
         }}
@@ -3663,12 +3676,12 @@ function ModeCard({ color, title, desc, onClick }) {
 
 // One row of the end-of-voyage tally. `rule` draws the line above it: "hair" inside a group, "group"
 // where one group ends and the next begins.
-function TallyRow({ label, value, rule, valueColor, valueSize, valueWeight }) {
+function TallyRow({ label, value, rule, labelColor, valueColor, valueSize, valueWeight }) {
   return (
     // A group break gets air as well as a brighter rule. The two line weights alone are 0.20 against
     // 0.14 and read as the same line, so the space is what actually separates the sections.
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: rule === "group" ? "11px 0 6px" : "6px 0", borderTop: rule ? `1px solid ${rule === "group" ? C.hair : "rgba(160,224,210,0.14)"}` : "none" }}>
-      <span style={{ fontSize: 11, color: "rgba(238,244,242,0.6)", letterSpacing: 0.5 }}>{label}</span>
+      <span style={{ fontSize: 11, color: labelColor || "rgba(238,244,242,0.6)", letterSpacing: 0.5 }}>{label}</span>
       <span style={{ fontSize: valueSize || 13, color: valueColor || C.gold, fontWeight: valueWeight || 700 }}>{value}</span>
     </div>
   );
