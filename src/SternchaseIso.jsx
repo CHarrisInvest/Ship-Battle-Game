@@ -3173,18 +3173,27 @@ function HoldPanel({ hold, onRecords }) {
       </div>
       {/* Full width and edge to edge inside the box, so the row is visibly the whole bottom of the
           panel rather than a word someone has underlined. The negative margins pay back the box's
-          own padding; the box gives none at the foot for the same reason. */}
+          own padding; the box gives none at the foot for the same reason.
+
+          Its own line under it, in the same ink and size as the hold's, so the panel reads as two
+          things each saying what it is rather than one explained thing and one bare label. The
+          chevron centres against the pair. */}
       <button
         onClick={onRecords}
         style={{
           display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8,
-          width: "calc(100% + 24px)", margin: "8px -12px 0", padding: "9px 12px",
+          width: "calc(100% + 24px)", margin: "8px -12px 0", padding: "9px 12px 10px",
           background: "transparent", border: "none", borderTop: `1px solid ${C.hair}`,
-          fontFamily: UI, fontSize: 11, color: "rgba(238,244,242,0.78)", textAlign: "left",
+          fontFamily: UI, color: "rgba(238,244,242,0.78)", textAlign: "left",
           cursor: "pointer", WebkitTapHighlightColor: "transparent",
         }}
       >
-        <span>Achievements and Stats</span>
+        <span>
+          <span style={{ display: "block", fontSize: 11 }}>Achievements and Tallies</span>
+          <span style={{ display: "block", fontSize: 10, color: "rgba(238,244,242,0.5)", lineHeight: 1.6, marginTop: 2 }}>
+            Track your stats and achievements across the game.
+          </span>
+        </span>
         <ChevronIcon />
       </button>
     </div>
@@ -3263,7 +3272,7 @@ function RecordsScreen({ hold, onBack, onAchievements }) {
     <Shell>
       <BackLink label="Back to the sea" onClick={onBack} />
       <div style={{ fontFamily: DISPLAY, fontSize: "clamp(21px, 7vw, 26px)", color: C.gold, letterSpacing: 0.5 }}>
-        Achievements and Stats
+        Achievements and Tallies
       </div>
       <div style={{ fontSize: 12, color: "rgba(238,244,242,0.7)", margin: "6px 0 2px" }}>
         {sailed
