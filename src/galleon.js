@@ -353,11 +353,14 @@ function sparSails(g, list, foremost) {
  * which is what `shipyard.js` hands over: what is rigged, not where it goes.
  * Masts come out ordered bow to stern so the stays can be chained down the line.
  *
- * A sail's `kind` is its shipyard category and this file knows two shapes to draw
- * it in, a square one and a triangle. LSQ and SSQ are square canvas and get the
- * square; TRI and LAT get the triangle. A gaff sail and a lugsail are neither,
- * and until this file is taught their shapes they draw as square canvas, which
- * is closer than a triangle and is what the bench reports rather than hides.
+ * A sail's `kind` is its shipyard category and this file draws four shapes for
+ * the six that fill berths. LSQ and SSQ are square canvas; TRI and LAT are the
+ * triangle; GAF is the four-sided sail on a gaff abaft the mast, boomed at the
+ * foot; LUG is the four-sided sail on its slung, raking yard. The two fore-and-
+ * aft quads stand in the air of the square band at their berth, so a gaff
+ * topsail sits over its mainsail and a lug topsail over its lug the same way a
+ * topsail sits over a course, and a driving sail at the deck reaches down to
+ * the boom rather than floating at course height.
  *
  * A spar station comes back separately from the masts, because nothing done to a
  * mast applies to it: see the bowsprit in STATION_GEOM.
@@ -375,12 +378,42 @@ function rigFromSpec(spec) {
       const stack = (m.sails || []).length;
       const squares = squareBands(g, stack);
       const tris = triBands(g, stack);
+      /* Gaff and lug canvas is four sided and fore-and-aft, stacked in the air
+         of the square bands so a topsail of either sort sits over its mainsail
+         the way square canvas stacks. Two corrections to that air, because a
+         driving sail is cut from the mast rather than from a yard: the lowest
+         one brings its foot down to the boom, at working height above the
+         deck, and a mast carrying nothing but fore-and-aft canvas stretches
+         the stack up the pole the way a lateen takes its whole band, since the
+         yards the square bands leave room for are not there. */
+      const pureForeAft =
+        stack > 0 && (m.sails || []).every((s) => s.kind === "GAF" || s.kind === "LUG");
+      const stretch = pureForeAft ? Math.max(1, (0.94 * pole) / (squares[stack - 1].zt * k)) : 1;
+      /* A driving sail's boom swings low over the deck at the mast's own heel,
+         and it stops where the deck abaft rises to meet it: a boom run through
+         the wall of the quarterdeck is a sail buried in the castle, and a boom
+         lifted over the castle is a sail shrunk to a handkerchief. So the foot
+         stays down and the aft reach is capped at the first break the boom
+         cannot cross, or a little short of the stern. */
+      const boomFoot = deckZAt(g.x) + 2.6;
+      let boomRun = 6;
+      for (let x = g.x - 6; x > -56 && deckZAt(x) + 1 <= boomFoot; x -= 2) boomRun = g.x - x;
+      // and never through the next mast astern: a foremast's boom stops short of the main
+      for (const other of entries) {
+        const og = STATION_GEOM[other.station];
+        if (og && !og.spar && og.x < g.x) boomRun = Math.min(boomRun, g.x - og.x - 5);
+      }
       const sails = (m.sails || []).map((s, i) => {
         if (TRIANGULAR.has(s.kind)) {
           const band = tris[Math.min(i, tris.length - 1)];
           return { cut: "triangle", zb: pole * band.zb, zt: pole * band.zt };
         }
         const slot = squares[Math.min(i, squares.length - 1)];
+        if (s.kind === "GAF" || s.kind === "LUG") {
+          const zt = slot.zt * k * stretch;
+          const foot = i === 0 ? boomFoot : slot.zb * k * stretch;
+          return { cut: s.kind === "GAF" ? "gaff" : "lug", zb: Math.min(foot, zt - 4), zt, run: boomRun };
+        }
         return {
           cut: "square",
           span: slot.span * k, zt: slot.zt * k, zb: slot.zb * k,
@@ -784,6 +817,51 @@ function buildShip(rig){
   addSpar(F,yq(1),[mx-0.828*h,1.1-0.75,zt+0.069*h],0.42,0.36,P.dark,"mast",0);
   triPanel(B,A,C,3.6);
  }
+ /* The cloth of a four-cornered fore-and-aft sail: two rails, luff and leech,
+    with the panel lofted between them and bellied out in y. Both rails keep
+    their corners, so the head and foot stay straight enough to read as spars
+    and everything between them stands full. */
+ const quadPanel=(tack,head,clew,peak,belly)=>{
+  const mix=(p,q,s)=>[lerp(p[0],q[0],s),lerp(p[1],q[1],s),lerp(p[2],q[2],s)];
+  const at=(u,v)=>{const a=mix(tack,head,v),b=mix(clew,peak,v),p=mix(a,b,u);
+   return[p[0],p[1]+belly*Math.sin(Math.PI*u)*Math.sin(Math.PI*(0.12+0.76*v)),p[2]];};
+  const NV=12,NU=3;
+  for(let i=0;i<NV;i++){const v0=i/NV,v1=(i+1)/NV;
+   for(let j=0;j<NU;j++){const u0=j/NU,u1=(j+1)/NU;
+    addFace(F,[at(u0,v0),at(u1,v0),at(u1,v1),at(u0,v1)],P.sail,[0,1,0],{tag:"sail",double:true,back:P.back});}}
+ };
+ /* A gaff sail: four sided, all of it abaft the mast. Tack and throat stand at
+    the pole, the boom runs aft at the foot, and the gaff runs up and aft from
+    the throat with the peak the highest corner of the sail. Proportions are
+    cut from the band it stands in, the same way the lateen's are. */
+ function gaffSail(mx,zb,zt,run){if(!OPT.sails)return;
+  const h=zt-zb,y=1.1;
+  const reach=Math.min(1.05*h,run||1.05*h);
+  const tack=[mx-0.6,y,zb+0.03*h], clew=[mx-reach,y,zb+0.10*h];
+  const throat=[mx-0.6,y,zt-0.22*h], peak=[mx-0.74*reach,y,zt];
+  const off=(p)=>[p[0],p[1]-0.75,p[2]];
+  const past=(a,b,t)=>[lerp(a[0],b[0],t),lerp(a[1],b[1],t),lerp(a[2],b[2],t)];
+  // the boom, jaw at the mast and run a little past the clew
+  addSpar(F,off(past(tack,clew,-0.04)),off(past(tack,clew,1.06)),0.5,0.4,P.dark,"mast",0);
+  // the gaff, jaw at the throat and run a little past the peak
+  addSpar(F,off(past(throat,peak,-0.04)),off(past(throat,peak,1.08)),0.45,0.35,P.dark,"mast",0);
+  quadPanel(tack,throat,clew,peak,2.8);
+ }
+ /* A lugsail: four sided on a yard slung across the pole and raking the way a
+    lateen's does, the forward end low and the peak high and aft. More of the
+    cloth stands abaft the mast than forward of it, which is what makes it a
+    lug rather than a square sail askew. */
+ function lugSail(mx,zb,zt,run){if(!OPT.sails)return;
+  const h=zt-zb,y=1.1;
+  const aft=Math.min(1,(run||0.64*h)/(0.64*h));
+  const tack=[mx+0.36*h,y,zb], clew=[mx-0.62*h*aft,y,zb+0.05*h];
+  const fore=[mx+0.46*h,y,zt-0.28*h], peak=[mx-0.64*h*aft,y,zt];
+  const off=(p)=>[p[0],p[1]-0.75,p[2]];
+  const past=(a,b,t)=>[lerp(a[0],b[0],t),lerp(a[1],b[1],t),lerp(a[2],b[2],t)];
+  // the slung yard, run past both ends of the head
+  addSpar(F,off(past(fore,peak,-0.06)),off(past(fore,peak,1.06)),0.5,0.38,P.dark,"mast",0);
+  quadPanel(tack,fore,clew,peak,2.6);
+ }
  /* A headsail has no spar at all: it is tacked down to the bowsprit, hoisted up
     the stay to the masthead, and sheeted home to the deck aft of both. So it is
     three loose corners and its luff is the stay it is hanked to, which is
@@ -795,6 +873,8 @@ function buildShip(rig){
  }
  for(const m of masts) for(const s of m.sails){
   if(s.cut==="triangle") lateen(m.x,s.zb,s.zt);
+  else if(s.cut==="gaff") gaffSail(m.x,s.zb,s.zt,s.run);
+  else if(s.cut==="lug") lugSail(m.x,s.zb,s.zt,s.run);
   else sail(m.x,s.span,s.zt,s.zb,s.bulge,s.seg);
  }
  // and whatever is set on the bowsprit: headsails out on the stay, a spritsail
@@ -1072,7 +1152,7 @@ const RIG_STATIONS = Object.keys(STATION_GEOM);
    falls back to a square sail, which is a wrong-looking ship rather than a broken
    one: the bench says which categories are in that position so a rig nobody has
    drawn yet is a known gap rather than a surprise. */
-const RIG_KINDS = ["LSQ", "SSQ", "TRI", "LAT"];
+const RIG_KINDS = ["LSQ", "SSQ", "TRI", "LAT", "GAF", "LUG"];
 
 /* How many sails this renderer can place up one mast and have them land in
    different places. The bands are generated from the authored profile and the

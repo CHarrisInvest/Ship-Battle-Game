@@ -562,10 +562,14 @@ Three things to decide alongside them:
   `heavy`.
 
 The six categories mean a lugsail mast or a gaff-rigged ketch is a row in `data/masts.tsv` rather than
-a code change, and the bench catches a berth whose category is a typo. The renderer draws `LSQ`, `SSQ`
-and `TRI` in shapes of their own; `GAF` and `LUG` fall back to square canvas until `galleon.js` learns
-them, which is a wrong-looking ship rather than a broken one, and the bench prints which categories
-are in that position rather than letting it pass unremarked.
+a code change, and the bench catches a berth whose category is a typo. Every berth-filling category
+draws in a shape of its own now: `LSQ` and `SSQ` as square canvas, `TRI` and `LAT` as the triangle,
+`GAF` as the four-sided sail on a gaff abaft the mast, and `LUG` on its slung, raking yard. The two
+fore-and-aft quads stack in the air of the square bands, so a topsail of either sort sits over its
+mainsail; a mast carrying nothing but fore-and-aft canvas stretches the stack up the pole the way a
+lateen takes its whole band; and a driving sail's boom stays down at the deck and stops where the
+quarterdeck wall or the next mast astern would meet it. The bench still prints which categories fall
+back to square canvas, which is now none.
 
 ## Open questions
 
