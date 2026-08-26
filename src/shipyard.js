@@ -312,17 +312,17 @@ const FLEET = [
   {
     id: "thirdRate", name: "3rd rate", price: 78500,
     hull: 2188, crew: 720, speed: 0.85, hand: 0.7, canvas: 4.15, tons: 9.83,
-    guns: [19, 2, 8], masts: ["bowsprit/large", "fore/heavy", "main/heavy", "mizzen/large"],
+    guns: [19, 2, 6], masts: ["bowsprit/large", "fore/heavy", "main/heavy", "mizzen/large"],
   },
   {
     id: "secondRate", name: "2nd rate", price: 104000,
     hull: 2834, crew: 850, speed: 0.79, hand: 0.68, canvas: 4.99, tons: 11.5,
-    guns: [20, 2, 8], masts: ["bowsprit/large", "fore/heavy", "main/heavy", "mizzen/large"],
+    guns: [20, 2, 6], masts: ["bowsprit/large", "fore/heavy", "main/heavy", "mizzen/large"],
   },
   {
     id: "firstRate", name: "1st rate", price: 120000,
     hull: 3290, crew: 950, speed: 0.79, hand: 0.62, canvas: 5.55, tons: 12.46,
-    guns: [20, 2, 8], masts: ["bowsprit/large", "fore/heavy", "main/heavy", "mizzen/large"],
+    guns: [20, 2, 6], masts: ["bowsprit/large", "fore/heavy", "main/heavy", "mizzen/large"],
   },
 ];
 /* end:hulls */
@@ -1143,7 +1143,37 @@ const BARE = 0.30;
 const UNDER_SAIL = 0.92; // added to BARE as drive runs away, so a well-rigged hull rates a little over 1
 const HAND_PER_POINT = 0.16; // how much a point of sail handling moves her turn rate
 const LOAD_BITE = 0.22; // handling lost when she is loaded to her tonnage in guns
-const CREW_PER_MUSKET = 26; // hands to work one musket in a volley
+/**
+ * SMALL ARMS COME OFF THE CREW, AND NOT IN PROPORTION TO THEM.
+ *
+ * A dozen hands in a boat and nine hundred and fifty in a first rate is a range of eighty, and one
+ * musket a head, or anything close to it, ends with a three-decker throwing a volley nobody can read
+ * and a boat throwing nothing. So the count goes as the SQUARE ROOT of the crew: a ship twice manned
+ * does not put twice the muskets over the rail, because only so many of them fit at it, and the rest
+ * are working the guns, the pumps and the yards.
+ *
+ * `CREW_PER_FIRST` is the hands that buy the first musket and sets where the curve starts. It gives a
+ * yawl one, a brig three, a heavy frigate six and a first rate eight, which is a figure a captain can
+ * hold in her head at every size of ship.
+ */
+const CREW_PER_FIRST = 12;
+/**
+ * The most balls in one volley, hands and swivels together.
+ *
+ * It is a ceiling on a number the player reads, not a balance knob: past about this many the volley
+ * stops being countable and becomes a texture. The swivel bearings in `data/hulls.tsv` are set so the
+ * biggest ships reach it exactly with every swivel mounted and nothing goes over, because a swivel
+ * that adds nothing is a swivel nobody buys, which is the same trap the half-musket fell into below.
+ */
+const MUSKET_CAP = 14;
+
+/**
+ * The most balls one side can throw in a volley, however many guns are behind them.
+ *
+ * A battery larger than this fires in columns of stacked guns, one ball to a column, and the ball
+ * carries what the whole column weighs. See `volley()` in `rate()`.
+ */
+const BROADSIDE_COLUMNS = 10;
 
 /**
  * A SWIVEL IS ONE MORE SHOT IN THE VOLLEY, and that is settled rather than provisional.
@@ -1224,15 +1254,40 @@ export function rate(loadout) {
   const turn = hull.hand * (1 + hand * HAND_PER_POINT) * (1 - LOAD_BITE * load);
 
   // Small arms are the crew, not a purchase. A hull that musters more hands puts more muskets over
-  // the rail, and the swivels on her rail count toward the same volley.
-  const muskets = Math.max(1, Math.round(hull.maxCrew / CREW_PER_MUSKET + guns.swivel.length * SWIVEL_MUSKETS));
+  // the rail, though not in proportion to them, and the swivels on her rail fire in the same volley.
+  const muskets = Math.min(
+    MUSKET_CAP,
+    Math.max(1, Math.floor(Math.sqrt(hull.maxCrew / CREW_PER_FIRST)) + guns.swivel.length * SWIVEL_MUSKETS),
+  );
 
-  const volley = (list) => ({
-    count: list.length,
-    damage: sum(list, (g) => g.damage),
-    // a mixed battery reloads at the pace of its slowest piece, which is what serving it really means
-    reload: list.length ? Math.max(...list.map((g) => g.reload)) : 0,
-  });
+  /**
+   * A VOLLEY IS NOT ONE BALL PER GUN, past a point.
+   *
+   * Ten is as many as can be told apart coming off one side, and a first rate bears twice that. So a
+   * battery bigger than the ports the eye can follow fires in COLUMNS: the guns stack up the levels
+   * of one column, the column throws one ball, and that ball carries the weight of everything in it.
+   * A seventy-four's nineteen a side is ten balls with nine of them doubled, which is both what the
+   * ship looked like and what a player can read at a glance.
+   *
+   * Total damage is unchanged by any of this, so a ship's strength does not move when her battery
+   * crosses ten: the same iron arrives in fewer, heavier pieces. What changes is how it lands, and
+   * that belongs to the fight, which reads `columns` for how many balls to throw and `perBall` for
+   * what each one carries.
+   */
+  const volley = (list) => {
+    const count = list.length;
+    const damage = sum(list, (g) => g.damage);
+    const columns = Math.min(BROADSIDE_COLUMNS, count);
+    return {
+      count,
+      damage,
+      columns,
+      levels: columns ? Math.ceil(count / columns) : 0,
+      perBall: columns ? damage / columns : 0,
+      // a mixed battery reloads at the pace of its slowest piece, which is what serving it really means
+      reload: count ? Math.max(...list.map((g) => g.reload)) : 0,
+    };
+  };
 
   return {
     hull: hull.maxHull,
@@ -1507,14 +1562,26 @@ export function measure(r) {
  * `from` is the bottom of the band. The last one has no top, so a ship fitted beyond anything in the
  * catalogue still lands somewhere rather than falling off the end.
  *
- * These names have not been read at 1x in the game, because nothing displays them yet.
+ * A TIER IS A NUMBER AND HAS NO NAME. Five of them were named once, and the names were doing a job
+ * the number does better: `Ship of the line` said less about who a captain would meet than `6` does,
+ * and it had to be read against seven other names to mean anything. Eight rungs of `Tier 6` sort
+ * themselves in the reader's head, which is the whole of what the label is for.
+ *
+ * THE EDGES ARE GEOMETRIC, evenly spaced in ratio from the weakest stock ship to the strongest rather
+ * than in plain steps. `measure()` blends its parts geometrically, so a fixed multiple of strength is
+ * what "one rung" ought to mean at both ends of a fleet that runs a factor of fifteen: 75 to 105 is
+ * the same step up as 405 to 565. Occupancy thins toward the top on purpose, because only a handful
+ * of classes reach it and a band nobody occupies is better than a boundary placed to fill one.
  */
 export const TIERS = [
-  { tier: 1, name: "Coastal", from: 0 },
-  { tier: 2, name: "Privateer", from: 78 },
-  { tier: 3, name: "Cruiser", from: 108 },
-  { tier: 4, name: "Ship of the line", from: 142 },
-  { tier: 5, name: "Flagship", from: 180 },
+  { tier: 1, from: 0 },
+  { tier: 2, from: 75 },
+  { tier: 3, from: 105 },
+  { tier: 4, from: 150 },
+  { tier: 5, from: 205 },
+  { tier: 6, from: 290 },
+  { tier: 7, from: 405 },
+  { tier: 8, from: 565 },
 ];
 
 /** The band a strength figure falls in. */
@@ -1559,15 +1626,17 @@ export const tierOf = (loadout) => tierAt(measure(rate(loadout)).overall);
  * the ladder on its own and cannot disagree with its own stat line.
  */
 const STANDARDS = [
-  { key: "plain", label: "Plain", quality: 0.35 },
-  { key: "found", label: "Well found", quality: 0.7 },
-  { key: "full", label: "Fully found", quality: 1 },
+  { key: "plain", label: "plain", quality: 0.35 },
+  { key: "found", label: "well found", quality: 0.7 },
+  { key: "full", label: "fully found", quality: 1 },
 ];
 
 export const STOCK = HULL_LIST.flatMap((hull) =>
   STANDARDS.map((s) => ({
     id: `${hull.id}_${s.key}`,
-    name: `${s.label} ${hull.name}`,
+    // her class first, then the standard she is fitted to. The other way round reads as a title and
+    // capitalises badly: "Plain Baltimore clipper" fights the proper noun in the middle of it.
+    name: `${hull.name}, ${s.label}`,
     hull: hull.id,
     quality: s.quality,
   })),

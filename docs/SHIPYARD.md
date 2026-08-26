@@ -32,11 +32,13 @@ are cheap to change and are deliberately left rough.
 Four kinds of thing, and the shape of each is what makes the shipyard behave the way the brief asks.
 
 **Hulls** fix maximum hull and crew, base speed and handling, how many guns of each kind she bears,
-and her mast sockets. A socket has a station along the keel (`fore`, `main`, `mizzen`) and a size.
+and her mast sockets. A socket has a station (`bowsprit`, `fore`, `main`, `mizzen`, `bonaventure`) and
+a size (`boat`, `small`, `medium`, `large`, `heavy`).
 
 **Manoeuvrability is `hand`, and it is separate from `speed`.** Both are hull figures around 1, both
-are columns in `data/hulls.tsv`, and nothing in the model runs one off the other: a cutter is 1.22 on
-the helm and 1.08 on pace, a galleon 0.78 and 0.87. Three things then move it. Sails carry their own
+are columns in `data/hulls.tsv`, and nothing in the model runs one off the other: a cutter is 1.18 on
+the helm and 0.97 on pace, a first rate 0.62 and 0.79, and a clipper is the fastest hull in the fleet
+while turning worse than a corvette. Three things then move it. Sails carry their own
 `hand`, so square canvas stiffens her and fore-and-aft canvas helps her round; guns weigh her down by
 `LOAD_BITE` as she fills her ports; and in the fight the rudder itself goes heavy with the way she
 carries, so a ship at a run turns wider than the same ship at a crawl. `rate()` folds the first two
@@ -110,8 +112,22 @@ carries `kind` for its category. Those were one field until the categories arriv
 it, which is worth knowing when reading an old branch.
 
 **Guns** fit by the piece up to the hull's bearing. `broadside` counts guns *a side*, because that is
-how a volley fires, and runs 2 on the cutter to 10 on the galleon. Bow guns run 1 to 3. Muskets are
-not bought at all: they come off the crew the hull musters, with swivels adding to the volley.
+how a volley fires, and runs 1 on a ship's boat to 20 on a first rate. Bow guns run 0 to 2. Muskets
+are not bought at all: they come off the crew the hull musters, with swivels adding to the volley.
+
+**A volley is not one ball per gun, past ten.** Ten is as many as can be told apart coming off one
+side and a first rate bears twice that, so a battery larger than that fires in COLUMNS: the guns stack
+up the levels of one column, the column throws one ball, and the ball carries the weight of everything
+in it. A seventy-four's nineteen a side is ten balls with nine of them doubled, which is both what she
+looked like and what a player can count. Total damage is unchanged by any of it, so a ship's strength
+does not move when her battery crosses ten; the same iron arrives in fewer, heavier pieces. `rate()`
+returns `columns` for how many balls and `perBall` for what each carries.
+
+**She cannot work iron she cannot carry.** `fitOut` takes the dearest piece a mount allows and then
+steps the battery down a grade at a time until it fits under her tonnage, so a ship's launch comes out
+with minions, a xebec with carriage guns, and anything from a corvette up with demi-cannon. None of
+that is declared per class: it falls out of `tons`, which is why fine-lined hulls carry lighter iron
+than beamy ones of the same displacement.
 
 **Size** is deliberately absent. Classes differ in how big they are, but each hull is to be modelled
 in its own right rather than scaled off one shape, so a class's size arrives with its art and there is
@@ -520,10 +536,13 @@ with it is as cheap as changing it.
    What that does not touch is the bottom end: a launch still pays a few thousand to fill out against
    a 120 coin hoy. If the opening should be cheaper as well, the lever is a cheaper low grade of sail,
    not the hull prices.
-2. **Where the tier bands fall.** The five thresholds were placed against eleven stock ships, so the
-   fleet lands two or three to a rung and the class overlaps straddle them. Nothing about how a fight
-   actually plays went into them, and a catalogue eight times the size will fill the range
-   differently. The band edges are the knob that decides who meets whom.
+2. ~~**Where the tier bands fall.**~~ **Settled.** Eight rungs, and **the edges are geometric**: evenly
+   spaced in ratio from the weakest stock ship to the strongest rather than in plain steps. `measure()`
+   blends its parts geometrically, so a fixed multiple of strength is what one rung ought to mean
+   across a fleet running a factor of fifteen, and 75 to 105 is the same step up as 405 to 565.
+   Occupancy over the 114 stock ships comes out 18, 17, 18, 19, 12, 14, 10 and 6, thinning at the top
+   because only a handful of classes reach it. Still nothing about how a fight actually plays has gone
+   into them, which is the part that wants the fight wired first.
 3. **Does the player's own ship sail in every mode, or only some?** The stock fleet settles what she
    is matched *against*. Whether free-for-all puts her in her own ship against a same-tier field, or
    issues her a stock one so the field really is identical, is a separate call and the modes rework
@@ -540,12 +559,20 @@ with it is as cheap as changing it.
 6. **Should the derby have repairs?** It has none today, because "only one hand needed" is that mode's
    whole promise and a rail is a second thing to think about. But trading coins for crew after a spell
    in the storm is a genuinely good decision, and the derby is the mode that pays by the second.
-7. **The crew divisor.** Muskets are crew capacity over 26, and the 26 is a guess. It gives a 55 hand
-   cutter two shots and a 155 hand galleon six before a single swivel is aboard, which feels about
-   right and has never been played against a tuned fight. What a swivel adds is *not* an open
-   question: see below.
-8. **Diminishing returns past a third sail** are unreachable until a mast has four berths. Worth
-   confirming a four-berth mast is wanted before tuning the falloff.
+7. ~~**The crew divisor.**~~ **Settled, and it is not a divisor.** Crew runs from a dozen hands to nine
+   hundred and fifty, a range of eighty, and one musket a head or anything near it ends with a
+   three-decker throwing a volley nobody can count. So the count goes as the SQUARE ROOT of the crew:
+   a ship twice manned does not put twice the muskets over the rail, because only so many of them fit
+   at it. Twelve hands buy the first, which gives a yawl one, a brig three, a heavy frigate six and a
+   first rate eight before a swivel is aboard. The volley is capped at 14 including swivels, and the
+   swivel bearings in `data/hulls.tsv` are set so the biggest ships reach exactly that with every
+   swivel mounted: a swivel that adds nothing is a swivel nobody buys, which is the same trap the
+   half-musket fell into.
+8. **Diminishing returns past a third sail** are reachable now, and untuned. Four and five berth masts
+   exist, so a fore-mast royal keeps 34% of its drive and a skysail 20%, against 58% and 34% on the
+   main. That is the rule working as written; whether those are the right numbers has never been
+   played. A skysail at 0.12 drive and 20% falloff is worth 0.023, which is a sail bought for the look
+   of it, and that may be exactly right.
 9. ~~**Four and five berth masts need the sail bands generated.**~~ **Done.** The authored bands are
    now a profile rather than a list: how a sail's span, belly and height change going up, plus the
    envelope the stack occupies. Any number of bands is that profile resampled and squeezed to fit, so
@@ -563,6 +590,8 @@ with it is as cheap as changing it.
     in, and square canvas on a bowsprit is slung under it on a yard athwart, the way a carrack carried
     hers. The hull's `bowsprit` flag still says whether she has the spar at all, which is what decides
     whether she has the socket to fit anything to.
-12. **Tier names.** `Coastal`, `Privateer`, `Cruiser`, `Ship of the line`, `Flagship` have not been
-    read at 1x in the game, because nothing displays them. `Ship of the line` is much the longest and
-    is the one to watch in a card.
+12. ~~**Tier names.**~~ **Settled: a tier is a number and has no name.** The five names were doing a job
+    the number does better. `Ship of the line` said less about who a captain would meet than `6` does,
+    and it had to be read against seven other names to mean anything at all, where eight rungs of
+    `tier 6` sort themselves in the reader's head. The yard screen reads "rated 668, which puts her at
+    tier 8", checked at 1x.

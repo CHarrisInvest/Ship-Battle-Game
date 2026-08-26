@@ -209,12 +209,12 @@ for (const h of HULL_LIST) {
 }
 
 console.log("\nTHE STOCK LADDER  (what the modes issue, in ascending strength)");
-console.log("  " + pad("ship", 26) + pad("tier", 18) + num("overall", 7) + num("ram", 7) + num("throw", 7) + num("endurance", 10) + num("mobility", 9) + num("value", 8) + num("rigging", 9) + num("rebuild", 8));
+console.log("  " + pad("ship", 26) + num("tier", 6) + num("overall", 8) + num("ram", 7) + num("throw", 7) + num("endurance", 10) + num("mobility", 9) + num("value", 8) + num("rigging", 9) + num("rebuild", 8));
 for (const s of ladder()) {
   console.log(
     "  " + pad(s.name, 26),
-    pad(`${s.tier} ${tierAt(s.measure.overall).name}`, 18),
-    num(n1(s.measure.overall), 7),
+    num(s.tier, 6),
+    num(n1(s.measure.overall), 8),
     num(n1(s.measure.ram), 7),
     num(n1(s.measure.throwWeight), 7),
     num(s.measure.endurance, 10),
@@ -228,8 +228,10 @@ for (const s of ladder()) {
 console.log("\nTIER OCCUPANCY");
 for (const t of TIERS) {
   const inTier = stockOfTier(t.tier);
-  console.log(`  ${t.tier} ${pad(t.name, 17)} from ${num(t.from, 4)}   ${inTier.map((s) => s.name).join(", ") || "(nothing stocked at this rung)"}`);
-  if (!inTier.length) fault("tiers", `rung ${t.tier} (${t.name}) has no stock ship, so no mode can field one`);
+  const names = inTier.map((s) => s.name);
+  const shown = names.slice(0, 3).join("; ") + (names.length > 3 ? ` and ${names.length - 3} more` : "");
+  console.log(`  tier ${t.tier}  from ${num(t.from, 4)}  ${num(names.length, 4)} ships   ${shown || "(nothing stocked at this rung)"}`);
+  if (!inTier.length) fault("tiers", `rung ${t.tier} has no stock ship, so no mode can field one`);
 }
 
 const first = resolve(STARTER);

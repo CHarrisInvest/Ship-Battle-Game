@@ -1277,6 +1277,21 @@ export default function App() {
       syncRef.current();
     }
 
+    /**
+     * The bounty on a sinking, and the one term in the economy that does not scale with the fleet.
+     *
+     * Everything else already does. A coin is earned a point of damage and a coin is charged a point
+     * of damage, so putting a first rate under pays thirty-three times what a launch pays and costs
+     * thirty-three times as much to undo, with no scaling term anywhere in either. This 25 is flat,
+     * and against a class of ship worth three thousand points of hull it is a rounding error rather
+     * than the reward for finishing her.
+     *
+     * It becomes a share of what she was: `KILL_SHARE * s.maxHull`, which needs no tuning as the
+     * catalogue grows and reads the same at both ends of it. Not yet, though. Every hull at sea still
+     * carries `BASE.hull`, so today that substitution would pay a flat 10 in place of a flat 25 and
+     * change nothing but the number. It goes in with the loadouts, at this line and the derby's
+     * `timeCoins` beside it.
+     */
     function killShip(s, attacker) {
       const g = gameRef.current;
       if (attacker && attacker.alive) {
@@ -3525,7 +3540,7 @@ function YardScreen({ hold, onBack }) {
       <BackLink label="Back to the sea" onClick={onBack} />
       <div style={{ fontFamily: DISPLAY, fontSize: 30, color: C.gold, letterSpacing: 1 }}>THE YARD</div>
       <div style={{ fontSize: 12, color: "rgba(238,244,242,0.7)", margin: "6px 0 2px" }}>
-        {loadout.hull.name}, rated {Math.round(strength.overall)} and sailing as {tier.name.toLowerCase()}.
+        {loadout.hull.name}, rated {Math.round(strength.overall)}, which puts her at tier {tier.tier}.
       </div>
       <MenuGalleon rig={rig} />
 
@@ -3535,6 +3550,16 @@ function YardScreen({ hold, onBack }) {
         <TallyRow label="Hull" value={stats.hull} rule="hair" />
         <TallyRow label="Crew" value={stats.crew} rule="hair" />
         <TallyRow label="Muskets in a volley" value={stats.muskets} rule="hair" />
+        {/* What a broadside actually throws, which stops matching the gun count once she bears more
+            than ten a side and the guns start firing in stacked columns. Shown only when she has a
+            broadside at all, because "0 balls" on a boat with no guns is a row saying nothing. */}
+        {stats.broadside.count > 0 && (
+          <TallyRow
+            label="Broadside balls, a side"
+            value={stats.broadside.columns}
+            rule="hair"
+          />
+        )}
       </Slab>
 
       <Slab title="Her rigging">
