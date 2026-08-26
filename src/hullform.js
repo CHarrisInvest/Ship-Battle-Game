@@ -11,8 +11,11 @@
  *   `sea`   the top-down hull the fight draws: her world length and beam (which are also her
  *           collision ellipse), her outline, her stern cabin, and where her masts stand.
  *
- * THE GALLEON'S OWN NUMBERS ARE THE AUTHORED ONES, verbatim, and every other class is derived by the
- * same rules from her own row: her length and beam set the size, `freeboard` the depth of side,
+ * THE GALLEON IS THE AUTHORED ANCHOR: her station table, castles, bow, bowsprit and mast geometry
+ * are the literal numbers this game has always drawn, and a handful of her small fittings (the stern
+ * lights, the window bands, the hatch) are re-derived as ratios that land within a few hundredths of
+ * a unit of the old literals, which is sub-pixel at any size the plate draws. Every other class is
+ * derived by the same rules from her own row: her length and beam set the size, `freeboard` the depth of side,
  * `sheer` how the deck sweeps up at the ends, `castle` whether and how high her decks rise fore and
  * aft, `bowFine` how her entry narrows, `tumblehome` how the sides roll in above the waterline,
  * `stern` whether she shows a transom, a round tuck or a windowed gallery, and `histGuns` how many

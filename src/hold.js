@@ -635,12 +635,12 @@ export function fitSail(shipId, socketId, berth, partId) {
   while (slot2.sails.length < mast.berths.length) slot2.sails.push(null);
   slot2.sails[berth] = partId || null;
   // the studdingsail hangs off the sail: taking the sail off, or changing it for one the stud no
-  // longer fits beside, sends the stud loose into the hold with it
+  // longer fits beside, sends the stud loose into the hold with it. `sails[berth]` is already the
+  // incoming sail here, so the check reads the slot as it now stands.
   slot2.studs = (slot2.studs || []).map((st, i) => {
     if (!st) return null;
     const host = slot2.sails[i] ? partOf(rec, slot2.sails[i]) : null;
-    const hostType = i === berth && partId ? partOf(rec, partId) : host;
-    return studFitsSail(partOf(rec, st), mast, i, hostType) ? st : null;
+    return studFitsSail(partOf(rec, st), mast, i, host) ? st : null;
   });
   return commitYard(rec, yard);
 }

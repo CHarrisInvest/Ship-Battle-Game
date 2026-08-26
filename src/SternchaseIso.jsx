@@ -578,14 +578,9 @@ const MAX_ZOOM = 1.5;
 // side, so it is also how far off centre a ship ends up when she runs right up on that boundary.
 const EDGE_PEEK = 40; // screen pixels
 
-const SHIP_R = 17;
-// The hull every ship at sea used to share, kept as the yardstick the per-class forms are anchored
-// to: the galleon still comes out exactly this size, and a few constants below (ram gaps, the AI's
-// sense of "a hull length") still read the fleet's middle rather than any one ship.
-const HULL_L = 36;
-const HULL_W = 13;
-const HULL_A = HULL_L / 2; // hulls collide as ellipses: semi-length along the heading...
-const HULL_B = HULL_W / 2; // ...and semi-beam across it
+// A ship's length, beam and collision ellipse are her own now, set per class by `hullform.js` and
+// carried on the ship as `hullA` and `hullB` (semi-length and semi-beam). The galleon anchors the
+// scale at the 36 by 13 every hull at sea used to share.
 
 /**
  * THE RIG SHE CARRIES, AT SEA. Every ship afloat used to draw the same three hard-coded masts, so a
@@ -637,7 +632,9 @@ function buildSeaRig(loadout, sea) {
       if (SEA_FOREAFT.has(sail.kind)) {
         if (fore) heads.push({ tack: bowTip * (0.72 + 0.11 * i), mastU: fore.u, mastZ: fore.h * (0.55 + 0.14 * i) });
       } else {
-        sprits.push({ kind: sail.kind, sb: -1.5, st: 3, w: 0.54 * sea.W, u: 0.53 * sea.L });
+        // slung further out along the spar per sail, the way the menu spreads them, so a second
+        // spritsail is a sail and not a repaint of the first
+        sprits.push({ kind: sail.kind, sb: -1.5, st: 3, w: 0.54 * sea.W * (1 - 0.18 * i), u: sea.L * (0.46 + 0.12 * i) });
       }
     });
   }
@@ -1594,7 +1591,9 @@ export default function App() {
         for (const isl of g.islands) {
           const dx = s.x - isl.x, dy = s.y - isl.y;
           const d = Math.hypot(dx, dy) || 1;
-          const minD = isl.r + SHIP_R * 0.8;
+          // her own half-length, so a first rate grounds where her bow reaches the shallows and a
+          // launch can work right in under the beach
+          const minD = isl.r + s.hullA * 0.76;
           if (d < minD) { s.x = isl.x + (dx / d) * minD; s.y = isl.y + (dy / d) * minD; s.spdCur *= 0.5; }
         }
     }

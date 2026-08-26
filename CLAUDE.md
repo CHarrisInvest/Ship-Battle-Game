@@ -24,10 +24,11 @@ are built from. `broadside` in the code is the side guns, not the old title, and
 - `src/hullform.js` models each class's hull from her reference row: the 3-D menu model `galleon.js`
   builds (stations, castles, gunports, mast geometry) and the hull at sea (her world length and beam,
   which are also her collision ellipse, her outline, her stern cabin, where her masts stand). The
-  galleon's own numbers are the authored ones, verbatim, and every other class is derived by the same
-  rules from her own row; sizes are deliberately compressed with the galleon as the anchor, so she is
-  exactly the ship and the size she always was. A class's size lives here, with her art, and still
-  never in the catalogue.
+  galleon is the authored anchor: her hull, castles and mast geometry are the literal numbers the
+  game always drew, a few small fittings are re-derived as ratios that agree to within a few
+  hundredths of a unit, and every other class is derived by the same rules from her own row. Sizes
+  are deliberately compressed around her, so she is the size she always was. A class's size lives
+  here, with her art, and still never in the catalogue.
 - `src/hold.js` persists coins, lifetime stats and the yard to localStorage. Nothing else is saved;
   worlds and islands are generated fresh every match.
 - `src/achievements.js` is the achievement list, and **an achievement is a question asked of the hold,
