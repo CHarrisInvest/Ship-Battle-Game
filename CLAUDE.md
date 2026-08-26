@@ -155,6 +155,7 @@ Rules above that the code does not yet satisfy. Tracked cleanups, not exceptions
   modelled in its own right rather than scaled off this one, so its size comes with its art: do not
   add a size multiplier to the catalogue in the meantime. `STATION_GEOM` in `galleon.js` is where a
   hull's mast positions live.
-- **The catalogue's blurbs have not been read at 1x in the game.** Hull, mast and sail *names* now
-  show on the yard screen and have been checked there. The blurbs still have nowhere to appear, so no
-  line of one has been seen at a real width. Check them when the shipyard sells anything.
+- **The catalogue's blurbs have still never been read at 1x.** Names are checked, and so are the part
+  figures the shops print, but the shelves say what a part *does* rather than quoting its blurb, and
+  the 38 hull rows have no blurb at all. So no line of one has been seen at a real width. Check them
+  before anything starts showing them.

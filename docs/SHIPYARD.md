@@ -1,8 +1,9 @@
 # The shipyard
 
-Groundwork for buying and fitting ships. This is the foundation only: the data model, the persistence
-and the plumbing that lets the menu turn the captain's own ship. There is no shipyard screen yet, and
-the fight still puts every captain in the same hull.
+Buying and fitting ships. The data model, the persistence, the renderer that draws whatever is
+stepped and bent on, and the two shops a captain spends her coins in. What is still outstanding is the
+fight: it does not read the catalogue yet, so every captain at sea is put in the same hull whatever
+she has bought.
 
 What *has* changed at sea is that nothing is bought there any more. The five-track upgrade rail is
 gone from the modes and from the AI, and repairs took its place: a purse now buys patches and nothing
@@ -22,7 +23,7 @@ are cheap to change and are deliberately left rough.
 | `src/shipref.js` | GENERATED. What each class was: her dimensions, her shape, her timber, her era. Nothing reads it; it is there for whoever models the hulls. |
 | `src/hold.js` | What a captain owns. The yard sits in the same record as the coins, so a purchase moves both in one write. |
 | `src/galleon.js` | Draws a rig rather than *the* rig. Given a spec it builds the ship; given nothing it builds the galleon it always drew. |
-| `src/SternchaseIso.jsx` | The menu ship plate and the yard screen, plus the repair rail that replaced the upgrade rail. |
+| `src/SternchaseIso.jsx` | The menu ship plate, the yard, the Boat Commission and the Rigging Outfitter, plus the repair rail that replaced the upgrade rail. |
 | `data/hulls.tsv`, `data/masts.tsv`, `data/sails.tsv`, `data/guns.tsv` | The tables a person edits. One row per class, per mast type, per sail and per gun. |
 | `tools/import.mjs` | `npm run import`. Writes those tables into the generated blocks in `shipyard.js`. |
 | `tools/catalogue.mjs` | `npm run catalogue`. Checks the fleet is riggable and drawable, then prints every class side by side for calibration. |
@@ -289,8 +290,9 @@ round, not her savings.
 
 ## Deliberately not done
 
-- No shipyard screen. The model is what a screen is built against, and building the screen first would
-  have fixed the model to whatever the first layout happened to need.
+- ~~No shipyard screen.~~ Built, and built against a finished model, which is what waiting bought: the
+  Boat Commission and the Rigging Outfitter are two doors off the yard, and both are UI over calls
+  that already existed. Nothing in `hold.js` changed to make them work.
 - **The fight still does not read the catalogue.** `rate()` is not wired to `speedCap`, `turnCap` or
   `sideDmg`, so every ship at sea is the same ship, and no mode issues from `STOCK` yet. That is the
   modes rework, and it is its own piece of work. The tiers and the stock fleet below say what each
@@ -432,8 +434,46 @@ by socket with every berth named and every empty one marked bare, how many guns 
 against how many she has, and what `shortfall()` says she still wants. Empty sockets and bare berths
 are listed rather than skipped, because the gaps are the point of the screen.
 
-Buying and fitting are not on it yet. The model behind them is complete, so what they are waiting on
-is the design, and this is the screen they get built into rather than a placeholder to be thrown away.
+Buying and fitting are through the two doors under it, and they are two rather than one because they
+are different decisions: a hull is a rare purchase a captain saves for, a rig is a dozen small ones,
+and one screen would bury the second in the first.
+
+### The Boat Commission
+
+The hull shelf, arranged four ways, because a captain shopping for a hull is asking one of four
+different questions: **all by price**, by **price range**, by **masts**, and by **sails needed**.
+Price is the tie-break through all of them, so every group climbs the same way.
+
+The fourth is worth a note, because it is not what it was first asked for. "Group by sail types
+needed" is not a question this model can answer: which CATEGORIES a hull wants is decided by the mast
+a captain steps in her, not by the hull, and both honest readings of it collapse (28 of 38 classes
+land in one group by what their sockets could take, 23 by what they carry fully found). What a
+shopper is actually asking is what it will cost to bend canvas on her, and that IS a fact about the
+hull: a class with seventeen berths is a fortune to fill however cheap she was to buy. So the shelf
+groups on the number of sails a full rig wants, which comes out 6, 6, 6, 9 and 11 across the bands.
+
+A row opens rather than opening a screen, so two classes can be compared without leaving the list.
+Open, it is her whole stat line at both ends: what she is bare, which is what the coins actually buy,
+and what she becomes fully found, which is what the outfitter will charge for afterwards. Handling is
+printed "1.16 down to 1.05" rather than as a plain range, because it runs backwards and a range that
+falls reads as a mistake.
+
+Commissioning her makes her the ship you sail. Leaving the old one active would point the outfitter at
+the wrong hull, and the list of ships below switches back in one tap.
+
+### The Rigging Outfitter
+
+Masts, sails and guns for the ship she is sailing, with a toggle at the head rather than two doors,
+because filling out a new hull means moving between them a dozen times.
+
+Every slot is a row that opens on what could go in it, and **what she already owns is in the same list
+as what the shop sells**, told apart by their right-hand ends: a part in the hold reads "1 in the
+hold" in green and costs nothing, a part in the shop reads its price. That is the whole difference
+between them, so they are one list rather than two a captain has to compare. Spare rigging off a ship
+she no longer sails is the reason instances move between hulls at all, and this is where it shows.
+
+The rows say what a part *does* rather than what it is called: a mast lists the sails it will carry, a
+sail what it pulls and what it costs the helm, a gun what it throws and how fast.
 
 ### What the shipyard screen will ask
 

@@ -1,7 +1,14 @@
 import React, { useRef, useState, useEffect, useCallback, useMemo } from "react";
 import { drawGalleon } from "./galleon.js";
-import { getHold, bankVoyage, resetHold, subscribeHold, modeRecord, shipLoadout, shortfall } from "./hold.js";
-import { STARTER, kindOf, mastRebuildCost, measure, rate, resolve, rigSpec, tierAt } from "./shipyard.js";
+import {
+  getHold, bankVoyage, resetHold, subscribeHold, modeRecord, shipLoadout, shortfall,
+  buyShip, buyPart, fitMast, fitSail, fitGun, unfitGun, setActiveShip, loosePartIds, ownedShips, partOf,
+} from "./hold.js";
+import {
+  STARTER, kindOf, mastRebuildCost, measure, rate, resolve, rigSpec, tierAt,
+  HULLS, HULL_LIST, statBand, minimumLoadout, maximumLoadout, outfitCost,
+  mastsForSocket, sailsForBerth, gunsForMount,
+} from "./shipyard.js";
 import { roll, tally } from "./achievements.js";
 
 /**
@@ -2912,7 +2919,9 @@ export default function App() {
       )}
 
       {phase === "start" && <StartOverlay onStart={(m) => startRef.current(m)} onEdit={() => setPhase("yard")} onRecords={() => setPhase("records")} hold={hold} onScuttle={() => resetHold()} />}
-      {phase === "yard" && <YardScreen hold={hold} onBack={() => setPhase("start")} />}
+      {phase === "yard" && <YardScreen hold={hold} onBack={() => setPhase("start")} onCommission={() => setPhase("commission")} onOutfit={() => setPhase("outfitter")} />}
+      {phase === "commission" && <CommissionScreen hold={hold} onBack={() => setPhase("yard")} />}
+      {phase === "outfitter" && <OutfitterScreen hold={hold} onBack={() => setPhase("yard")} />}
       {phase === "records" && <RecordsScreen hold={hold} onBack={() => setPhase("start")} onAchievements={() => setPhase("achievements")} />}
       {phase === "achievements" && <AchievementsScreen hold={hold} onBack={() => setPhase("records")} />}
       {phase === "won" && <EndOverlay title="LAST AFLOAT" titleColor={C.gold} result={result} stats={stats} mode={mode} place={place} hold={hold} banked={banked} onAgain={() => startRef.current(mode)} onMenu={() => setPhase("start")} />}
@@ -3519,7 +3528,7 @@ function ScuttleHold({ onScuttle }) {
  * `masts` reads in the catalogue. An empty socket and an empty berth are both shown rather than
  * skipped: the gaps are the whole point of the screen.
  */
-function YardScreen({ hold, onBack }) {
+function YardScreen({ hold, onBack, onCommission, onOutfit }) {
   const loadout = useMemo(() => shipLoadout(hold), [hold]);
   const rig = useMemo(() => rigSpec(loadout), [loadout]);
   const stats = useMemo(() => rate(loadout), [loadout]);
@@ -3626,12 +3635,609 @@ function YardScreen({ hold, onBack }) {
         )}
       </Slab>
 
-      <div style={{ fontSize: 11, color: "rgba(238,244,242,0.5)", lineHeight: 1.6, margin: "2px 0 16px" }}>
-        Buying and fitting come to this screen next. For now she is what the hold says she is, and the
-        ship on the menu turns whatever you have bent on her.
+      {/* The two shops. They are separate because they are separate decisions: a hull is one large,
+          rare purchase and a rig is a dozen small ones, and putting them on one screen would bury the
+          second in the first. The yard is the reading half and stays that way; these are the doing. */}
+      <div style={{ display: "grid", gap: 10, margin: "4px 0 16px" }}>
+        <ShopLink
+          title="Boat Commission"
+          sub="Buy a hull, and choose the one you sail"
+          color={C.gold}
+          onClick={onCommission}
+        />
+        <ShopLink
+          title="Rigging Outfitter"
+          sub="Masts, sails and guns for the ship you sail"
+          color={C.mast}
+          onClick={onOutfit}
+        />
       </div>
       <StartButton onClick={onBack} label="Back to the sea" />
     </Shell>
+  );
+}
+
+/** One of the yard's two doors. The whole card is the button, the same way the ship plate is. */
+function ShopLink({ title, sub, color, onClick }) {
+  const [lit, setLit] = useState(false);
+  return (
+    <button
+      onClick={onClick}
+      onPointerEnter={() => setLit(true)}
+      onPointerLeave={() => setLit(false)}
+      style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
+        width: "100%", textAlign: "left", padding: "12px 14px",
+        borderRadius: 10, border: `1px solid ${lit ? color : C.hair}`, background: C.panel,
+        color: C.ink, cursor: "pointer", WebkitTapHighlightColor: "transparent",
+      }}
+    >
+      <span>
+        <span style={{ display: "block", fontFamily: DISPLAY, fontSize: 18, color }}>{title}</span>
+        <span style={{ display: "block", fontSize: 11, color: "rgba(238,244,242,0.6)", marginTop: 2 }}>{sub}</span>
+      </span>
+      <ChevronIcon size={12} />
+    </button>
+  );
+}
+
+/* ---------------------------------------------------------------------------------------------- */
+/* The two shops                                                                                   */
+/* ---------------------------------------------------------------------------------------------- */
+
+/**
+ * A segmented control: two to four choices, one of them on.
+ *
+ * Sentence case and sized rather than letterspaced, like every other control in the game. It wraps,
+ * because four labels do not fit across a 320px phone and a row that scrolls sideways hides the
+ * choice a captain has not thought of yet.
+ */
+function Segmented({ options, value, onChange }) {
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, margin: "10px 0 2px" }}>
+      {options.map((o) => {
+        const on = o.key === value;
+        return (
+          <button
+            key={o.key}
+            onClick={() => onChange(o.key)}
+            style={{
+              flex: "1 1 auto", fontFamily: UI, fontSize: 11, fontWeight: on ? 700 : 500,
+              color: on ? C.deep : "rgba(238,244,242,0.75)",
+              background: on ? C.gold : "transparent",
+              border: `1px solid ${on ? C.gold : C.hair}`,
+              borderRadius: 20, padding: "7px 12px", cursor: "pointer",
+              WebkitTapHighlightColor: "transparent",
+            }}
+          >
+            {o.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * WHAT EVERY CLASS IS, worked out once when the module loads rather than on every render.
+ *
+ * Each row is a real loadout run through the same `rate()` the fight will read, at both ends: bare is
+ * one mast, one sail and a chaser, and fully found is the dearest rig she can carry with every port
+ * filled. Nothing here is a second set of numbers that can drift from the catalogue's.
+ */
+const SHELF = HULL_LIST.map((hull) => {
+  const found = maximumLoadout(hull.id);
+  let berths = 0;
+  for (const socket of hull.sockets) {
+    const entry = found.rig[socket.id];
+    if (entry && entry.mast) berths += entry.mast.berths.length;
+  }
+  const foundRating = rate(found);
+  return {
+    hull,
+    band: statBand(hull.id),
+    bareTier: tierAt(measure(rate(minimumLoadout(hull.id))).overall).tier,
+    foundTier: tierAt(measure(foundRating).overall).tier,
+    found: foundRating,
+    masts: hull.sockets.filter((s) => !s.spar).length,
+    berths,
+    outfit: outfitCost(hull.id),
+  };
+});
+const shelfOf = (hullId) => SHELF.find((s) => s.hull.id === hullId);
+
+// How the shelf can be arranged. Four, because a captain shopping for a hull is asking one of four
+// different questions and the answer to "what can I afford" is a different list from "what can I
+// crew". Price runs through all of them as the tie-break, so every group climbs the same way.
+const SHELVING = [
+  { key: "price", label: "All by price" },
+  { key: "purse", label: "Price range" },
+  { key: "masts", label: "Masts" },
+  { key: "canvas", label: "Sails needed" },
+];
+
+const PURSE_BANDS = [
+  { title: "Under 1,000 coins", has: (s) => s.hull.price < 1000 },
+  { title: "1,000 to 10,000", has: (s) => s.hull.price >= 1000 && s.hull.price < 10000 },
+  { title: "10,000 to 50,000", has: (s) => s.hull.price >= 10000 && s.hull.price < 50000 },
+  { title: "Over 50,000", has: (s) => s.hull.price >= 50000 },
+];
+const MAST_BANDS = [1, 2, 3, 4].map((n) => ({
+  title: `${n} mast${n === 1 ? "" : "s"}`,
+  has: (s) => s.masts === n,
+}));
+// What it takes to bend canvas on her, which is the question "sail types" was really asking: a hull
+// with seventeen berths costs a fortune to fill however cheap she was to buy. Which CATEGORIES she
+// wants is not a fact about the hull at all, because the mast a captain steps decides it.
+const CANVAS_BANDS = [
+  { title: "1 or 2 sails", lo: 1, hi: 2 },
+  { title: "3 to 5 sails", lo: 3, hi: 5 },
+  { title: "6 to 9 sails", lo: 6, hi: 9 },
+  { title: "10 to 14 sails", lo: 10, hi: 14 },
+  { title: "15 sails and over", lo: 15, hi: 999 },
+].map((b) => ({ title: b.title, has: (s) => s.berths >= b.lo && s.berths <= b.hi }));
+
+function shelve(how) {
+  const byPrice = SHELF.slice().sort((a, b) => a.hull.price - b.hull.price || a.hull.order - b.hull.order);
+  if (how === "price") return [{ title: "", ships: byPrice }];
+  const bands = how === "purse" ? PURSE_BANDS : how === "masts" ? MAST_BANDS : CANVAS_BANDS;
+  return bands
+    .map((b) => ({ title: b.title, ships: byPrice.filter(b.has) }))
+    .filter((g) => g.ships.length);
+}
+
+/**
+ * THE BOAT COMMISSION: the hull shop.
+ *
+ * A hull is the one purchase in the game a captain saves for, so the shelf leads with what she costs
+ * and every row opens on what she would be. The figures are the two ends of her: bare, which is what
+ * the coins actually buy, and fully found, which is what she becomes after the outfitter has had the
+ * rest of the money. Both are worth seeing before committing, because the gap between them is the
+ * real price of a big hull.
+ */
+function CommissionScreen({ hold, onBack }) {
+  const [how, setHow] = useState("price");
+  const [open, setOpen] = useState(null);
+  const groups = useMemo(() => shelve(how), [how]);
+  const fleet = ownedShips(hold);
+  const owned = new Set(fleet.map((s) => s.hull));
+
+  const commission = (hullId) => {
+    const bought = buyShip(hullId);
+    // She becomes the ship you sail. Leaving the old one active would point the outfitter at the
+    // wrong hull and hide the new one entirely, and the list below switches back in one tap.
+    if (bought) setActiveShip(bought.ship);
+  };
+
+  return (
+    <Shell>
+      <BackLink label="Back to the yard" onClick={onBack} />
+      <div style={{ fontFamily: DISPLAY, fontSize: 30, color: C.gold, letterSpacing: 1 }}>BOAT COMMISSION</div>
+      <PurseLine hold={hold} />
+
+      <Segmented options={SHELVING} value={how} onChange={setHow} />
+
+      {groups.map((g) => (
+        <Slab key={g.title || "all"} title={g.title || `${g.ships.length} classes, cheapest first`}>
+          {g.ships.map((s, i) => (
+            <HullRow
+              key={s.hull.id}
+              shelf={s}
+              first={i === 0}
+              owned={owned.has(s.hull.id)}
+              coins={hold.coins}
+              open={open === s.hull.id}
+              onToggle={() => setOpen(open === s.hull.id ? null : s.hull.id)}
+              onBuy={() => commission(s.hull.id)}
+            />
+          ))}
+        </Slab>
+      ))}
+
+      <Slab title={`Your ships (${fleet.length})`}>
+        {fleet.map((ship, i) => {
+          const active = hold.yard.active === ship.id;
+          return (
+            <div key={ship.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "7px 0", borderTop: i ? "1px solid rgba(160,224,210,0.14)" : "none" }}>
+              <span style={{ fontSize: 12, color: active ? C.gold : C.ink }}>
+                {HULLS[ship.hull] ? HULLS[ship.hull].name : ship.hull}
+              </span>
+              {active ? (
+                <span style={{ fontSize: 10, color: "rgba(238,244,242,0.5)" }}>the ship you sail</span>
+              ) : (
+                <TinyButton label="Sail her" onClick={() => setActiveShip(ship.id)} />
+              )}
+            </div>
+          );
+        })}
+      </Slab>
+
+      <StartButton onClick={onBack} label="Back to the yard" />
+      <div style={{ height: 8 }} />
+    </Shell>
+  );
+}
+
+/** The purse, on its own line under a shop's title, because every price below is read against it. */
+function PurseLine({ hold }) {
+  return (
+    <div style={{ fontSize: 12, color: "rgba(238,244,242,0.7)", margin: "6px 0 0" }}>
+      In the hold: <span style={{ color: C.gold, fontWeight: 700 }}><Coins n={hold.coins} /></span>
+    </div>
+  );
+}
+
+/**
+ * One class on the shelf, which opens on her figures.
+ *
+ * Closed it is a name, a price and the one line that decides whether to look further. Open it is the
+ * whole stat line, both ends of it, and the button. An accordion rather than a screen of its own
+ * because a captain comparing two classes should not have to leave the list to do it.
+ */
+function HullRow({ shelf, first, owned, coins, open, onToggle, onBuy }) {
+  const { hull, band } = shelf;
+  const afford = coins >= hull.price;
+  /* Handling is the one stat that runs BACKWARDS: fully found, under a press of canvas with every
+     port filled, she is stiffer on the helm than she was bare. Printed as a plain range that reads
+     as a mistake, so a falling stat says which way it goes. */
+  const range = (key, dp = 0) => {
+    const b = band[key];
+    const f = (v) => (dp ? v.toFixed(dp) : Math.round(v));
+    if (b.low === b.high) return `${f(b.low)}`;
+    return `${f(b.bare)} ${b.rises ? "to" : "down to"} ${f(b.found)}`;
+  };
+  return (
+    <div style={{ borderTop: first ? "none" : "1px solid rgba(160,224,210,0.14)" }}>
+      <button
+        onClick={onToggle}
+        style={{
+          display: "flex", width: "100%", alignItems: "baseline", justifyContent: "space-between", gap: 8,
+          background: "transparent", border: "none", padding: "8px 0", textAlign: "left",
+          color: C.ink, cursor: "pointer", WebkitTapHighlightColor: "transparent",
+        }}
+      >
+        <span>
+          <span style={{ fontSize: 13, color: open ? C.gold : C.ink }}>{hull.name}</span>
+          <span style={{ display: "block", fontSize: 10, color: "rgba(238,244,242,0.5)", marginTop: 2 }}>
+            {plural(shelf.masts, "mast")}, {plural(shelf.berths, "sail")}, {plural(hull.guns.broadside, "gun")} a side
+            {owned ? ", one in your yard" : ""}
+          </span>
+        </span>
+        <span style={{ fontSize: 12, color: afford ? C.gold : "rgba(238,244,242,0.35)", whiteSpace: "nowrap" }}>
+          {hull.price === 0 ? "free" : <Coins n={hull.price} />}
+        </span>
+      </button>
+
+      {open && (
+        <div style={{ padding: "2px 0 10px" }}>
+          <div style={{ fontSize: 10, color: "rgba(238,244,242,0.45)", lineHeight: 1.6, marginBottom: 4 }}>
+            Two figures where she changes: what she is bare, and what she becomes fully found.
+          </div>
+          <TallyRow label="Hull" value={range("hull")} />
+          <TallyRow label="Crew" value={range("crew")} rule="hair" />
+          <TallyRow label="Top speed" value={range("speed", 2)} rule="hair" />
+          <TallyRow label="Handling" value={range("turn", 2)} rule="hair" />
+          <TallyRow label="Broadside guns, a side" value={range("broadside")} rule="hair" />
+          <TallyRow label="Bow chasers" value={range("bow")} rule="hair" />
+          <TallyRow label="Swivel guns" value={range("swivel")} rule="hair" />
+          <TallyRow label="Muskets in a volley" value={range("muskets")} rule="hair" />
+          <TallyRow label="Broadside balls, a side" value={shelf.found.broadside.columns} rule="hair" />
+          <TallyRow label="Tier" value={shelf.bareTier === shelf.foundTier ? shelf.bareTier : `${shelf.bareTier} to ${shelf.foundTier}`} rule="group" />
+          <TallyRow label="Rigging and guns to fill her out" value={<Coins n={shelf.outfit} />} rule="hair" />
+          <div style={{ marginTop: 10 }}>
+            <WideButton
+              label={hull.price === 0 ? "Commission her" : <span>Commission her for <Coins n={hull.price} /></span>}
+              disabled={!afford}
+              onClick={onBuy}
+            />
+            {!afford && (
+              <div style={{ fontSize: 10, color: "rgba(238,244,242,0.45)", marginTop: 6 }}>
+                Short by {fmtCoins(hull.price - coins)}.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * THE RIGGING OUTFITTER: masts, sails and guns for the ship she is sailing.
+ *
+ * One screen with a toggle at the head of it rather than two, because rigging and arming are the same
+ * job done in one visit: a captain filling out a new hull moves between them a dozen times, and two
+ * doors off the yard would make her walk back through it every time.
+ *
+ * Everything works on the ACTIVE ship. Which one that is comes from the Boat Commission, and the line
+ * under the title says so, because fitting a topsail to a hull you are not sailing is the one mistake
+ * this screen could invite.
+ */
+function OutfitterScreen({ hold, onBack }) {
+  const [view, setView] = useState("rigging");
+  const [picking, setPicking] = useState(null);
+  const shipId = hold.yard.active;
+  const loadout = useMemo(() => shipLoadout(hold), [hold]);
+
+  // What she owns and has not fitted, counted by type, so the picker can offer "one in the hold"
+  // ahead of "one in the shop" and a captain never buys a second of something she already has.
+  const loose = useMemo(() => {
+    const byType = new Map();
+    for (const pid of loosePartIds(hold)) {
+      const type = partOf(hold, pid);
+      if (!type) continue;
+      const list = byType.get(type.id) || [];
+      list.push(pid);
+      byType.set(type.id, list);
+    }
+    return byType;
+  }, [hold]);
+
+  const close = () => setPicking(null);
+  const fitFrom = (typeId, fit) => {
+    const held = loose.get(typeId);
+    if (held && held.length) return fit(held[0]);
+    const bought = buyPart(typeId);
+    if (bought) fit(bought.part);
+  };
+
+  return (
+    <Shell>
+      <BackLink label="Back to the yard" onClick={onBack} />
+      <div style={{ fontFamily: DISPLAY, fontSize: 30, color: C.gold, letterSpacing: 1 }}>RIGGING OUTFITTER</div>
+      <div style={{ fontSize: 12, color: "rgba(238,244,242,0.7)", margin: "6px 0 0" }}>
+        Fitting out your {loadout.hull.name.toLowerCase()}.
+      </div>
+      <PurseLine hold={hold} />
+
+      <Segmented
+        options={[{ key: "rigging", label: "Masts and sails" }, { key: "guns", label: "Guns" }]}
+        value={view}
+        onChange={(v) => { setView(v); close(); }}
+      />
+
+      {view === "rigging" &&
+        loadout.hull.sockets.map((socket) => {
+          const entry = loadout.rig[socket.id];
+          const mast = entry && entry.mast;
+          return (
+            <Slab key={socket.id} title={`${socket.station.toUpperCase()}, ${socket.size}`}>
+              <FitRow
+                label={socket.spar ? "Spar" : "Mast"}
+                value={mast ? mast.name : socket.spar ? "no spar rigged" : "no mast stepped"}
+                empty={!mast}
+                onClick={() => setPicking({ what: "mast", socket: socket.id })}
+              />
+              {mast &&
+                mast.berths.map((berth, i) => {
+                  const sail = entry.sails[i];
+                  return (
+                    <FitRow
+                      key={i}
+                      indent
+                      label={kindOf(berth.kind)?.name || berth.kind}
+                      value={sail ? sail.name : "bare"}
+                      empty={!sail}
+                      onClick={() => setPicking({ what: "sail", socket: socket.id, berth: i })}
+                    />
+                  );
+                })}
+              {picking && picking.socket === socket.id && (
+                <Picker
+                  title={picking.what === "mast" ? (socket.spar ? "Spars that fit" : "Masts that fit") : "Sails that fit"}
+                  options={
+                    picking.what === "mast"
+                      ? mastsForSocket(socket)
+                      : sailsForBerth(mast.berths[picking.berth])
+                  }
+                  fitted={picking.what === "mast" ? mast : entry.sails[picking.berth]}
+                  removeLabel={picking.what === "mast" ? (socket.spar ? "Unrig the spar" : "Take the mast down") : "Take the sail off"}
+                  loose={loose}
+                  coins={hold.coins}
+                  onRemove={() => {
+                    if (picking.what === "mast") fitMast(shipId, socket.id, null);
+                    else fitSail(shipId, socket.id, picking.berth, null);
+                    close();
+                  }}
+                  onPick={(type) => {
+                    fitFrom(type.id, (pid) => {
+                      if (picking.what === "mast") fitMast(shipId, socket.id, pid);
+                      else fitSail(shipId, socket.id, picking.berth, pid);
+                    });
+                    close();
+                  }}
+                  onClose={close}
+                />
+              )}
+            </Slab>
+          );
+        })}
+
+      {view === "guns" &&
+        GUN_MOUNTS.map(({ mount, title, note }) => {
+          const bears = loadout.hull.guns[mount];
+          const shipRec = hold.yard.ships[shipId];
+          // Walked off the RECORD rather than off the resolved loadout, so the id taken off the rail
+          // is the id in the slot the captain tapped. `resolve()` drops a part the catalogue no
+          // longer knows, which would shift every index after it and unfit the wrong gun.
+          const fitted = shipRec.guns[mount].map((pid) => ({ pid, type: partOf(hold, pid) })).filter((g) => g.type);
+          return (
+            <Slab key={mount} title={`${title}, ${fitted.length} of ${bears}`}>
+              {bears === 0 ? (
+                <div style={{ fontSize: 11, color: "rgba(238,244,242,0.5)", padding: "6px 0" }}>
+                  She has no ports for these.
+                </div>
+              ) : (
+                <>
+                  <div style={{ fontSize: 10, color: "rgba(238,244,242,0.45)", lineHeight: 1.6, paddingBottom: 2 }}>{note}</div>
+                  {fitted.map(({ pid, type }) => (
+                    <div key={pid} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "6px 0", borderTop: "1px solid rgba(160,224,210,0.14)" }}>
+                      <span style={{ fontSize: 11, color: C.ink }}>{type.name}</span>
+                      <TinyButton label="Take it off" onClick={() => unfitGun(shipId, pid)} />
+                    </div>
+                  ))}
+                  {fitted.length < bears && (
+                    <FitRow
+                      label="Another gun"
+                      value={`${plural(bears - fitted.length, "port")} still empty`}
+                      empty
+                      onClick={() => setPicking({ what: "gun", mount })}
+                    />
+                  )}
+                  {picking && picking.what === "gun" && picking.mount === mount && (
+                    <Picker
+                      title="Guns for this mount"
+                      options={gunsForMount(mount)}
+                      loose={loose}
+                      coins={hold.coins}
+                      onPick={(type) => {
+                        fitFrom(type.id, (pid) => fitGun(shipId, mount, pid));
+                        close();
+                      }}
+                      onClose={close}
+                    />
+                  )}
+                </>
+              )}
+            </Slab>
+          );
+        })}
+
+      <StartButton onClick={onBack} label="Back to the yard" />
+      <div style={{ height: 8 }} />
+    </Shell>
+  );
+}
+
+// The three mounts, and what each is for. A captain buying her first gun should not have to work out
+// from the name which of them puts iron into a hull.
+const GUN_MOUNTS = [
+  { mount: "broadside", title: "Broadside", note: "Counted a side and mirrored: one gun bought is one gun each side. These hole a hull." },
+  { mount: "bow", title: "Bow chasers", note: "They point where the bow points, and aimed high they bring a rig down." },
+  { mount: "swivel", title: "Swivels", note: "On the rail, one hand to a gun. Each one adds a ball to the musket volley." },
+];
+
+/** A slot in the outfitter: what is in it, and a tap to change it. */
+function FitRow({ label, value, empty, indent, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        display: "flex", width: "100%", alignItems: "baseline", justifyContent: "space-between", gap: 8,
+        background: "transparent", border: "none", borderTop: "1px solid rgba(160,224,210,0.14)",
+        padding: "8px 0", paddingLeft: indent ? 10 : 0, textAlign: "left",
+        color: C.ink, cursor: "pointer", WebkitTapHighlightColor: "transparent",
+      }}
+    >
+      <span style={{ fontSize: indent ? 9 : 11, color: "rgba(238,244,242,0.5)" }}>{label}</span>
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+        <span style={{ fontSize: indent ? 10 : 11, color: empty ? "rgba(238,244,242,0.4)" : C.ink }}>{value}</span>
+        <ChevronIcon size={9} />
+      </span>
+    </button>
+  );
+}
+
+/**
+ * What could go in a slot, in one list: what she already owns first, then what the shop sells.
+ *
+ * A part in the hold is free to fit and a part in the shop is not, and that is the whole difference,
+ * so they are one list with different right-hand ends rather than two lists a captain has to compare.
+ * Spare rigging off a ship she no longer sails is the reason instances move at all, and this is where
+ * that pays off.
+ */
+function Picker({ title, options, fitted, removeLabel, loose, coins, onPick, onRemove, onClose }) {
+  return (
+    <div style={{ borderTop: `1px solid ${C.hair}`, marginTop: 6, paddingTop: 6 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, paddingBottom: 2 }}>
+        <span style={{ fontSize: 10, letterSpacing: 1, color: C.gold }}>{title}</span>
+        <TinyButton label="Close" onClick={onClose} />
+      </div>
+      {fitted && onRemove && (
+        <div style={{ padding: "6px 0", borderTop: "1px solid rgba(160,224,210,0.14)" }}>
+          <TinyButton label={removeLabel} onClick={onRemove} />
+        </div>
+      )}
+      {options.map((type) => {
+        const held = (loose.get(type.id) || []).length;
+        const afford = held > 0 || coins >= type.price;
+        return (
+          <button
+            key={type.id}
+            onClick={() => afford && onPick(type)}
+            style={{
+              display: "flex", width: "100%", alignItems: "baseline", justifyContent: "space-between", gap: 8,
+              background: "transparent", border: "none", borderTop: "1px solid rgba(160,224,210,0.14)",
+              padding: "8px 0", textAlign: "left", cursor: afford ? "pointer" : "default",
+              opacity: afford ? 1 : 0.45, WebkitTapHighlightColor: "transparent",
+            }}
+          >
+            <span>
+              <span style={{ display: "block", fontSize: 11, color: C.ink }}>{type.name}</span>
+              <span style={{ display: "block", fontSize: 9, color: "rgba(238,244,242,0.45)", marginTop: 2 }}>
+                {partLine(type)}
+              </span>
+            </span>
+            <span style={{ fontSize: 11, color: held ? C.grass : afford ? C.gold : "rgba(238,244,242,0.4)", whiteSpace: "nowrap" }}>
+              {held ? `${held} in the hold` : type.price === 0 ? "free" : <Coins n={type.price} />}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// The figures that decide between two parts of the same sort, and no others. A mast is chosen for
+// what it can carry, a sail for what it pulls and what it costs the helm, a gun for what it throws
+// and how fast.
+function partLine(type) {
+  if (type.part === "mast") {
+    return `${type.berths.length} sail${type.berths.length === 1 ? "" : "s"}: ${type.berths.map((b) => kindOf(b.kind)?.name || b.kind).join(", ")}`;
+  }
+  if (type.part === "sail") {
+    const helm = type.hand >= 0 ? `helps the helm by ${type.hand.toFixed(2)}` : `stiffens the helm by ${Math.abs(type.hand).toFixed(2)}`;
+    return `pulls ${type.drive.toFixed(2)} of a course, ${helm}`;
+  }
+  return `${type.damage} damage every ${type.reload.toFixed(2)}s, weighs ${type.weight.toFixed(2)}`;
+}
+
+// "1 sails" is the sort of thing that makes a screen look unfinished, and this shelf counts four
+// different things.
+const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+/** A small inline action inside a slab: a link that is a button, not a control that competes. */
+function TinyButton({ label, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        fontFamily: UI, fontSize: 10, color: C.gold, background: "transparent",
+        border: `1px solid ${C.hair}`, borderRadius: 20, padding: "4px 10px",
+        cursor: "pointer", WebkitTapHighlightColor: "transparent",
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
+/** The one action a screen is for, full width under what it acts on. */
+function WideButton({ label, onClick, disabled }) {
+  return (
+    <button
+      onClick={disabled ? undefined : onClick}
+      style={{
+        display: "block", width: "100%", fontFamily: UI, fontSize: 13, fontWeight: 700,
+        color: disabled ? "rgba(238,244,242,0.4)" : C.deep,
+        background: disabled ? "transparent" : C.gold,
+        border: `1px solid ${disabled ? C.hair : C.gold}`,
+        borderRadius: 10, padding: "11px 14px",
+        cursor: disabled ? "default" : "pointer", WebkitTapHighlightColor: "transparent",
+      }}
+    >
+      {label}
+    </button>
   );
 }
 
