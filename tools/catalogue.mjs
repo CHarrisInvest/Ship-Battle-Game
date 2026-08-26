@@ -238,7 +238,7 @@ const first = resolve(STARTER);
 const start = measure(rate(first));
 console.log(`\nTHE FIRST SHIP  overall ${n1(start.overall)}, ram ${n1(start.ram)}, tier ${tierAt(start.overall).tier}`);
 console.log(`  her rigging is worth ${riggingValue(first)}, so a new mast at sea costs her ${mastRebuildCost(first)}.`);
-console.log("  Every hull in a fight carries this rig today, so that is what a mast rebuild costs anybody.");
+console.log("  Every hull in a fight brings her own rig, so that is what a rebuild costs HER and nobody else.");
 
 /* ---- verdict --------------------------------------------------------------------------------- */
 

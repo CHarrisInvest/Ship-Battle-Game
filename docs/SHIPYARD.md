@@ -1,9 +1,9 @@
 # The shipyard
 
-Buying and fitting ships. The data model, the persistence, the renderer that draws whatever is
-stepped and bent on, and the two shops a captain spends her coins in. What is still outstanding is the
-fight: it does not read the catalogue yet, so every captain at sea is put in the same hull whatever
-she has bought.
+Buying and fitting ships, and sailing what you bought. The data model, the persistence, the renderer
+that draws whatever is stepped and bent on, the two shops a captain spends her coins in, and the
+fight, which reads all of it: she sails her own ship in every mode, and every rival is a stock ship
+matched to what hers measures.
 
 What *has* changed at sea is that nothing is bought there any more. The five-track upgrade rail is
 gone from the modes and from the AI, and repairs took its place: a purse now buys patches and nothing
@@ -274,8 +274,8 @@ is the intended shape. Because `speedCap` and `turnCap` both read how much of he
 rebuilt mast hands her back full sail in the same instant, and that is what makes it worth the money:
 losing a mast is the one hit that takes a ship out of a fight while leaving her afloat.
 
-Every hull in a fight carries the starter's rig today, so a rebuild costs everybody 12. `mastRebuild`
-reads a ship's own loadout the day loadouts reach the fight, at one line and no other.
+Every hull in a fight brings her own rig now, so the bill is hers: about 34 coins for the starter's
+sprit mast and one sail, and 2,600 for a fully rigged third rate.
 
 **Crew cannot be bought back at all.** Hands lost over the rail are lost, so the crew bar is a clock
 that only runs one way for the length of a round. It is why musket fire and a spell in the weather are
@@ -293,10 +293,8 @@ round, not her savings.
 - ~~No shipyard screen.~~ Built, and built against a finished model, which is what waiting bought: the
   Boat Commission and the Rigging Outfitter are two doors off the yard, and both are UI over calls
   that already existed. Nothing in `hold.js` changed to make them work.
-- **The fight still does not read the catalogue.** `rate()` is not wired to `speedCap`, `turnCap` or
-  `sideDmg`, so every ship at sea is the same ship, and no mode issues from `STOCK` yet. That is the
-  modes rework, and it is its own piece of work. The tiers and the stock fleet below say what each
-  mode is *to* do; this is the wiring that lets it.
+- ~~**The fight still does not read the catalogue.**~~ Done. `rate()` feeds `speedCap`, `turnCap`,
+  both gun damages, the volley's shape and all three bars, and every mode issues from `STOCK`.
 - No per-class hulls, and so no per-class size. Each one is to be modelled rather than scaled off the
   hull the renderer has, which is why there is no size figure in the catalogue to go stale first.
 - No per-class hull art, and no sail designs or cloth patterns. Those hang off ids without touching
@@ -312,12 +310,12 @@ yet, but all three figures already exist in the fight, and they are all constant
 
 | | where it is now | what it becomes |
 |---|---|---|
-| count | `for (let i = 0; i < 6; i++)` in `fire()` | `rate().muskets` |
+| count | ~~a flat six~~ `rate().muskets`, done | 1 on a yawl to 14 on a first rate |
 | damage | `musketDmg()`, a flat `3.2` | what one ball does, off the swivels aboard |
 | spread | the `0.8` in that same line, an arc in radians | tightened by swivel quality and number |
 
-The count one is worth doing on its own, ahead of any quality work, and is close to a bug already: a
-flat six balls for every hull afloat means a cutter and a galleon throw the same volley, so the
+The count is done, which was the one worth doing on its own: it was close to a bug, since a
+flat six balls for every hull afloat meant a cutter and a galleon threw the same volley, so the
 `Muskets in a volley` figure the yard screen prints is a promise the fight does not keep. It also
 means the musket half of `measure()` is calibrated to nothing in particular — `MUSKET_DPS` of 2.4 a
 musket puts a 12-musket galleon at 28.8 against the fight's real 25.6, and a 2-musket cutter at 4.8
@@ -388,9 +386,11 @@ move `measure()`'s inputs: doing it before those would be work thrown away.
 - **A ranked free-for-all**, later: win a rung to move up against the next. The ladder and the bands
   are the same ones, so this needs no new model, only a record of the highest rung a captain has won.
 
-None of it is wired yet — the fight still issues one stock hull to everybody, because that is the
-piece that needs `rate()` feeding the combat constants. What the modes were waiting on was a way to
-say "an even fight" that survives the player bringing her own galleon, and that now exists.
+All of it is wired. A starting captain in an armed launch meets yawls, shallops and hoys; the same
+captain in a fully found third rate meets first rates, razees and heavy frigates, and neither of those
+is written down anywhere. **She sails her own ship in every mode**, which settles the open question
+below: the field is matched to her rather than her being issued a stock hull, because that is what the
+measures were built to make possible and because being beaten in a ship you chose is the point.
 
 ## Room for forty classes, and now holding 38
 
@@ -583,10 +583,11 @@ with it is as cheap as changing it.
    Occupancy over the 114 stock ships comes out 18, 17, 18, 19, 12, 14, 10 and 6, thinning at the top
    because only a handful of classes reach it. Still nothing about how a fight actually plays has gone
    into them, which is the part that wants the fight wired first.
-3. **Does the player's own ship sail in every mode, or only some?** The stock fleet settles what she
-   is matched *against*. Whether free-for-all puts her in her own ship against a same-tier field, or
-   issues her a stock one so the field really is identical, is a separate call and the modes rework
-   needs it.
+3. ~~**Does the player's own ship sail in every mode, or only some?**~~ **Settled: every mode.** The
+   field is matched to her instead, which is what the measures were built to make possible, and being
+   beaten in a ship you chose is the point of choosing one. Free-for-all fields her own tier, so the
+   fight is equal without being identical; the derby matches on `ram`, because `overall` counts guns
+   nobody in that mode has aboard; arena aims a shade under her and raises the bar with every sinking.
 4. **How big should the classes actually get?** A question for whoever models the hulls, not for the
    catalogue. Worth settling early anyway: a galleon twice a cutter's length is a very large target in
    a sea 2000 across, and the fight's hull geometry, the collision ellipse and the camera all have an

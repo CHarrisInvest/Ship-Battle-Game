@@ -1175,6 +1175,11 @@ const MUSKET_CAP = 14;
  */
 const BROADSIDE_COLUMNS = 10;
 
+// Her rig's share of her hull, in health-bar points. 0.55 is the ratio the fight was tuned around
+// when every ship at sea was 100 hull and 55 mast, kept so that adopting the catalogue moves what a
+// ship IS without moving what dismasting one is worth.
+const MAST_SHARE = 0.55;
+
 /**
  * A SWIVEL IS ONE MORE SHOT IN THE VOLLEY, and that is settled rather than provisional.
  *
@@ -1292,6 +1297,13 @@ export function rate(loadout) {
   return {
     hull: hull.maxHull,
     crew: hull.maxCrew,
+    // What her rig can take before it comes down, in the same points the mast bar already uses. Off
+    // her hull rather than off the canvas actually bent on, which is the obvious refinement and the
+    // wrong one to guess at: a bare ship would be quicker to dismast than a full-rigged one, which is
+    // true, and would also mean a captain buying sails made herself easier to cripple, which is not
+    // the trade the shipyard is for. A share of the hull keeps the ratio the fight is tuned around at
+    // every size of ship.
+    mast: Math.round(hull.maxHull * MAST_SHARE),
     speed,
     turn,
     drive,

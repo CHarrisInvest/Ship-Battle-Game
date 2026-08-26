@@ -6,6 +6,7 @@ import {
 } from "./hold.js";
 import {
   STARTER, kindOf, mastRebuildCost, measure, rate, resolve, rigSpec, tierAt,
+  ladder, peers, stockOfTier,
   HULLS, HULL_LIST, statBand, minimumLoadout, maximumLoadout, outfitCost,
   mastsForSocket, sailsForBerth, gunsForMount,
 } from "./shipyard.js";
@@ -35,7 +36,6 @@ import { roll, tally } from "./achievements.js";
 const WORLD = 2000;
 const TILT = 0.6; // vertical squash -> high-angle / isometric feel
 const ZUP = Math.sqrt(1 - TILT * TILT); // how world-height maps to screen-up
-const BASE = { hull: 100, mast: 55, crew: 70 };
 const FFA_AI = 10;
 const ISLAND_COUNT = 4;
 const OPENING_WINDOW = 30; // seconds the ffa AI weights range over reputation when picking prey
@@ -740,14 +740,16 @@ const shotHitsCircle = (cx, cy, r, x0, y0, x1, y1) => {
 const HULL_RATE = 1; // a coin a point. Deliberately 1, and the one place to change it if it ever moves
 
 /**
- * The rig every hull at sea is carrying, and what it costs to step a new mast.
+ * What a new mast costs at sea: a share of the rig she is actually carrying.
  *
- * Nothing in a fight has a loadout yet: every captain sails the one stock ship, which is the same
- * ship a new captain starts with, so her rigging is worth what `STARTER`'s is and the rebuild is
- * priced off that. The day loadouts reach the fight a ship brings her own, and `mastRebuild` reads it
- * at this line and nowhere else.
+ * Every ship afloat brings her own loadout now, so a captain who has spent thousands getting a
+ * skysail mast aloft pays to put it back, and one under a free pole and a single sail pays almost
+ * nothing. The starter's rig is the fallback for a hull that somehow reaches the water without one,
+ * which nothing should do.
  */
 const STOCK_LOADOUT = resolve(STARTER);
+// Her three bars at full, off a loadout: what the HUD opens on and what the fight fills in.
+const barsOf = (loadout) => { const r = rate(loadout); return { hull: r.hull, mast: r.mast, crew: r.crew }; };
 const mastRebuild = (s) => mastRebuildCost(s.loadout || STOCK_LOADOUT);
 
 const REPAIRS = [
@@ -808,7 +810,7 @@ const MODES = {
     title: "FREE-FOR-ALL",
     short: "free-for-all",
     color: C.mast,
-    desc: "Last afloat wins. 10 rival captains, all dead equal at the start, hunting for weak prey and turning on whoever pulls ahead. Spend what you take on repairs, or keep it.",
+    desc: "Last afloat wins. 10 rival captains, every one of them matched to the ship you sail, hunting for weak prey and turning on whoever pulls ahead. Spend what you take on repairs, or keep it.",
     unsailed: "You have not taken on the ten.",
     rivals: FFA_AI,
     guns: true,
@@ -831,7 +833,7 @@ const MODES = {
     title: "DEMOLITION DERBY",
     short: "derby",
     color: C.crew,
-    desc: "Only one hand needed. Last afloat wins. 10 captains, no guns, nothing to buy. Sink rivals by ramming. Drive your bow into her beam, and turn to face anyone charging yours. A storm closes in and takes the crew of any ship caught.",
+    desc: "Only one hand needed. Last afloat wins. 10 captains in ships a match for yours, no guns, nothing to buy. Sink rivals by ramming. Drive your bow into her beam, and turn to face anyone charging yours. A storm closes in and takes the crew of any ship caught.",
     unsailed: "Untried. Nothing in there but iron and weather.",
     rivals: DERBY_AI,
     guns: false,
@@ -881,23 +883,43 @@ const RUDDER_HEAVY = 0.22; // rudder lost at that speed
 const RUDDER_CURVE = 2.2; // how late in the range it starts to bite
 
 /**
- * What a ship can do, and the seam the shipyard fits into.
+ * WHAT A SHIP CAN DO, which is now what she was built to do.
  *
- * Every one of these used to open with the level she had bought in that track. Nothing buys a level
- * any more, so what is left is the plain figure and the one thing that still varies at sea: how much
- * of her rig is standing. A ship shot to pieces sails and turns worse, and that is the whole of it.
+ * Every one of these opened with a level she had bought in that track, then with a plain constant
+ * once nothing bought levels any more. They took the ship rather than being constants throughout,
+ * against the day the shipyard fed them, and this is that day: a ship carries a `rating` from
+ * `rate()`, and these read it.
  *
- * They keep taking the ship rather than being constants, because that is the shape they need when
- * `rate()` from `shipyard.js` starts feeding them. The change then is `BASE_SPEED * s.rating.speed`
- * in place of `BASE_SPEED`, at these six lines and nowhere else.
+ * Two things still vary at sea and both are damage. How much of her rig is standing, which is what
+ * `mast` measures, and how badly she is holed, which thins her volleys. Nothing else about her moves
+ * once she has sailed.
+ *
+ * The rudder goes heavy against HER OWN top speed rather than the fleet's fastest, or a slow hull
+ * would never find the end of her range and a clipper would live in it.
  */
-const rudder = (s) => 1 - RUDDER_HEAVY * Math.pow(clamp(s.spdCur / BASE_SPEED, 0, 1), RUDDER_CURVE);
-const speedCap = (s) => BASE_SPEED * (0.5 + 0.5 * (s.mast / s.maxMast));
-const turnCap = (s) => 2.4 * (0.22 + 0.78 * (s.mast / s.maxMast)) * rudder(s);
-const sideDmg = () => 9;
-const frontDmg = () => 9;
+const topSpeed = (s) => BASE_SPEED * s.rating.speed;
+const rudder = (s) => 1 - RUDDER_HEAVY * Math.pow(clamp(s.spdCur / topSpeed(s), 0, 1), RUDDER_CURVE);
+const speedCap = (s) => topSpeed(s) * (0.5 + 0.5 * (s.mast / s.maxMast));
+const turnCap = (s) => 2.4 * s.rating.turn * (0.22 + 0.78 * (s.mast / s.maxMast)) * rudder(s);
+// What one ball carries. Past ten guns a side the battery fires in stacked columns, so a heavy ship
+// throws the same number of balls as a middling one and each of hers is worth more.
+const sideDmg = (s) => s.rating.broadside.perBall;
+const frontDmg = (s) => s.rating.bow.perBall;
 const musketDmg = () => 3.2;
-const ramDmg = () => 26;
+/**
+ * A ram is worth a quarter of the hull BEHIND it, so what she does with her bow scales with the ship
+ * she is driving. A flat 26 was right when every hull afloat had a hundred points; against a first
+ * rate's three thousand it would be a knock on the door, and the derby is decided by ramming alone.
+ */
+const RAM_SHARE = 0.26;
+const ramDmg = (s) => RAM_SHARE * s.maxHull;
+// What a sinking pays her killer, as a share of the hull that went down. A quarter of a ship's
+// launch is the flat 25 the game paid when every hull afloat was worth a hundred points.
+const KILL_SHARE = 0.25;
+/** How long that mount takes to serve. A battery reloads at the pace of its slowest piece. */
+const reloadOf = (s, wk) => (wk === "musket" ? WP.musket.cd : s.rating[wk].reload || WP[wk].cd);
+/** Whether she has anything on that mount at all. A ship with no broadside must not fire one. */
+const canFire = (s, wk) => (wk === "musket" ? s.rating.muskets > 0 : s.rating[wk].count > 0);
 
 /**
  * Carry out one repair and charge her purse for it.
@@ -950,8 +972,11 @@ export default function App() {
   // What each repair would cost and put back, recomputed with the rest of the HUD so the rail prices
   // the patch she would get right now rather than the one she could have afforded a second ago.
   const [mend, setMend] = useState({});
-  const [ph, setPh] = useState({ ...BASE });
-  const [phMax, setPhMax] = useState({ ...BASE });
+  // The three bars, and what they are full at. Seeded from the ship the captain actually owns rather
+  // than from a constant, so the HUD opens on her figures instead of flicking from a stock hull's to
+  // hers on the first frame.
+  const [ph, setPh] = useState(() => barsOf(shipLoadout(getHold())));
+  const [phMax, setPhMax] = useState(() => barsOf(shipLoadout(getHold())));
   const [storm, setStorm] = useState({ closes: 0, out: false, closing: false });
   const [hold, setHold] = useState(getHold);
   const [banked, setBanked] = useState(0); // what the voyage on the end screen put in the hold
@@ -1028,12 +1053,18 @@ export default function App() {
 
     function makeShip(x, y, heading, opts) {
       const pal = AI_COLORS[opts.ci % AI_COLORS.length];
+      // She sails as what she was built: her loadout comes in from the hold if she is the player's,
+      // and from the stock fleet if she is not. `rate()` is asked once, here, because nothing about
+      // a ship changes at sea except her damage.
+      const loadout = opts.loadout || STOCK_LOADOUT;
+      const rating = rate(loadout);
       const s = {
         x, y, heading, spdCur: 0, alive: true,
         isPlayer: !!opts.isPlayer,
+        loadout, rating,
         coins: 0, earned: 0, repaired: 0, patches: 0, rank: 0, kills: 0, dmgDealt: 0, rams: 0, exposure: 0,
-        maxHull: BASE.hull, maxMast: BASE.mast, maxCrew: BASE.crew,
-        hull: BASE.hull, mast: BASE.mast, crew: BASE.crew,
+        maxHull: rating.hull, maxMast: rating.mast, maxCrew: rating.crew,
+        hull: rating.hull, mast: rating.mast, crew: rating.crew,
         cd: { broadside: Math.random() * 0.5, bow: Math.random() * 0.5, musket: Math.random() * 0.5 },
         mastDown: false, flash: 0, ramCd: 0, locked: new Map(), wakeT: 0, sprayT: 0,
         roll: 0, rollPhase: Math.random() * Math.PI * 2, turnVel: 0, kx: 0, ky: 0,
@@ -1140,8 +1171,49 @@ export default function App() {
       const p = edgePos(g, ARENA_SPAWN_CLEAR);
       // bow pointed inland so a fresh hunter sails into the fight, not into the boundary
       const heading = Math.atan2(WORLD / 2 - p.y, WORLD / 2 - p.x) + (Math.random() - 0.5) * 0.8;
-      return makeShip(p.x, p.y, heading, { ci: g.ships.length });
+      // Every hull she has put under raises the bar for the next one out of the horizon.
+      return makeShip(p.x, p.y, heading, {
+        ci: g.ships.length,
+        loadout: rivalLoadout(g.rules, g.playerStrength, g.sunk),
+      });
     }
+
+    /**
+     * WHO SHE MEETS, matched on what her own ship measures rather than on what class it is.
+     *
+     * A fully found cutter genuinely outclasses a plain brig, so matching on the shelf would call
+     * that an even fight. Every mode issues from `STOCK` and every mode picks on a measure:
+     *
+     *   arena        climbs. The first hunter is a shade under her, and every sinking raises the
+     *                bar, so the mode escalates by putting harder ships on the water rather than
+     *                more of the same one.
+     *   free-for-all fields her own tier: equal without being identical, which is what having three
+     *                fits of every class is for.
+     *   derby        matches on `ram` rather than on tier, because tier is banded on `overall` and
+     *                `overall` counts guns that nobody in that mode has aboard.
+     *
+     * Falls back to the nearest rung by the same measure when a band comes up empty, so a captain in
+     * something the fleet has no answer to still gets a fight.
+     */
+    function rivalLoadout(rules, strength, step) {
+      const key = rules.guns ? "overall" : "ram";
+      const rungs = ladder();
+      if (rules.reinforcements) {
+        // arena: aim a little under her at the drop and climb from there
+        const want = strength[key] * (0.75 + 0.07 * step);
+        return nearestRung(rungs, key, want).loadout;
+      }
+      if (rules.guns) {
+        const band = stockOfTier(tierAt(strength.overall).tier);
+        if (band.length) return band[Math.floor(Math.random() * band.length)].loadout;
+      } else {
+        const band = peers(strength.ram, 0.15, "ram");
+        if (band.length) return band[Math.floor(Math.random() * band.length)].loadout;
+      }
+      return nearestRung(rungs, key, strength[key]).loadout;
+    }
+    const nearestRung = (rungs, key, want) =>
+      rungs.reduce((a, b) => (Math.abs(b.measure[key] - want) < Math.abs(a.measure[key] - want) ? b : a));
 
     function reset(m) {
       const rules = modeOf(m);
@@ -1152,7 +1224,11 @@ export default function App() {
         banked: false, stormR: STORM_R0, stormTick: -1, playerOut: false,
       };
       const g = gameRef.current;
-      const player = makeShip(WORLD / 2, WORLD / 2, -Math.PI / 2, { isPlayer: true });
+      // Her own ship, read fresh out of the hold rather than off a closure, so a mast bought between
+      // rounds is aboard for the next one.
+      g.playerLoadout = shipLoadout(getHold());
+      g.playerStrength = measure(rate(g.playerLoadout));
+      const player = makeShip(WORLD / 2, WORLD / 2, -Math.PI / 2, { isPlayer: true, loadout: g.playerLoadout });
       g.player = player;
       g.ships.push(player);
       genIslands(g);
@@ -1162,7 +1238,7 @@ export default function App() {
         if (rules.reinforcements) g.ships.push(spawnArenaEnemy());
         else {
           const pos = farPos(g, 440);
-          g.ships.push(makeShip(pos.x, pos.y, Math.random() * Math.PI * 2, { ci: i }));
+          g.ships.push(makeShip(pos.x, pos.y, Math.random() * Math.PI * 2, { ci: i, loadout: rivalLoadout(rules, g.playerStrength, 0) }));
         }
       }
       g.fieldSize = g.ships.length;
@@ -1285,25 +1361,22 @@ export default function App() {
     }
 
     /**
-     * The bounty on a sinking, and the one term in the economy that does not scale with the fleet.
+     * The bounty on a sinking: a quarter of what she was, so it scales with the fleet the way the
+     * rest of the economy already does.
      *
-     * Everything else already does. A coin is earned a point of damage and a coin is charged a point
-     * of damage, so putting a first rate under pays thirty-three times what a launch pays and costs
-     * thirty-three times as much to undo, with no scaling term anywhere in either. This 25 is flat,
-     * and against a class of ship worth three thousand points of hull it is a rounding error rather
-     * than the reward for finishing her.
-     *
-     * It becomes a share of what she was: `KILL_SHARE * s.maxHull`, which needs no tuning as the
-     * catalogue grows and reads the same at both ends of it. Not yet, though. Every hull at sea still
-     * carries `BASE.hull`, so today that substitution would pay a flat 10 in place of a flat 25 and
-     * change nothing but the number. It goes in with the loadouts, at this line and the derby's
-     * `timeCoins` beside it.
+     * A coin is earned a point of damage and a coin is charged a point of damage, so putting a first
+     * rate under pays thirty-three times what a launch pays and costs thirty-three times as much to
+     * undo, with no scaling term anywhere in either. The bounty was the one flat term left, and
+     * against a class worth three thousand points of hull a flat 25 was a rounding error rather than
+     * the reward for finishing her. A quarter of her hull comes to exactly 25 on the smallest ship
+     * in the fleet, so nothing moved at the bottom of it.
      */
     function killShip(s, attacker) {
       const g = gameRef.current;
       if (attacker && attacker.alive) {
-        attacker.coins += 25;
-        attacker.earned += 25;
+        const bounty = Math.round(KILL_SHARE * s.maxHull);
+        attacker.coins += bounty;
+        attacker.earned += bounty;
         attacker.kills = (attacker.kills || 0) + 1;
         if (attacker.isPlayer) g.hudDirty = true;
       }
@@ -1353,6 +1426,20 @@ export default function App() {
       }
     }
 
+    /**
+     * How many balls go out of one mount, and where they sit.
+     *
+     * `balls` is her columns less one once she is holed below half, floored at one: a ship losing
+     * guns as she is beaten about is worth keeping, and a boat with a single gun a side must not be
+     * disarmed by the first hit that finds her.
+     *
+     * `spread` lays that many evenly across a span, centred: one ball goes down the middle, two sit
+     * at the ends, and the old hand-written offsets fall out of it for the counts they covered.
+     */
+    const balls = (s, wk) => Math.max(1, s.rating[wk].columns - (s.hull < s.maxHull * 0.5 ? 1 : 0));
+    const spread = (n, half) =>
+      n <= 1 ? [0] : Array.from({ length: n }, (_, i) => -half + (2 * half * i) / (n - 1));
+
     function fire(s, weapon) {
       const g = gameRef.current;
       const w = WP[weapon];
@@ -1364,8 +1451,10 @@ export default function App() {
       const push = (px, py, ang) =>
         g.shots.push({ x: px, y: py, vx: Math.cos(ang) * w.speed, vy: Math.sin(ang) * w.speed, life: w.life, r: w.r, bar: w.bar, dmg, owner: s, kind: weapon });
       if (weapon === "broadside") {
-        // 4 guns a side at full hull, down to 3 once she's holed below half
-        const offs = s.hull < s.maxHull * 0.5 ? [-10, 0, 10] : [-13, -5, 5, 13];
+        // As many balls as she has columns, spaced down her side, and one fewer once she is holed
+        // below half: guns go silent as the crew serving them are wanted elsewhere. A boat with one
+        // gun a side keeps it, or being hurt would disarm her outright.
+        const offs = spread(balls(s, "broadside"), 13);
         // The volley opens out along the hull as it travels, but it used to open out a long way:
         // at the range these fights are actually fought, about 150 paces, the four balls arrived
         // spread across 76 of them, more than two hull lengths, so a broadside laid dead on a ship
@@ -1388,14 +1477,16 @@ export default function App() {
           muzzle(s.x, s.y, dir);
         }
       } else if (weapon === "bow") {
-        // 3 bow chasers at full hull, down to 2 below half, opened out by half what they were:
-        // they are round shot too, and a chase gun that sprays is no use to anybody
-        const angs = s.hull < s.maxHull * 0.5 ? [-0.03, 0.03] : [-0.045, 0, 0.045];
+        // Her chasers, opened out by half what they were: they are round shot too, and a chase gun
+        // that sprays is no use to anybody.
+        const angs = spread(balls(s, "bow"), 0.045);
         for (const o of angs) push(bx, by, h + o + (Math.random() - 0.5) * noise);
         muzzle(bx, by, h);
         smoke(bx, by, h, 4, 0.92);
       } else {
-        for (let i = 0; i < 6; i++) push(bx, by, h + (Math.random() - 0.5) * (0.8 + noise));
+        // The hands at the rail and the swivels on it, firing together. A flat six for every hull
+        // afloat was the promise the yard screen's musket figure did not keep.
+        for (let i = 0; i < s.rating.muskets; i++) push(bx, by, h + (Math.random() - 0.5) * (0.8 + noise));
         muzzle(bx, by, h);
         smoke(bx, by, h, 2, 0.45); // muskets make little enough of it, and fire often
       }
@@ -1442,7 +1533,7 @@ export default function App() {
       if (!g.rules.guns) return; // ram-only: nothing aboard to reload
       for (const wk of ["broadside", "bow", "musket"]) {
         p.cd[wk] = Math.max(0, p.cd[wk] - dt);
-        if (inp[wk] && p.cd[wk] <= 0) { fire(p, wk); p.cd[wk] = WP[wk].cd; }
+        if (inp[wk] && p.cd[wk] <= 0 && canFire(p, wk)) { fire(p, wk); p.cd[wk] = reloadOf(p, wk); }
       }
     }
 
@@ -1713,7 +1804,7 @@ export default function App() {
       moveShip(s, dt, avoidIslands(s, desired), throttle);
 
       if (g.rules.guns) for (const wk of ["broadside", "bow", "musket"]) {
-        if (s.cd[wk] > 0) continue;
+        if (s.cd[wk] > 0 || !canFire(s, wk)) continue;
         const shot = linedUp(s, wk, tgt);
         if (!shot) continue;
         if (!shot.primary) {
@@ -1723,7 +1814,7 @@ export default function App() {
           s.oppT = s.oppHold * (0.7 + Math.random() * 0.6);
         }
         fire(s, wk);
-        s.cd[wk] = WP[wk].cd; // AI reloads on the player's clock, every mode
+        s.cd[wk] = reloadOf(s, wk); // AI reloads at the pace of its own battery, every mode
       }
     }
 
@@ -2045,10 +2136,14 @@ export default function App() {
       for (const wk of ["broadside", "bow", "musket"]) {
         const el = btnRefs[wk].current;
         if (!el) continue;
-        const ratio = 1 - p.cd[wk] / WP[wk].cd;
+        // A mount she has nothing on is held at a quarter: the button is there because the hull
+        // bears the ports, and a captain who has not bought the guns should see that rather than tap
+        // a live-looking control that does nothing.
+        const armed = canFire(p, wk);
+        const ratio = 1 - p.cd[wk] / reloadOf(p, wk);
         const fill = el.querySelector(".cd-fill");
-        if (fill) fill.style.transform = `scaleX(${clamp(ratio, 0, 1)})`;
-        el.style.opacity = p.cd[wk] > 0 ? "0.55" : "1";
+        if (fill) fill.style.transform = `scaleX(${armed ? clamp(ratio, 0, 1) : 0})`;
+        el.style.opacity = !armed ? "0.28" : p.cd[wk] > 0 ? "0.55" : "1";
       }
     }
 
