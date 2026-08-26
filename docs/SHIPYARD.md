@@ -46,8 +46,8 @@ carries, so a ship at a run turns wider than the same ship at a crawl. `rate()` 
 into `turn`, and the yard screen shows it as `Handling`.
 
 The one part of handling that is *not* modelled is heft: every ship gathers way and loses it at the
-same rate, so a galleon whose own blurb says she is slow to start and slow to stop is neither. That
-wants either a column of its own or to come off `tons`, which already says what she carries.
+same rate, so a first rate of three thousand tons starts and stops like a ship's launch. That wants
+either a column of its own or to come off `tons`, which already says what she carries.
 
 **Masts** fit a socket of their own size or larger, and carry a fixed set of *berths* decided when the
 mast is built. A berth names the *category* of the one sail that goes in it. That is what makes buying
@@ -300,6 +300,14 @@ round, not her savings.
 - No per-class hull art, and no sail designs or cloth patterns. Those hang off ids without touching
   any of the numbers here.
 - No selling parts back. Easy to add; wanted a decision on whether it refunds in full first.
+- **No hull blurbs, and that is a decision rather than a gap.** The 38 rows carry none, `blurb` is an
+  optional column, and the shops sell a class on her figures instead. 38 invented lines nobody asked
+  for would be worse than none, and the reference module already holds her era, her region and what
+  she was for if a card ever wants prose.
+- **No mortars, and so no vertical fire.** A bomb vessel's real weapon is two mortars that lob over a
+  shore, which is a second kind of weapon rather than a row in `data/guns.tsv`: it wants an arc, a
+  fall of shot and a mount that is not one of the three she bears. She sails with her 3 guns a side
+  meanwhile, which is what the reference gives her broadside anyway. A future consideration.
 - **Swivel quality.** Settled in intent, unbuilt, and with no numbers set: see below.
 
 ### What a better swivel is to buy
@@ -517,7 +525,7 @@ components less the rig and the crew (her sails carry the rig half themselves), 
 displacement to the two thirds, and `tons` the same way, moved by how fine she is. Prices came off
 measured strength afterwards. Blurbs are empty for now.
 
-The original note, for whoever adds the thirty-ninth: each class needs a name and a blurb, a price,
+The original note, for whoever adds the thirty-ninth: each class needs a name, a price,
 hull and crew points,
 `speed` and `hand` (her own contribution before canvas, both near 1), `canvas` (how much sail she
 wants, which is what makes a big hull a commitment), `tons` (what she carries before the guns tell on
