@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect, useCallback, useMemo } from "react";
 import { drawGalleon } from "./galleon.js";
-import { hullForm } from "./hullform.js";
+import { hullForm, tintTimber } from "./hullform.js";
 import {
   getHold, bankVoyage, resetHold, subscribeHold, modeRecord, shipLoadout, shortfall,
   buyShip, buyPart, fitMast, fitSail, fitStud, fitGun, unfitGun, setActiveShip, loosePartIds, ownedShips, partOf,
@@ -1127,13 +1127,21 @@ export default function App() {
       const loadout = opts.loadout || STOCK_LOADOUT;
       const rating = rate(loadout);
       // Her hull's own size, from the class's form: what she draws as, and also what she collides
-      // as, because a first rate really is a bigger target than a yawl.
-      const sea = hullForm(loadout.hull.id).sea;
+      // as, because a first rate really is a bigger target than a yawl. Her timber comes with it,
+      // so a pine boat sits pale on the water beside an oak brig.
+      const form = hullForm(loadout.hull.id);
+      const sea = form.sea;
       const s = {
         x, y, heading, spdCur: 0, alive: true,
         isPlayer: !!opts.isPlayer,
         loadout, rating, sea, seaRig: buildSeaRig(loadout, sea),
         hullA: sea.L / 2, hullB: sea.W / 2,
+        cols: {
+          dark: tintTimber(C.hullDark, form.timber),
+          deck: tintTimber(C.hullDeck, form.timber),
+          wood: tintTimber(C.hullWood, form.timber),
+          spar: tintTimber(C.wood, form.timber),
+        },
         coins: 0, earned: 0, repaired: 0, patches: 0, rank: 0, kills: 0, dmgDealt: 0, rams: 0, exposure: 0,
         maxHull: rating.hull, maxMast: rating.mast, maxCrew: rating.crew,
         hull: rating.hull, mast: rating.mast, crew: rating.crew,
@@ -2602,15 +2610,15 @@ export default function App() {
         hull.forEach(([u, v], i) => { const [X, Y] = P3(u, v, z); if (i === 0) ctx.moveTo(X, Y); else ctx.lineTo(X, Y); });
         ctx.closePath();
       };
-      tracePoly(0); ctx.fillStyle = C.hullDark; ctx.fill();
+      tracePoly(0); ctx.fillStyle = s.cols.dark; ctx.fill();
       tracePoly(deckH);
-      ctx.fillStyle = C.hullDeck; ctx.fill();
+      ctx.fillStyle = s.cols.deck; ctx.fill();
       if (s.flash > 0) { ctx.globalAlpha = s.flash; ctx.fillStyle = "#fff"; ctx.fill(); ctx.globalAlpha = 1; }
       ctx.lineWidth = s.isPlayer ? 2 : 1.6; ctx.strokeStyle = trim; ctx.stroke(); // gunwale trim
       // painted trim stripe around the hull side
       tracePoly(deckH * 0.5); ctx.lineWidth = 1.6; ctx.strokeStyle = trim; ctx.globalAlpha = 0.85; ctx.stroke(); ctx.globalAlpha = 1;
       // bowsprit, on the hulls that have one
-      if (s.loadout.hull.bowsprit) line(P3(-0.11 * sea.L, 0, deckH + 1), P3(0.61 * sea.L, 0, deckH + 2), C.wood, 1.4);
+      if (s.loadout.hull.bowsprit) line(P3(-0.11 * sea.L, 0, deckH + 1), P3(0.61 * sea.L, 0, deckH + 2), s.cols.spar, 1.4);
 
       // raised stern castle (quarterdeck cabin) on the back quarter, on the classes built up
       // enough to carry one: an open boat has no cabin at all
@@ -2629,9 +2637,9 @@ export default function App() {
           ctx.beginPath();
           w.q.forEach((p, i) => { if (i === 0) ctx.moveTo(p[0], p[1]); else ctx.lineTo(p[0], p[1]); });
           ctx.closePath();
-          ctx.fillStyle = C.hullWood; ctx.fill();
+          ctx.fillStyle = s.cols.wood; ctx.fill();
           ctx.globalAlpha = 0.2; ctx.fillStyle = "#000"; ctx.fill(); ctx.globalAlpha = 1;
-          ctx.lineWidth = 1; ctx.strokeStyle = C.hullDark; ctx.stroke();
+          ctx.lineWidth = 1; ctx.strokeStyle = s.cols.dark; ctx.stroke();
           if (w.edge === 2) { // cabin windows on the aft wall (BR -> BL)
             for (const t of [0.32, 0.68]) {
               const bx2 = baseC[2][0] + (baseC[3][0] - baseC[2][0]) * t, by2 = baseC[2][1] + (baseC[3][1] - baseC[2][1]) * t;
@@ -2644,7 +2652,7 @@ export default function App() {
         ctx.beginPath();
         topC.forEach((p, i) => { if (i === 0) ctx.moveTo(p[0], p[1]); else ctx.lineTo(p[0], p[1]); });
         ctx.closePath();
-        ctx.fillStyle = C.hullDeck; ctx.fill();
+        ctx.fillStyle = s.cols.deck; ctx.fill();
         ctx.lineWidth = 1.2; ctx.strokeStyle = trim; ctx.stroke();
       }
 
@@ -2692,10 +2700,10 @@ export default function App() {
         for (let k = N; k >= 0; k--) ctx.lineTo(cols[k].bot[0], cols[k].bot[1]);
         ctx.closePath();
         ctx.lineWidth = 1; ctx.strokeStyle = "rgba(0,0,0,0.28)"; ctx.stroke();
-        line(cols[0].top, cols[N].top, C.wood, 1.3);
+        line(cols[0].top, cols[N].top, s.cols.spar, 1.3);
       };
       const drawPole = (m, base, top) => {
-        line(base, top, C.wood, 1.7);
+        line(base, top, s.cols.spar, 1.7);
         const bz = mz(m.u);
         const f2 = P3(m.u - 5, 0, bz + m.h - 0.6), f3 = P3(m.u, 0, bz + m.h - 2.4);
         ctx.fillStyle = trim;
@@ -2761,7 +2769,7 @@ export default function App() {
         else if (p.kind === "head") drawHead(p.hd);
         else drawSail(p.u, p.band);
       }
-      if (s.mastDown) line(P3(-2, 0, deckH), P3(-2, 3, deckH + 8), C.wood, 1.8);
+      if (s.mastDown) line(P3(-2, 0, deckH), P3(-2, 3, deckH + 8), s.cols.spar, 1.8);
 
       // health bars + rank, above the rig
       if (!s.isPlayer) {

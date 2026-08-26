@@ -22,13 +22,14 @@ are built from. `broadside` in the code is the side guns, not the old title, and
   "later" the file was kept for: it turns those proportions into each class's drawn hull. Keep it out
   of `shipyard.js`, which is what a fight reads and has no use for a tumblehome score.
 - `src/hullform.js` models each class's hull from her reference row: the 3-D menu model `galleon.js`
-  builds (stations, castles, gunports, mast geometry) and the hull at sea (her world length and beam,
-  which are also her collision ellipse, her outline, her stern cabin, where her masts stand). The
+  builds (stations, castles, gunports, stern shape, mast geometry), the hull at sea (her world length
+  and beam, which are also her collision ellipse, her outline, her stern cabin, where her masts
+  stand), and her timber, a species-and-density cast over the wooden palette in both views. The
   galleon is the authored anchor: her hull, castles and mast geometry are the literal numbers the
-  game always drew, a few small fittings are re-derived as ratios that agree to within a few
-  hundredths of a unit, and every other class is derived by the same rules from her own row. Sizes
-  are deliberately compressed around her, so she is the size she always was. A class's size lives
-  here, with her art, and still never in the catalogue.
+  game always drew under the plain Oak palette, a few small fittings are re-derived as ratios that
+  agree to within a few hundredths of a unit, and every other class is derived by the same rules from
+  her own row. Sizes are deliberately compressed around her, so she is the size she always was. A
+  class's size lives here, with her art, and still never in the catalogue.
 - `src/hold.js` persists coins, lifetime stats and the yard to localStorage. Nothing else is saved;
   worlds and islands are generated fresh every match.
 - `src/achievements.js` is the achievement list, and **an achievement is a question asked of the hold,
@@ -161,11 +162,12 @@ comes from a replica rather than a real frame, say so.
 Rules above that the code does not yet satisfy. Tracked cleanups, not exceptions.
 
 - **Hull art is parametric, not bespoke.** Every class now draws on a hull modelled from her own
-  reference proportions in `hullform.js`, at her own size, in both views; the galleon is the authored
-  anchor and comes out unchanged. What no class has yet is hand-finished art of her own beyond what
-  the parameters express: a xebec's raked lateen hull and a Baltimore clipper's raking transom are
-  still the same family of shapes with different numbers. Refining a class means refining her form,
-  not adding a size multiplier to the catalogue, which stays deliberately size-free.
+  reference proportions in `hullform.js`, at her own size, in her own timber, with her own stern
+  type, in both views; the galleon is the authored anchor and comes out unchanged, checked by pixel
+  diff. What no class has yet is hand-finished art of her own beyond what the parameters express:
+  a fluyt's extreme tumblehome or a carrack's built-up works are still the shared family of shapes
+  with different numbers. Refining a class means refining her form, not adding a size multiplier to
+  the catalogue, which stays deliberately size-free.
 - **The catalogue's blurbs have still never been read at 1x.** Names are checked, and so are the part
   figures the shops print, but the shelves say what a part *does* rather than quoting its blurb, and
   the 38 hull rows have no blurb at all. So no line of one has been seen at a real width. Check them

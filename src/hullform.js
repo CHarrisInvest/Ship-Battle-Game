@@ -117,6 +117,48 @@ const GALLEON_MENU = {
   span: 248,
 };
 
+/* ---- timber ------------------------------------------------------------------------------------ */
+
+/**
+ * WHAT SHE IS BUILT OF, as a cast over the palette. The reference's `species` and `timber` columns
+ * were recorded for exactly this: a pine launch is paler and yellower than an oak brig, teak runs
+ * warm and golden, and live oak is the dense, dark timber a heavy frigate was famous for. Each
+ * species is a per-channel cast applied to the wooden parts of the palette — canvas, glass and flags
+ * are not timber and keep their colours — and the `timber` score leans the brightness a little
+ * further, so the two 1.12-teak ships sit slightly deeper than the cast alone. Oak at 1 is the
+ * identity: the galleon, and most of the fleet, paint exactly as they always did.
+ */
+const SPECIES = {
+  // eased off full paleness so a pine boat stays clear of the beach sand she fights beside
+  Pine: { bright: 1.1, r: 1.03, g: 1.0, b: 0.88 },
+  Cedar: { bright: 1.06, r: 1.07, g: 0.97, b: 0.94 },
+  Teak: { bright: 1.02, r: 1.08, g: 0.99, b: 0.86 },
+  "Live oak": { bright: 0.88, r: 0.99, g: 1.0, b: 1.03 },
+  Oak: { bright: 1, r: 1, g: 1, b: 1 },
+};
+
+function timberOf(ref) {
+  const s = SPECIES[ref.species] || SPECIES.Oak;
+  // denser timber reads a little darker; oak at 1 stays the identity
+  const bright = s.bright * Math.pow(1 / (ref.timber || 1), 0.35);
+  return { bright, r: s.r, g: s.g, b: s.b };
+}
+
+/** One hex colour under a timber cast. The identity cast returns the colour unchanged. */
+export function tintTimber(hex, t) {
+  if (!t || (t.bright === 1 && t.r === 1 && t.g === 1 && t.b === 1)) return hex;
+  const n = parseInt(hex.slice(1), 16);
+  const ch = (c, m) => Math.max(0, Math.min(255, Math.round(c * t.bright * m)));
+  return (
+    "#" +
+    [ch(n >> 16 & 255, t.r), ch(n >> 8 & 255, t.g), ch(n & 255, t.b)]
+      .map((v) => v.toString(16).padStart(2, "0"))
+      .join("")
+  );
+}
+
+const OAK = { bright: 1, r: 1, g: 1, b: 1 };
+
 /* ---- deriving a class's menu model ------------------------------------------------------------- */
 
 // Size compression: a fleet drawn at true ratio is boats nobody can see beside ships that fill the
@@ -124,6 +166,24 @@ const GALLEON_MENU = {
 const MENU_POW = 0.68;
 const lerp = (a, b, t) => a + (b - a) * t;
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+/**
+ * WHAT HER STERN IS, beyond whether it is windowed. `full` is how much of her beam she keeps right
+ * aft against the galleon's own taper: a scow barely narrows, a square transom stays wide, a round
+ * or pear tuck keeps some fullness, and an overhanging stern draws in hard. `rake` leans the stern
+ * itself: the rail carries aft over the waterline, which is a raking transom on a Baltimore clipper,
+ * the long overhang of a xebec, or the gentle counter of an elliptical stern. Types not named here
+ * taper as the galleon does, which is what a gallery stern is.
+ */
+const STERNS = {
+  Scow: { full: 0.5, rake: 0 },
+  Round: { full: 0.2, rake: 0 },
+  Pear: { full: 0.28, rake: 0 },
+  Elliptical: { full: 0.15, rake: 3.2 },
+  "Raking transom": { full: 0.08, rake: 5.5 },
+  Overhanging: { full: -0.38, rake: 8.5 },
+  Square: { full: 0.45, rake: 0 },
+};
 
 function menuForm(ref) {
   const lf = Math.pow(ref.lod / G.lod, MENU_POW); // length scale
@@ -148,9 +208,8 @@ function menuForm(ref) {
   const WLN = [0.215, 0.459, 0.688, 0.893, 1.0, 0.985, 0.907, 0.746, 0.517, 0.263, 0.185, 0.059];
   const wlMax = maxW * (1 + 0.021 * ref.tumblehome);
   const fine = (t) => (t > 0.25 ? 1 - 0.055 * (ref.bowFine - 3) * ((t - 0.25) / 0.75) : 1);
-  // a scow or a hoy keeps her fullness right aft; a fine gallery stern tapers as the galleon does
-  const fullAft = ref.stern === "Scow" ? 0.5 : ref.stern === "Round" || ref.stern === "Pear" ? 0.2 : 0;
-  const aftFill = (t) => (t < -0.5 ? 1 + fullAft * ((-t - 0.5) / 0.5) : 1);
+  const sternShape = STERNS[ref.stern] || { full: 0, rake: 0 };
+  const aftFill = (t) => (t < -0.5 ? 1 + sternShape.full * ((-t - 0.5) / 0.5) : 1);
 
   const ST = XF.map((t, i) => {
     const x = t * Lh;
@@ -178,12 +237,15 @@ function menuForm(ref) {
   const decksTop = String(ref.decks || "1");
   const twoRows = nPorts >= 4 && (decksTop.startsWith("3") || decksTop === "2-3");
 
-  // The bow rake and the bowsprit hang off the forward stations the same way the galleon's do.
+  // The bow rake and the bowsprit hang off the forward stations the same way the galleon's do. An
+  // open boat's bowsprit steeves lower: the galleon's angle came with her built-up head, and on a
+  // low hull the same angle read as a spar pointing at the sky.
   const bow = { x0: 0.7 * Lh, x1: Lh, rake: 8.5 * k };
   const fcz = fore ? fore.z : ST[10][2];
+  const steeve = fore ? 0.287 : 0.16;
   const bowsprit = {
     heel: [0.833 * Lh, 0, fcz + 2.4 * k],
-    tip: [1.467 * Lh, 0, fcz + 2.4 * k + 0.287 * 0.634 * Lh],
+    tip: [1.467 * Lh, 0, fcz + 2.4 * k + steeve * 0.634 * Lh],
     r0: 1.3 * Math.sqrt(k), r1: 0.66 * Math.sqrt(k),
   };
 
@@ -218,7 +280,11 @@ function menuForm(ref) {
   const highest = geom.main.pole + 12;
   const span = Math.max(248, reach * 2.62, highest * 2.55);
 
-  return { Lh, ST, bulwark, k, aft, fore, bow, bowsprit, ports: { xs, twoRows }, lights, beak: !!fore, geom, span };
+  return {
+    Lh, ST, bulwark, k, aft, fore, bow, bowsprit, ports: { xs, twoRows }, lights, beak: !!fore, geom, span,
+    sternRake: sternShape.rake * k,
+    timber: timberOf(ref),
+  };
 }
 
 /* ---- deriving a class's hull at sea ------------------------------------------------------------ */
@@ -233,13 +299,18 @@ function seaForm(ref, menu) {
   const W = clamp(13 * Math.pow(ref.beam / G.beam, SEA_POW), 5.5, 20);
 
   // Outline points, bow first, clockwise down the starboard side: a fine entry pulls the shoulders
-  // aft, a transom cuts the stern flat, a round or pear stern tucks to a point, a scow barely
-  // narrows at all.
+  // aft, and the stern is the type the reference names. A transom cuts flat; a round or pear tuck
+  // comes nearly to a point; a scow barely narrows; a square stern stays wide right aft; a raking
+  // transom carries a long flat counter; an overhanging stern runs out to a narrow point past where
+  // a transom would stop; an elliptical counter rounds out a little further aft than a plain tuck.
   const shoulder = 0.5 - (0.115 + 0.03 * ref.bowFine);
   const pts = [[0.5, 0]];
   const side = (v) => {
     pts.push([shoulder, -v]);
     if (ref.stern === "Scow") { pts.push([-0.44, -v * 0.96], [-0.5, -v * 0.55]); }
+    else if (ref.stern === "Square") { pts.push([-0.43, -v], [-0.48, -v * 0.72]); }
+    else if (ref.stern === "Raking transom") { pts.push([-0.4, -v], [-0.5, -v * 0.6]); }
+    else if (ref.stern === "Overhanging") { pts.push([-0.36, -v * 0.92], [-0.52, -v * 0.14]); }
     else if (ref.stern === "Round" || ref.stern === "Pear" || ref.stern === "Elliptical") { pts.push([-0.4, -v], [-0.5, -v * 0.2]); }
     else { pts.push([-0.38, -v], [-0.48, -v * 0.5]); }
   };
@@ -280,9 +351,9 @@ const GALLEON_SEA = {
 const FORMS = new Map();
 
 /** The default form: the galleon this game has always drawn, for her own class and for anything unknown. */
-export const DEFAULT_FORM = { id: "galleon", menu: GALLEON_MENU, sea: GALLEON_SEA };
+export const DEFAULT_FORM = { id: "galleon", menu: GALLEON_MENU, sea: GALLEON_SEA, timber: OAK };
 
-/** The form for one class: her menu model and her hull at sea, derived from her reference row. */
+/** The form for one class: her menu model, her hull at sea and her timber, derived from her reference row. */
 export function hullForm(id) {
   if (!id || id === "galleon") return DEFAULT_FORM;
   let form = FORMS.get(id);
@@ -290,7 +361,7 @@ export function hullForm(id) {
     const ref = HULL_REF[id];
     if (!ref) return DEFAULT_FORM;
     const menu = menuForm(ref);
-    form = { id, menu, sea: seaForm(ref, menu) };
+    form = { id, menu, sea: seaForm(ref, menu), timber: menu.timber };
     FORMS.set(id, form);
   }
   return form;

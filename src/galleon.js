@@ -10,7 +10,7 @@
  * the box at every bearing, so the ship never wanders as it turns.
  */
 
-import { hullForm, DEFAULT_FORM, GALLEON_GEOM } from "./hullform.js";
+import { hullForm, DEFAULT_FORM, GALLEON_GEOM, tintTimber } from "./hullform.js";
 
 const ISO_X=0.866, ISO_Y=0.5, VIEW=[1,1,1];
 const LIGHT=(()=>{const v=[-0.42,0.46,0.78],l=Math.hypot(...v);return v.map(c=>c/l)})();
@@ -24,6 +24,24 @@ const PALETTES=[
   deck:"#b98f57",deck2:"#a9814c",wood:"#5c3626",dark:"#3d2419",sail:"#f2ecdc",back:"#d6ccb5",flag:"#f0d17a",glass:"#a9cbdd",pane:"#b08f60",port:"#c08a4a"}
 ];
 const PAL=PALETTES[0];   // Oak
+
+/* The palette under a class's timber: the form's species-and-density cast applied to every wooden
+   key of the Oak base, so a pine launch is pale and yellow beside an oak brig and a live-oak frigate
+   runs dark. Canvas, glass and flags are not timber and keep their colours. Oak at density 1 is the
+   identity cast, so the galleon and most of the fleet paint from PAL itself, byte for byte. */
+const WOOD_KEYS=["low","mid","strake","top","cap","deck","deck2","wood","dark","pane","port"];
+const PALS=new Map();
+function palFor(form){
+ const t=form.timber;
+ if(!t||(t.bright===1&&t.r===1&&t.g===1&&t.b===1)) return PAL;
+ let p=PALS.get(form);
+ if(!p){
+  p={...PAL};
+  for(const key of WOOD_KEYS) p[key]=tintTimber(PAL[key],t);
+  PALS.set(form,p);
+ }
+ return p;
+}
 
 const lerp=(a,b,t)=>a+(b-a)*t;
 /* The hull surface, per form. Everything below used to be module constants cut
@@ -58,9 +76,19 @@ function hullKit(menu){
   const t=(x-BOW.x0)/(BOW.x1-BOW.x0);
   return -BOW.rake*t*t*Math.pow(1-Math.max(0,Math.min(1,f)),1.7);
  }
+ /* The bow's mirror, for the sterns that lean: on a raking transom, an
+    overhanging stern or an elliptical counter the rail carries aft over the
+    waterline, so the shift grows with height where the bow's shrinks with it.
+    Zero rake, which is most of the fleet and the galleon herself, is a no-op. */
+ const SR=menu.sternRake||0, SX0=menu.ST[0][0], SX1=SX0+0.22*(menu.ST[menu.ST.length-1][0]-SX0);
+ function sternShift(x,f){
+  if(!SR||x>=SX1) return 0;
+  const t=(SX1-x)/(SX1-SX0);
+  return -SR*t*t*Math.pow(Math.max(0,Math.min(1,f)),1.6);
+ }
  function hullPtF(s,side,f){
   const z=s.sheer*f, w=lerp(s.wl,s.w,f*f*(3-2*f))+0.45*Math.sin(Math.PI*f);
-  return[s.x+bowShift(s.x,f),side*w,z];
+  return[s.x+bowShift(s.x,f)+sternShift(s.x,f),side*w,z];
  }
  function hullWAtZ(s,z){
   const f=Math.max(0,Math.min(1,z/s.sheer));
@@ -69,9 +97,10 @@ function hullKit(menu){
  function hullPt(s,side,u){
   const rail=s.sheer+BULWARK, uS=s.sheer/rail;
   if(u<=uS) return hullPtF(s,side,u/uS);
-  return[s.x,side*s.w,lerp(s.sheer,rail,(u-uS)/(1-uS))];
+  // the bulwark stands over the rail edge, so it carries the full rake of a leaning stern with it
+  return[s.x+sternShift(s.x,1),side*s.w,lerp(s.sheer,rail,(u-uS)/(1-uS))];
  }
- kit={ST,BULWARK,station,stationAt,deckZAt,bowShift,hullPtF,hullWAtZ,hullPt};
+ kit={ST,BULWARK,station,stationAt,deckZAt,bowShift,sternShift,hullPtF,hullWAtZ,hullPt};
  KITS.set(menu,kit);
  return kit;
 }
@@ -396,11 +425,14 @@ const GALLEON_RIG = rigFromSpec({
 }, DEFAULT_FORM);
 
 function buildShip(rig){
- const F=[],P=PAL;
+ const F=[];
  /* Everything about the hull under this rig comes off the form: her stations,
-    castles, bow, bulwark and fittings. The galleon's form is the authored
-    numbers, so her ship is built exactly as it always was. */
- const form=(rig.form||DEFAULT_FORM).menu;
+    castles, bow, bulwark, fittings and timber. The galleon's form is the
+    authored numbers under the plain Oak palette, so her ship is built exactly
+    as it always was. */
+ const whole=rig.form||DEFAULT_FORM;
+ const form=whole.menu;
+ const P=palFor(whole);
  const {ST,BULWARK,station,stationAt,deckZAt,hullPtF,hullWAtZ,hullPt}=hullKit(form);
  const Lh=form.Lh, sternX=-Lh, fk=form.k;
  // plank courses: the topside band is split into three strakes at ±6% so the

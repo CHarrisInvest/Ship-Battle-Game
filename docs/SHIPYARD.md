@@ -21,7 +21,7 @@ are cheap to change and are deliberately left rough.
 |---|---|
 | `src/shipyard.js` | The catalogue and the maths. Hulls, masts, sails, guns as data; what fits what; what a set of them rates. No state, no storage, no imports. |
 | `src/shipref.js` | GENERATED. What each class was: her dimensions, her shape, her timber, her era. `hullform.js` reads it and nothing else does. |
-| `src/hullform.js` | Each class's hull, modelled from her reference row: the menu's 3-D model and the hull at sea, size and collision included. The galleon's numbers are the authored anchor. |
+| `src/hullform.js` | Each class's hull, modelled from her reference row: the menu's 3-D model and the hull at sea, size, collision, stern type and timber included. The galleon's numbers are the authored anchor. |
 | `src/hold.js` | What a captain owns. The yard sits in the same record as the coins, so a purchase moves both in one write. |
 | `src/galleon.js` | Draws a rig rather than *the* rig. Given a spec it builds the ship; given nothing it builds the galleon it always drew. |
 | `src/SternchaseIso.jsx` | The menu ship plate, the yard, the Boat Commission and the Rigging Outfitter, plus the repair rail that replaced the upgrade rail. |
@@ -237,9 +237,15 @@ differ, which is one stay moving 0.014 model units.
 
 **Hull shapes per class are drawn now.** `buildShip` takes a form from `hullform.js` beside the rig:
 her own station table, castles or no castles, gunports counted off her historical battery, a windowed
-gallery or a plain transom, and mast geometry scaled into her hull. The galleon's form is the
-authored numbers, so she still builds the exact ship this file always drew, and a cutter is finally a
-small hull under a small rig.
+gallery or a plain transom, and mast geometry scaled into her hull. The stern is the type the
+reference names, not just windowed-or-not: a raking transom or an overhanging stern leans the after
+stations out over the waterline the way the bow rake leans the stem, a square stern stays wide, a
+scow barely narrows, and a round or pear tuck keeps some fullness. Her timber paints her: `species`
+and `timber` from the reference become a per-channel cast over the wooden keys of the palette, so a
+pine launch is pale and yellow, teak runs warm, live oak dark, and canvas, glass and flags keep their
+colours; the same cast tints her hull and spars at sea. The galleon's form is the authored numbers
+under the plain Oak identity cast, so she still builds the exact ship this file always drew, checked
+by pixel diff, and a cutter is finally a small hull under a small rig.
 
 ## What replaced the upgrade rail
 
