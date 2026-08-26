@@ -151,6 +151,9 @@ function sailRows() {
     const id = need(r, "id", file);
     if (seen.has(id)) throw new Error(`${file}: two sails share the id "${id}"`);
     seen.add(id);
+    // `level` is a studdingsail's business and blank on everything else: which square sail up the
+    // mast it booms out from, so it is only written where the table says something
+    const level = maybe(r, "level");
     return [
       `  ${id}: {`,
       `    id: ${str(id)},`,
@@ -161,6 +164,7 @@ function sailRows() {
       `    blurb: ${str(need(r, "blurb", file))},`,
       `    drive: ${number(r, "drive", file)},`,
       `    hand: ${number(r, "hand", file)},`,
+      ...(level != null ? [`    level: ${level},`] : []),
       "  },",
     ].join("\n");
   });
@@ -173,6 +177,9 @@ function gunRows() {
     const id = need(r, "id", file);
     if (seen.has(id)) throw new Error(`${file}: two guns share the id "${id}"`);
     seen.add(id);
+    // `group` is a swivel's business and blank on everything else, so it is only written where the
+    // table actually says something
+    const group = maybe(r, "group");
     return [
       `  ${id}: {`,
       `    id: ${str(id)},`,
@@ -184,6 +191,7 @@ function gunRows() {
       `    damage: ${number(r, "damage", file)},`,
       `    reload: ${number(r, "reload", file)},`,
       `    weight: ${number(r, "weight", file)},`,
+      ...(group != null ? [`    group: ${group},`] : []),
       "  },",
     ].join("\n");
   });

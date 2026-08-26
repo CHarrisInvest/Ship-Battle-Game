@@ -1,0 +1,28 @@
+<!doctype html>
+<!-- Dev-only viewer: the real drawGalleon at fixed bearings, for checking hull and rig art without
+     waiting on the menu's rotation. Not part of the game and not bundled; open it under `npx vite`
+     at /Ship-Battle-Game/rigview.html with ?spec= (a rigSpec JSON), ?degs=, ?w= and ?h=. -->
+<html>
+<body style="background:#0d3535;margin:0">
+<div id="grid" style="display:grid;grid-template-columns:repeat(3,1fr)"></div>
+<script type="module">
+import { drawGalleon } from "/Ship-Battle-Game/src/galleon.js";
+const params = new URLSearchParams(location.search);
+const spec = params.get("spec") ? JSON.parse(params.get("spec")) : null;
+const degs = (params.get("degs") || "0,90,150").split(",").map(Number);
+const W = Number(params.get("w") || 480), H = Number(params.get("h") || 400);
+const grid = document.getElementById("grid");
+for (const deg of degs) {
+  const c = document.createElement("canvas");
+  c.width = W; c.height = H;
+  c.style.width = W + "px";
+  const ctx = c.getContext("2d");
+  ctx.fillStyle = "#0d3535"; ctx.fillRect(0, 0, W, H);
+  drawGalleon(ctx, W, H, deg, spec);
+  ctx.fillStyle = "#fff"; ctx.font = "16px monospace"; ctx.fillText(deg + "°", 10, 20);
+  grid.appendChild(c);
+}
+document.title = "ready";
+</script>
+</body>
+</html>

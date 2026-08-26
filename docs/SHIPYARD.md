@@ -20,7 +20,8 @@ are cheap to change and are deliberately left rough.
 | | |
 |---|---|
 | `src/shipyard.js` | The catalogue and the maths. Hulls, masts, sails, guns as data; what fits what; what a set of them rates. No state, no storage, no imports. |
-| `src/shipref.js` | GENERATED. What each class was: her dimensions, her shape, her timber, her era. Nothing reads it; it is there for whoever models the hulls. |
+| `src/shipref.js` | GENERATED. What each class was: her dimensions, her shape, her timber, her era. `hullform.js` reads it and nothing else does. |
+| `src/hullform.js` | Each class's hull, modelled from her reference row: the menu's 3-D model and the hull at sea, size, collision, stern type and timber included. The galleon's numbers are the authored anchor. |
 | `src/hold.js` | What a captain owns. The yard sits in the same record as the coins, so a purchase moves both in one write. |
 | `src/galleon.js` | Draws a rig rather than *the* rig. Given a spec it builds the ship; given nothing it builds the galleon it always drew. |
 | `src/SternchaseIso.jsx` | The menu ship plate, the yard, the Boat Commission and the Rigging Outfitter, plus the repair rail that replaced the upgrade rail. |
@@ -102,11 +103,16 @@ and the berth was decoration. They do different work, a lateen driving from a ma
 balancing her off a stay forward, so they are different categories. That is a split on what a sail
 *is*, which is what the categories are for, and not the size dimension the model threw out.
 
-**`STU` is not a berth**, and it is the one category that does not fit the model. A studdingsail booms
-out beyond a square sail that is already set, and its area comes off that sail rather than off a place
-in the rig: roughly half to four fifths of the square sail it extends. So it wants an attachment to a
-sail, not a slot on a mast. Nothing models that yet, `SAIL_KINDS.STU` is marked `additive`, and the
-bench refuses a berth that asks for one rather than letting a mast pretend otherwise.
+**`STU` is not a berth**, and it is the one category that does not fit the berth model, so it got the
+attachment it wanted instead. A studdingsail booms out beyond a square sail that is already set, and
+its area comes off that sail rather than off a place in the rig: its `drive` in the table is a share
+of its host's, half to four fifths, and `rate()` multiplies the two. A square sail carries at most
+one, matched by `level`: which square sail up the mast it booms out from, counting square canvas from
+the deck, so a lower studdingsail goes beside the lowest square sail even on a driver mast whose
+course sits at berth 1 with a spanker under it. `studFitsSail` is the rule, `fitStud` in `hold.js` is
+the move, and the stud comes loose the moment its host sail does. `fitOut` runs them out only near
+fully found, because they are the last thing aboard rather than a step on the way. The bench still
+refuses a berth that asks for `STU`, so a mast cannot pretend to carry studdingsails in a slot.
 
 A part carries `part`, one of `"mast"`, `"sail"` or `"gun"`, for what sort of thing it is. A sail also
 carries `kind` for its category. Those were one field until the categories arrived and collided with
@@ -130,10 +136,10 @@ with minions, a xebec with carriage guns, and anything from a corvette up with d
 that is declared per class: it falls out of `tons`, which is why fine-lined hulls carry lighter iron
 than beamy ones of the same displacement.
 
-**Size** is deliberately absent. Classes differ in how big they are, but each hull is to be modelled
-in its own right rather than scaled off one shape, so a class's size arrives with its art and there is
-nothing here for the catalogue to multiply. Every rig is drawn on the one hull the renderer has, at the
-one size it was drawn at.
+**Size** is deliberately absent from the catalogue, and it arrived where it belonged: with the art.
+`hullform.js` models each class from her reference proportions, and her size in both views, and her
+collision ellipse in the fight, come out of that model. There is still nothing in the catalogue for a
+balance pass to multiply, which is the point.
 
 Parts are catalogue **types**; a captain owns **instances**. `hold.js` keeps a flat table of every
 spar, sail and gun owned, and a ship record says which instance sits in which slot. An instance is in
@@ -229,9 +235,17 @@ The station numbers are the galleon's own, so handing her rig back reproduces th
 always drawn. Verified against the pre-change code through the same renderer: 6 pixels of 177,952
 differ, which is one stay moving 0.014 model units.
 
-**Hull shapes per class are not drawn yet.** Every class turns on the galleon's hull for now; the rig
-on top of it is the part that is real. A cutter therefore reads as a small rig on a large hull, which
-is the most visible thing still outstanding.
+**Hull shapes per class are drawn now.** `buildShip` takes a form from `hullform.js` beside the rig:
+her own station table, castles or no castles, gunports counted off her historical battery, a windowed
+gallery or a plain transom, and mast geometry scaled into her hull. The stern is the type the
+reference names, not just windowed-or-not: a raking transom or an overhanging stern leans the after
+stations out over the waterline the way the bow rake leans the stem, a square stern stays wide, a
+scow barely narrows, and a round or pear tuck keeps some fullness. Her timber paints her: `species`
+and `timber` from the reference become a per-channel cast over the wooden keys of the palette, so a
+pine launch is pale and yellow, teak runs warm, live oak dark, and canvas, glass and flags keep their
+colours; the same cast tints her hull and spars at sea. The galleon's form is the authored numbers
+under the plain Oak identity cast, so she still builds the exact ship this file always drew, checked
+by pixel diff, and a cutter is finally a small hull under a small rig.
 
 ## What replaced the upgrade rail
 
@@ -295,10 +309,10 @@ round, not her savings.
   that already existed. Nothing in `hold.js` changed to make them work.
 - ~~**The fight still does not read the catalogue.**~~ Done. `rate()` feeds `speedCap`, `turnCap`,
   both gun damages, the volley's shape and all three bars, and every mode issues from `STOCK`.
-- No per-class hulls, and so no per-class size. Each one is to be modelled rather than scaled off the
-  hull the renderer has, which is why there is no size figure in the catalogue to go stale first.
-- No per-class hull art, and no sail designs or cloth patterns. Those hang off ids without touching
-  any of the numbers here.
+- ~~No per-class hulls, and so no per-class size.~~ Built: `hullform.js` models every class from her
+  reference row, menu and sea alike, and her size and collision ellipse come with the model. There is
+  still no size figure in the catalogue, which is why none can go stale.
+- No sail designs or cloth patterns. Those hang off ids without touching any of the numbers here.
 - No selling parts back. Easy to add; wanted a decision on whether it refunds in full first.
 - **No hull blurbs, and that is a decision rather than a gap.** The 38 rows carry none, `blurb` is an
   optional column, and the shops sell a class on her figures instead. 38 invented lines nobody asked
@@ -308,7 +322,8 @@ round, not her savings.
   shore, which is a second kind of weapon rather than a row in `data/guns.tsv`: it wants an arc, a
   fall of shot and a mount that is not one of the three she bears. She sails with her 3 guns a side
   meanwhile, which is what the reference gives her broadside anyway. A future consideration.
-- **Swivel quality.** Settled in intent, unbuilt, and with no numbers set: see below.
+- ~~**Swivel quality.**~~ Built: three grades on the rail, and what quality buys is a volley that
+  hits harder and groups tighter, never one more ball. See below.
 
 ### What a better swivel is to buy
 
@@ -333,10 +348,21 @@ One trap in the spread. That `0.8` has `noise` added to it, which is the AI's ow
 zero for the player. Tightening the spread must leave `noise` alone, or better swivels aboard the
 player's ship would quietly make every rival captain a better shot as well.
 
-`rate()` grows a musket damage and a musket spread beside the count, `measure()` multiplies by the
-damage rather than its own constant, and the fight reads all three off the loadout. A swivel's
-`damage` and `reload` in the catalogue are already there for the middle row. Nothing carries a
-grouping figure, so that field arrives with the quality tiers rather than being guessed now.
+**All three rows are done now.** `rate()` returns `musketDamage` and `musketSpread` beside the count,
+and the fight reads all three off the loadout with `noise` left untouched. One ball's damage is the
+average over what actually throws it: a hand's musket carries `MUSKET_BALL` (3.2, the flat the fight
+used to hard-code) and a swivel carries its own catalogue `damage`, so a plain rail is exactly what
+it always was and every swivel aboard pulls the figure up. The spread averages the same way over
+`group`, a new column in `data/guns.tsv` that is blank on every mount but the swivel: a musket keeps
+the whole `MUSKET_ARC` and a swivel holds its own `group` share of one, so quality and number both
+pull the volley in and the hands keep it from ever closing to a point. When the 14-ball cap bites the
+hands give way and every swivel still fires, because a mounted gun does not queue for elbow room —
+which is also what keeps a bought part from doing nothing, the trap the half-musket fell into.
+
+Three grades on the rail now: the swivel gun, the bronze swivel and the long swivel, told apart by
+`damage` and `group`. `measure()` multiplies the count by `musketDamage` at `MUSKET_VOLLEYS` a second
+rather than by its old flat `MUSKET_DPS`; the pace is set so a plain ball still measures the 2.4 a
+musket the blend was placed with, and only better iron on the rail moves a ship's strength.
 
 ## Tiers, the stock fleet, and what each mode does with them
 
@@ -550,10 +576,14 @@ Three things to decide alongside them:
   `heavy`.
 
 The six categories mean a lugsail mast or a gaff-rigged ketch is a row in `data/masts.tsv` rather than
-a code change, and the bench catches a berth whose category is a typo. The renderer draws `LSQ`, `SSQ`
-and `TRI` in shapes of their own; `GAF` and `LUG` fall back to square canvas until `galleon.js` learns
-them, which is a wrong-looking ship rather than a broken one, and the bench prints which categories
-are in that position rather than letting it pass unremarked.
+a code change, and the bench catches a berth whose category is a typo. Every berth-filling category
+draws in a shape of its own now: `LSQ` and `SSQ` as square canvas, `TRI` and `LAT` as the triangle,
+`GAF` as the four-sided sail on a gaff abaft the mast, and `LUG` on its slung, raking yard. The two
+fore-and-aft quads stack in the air of the square bands, so a topsail of either sort sits over its
+mainsail; a mast carrying nothing but fore-and-aft canvas stretches the stack up the pole the way a
+lateen takes its whole band; and a driving sail's boom stays down at the deck and stops where the
+quarterdeck wall or the next mast astern would meet it. The bench still prints which categories fall
+back to square canvas, which is now none.
 
 ## Open questions
 
@@ -596,10 +626,12 @@ with it is as cheap as changing it.
    beaten in a ship you chose is the point of choosing one. Free-for-all fields her own tier, so the
    fight is equal without being identical; the derby matches on `ram`, because `overall` counts guns
    nobody in that mode has aboard; arena aims a shade under her and raises the bar with every sinking.
-4. **How big should the classes actually get?** A question for whoever models the hulls, not for the
-   catalogue. Worth settling early anyway: a galleon twice a cutter's length is a very large target in
-   a sea 2000 across, and the fight's hull geometry, the collision ellipse and the camera all have an
-   opinion about it.
+4. ~~**How big should the classes actually get?**~~ **Settled, with the compression the worry asked
+   for.** Real lengths run a factor of nearly nine and the sea is 2000 across, so both views raise
+   the size ratio to a power below one, anchored on the galleon: at sea the fleet runs from a 16-unit
+   launch to a 52-unit first rate around the 36 every hull used to share, and the collision ellipse
+   is each hull's own drawn size. Whether the big rates are now too big a target is a balance
+   question for play, and the lever is `SEA_POW` in `hullform.js`, one number.
 5. ~~**Stations and sizes beyond the three of each.**~~ **Settled.** Five stations, `bowsprit` `fore`
    `main` `mizzen` `bonaventure`, and five sizes, `boat` `small` `medium` `large` `heavy`. The
    bowsprit is a station rather than a flag, which is what gave headsails somewhere to live; it takes

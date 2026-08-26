@@ -30,7 +30,7 @@
 
 import {
   HULLS, PARTS, STARTER, gunsForMount, mastFitsSocket, mastsForSocket, resolve, sailFitsBerth,
-  sailsForBerth, socketOf,
+  sailsForBerth, socketOf, studFitsSail,
 } from "./shipyard.js";
 
 const KEY = "sternchase.hold";
@@ -154,7 +154,7 @@ function sanitizeYard(raw) {
     const ship = { hull: hull.id, rig: {}, guns: { broadside: [], bow: [], swivel: [] } };
 
     for (const socket of hull.sockets) {
-      const slot = { mast: null, sails: [] };
+      const slot = { mast: null, sails: [], studs: [] };
       ship.rig[socket.id] = slot;
       const from = (s.rig && s.rig[socket.id]) || null;
       if (!from) continue;
@@ -164,12 +164,22 @@ function sanitizeYard(raw) {
         continue;
       }
       slot.mast = mastId;
-      const berths = PARTS[yard.parts[mastId].type].berths;
+      const mastType = PARTS[yard.parts[mastId].type];
+      const berths = mastType.berths;
       slot.sails = berths.map((berth, i) => {
         const sailId = take((from.sails || [])[i], "sail");
         if (!sailId) return null;
         if (!sailFitsBerth(PARTS[yard.parts[sailId].type], berth)) { used.delete(sailId); return null; }
         return sailId;
+      });
+      // a studdingsail stands only while the sail it booms out from does, checked with the same
+      // rule fitting uses, so one recorded against a bare berth comes loose rather than dangling
+      slot.studs = berths.map((berth, i) => {
+        const studId = take((from.studs || [])[i], "sail");
+        if (!studId) return null;
+        const host = slot.sails[i] ? PARTS[yard.parts[slot.sails[i]].type] : null;
+        if (!studFitsSail(PARTS[yard.parts[studId].type], mastType, i, host)) { used.delete(studId); return null; }
+        return studId;
       });
     }
 
@@ -211,7 +221,7 @@ function grantStarter(yard) {
   const ship = { hull: hull.id, rig: {}, guns: { broadside: [], bow: [], swivel: [] } };
   for (const socket of hull.sockets) {
     const want = STARTER.rig[socket.id];
-    const slot = { mast: null, sails: [] };
+    const slot = { mast: null, sails: [], studs: [] };
     ship.rig[socket.id] = slot;
     if (!want || !PARTS[want.mast]) continue;
     slot.mast = mintPart(yard, want.mast);
@@ -398,7 +408,7 @@ export function resetHold() {
 
 const cloneShip = (s) => ({
   hull: s.hull,
-  rig: Object.fromEntries(Object.entries(s.rig).map(([k, v]) => [k, { mast: v.mast, sails: v.sails.slice() }])),
+  rig: Object.fromEntries(Object.entries(s.rig).map(([k, v]) => [k, { mast: v.mast, sails: v.sails.slice(), studs: (v.studs || []).slice() }])),
   guns: { broadside: s.guns.broadside.slice(), bow: s.guns.bow.slice(), swivel: s.guns.swivel.slice() },
 });
 
@@ -438,6 +448,7 @@ export function loosePartIds(rec) {
     for (const slot of Object.values(ship.rig)) {
       if (slot.mast) fitted.add(slot.mast);
       for (const s of slot.sails) if (s) fitted.add(s);
+      for (const st of slot.studs || []) if (st) fitted.add(st);
     }
     for (const mount of ["broadside", "bow", "swivel"]) for (const g of ship.guns[mount]) fitted.add(g);
   }
@@ -533,8 +544,11 @@ function pull(yard, partId) {
   if (!partId) return;
   for (const ship of Object.values(yard.ships)) {
     for (const [socketId, slot] of Object.entries(ship.rig)) {
-      if (slot.mast === partId) { ship.rig[socketId] = { mast: null, sails: [] }; continue; }
+      if (slot.mast === partId) { ship.rig[socketId] = { mast: null, sails: [], studs: [] }; continue; }
       slot.sails = slot.sails.map((s) => (s === partId ? null : s));
+      // a studdingsail comes loose with its own id, and also the moment the sail it booms out from
+      // leaves the berth: it hangs off that sail, not off the mast
+      slot.studs = (slot.studs || []).map((st, i) => (st === partId || !slot.sails[i] ? null : st));
     }
     for (const mount of ["broadside", "bow", "swivel"]) {
       ship.guns[mount] = ship.guns[mount].filter((g) => g !== partId);
@@ -551,7 +565,7 @@ export function buyShip(hullId) {
   const id = nextId(yard, "s");
   yard.ships[id] = {
     hull: hull.id,
-    rig: Object.fromEntries(hull.sockets.map((s) => [s.id, { mast: null, sails: [] }])),
+    rig: Object.fromEntries(hull.sockets.map((s) => [s.id, { mast: null, sails: [], studs: [] }])),
     guns: { broadside: [], bow: [], swivel: [] },
   };
   const next = commitYard(rec, yard, hull.price);
@@ -595,9 +609,9 @@ export function fitMast(shipId, socketId, partId) {
     const mast = partOf(rec, partId);
     if (!mast || !mastFitsSocket(mast, socket)) return null;
     pull(yard, partId);
-    yard.ships[shipId].rig[socketId] = { mast: partId, sails: mast.berths.map(() => null) };
+    yard.ships[shipId].rig[socketId] = { mast: partId, sails: mast.berths.map(() => null), studs: mast.berths.map(() => null) };
   } else {
-    yard.ships[shipId].rig[socketId] = { mast: null, sails: [] };
+    yard.ships[shipId].rig[socketId] = { mast: null, sails: [], studs: [] };
   }
   return commitYard(rec, yard);
 }
@@ -617,9 +631,43 @@ export function fitSail(shipId, socketId, berth, partId) {
     if (!sailFitsBerth(sail, want)) return null;
     pull(yard, partId);
   }
-  const sails = yard.ships[shipId].rig[socketId].sails;
-  while (sails.length < mast.berths.length) sails.push(null);
-  sails[berth] = partId || null;
+  const slot2 = yard.ships[shipId].rig[socketId];
+  while (slot2.sails.length < mast.berths.length) slot2.sails.push(null);
+  slot2.sails[berth] = partId || null;
+  // the studdingsail hangs off the sail: taking the sail off, or changing it for one the stud no
+  // longer fits beside, sends the stud loose into the hold with it. `sails[berth]` is already the
+  // incoming sail here, so the check reads the slot as it now stands.
+  slot2.studs = (slot2.studs || []).map((st, i) => {
+    if (!st) return null;
+    const host = slot2.sails[i] ? partOf(rec, slot2.sails[i]) : null;
+    return studFitsSail(partOf(rec, st), mast, i, host) ? st : null;
+  });
+  return commitYard(rec, yard);
+}
+
+/**
+ * Boom a studdingsail out from the sail in one berth, or pass `null` to take it in.
+ *
+ * It is an attachment to the sail, never a berth of its own: the host has to be a square sail
+ * already set, and the stud has to be of that sail's level up the mast. See `studFitsSail`.
+ */
+export function fitStud(shipId, socketId, berth, partId) {
+  const rec = current();
+  const ship = rec.yard.ships[shipId];
+  const slot = ship && ship.rig[socketId];
+  if (!slot || !slot.mast) return null;
+  const mast = partOf(rec, slot.mast);
+  const host = slot.sails[berth] ? partOf(rec, slot.sails[berth]) : null;
+  const yard = cloneYard(rec.yard);
+  if (partId) {
+    const stud = partOf(rec, partId);
+    if (!studFitsSail(stud, mast, berth, host)) return null;
+    pull(yard, partId);
+  }
+  const slot2 = yard.ships[shipId].rig[socketId];
+  slot2.studs = slot2.studs || [];
+  while (slot2.studs.length < mast.berths.length) slot2.studs.push(null);
+  slot2.studs[berth] = partId || null;
   return commitYard(rec, yard);
 }
 

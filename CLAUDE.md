@@ -18,9 +18,18 @@ are built from. `broadside` in the code is the side guns, not the old title, and
   its place on the shop shelf and is a different thing: do not match opponents on it. Nothing in
   `STOCK` carries a tier of its own for the same reason.
 - `src/shipref.js` is generated beside it and holds what each class *was*: her dimensions, the shape
-  of her, her timber, her era and what she was for. Nothing reads it and it is not for the fight; it
-  is there so a hull can be modelled from her real proportions later. Keep it out of `shipyard.js`,
-  which is what a fight reads and has no use for a tumblehome score.
+  of her, her timber, her era and what she was for. `hullform.js` is the one reader, and it is the
+  "later" the file was kept for: it turns those proportions into each class's drawn hull. Keep it out
+  of `shipyard.js`, which is what a fight reads and has no use for a tumblehome score.
+- `src/hullform.js` models each class's hull from her reference row: the 3-D menu model `galleon.js`
+  builds (stations, castles, gunports, stern shape, mast geometry), the hull at sea (her world length
+  and beam, which are also her collision ellipse, her outline, her stern cabin, where her masts
+  stand), and her timber, a species-and-density cast over the wooden palette in both views. The
+  galleon is the authored anchor: her hull, castles and mast geometry are the literal numbers the
+  game always drew under the plain Oak palette, a few small fittings are re-derived as ratios that
+  agree to within a few hundredths of a unit, and every other class is derived by the same rules from
+  her own row. Sizes are deliberately compressed around her, so she is the size she always was. A
+  class's size lives here, with her art, and still never in the catalogue.
 - `src/hold.js` persists coins, lifetime stats and the yard to localStorage. Nothing else is saved;
   worlds and islands are generated fresh every match.
 - `src/achievements.js` is the achievement list, and **an achievement is a question asked of the hold,
@@ -54,8 +63,10 @@ are built from. `broadside` in the code is the side guns, not the old title, and
   everything, so `mastFitsSocket` matches the sort of thing first and consults the size rung second.
   `SPAR_STATIONS` is which stations take one.
 - **A studdingsail is not a berth.** It booms out beyond a square sail already set and its area comes
-  off that sail, so `STU` is marked `additive` and the bench fails a berth that asks for one. Wiring
-  it up means an attachment on a sail, not a slot on a mast.
+  off that sail, so `STU` is marked `additive` and the bench fails a berth that asks for one. It is
+  wired as exactly that: an attachment on a sail (`studFitsSail`, `fitStud`), matched by the *level*
+  of square canvas it extends rather than by berth number, its drive a share of its host's, and it
+  comes loose the moment the host sail does.
 - **A part's `part` says what sort of thing it is; a sail's `kind` says which category.** They were
   one field, and the two meanings collided the moment the categories arrived.
 - **The renderer draws up to five sails up a mast, and the bands are generated.** Three or fewer are
@@ -150,11 +161,13 @@ comes from a replica rather than a real frame, say so.
 
 Rules above that the code does not yet satisfy. Tracked cleanups, not exceptions.
 
-- **Hull art is one hull, at one size.** The menu turns the captain's own rig, but every class turns
-  it on the galleon's hull, so a cutter reads as a small rig on a large ship. Each class is to be
-  modelled in its own right rather than scaled off this one, so its size comes with its art: do not
-  add a size multiplier to the catalogue in the meantime. `STATION_GEOM` in `galleon.js` is where a
-  hull's mast positions live.
+- **Hull art is parametric, not bespoke.** Every class now draws on a hull modelled from her own
+  reference proportions in `hullform.js`, at her own size, in her own timber, with her own stern
+  type, in both views; the galleon is the authored anchor and comes out unchanged, checked by pixel
+  diff. What no class has yet is hand-finished art of her own beyond what the parameters express:
+  a fluyt's extreme tumblehome or a carrack's built-up works are still the shared family of shapes
+  with different numbers. Refining a class means refining her form, not adding a size multiplier to
+  the catalogue, which stays deliberately size-free.
 - **The catalogue's blurbs have still never been read at 1x.** Names are checked, and so are the part
   figures the shops print, but the shelves say what a part *does* rather than quoting its blurb, and
   the 38 hull rows have no blurb at all. So no line of one has been seen at a real width. Check them

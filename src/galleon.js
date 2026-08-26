@@ -10,6 +10,8 @@
  * the box at every bearing, so the ship never wanders as it turns.
  */
 
+import { hullForm, DEFAULT_FORM, GALLEON_GEOM, tintTimber } from "./hullform.js";
+
 const ISO_X=0.866, ISO_Y=0.5, VIEW=[1,1,1];
 const LIGHT=(()=>{const v=[-0.42,0.46,0.78],l=Math.hypot(...v);return v.map(c=>c/l)})();
 
@@ -23,44 +25,84 @@ const PALETTES=[
 ];
 const PAL=PALETTES[0];   // Oak
 
-const ST=[
- [-60, 9.6,23.2, 4.4],[-52,12.6,20.6, 9.4],[-40,15.3,17.0,14.1],
- [-26,17.6,14.2,18.3],[-12,18.9,12.7,20.5],[  2,18.7,12.3,20.2],
- [ 16,17.4,12.7,18.6],[ 30,14.6,14.1,15.3],[ 42,10.8,16.2,10.6],
- [ 52, 6.2,18.6, 5.4],[ 56, 4.4,19.9, 3.8],[ 60, 1.7,21.2, 1.2]
-];
-const BULWARK=2.7, lerp=(a,b,t)=>a+(b-a)*t;
-/* The height of whatever a mast is stepped on at x: the quarterdeck aft, the
-   forecastle forward, and the open waist between them. Module level rather than
-   inside buildShip because the rig needs it too, to sheet a headsail home. */
-const deckZAt=x=>(x>=-58&&x<=-18)?23.6:(x>=24&&x<=50)?20.2:stationAt(x).sheer;
-const station=i=>({x:ST[i][0],w:ST[i][1],sheer:ST[i][2],wl:ST[i][3]});
-function stationAt(x){
- x=Math.max(ST[0][0],Math.min(60,x));
- for(let i=0;i<ST.length-1;i++)if(x>=ST[i][0]&&x<=ST[i+1][0]){
-  const t=(x-ST[i][0])/(ST[i+1][0]-ST[i][0]);
-  return{x,w:lerp(ST[i][1],ST[i+1][1],t),sheer:lerp(ST[i][2],ST[i+1][2],t),
-   wl:lerp(ST[i][3],ST[i+1][3],t)};}
- return station(0);
+/* The palette under a class's timber: the form's species-and-density cast applied to every wooden
+   key of the Oak base, so a pine launch is pale and yellow beside an oak brig and a live-oak frigate
+   runs dark. Canvas, glass and flags are not timber and keep their colours. Oak at density 1 is the
+   identity cast, so the galleon and most of the fleet paint from PAL itself, byte for byte. */
+const WOOD_KEYS=["low","mid","strake","top","cap","deck","deck2","wood","dark","pane","port"];
+const PALS=new Map();
+function palFor(form){
+ const t=form.timber;
+ if(!t||(t.bright===1&&t.r===1&&t.g===1&&t.b===1)) return PAL;
+ let p=PALS.get(form);
+ if(!p){
+  p={...PAL};
+  for(const key of WOOD_KEYS) p[key]=tintTimber(PAL[key],t);
+  PALS.set(form,p);
+ }
+ return p;
 }
-const BOW_X0=42, BOW_X1=60, BOW_RAKE=8.5;
-function bowShift(x,f){
- if(x<=BOW_X0) return 0;
- const t=(x-BOW_X0)/(BOW_X1-BOW_X0);
- return -BOW_RAKE*t*t*Math.pow(1-Math.max(0,Math.min(1,f)),1.7);
-}
-function hullPtF(s,side,f){
- const z=s.sheer*f, w=lerp(s.wl,s.w,f*f*(3-2*f))+0.45*Math.sin(Math.PI*f);
- return[s.x+bowShift(s.x,f),side*w,z];
-}
-function hullWAtZ(s,z){
- const f=Math.max(0,Math.min(1,z/s.sheer));
- return lerp(s.wl,s.w,f*f*(3-2*f))+0.45*Math.sin(Math.PI*f);
-}
-function hullPt(s,side,u){
- const rail=s.sheer+BULWARK, uS=s.sheer/rail;
- if(u<=uS) return hullPtF(s,side,u/uS);
- return[s.x,side*s.w,lerp(s.sheer,rail,(u-uS)/(1-uS))];
+
+const lerp=(a,b,t)=>a+(b-a)*t;
+/* The hull surface, per form. Everything below used to be module constants cut
+   for the galleon; each class now brings her own station table, castles, bow
+   and bulwark through `hullform.js`, and this closes over one form so the rest
+   of the file can keep asking the same questions of whatever hull it is
+   building. Kits are cached per form: a form is built once per class and its
+   surface maths never change. */
+const KITS=new Map();
+function hullKit(menu){
+ let kit=KITS.get(menu);
+ if(kit)return kit;
+ const ST=menu.ST, BULWARK=menu.bulwark, BOW=menu.bow;
+ const station=i=>({x:ST[i][0],w:ST[i][1],sheer:ST[i][2],wl:ST[i][3]});
+ function stationAt(x){
+  x=Math.max(ST[0][0],Math.min(ST[ST.length-1][0],x));
+  for(let i=0;i<ST.length-1;i++)if(x>=ST[i][0]&&x<=ST[i+1][0]){
+   const t=(x-ST[i][0])/(ST[i+1][0]-ST[i][0]);
+   return{x,w:lerp(ST[i][1],ST[i+1][1],t),sheer:lerp(ST[i][2],ST[i+1][2],t),
+    wl:lerp(ST[i][3],ST[i+1][3],t)};}
+  return station(0);
+ }
+ /* The height of whatever a mast is stepped on at x: the quarterdeck aft, the
+    forecastle forward, and the open deck between them. An open boat has
+    neither, so the answer is her sheer everywhere. */
+ const deckZAt=x=>
+  (menu.aft&&x>=menu.aft.x0+2&&x<=menu.aft.x1)?menu.aft.z
+  :(menu.fore&&x>=menu.fore.x0&&x<=menu.fore.x1)?menu.fore.z
+  :stationAt(x).sheer;
+ function bowShift(x,f){
+  if(x<=BOW.x0) return 0;
+  const t=(x-BOW.x0)/(BOW.x1-BOW.x0);
+  return -BOW.rake*t*t*Math.pow(1-Math.max(0,Math.min(1,f)),1.7);
+ }
+ /* The bow's mirror, for the sterns that lean: on a raking transom, an
+    overhanging stern or an elliptical counter the rail carries aft over the
+    waterline, so the shift grows with height where the bow's shrinks with it.
+    Zero rake, which is most of the fleet and the galleon herself, is a no-op. */
+ const SR=menu.sternRake||0, SX0=menu.ST[0][0], SX1=SX0+0.22*(menu.ST[menu.ST.length-1][0]-SX0);
+ function sternShift(x,f){
+  if(!SR||x>=SX1) return 0;
+  const t=(SX1-x)/(SX1-SX0);
+  return -SR*t*t*Math.pow(Math.max(0,Math.min(1,f)),1.6);
+ }
+ function hullPtF(s,side,f){
+  const z=s.sheer*f, w=lerp(s.wl,s.w,f*f*(3-2*f))+0.45*Math.sin(Math.PI*f);
+  return[s.x+bowShift(s.x,f)+sternShift(s.x,f),side*w,z];
+ }
+ function hullWAtZ(s,z){
+  const f=Math.max(0,Math.min(1,z/s.sheer));
+  return lerp(s.wl,s.w,f*f*(3-2*f))+0.45*Math.sin(Math.PI*f);
+ }
+ function hullPt(s,side,u){
+  const rail=s.sheer+BULWARK, uS=s.sheer/rail;
+  if(u<=uS) return hullPtF(s,side,u/uS);
+  // the bulwark stands over the rail edge, so it carries the full rake of a leaning stern with it
+  return[s.x+sternShift(s.x,1),side*s.w,lerp(s.sheer,rail,(u-uS)/(1-uS))];
+ }
+ kit={ST,BULWARK,station,stationAt,deckZAt,bowShift,sternShift,hullPtF,hullWAtZ,hullPt};
+ KITS.set(menu,kit);
+ return kit;
 }
 function newell(p){let x=0,y=0,z=0;for(let i=0;i<p.length;i++){const a=p[i],b=p[(i+1)%p.length];
  x+=(a[1]-b[1])*(a[2]+b[2]);y+=(a[2]-b[2])*(a[0]+b[0]);z+=(a[0]-b[0])*(a[1]+b[1]);}
@@ -126,97 +168,13 @@ const OPT={sails:true,rig:true};
    sail occupies as you go up it. A mast owns only its height. Put the two
    together and you get a rig, and buildShip turns that into faces.
 
-   The numbers here are the galleon's own, so passing her rig back in reproduces
-   the ship this file has always drawn. Fewer sails, a shorter mast or an empty
-   station simply leave parts of it out. Hull shapes per class are still to come;
-   for now every rig stands on this one hull. */
-
-// `slots` are square-sail bands, deck upward, written at the height `ref` names
-// and scaled with the mast that actually stands there. `tri` is the same for
-// fore-and-aft canvas, as fractions of the masthead, because a triangular sail
-// is one tall band rather than a stack of short ones.
-const STATION_GEOM = {
-  fore: {
-    x: 36, pole: 88.64, ref: 78, r0: 1.05, r1: 0.58, hoist: 0.8114,
-    shrouds: [-8, -2.5], ratlines: true, stay: { from: 0.963, to: 1.0 },
-    slots: [
-      { span: 15.5, zt: 49.8, zb: 33.9, bulge: 5.2, seg: 10 },
-      { span: 10.5, zt: 67.6, zb: 53.4, bulge: 4.0, seg: 9 },
-      { span: 7.6, zt: 76.2, zb: 69.4, bulge: 3.0, seg: 8 },
-    ],
-    tri: [{ zb: 0.24, zt: 0.90 }, { zb: 0.64, zt: 0.96 }, { zb: 0.82, zt: 1.0 }],
-  },
-  main: {
-    x: 0, pole: 90, ref: 90, r0: 1.2, r1: 0.64, hoist: 0.7964,
-    shrouds: [-8, -2.5], ratlines: true, stay: { from: 0.9722, to: 1.0 },
-    slots: [
-      { span: 18.5, zt: 48.2, zb: 30.1, bulge: 6.2, seg: 11 },
-      { span: 13.0, zt: 68.5, zb: 52.7, bulge: 4.6, seg: 10 },
-      { span: 8.5, zt: 81.0, zb: 71.9, bulge: 3.4, seg: 8 },
-    ],
-    tri: [{ zb: 0.20, zt: 0.90 }, { zb: 0.62, zt: 0.96 }, { zb: 0.80, zt: 1.0 }],
-  },
-  mizzen: {
-    // one shroud a side and no ratlines: set level with the mast the second rope
-    // projected straight down the pole, and the rungs would have run over the
-    // quarterdeck rail
-    x: -32, pole: 87.84, ref: 65, r0: 0.95, r1: 0.52, hoist: 1.0,
-    shrouds: [-3.5], ratlines: false, stay: { from: 0.9262, to: 0.9156 },
-    slots: [
-      { span: 13.4, zt: 41.5, zb: 28.4, bulge: 4.5, seg: 10 },
-      { span: 9.4, zt: 55.6, zb: 47.2, bulge: 3.3, seg: 9 },
-      { span: 6.1, zt: 62.2, zb: 57.0, bulge: 2.4, seg: 8 },
-    ],
-    tri: [{ zb: 0.4538, zt: 0.9 }, { zb: 0.72, zt: 0.97 }, { zb: 0.84, zt: 1.0 }],
-  },
-  /* The fourth mast of a carrack or a great galleon, stepped on the poop abaft
-     the mizzen. Shorter than the mizzen and rigged like it: one shroud a side,
-     no ratlines, and a stay running forward to the mast ahead. Her bands are
-     written for a full-height mast, so `ref` is her whole pole and a shorter
-     mast carries its canvas proportionally lower. */
-  /* Set well inside the taffrail and given a short band for her lateen. A
-     lateen is cut from the height of the band it stands in, so the mizzen's own
-     proportions on a mast this far aft put the clew out over the stern and into
-     the water astern of her. */
-  bonaventure: {
-    x: -44, pole: 70, ref: 70, r0: 0.82, r1: 0.44, hoist: 1.0,
-    shrouds: [-3.0], ratlines: false, stay: { from: 0.92, to: 0.86 },
-    slots: [
-      { span: 10.5, zt: 42.0, zb: 28.0, bulge: 3.6, seg: 9 },
-      { span: 7.4, zt: 56.0, zb: 46.5, bulge: 2.7, seg: 8 },
-      { span: 5.0, zt: 63.5, zb: 57.5, bulge: 2.0, seg: 8 },
-    ],
-    tri: [{ zb: 0.55, zt: 0.86 }, { zb: 0.74, zt: 0.94 }, { zb: 0.86, zt: 1.0 }],
-  },
-  /* THE BOWSPRIT, which is a station like the others to the shipyard and unlike
-     any of them here: it is a spar sticking out over the bow, not a pole
-     standing on a deck, so nothing about a mast applies to it. No pole is drawn
-     (the hull's own bowsprit is), no shrouds are set up, it takes no place in
-     the chain of stays, and the pennant never flies from it.
-
-     What it carries is two different sails and they hang two different ways.
-     Triangular canvas is a HEADSAIL: tacked down to the spar, hoisted up the
-     stay to the head of the foremost mast, and sheeted home aft, which is three
-     corners in three different places rather than a band up a pole. Square
-     canvas is a SPRITSAIL, which is slung under the spar on a yard athwart it,
-     the way a carrack and a galleon carried theirs.
-
-     `tack` and `head` are the ranges those two corners run over, inner sail to
-     outer: a staysail near the stem is tacked close in and hoisted partway up
-     the mast, and the flying jib outside it is tacked at the boom end and goes
-     high. `foot` is how far in towards the mast the sheet comes, as a share of
-     the run from that sail's own tack, so each sail is cut to its own luff.
-     `slung` is where a spritsail hangs and how big it is. */
-  bowsprit: {
-    spar: true, x: 66,
-    tack: [0.34, 0.98], head: [0.40, 0.76], foot: 0.5,
-    slung: [0.42, 0.82], span: [9.0, 6.2], drop: [11.0, 7.6],
-  },
-};
-
-const BOWSPRIT = { heel: [50, 0, 22.6], tip: [88, 0, 33.5], r0: 1.3, r1: 0.66 };
-/* A point along the bowsprit, 0 at the heel and 1 at the boom end. */
-const sparAt = (f) => BOWSPRIT.heel.map((c, i) => lerp(c, BOWSPRIT.tip[i], f));
+   The numbers were the galleon's own and lived here as one literal table; they
+   are now `GALLEON_GEOM` in `hullform.js`, the anchor every class's station
+   geometry is scaled from, so a form carries its own copy in `menu.geom`: same
+   shape, its own hull's sizes. The bowsprit entry is the odd one — a spar over
+   the bow, not a pole on a deck: `tack` and `head` are the corner runs its
+   headsails use, `foot` how far in the sheet comes, `slung` where a spritsail
+   hangs beneath it. */
 
 /* The sail categories drawn as a triangle. Everything else takes the square, and
    RIG_KINDS at the foot of this file is what says which categories are settling
@@ -230,7 +188,7 @@ const TRIANGULAR = new Set(["TRI", "LAT"]);
    the third onto the third, so the fourth and fifth drew exactly on top of it:
    bought, paid for and invisible.
 
-   Adding a fourth row to STATION_GEOM does not fix that, because three sails
+   Adding a fourth row to the station geometry does not fix that, because three sails
    already reach the masthead. There is no room above; a taller stack has to be
    COMPRESSED into the same air. So a stack larger than the authored one is
    generated: the authored bands become a profile (how a sail's span, belly and
@@ -313,7 +271,10 @@ function triBands(g, n) {
  * does not. A spritsail needs no such thing, being slung under the spar, and is
  * drawn whether she has a mast or not.
  */
-function sparSails(g, list, foremost) {
+function sparSails(g, list, foremost, form) {
+  const { deckZAt, BULWARK } = hullKit(form.menu);
+  const bsp = form.menu.bowsprit;
+  const sparAt = (f) => bsp.heel.map((c, i) => lerp(c, bsp.tip[i], f));
   const at = (range, i, n) => lerp(range[0], range[1], n > 1 ? i / (n - 1) : 0);
   const n = list.length;
   const out = [];
@@ -353,20 +314,30 @@ function sparSails(g, list, foremost) {
  * which is what `shipyard.js` hands over: what is rigged, not where it goes.
  * Masts come out ordered bow to stern so the stays can be chained down the line.
  *
- * A sail's `kind` is its shipyard category and this file knows two shapes to draw
- * it in, a square one and a triangle. LSQ and SSQ are square canvas and get the
- * square; TRI and LAT get the triangle. A gaff sail and a lugsail are neither,
- * and until this file is taught their shapes they draw as square canvas, which
- * is closer than a triangle and is what the bench reports rather than hides.
+ * A sail's `kind` is its shipyard category and this file draws four shapes for
+ * the six that fill berths. LSQ and SSQ are square canvas; TRI and LAT are the
+ * triangle; GAF is the four-sided sail on a gaff abaft the mast, boomed at the
+ * foot; LUG is the four-sided sail on its slung, raking yard. The two fore-and-
+ * aft quads stand in the air of the square band at their berth, so a gaff
+ * topsail sits over its mainsail and a lug topsail over its lug the same way a
+ * topsail sits over a course, and a driving sail at the deck reaches down to
+ * the boom rather than floating at course height.
  *
  * A spar station comes back separately from the masts, because nothing done to a
- * mast applies to it: see the bowsprit in STATION_GEOM.
+ * mast applies to it: see the bowsprit entry in the form's geometry.
+ *
+ * `form` is the class's hull form, and it is what puts this rig on HER hull:
+ * the station geometry, the decks a boom swings over and the bowsprit the
+ * headsails run to are all the form's own.
  */
-function rigFromSpec(spec) {
+function rigFromSpec(spec, form) {
+  const geom = form.menu.geom;
+  const { deckZAt } = hullKit(form.menu);
+  const sternEdge = -form.menu.Lh + 4;
   const entries = spec.masts || [];
   const masts = entries
     .map((m) => {
-      const g = STATION_GEOM[m.station];
+      const g = geom[m.station];
       if (!g || g.spar) return null;
       const pole = Math.round(g.pole * (m.height || 1) * 100) / 100;
       const k = pole / g.ref; // a shorter mast carries its canvas proportionally lower
@@ -375,16 +346,46 @@ function rigFromSpec(spec) {
       const stack = (m.sails || []).length;
       const squares = squareBands(g, stack);
       const tris = triBands(g, stack);
+      /* Gaff and lug canvas is four sided and fore-and-aft, stacked in the air
+         of the square bands so a topsail of either sort sits over its mainsail
+         the way square canvas stacks. Two corrections to that air, because a
+         driving sail is cut from the mast rather than from a yard: the lowest
+         one brings its foot down to the boom, at working height above the
+         deck, and a mast carrying nothing but fore-and-aft canvas stretches
+         the stack up the pole the way a lateen takes its whole band, since the
+         yards the square bands leave room for are not there. */
+      const pureForeAft =
+        stack > 0 && (m.sails || []).every((s) => s.kind === "GAF" || s.kind === "LUG");
+      const stretch = pureForeAft ? Math.max(1, (0.94 * pole) / (squares[stack - 1].zt * k)) : 1;
+      /* A driving sail's boom swings low over the deck at the mast's own heel,
+         and it stops where the deck abaft rises to meet it: a boom run through
+         the wall of the quarterdeck is a sail buried in the castle, and a boom
+         lifted over the castle is a sail shrunk to a handkerchief. So the foot
+         stays down and the aft reach is capped at the first break the boom
+         cannot cross, or a little short of the stern. */
+      const boomFoot = deckZAt(g.x) + 2.6;
+      let boomRun = 6;
+      for (let x = g.x - 6; x > sternEdge && deckZAt(x) + 1 <= boomFoot; x -= 2) boomRun = g.x - x;
+      // and never through the next mast astern: a foremast's boom stops short of the main
+      for (const other of entries) {
+        const og = geom[other.station];
+        if (og && !og.spar && og.x < g.x) boomRun = Math.min(boomRun, g.x - og.x - 5);
+      }
       const sails = (m.sails || []).map((s, i) => {
         if (TRIANGULAR.has(s.kind)) {
           const band = tris[Math.min(i, tris.length - 1)];
           return { cut: "triangle", zb: pole * band.zb, zt: pole * band.zt };
         }
         const slot = squares[Math.min(i, squares.length - 1)];
+        if (s.kind === "GAF" || s.kind === "LUG") {
+          const zt = slot.zt * k * stretch;
+          const foot = i === 0 ? boomFoot : slot.zb * k * stretch;
+          return { cut: s.kind === "GAF" ? "gaff" : "lug", zb: Math.min(foot, zt - 4), zt, run: boomRun };
+        }
         return {
           cut: "square",
           span: slot.span * k, zt: slot.zt * k, zb: slot.zb * k,
-          bulge: slot.bulge * k, seg: slot.seg,
+          bulge: slot.bulge * k, seg: slot.seg, stud: !!s.stud,
         };
       });
       /* The pole is then cut down to the canvas actually bent on it. A mast is as
@@ -406,11 +407,11 @@ function rigFromSpec(spec) {
   // the spars, once the masts they hoist against are known
   const spars = [];
   for (const m of entries) {
-    const g = STATION_GEOM[m.station];
+    const g = geom[m.station];
     if (!g || !g.spar) continue;
-    spars.push({ x: g.x, sails: sparSails(g, m.sails || [], masts[0]) });
+    spars.push({ x: g.x, sails: sparSails(g, m.sails || [], masts[0], form) });
   }
-  return { bowsprit: spec.bowsprit !== false, masts, spars };
+  return { bowsprit: spec.bowsprit !== false, masts, spars, form };
 }
 
 /** The ship this file has always drawn, and what it falls back to when asked for no rig in particular. */
@@ -421,10 +422,19 @@ const GALLEON_RIG = rigFromSpec({
     { station: "main", height: 1.0, sails: [{ kind: "LSQ" }, { kind: "SSQ" }, { kind: "SSQ" }] },
     { station: "mizzen", height: 0.74, sails: [{ kind: "TRI" }] },
   ],
-});
+}, DEFAULT_FORM);
 
 function buildShip(rig){
- const F=[],P=PAL;
+ const F=[];
+ /* Everything about the hull under this rig comes off the form: her stations,
+    castles, bow, bulwark, fittings and timber. The galleon's form is the
+    authored numbers under the plain Oak palette, so her ship is built exactly
+    as it always was. */
+ const whole=rig.form||DEFAULT_FORM;
+ const form=whole.menu;
+ const P=palFor(whole);
+ const {ST,BULWARK,station,stationAt,deckZAt,hullPtF,hullWAtZ,hullPt}=hullKit(form);
+ const Lh=form.Lh, sternX=-Lh, fk=form.k;
  // plank courses: the topside band is split into three strakes at ±6% so the
  // hull reads as laid planking rather than one flat panel
  const fs=[0,0.14,0.34,0.50,0.66,0.82,1],
@@ -494,8 +504,13 @@ function buildShip(rig){
                [xc,side*(iw(s)),tz(s)],[xc,side*s.w,tz(s)]],P.cap,[dir,0,0],{tag:"hull"});
   }
  }
- bulwarkRun(-18,24,0,0);
- bulwarkRun(50,60,0,0,20.2-stationAt(50).sheer);
+ /* The open deck's bulwark runs between the castles when she has them, and
+    nearly the whole length of her when she does not; the lifted run over the
+    beakhead belongs to the forecastle and goes with it. */
+ const waistX0=form.aft?form.aft.x1:sternX+1.2;
+ const waistX1=form.fore?form.fore.x0:Lh-1.2;
+ bulwarkRun(waistX0,waistX1,0,0);
+ if(form.fore) bulwarkRun(0.833*Lh,Lh,0,0,form.fore.z-stationAt(0.833*Lh).sheer);
  const uu=[0,0.46,0.74,0.87,1],s0=station(0),sN=station(ST.length-1);
  {
   const NB=12,NC=4;
@@ -523,10 +538,14 @@ function buildShip(rig){
             col,[0,side,0],flat!=null?{tag:"hull",bias,flat}:{tag:"hull",bias});
    }
   };
-  // kept clear of the castle breaks fore and aft, where the hull curves too fast
-  // for a port to sit flat
-  for(const px of[-21,-8,6,19]){
-   const z=stationAt(px).sheer*0.47; if(z-1.95<0.7) continue;
+  // One port per dozen of her historical guns, spread clear of the castle
+  // breaks, and a second tier on a genuine multi-decker. A hull too low in the
+  // side to carry a port at all simply shows none, which is what the guard is
+  // for. Trim, opening and gun all scale with the fittings.
+  const pk=Math.max(0.55,Math.min(1.25,fk));
+  const portRows=form.ports.twoRows?[0.40,0.68]:[0.47];
+  for(const px of form.ports.xs) for(const rowF of portRows){
+   const z=stationAt(px).sheer*rowF; if(z-1.95*pk<0.7) continue;
    for(const side of[1,-1]){
     /* Gunport: a small square of tan trim, a flat black opening inside it, and a
        cannon standing out of the black. Trim, opening and gun are strongly biased
@@ -582,8 +601,12 @@ function buildShip(rig){
   }
  }
  /* Stairs, and the gaps their heads open in the castle end rails. Both come from
-    the same numbers, so a stair can never land against a closed rail. */
- const STAIR=[[24,-1,20.2],[-18,1,23.6]], STAIR_W=4.4, STAIR_RUN=11;
+    the same numbers, so a stair can never land against a closed rail. One
+    flight per castle break, so an open boat has none. */
+ const STAIR=[];
+ if(form.fore) STAIR.push([form.fore.x0,-1,form.fore.z]);
+ if(form.aft) STAIR.push([form.aft.x1,1,form.aft.z]);
+ const STAIR_W=4.4*Math.min(1,fk*1.1), STAIR_RUN=11*fk;
  // one flight per side, hard against the bulwark: [inboard edge, outboard edge]
  const stairSpan=(fx,dir,side)=>{const mx=fx+dir*STAIR_RUN*0.5,
    wo=stationAt(mx).w-RAIL_T-0.25;
@@ -666,12 +689,23 @@ function buildShip(rig){
    const y0=-yi+2*yi*iy/NWY,y1=-yi+2*yi*(iy+1)/NWY;
    addFace(F,[[face,y0,dz],[face,y1,dz],[face,y1,dz+rh],[face,y0,dz+rh]],P.wood,[nf,0,0],{tag:"castle",bias:3});}
  }
- castle(-60,-18,23.6,BULWARK,0,-18); castle(24,50,20.2,BULWARK,0,24);
- endRail(-60,23.6,BULWARK,1);
- endRail(-18,23.6,BULWARK,-1,stairGaps(-18,1),true);
- endRail(24,20.2,BULWARK,1,stairGaps(24,-1),true);
- {
-  const w=stationAt(-57.5).w-2.6, XT=-60.55, XG=-60.7, XM=-60.8;
+ if(form.aft){
+  castle(form.aft.x0,form.aft.x1,form.aft.z,BULWARK,0,form.aft.x1);
+  endRail(form.aft.x0,form.aft.z,BULWARK,1);
+  endRail(form.aft.x1,form.aft.z,BULWARK,-1,stairGaps(form.aft.x1,1),true);
+ }else{
+  // no castle: the stern still closes with a rail across the taffrail
+  endRail(sternX+0.4,stationAt(sternX).sheer,BULWARK,1);
+ }
+ if(form.fore){
+  castle(form.fore.x0,form.fore.x1,form.fore.z,BULWARK,0,form.fore.x0);
+  endRail(form.fore.x0,form.fore.z,BULWARK,1,stairGaps(form.fore.x0,-1),true);
+ }
+ /* Stern lights are a windowed stern: a gallery or a stern castle. A transom
+    or a round tuck stays plain timber, whatever she cost. */
+ if(form.lights){
+  const sternSheer=stationAt(sternX).sheer;
+  const w=stationAt(sternX+2.5).w-2.6*fk, XT=sternX-0.55, XG=sternX-0.7, XM=sternX-0.8;
   /* Three stern lights. The sort key counts height as depth, so a tall face
      outsorts anything shorter standing on it — every piece of the transom trim
      therefore carries a bias with its own centre height subtracted out, which
@@ -686,7 +720,7 @@ function buildShip(rig){
    [[x,ya,za],[x,yb,za],[x,yb,zb],[x,ya,zb]],color,n||[-1,0,0],
    {tag:"trim",flat,nearW:0,nostroke:true,bias:30-(za+zb)/2+layer});
   for(let k=-1;k<=1;k++){
-   const y=k*w*0.72, z=19.65, HW=1.55, HH=2.8, FT=0.34, G=0.4,
+   const y=k*w*0.72, z=0.845*sternSheer, HW=1.55*fk, HH=2.8*fk, FT=0.34, G=0.4,
     PW=HW-FT, PH=HH-FT;
    /* No backing plate: four panes of glass with the frame and mullions built as
       thin bars laid proud of them. Every piece is of comparable size, so none
@@ -697,7 +731,7 @@ function buildShip(rig){
                             [-HW,HW,-HH,-PH],[-G,G,-HH,HH],[-HW,HW,-G,G]])
     trim(XM,y+ya,y+yb,z+za,z+zb,P.pane,0.6,0.62);
   }
-  for(const[bz,bh]of[[15.9,0.8],[23.4,0.8]]){
+  for(const[bz,bh]of[[0.685*sternSheer,0.8*fk],[1.009*sternSheer,0.8*fk]]){
    const bw=hullWAtZ(station(0),bz)*0.90, XB=XT-0.22;
    trim(XB,-bw,bw,bz-bh,bz+bh,P.pane,1,0.9);
    addFace(F,[[XB,-bw,bz+bh],[XB,bw,bz+bh],[XT,bw,bz+bh],[XT,-bw,bz+bh]],P.cap,[0,0,1],
@@ -732,15 +766,25 @@ function buildShip(rig){
     addFace(F,[pt(rp,ct,t0),pt(ro,ct,t0),pt(ro,ct,t1),pt(rp,ct,t1)],P.dark,[0,0,1],{tag:"mast",bias:2.2});}
   }
  }
- if(rig.bowsprit) addSpar(F,BOWSPRIT.heel,BOWSPRIT.tip,BOWSPRIT.r0,BOWSPRIT.r1,P.wood,"mast",0);
- function sail(mx,span,zt,zb,bulge,seg){if(!OPT.sails)return;
+ if(rig.bowsprit) addSpar(F,form.bowsprit.heel,form.bowsprit.tip,form.bowsprit.r0,form.bowsprit.r1,P.wood,"mast",0);
+ function sail(mx,span,zt,zb,bulge,seg,stud){if(!OPT.sails)return;
   /* The cloth stands clear of the pole in x (CLEAR), and the yard sits between
      the two — so no part of the mast can be closer to the eye than the canvas
      it belongs to, at any heading. */
   /* The yard rides fully above the head of the cloth (bottom of the spar clears
      zt), so its segments can never notch through the top edge of the sail. */
   const CLEAR=2.4, YARD=1.5, YR=0.62;
-  addSpar(F,[mx+YARD,-(span+2),zt+YR+0.2],[mx+YARD,span+2,zt+YR+0.2],YR,YR,P.dark,"mast",0);
+  /* A studdingsail is drawn as what it is: not a sail of its own but this sail
+     run out sideways. The yard carries on past its arms on booms, and a narrow
+     panel of cloth hangs from each boom beyond the leech, cut a little shorter
+     than the sail it extends. */
+  const yardEnd=stud?span*1.52:span+2;
+  addSpar(F,[mx+YARD,-yardEnd,zt+YR+0.2],[mx+YARD,yardEnd,zt+YR+0.2],YR,YR,P.dark,"mast",0);
+  /* Canvas carries a higher lighting floor than timber (amb 0.66 against the
+     default 0.5). Cloth is thin and lit through from both sides, and under the
+     default shading the back of a fore-and-aft sail rendered as a murky slab at
+     half the bearings: a fleet in profile looked like it had hung out wet
+     laundry. The floor keeps a sail's back reading as cloth in shadow. */
   const ROWS=8;
   const pt=(t,fv)=>{
    const y=t*span*(1-0.10*fv);
@@ -752,7 +796,16 @@ function buildShip(rig){
   };
   for(let i=0;i<seg;i++){const t0=-1+2*i/seg,t1=-1+2*(i+1)/seg;
    for(let r=0;r<ROWS;r++){const v0=r/ROWS,v1=(r+1)/ROWS;
-    addFace(F,[pt(t0,v0),pt(t1,v0),pt(t1,v1),pt(t0,v1)],P.sail,[1,0,0],{tag:"sail",double:true,back:P.back});}}
+    addFace(F,[pt(t0,v0),pt(t1,v0),pt(t1,v1),pt(t0,v1)],P.sail,[1,0,0],{tag:"sail",double:true,back:P.back,amb:0.66,gain:0.46});}}
+  if(stud){
+   const h=zt-zb, sTop=zt-0.06*h, sBot=zb+0.10*h, SROWS=5;
+   for(const sd of[-1,1]){
+    const y0=sd*(span+0.7), y1=sd*(span*1.45);
+    for(let r=0;r<SROWS;r++){const v0=r/SROWS,v1=(r+1)/SROWS;
+     const at=(y,v)=>[mx+CLEAR+0.3,y,lerp(sTop,sBot,v)-0.7*v*v];
+     addFace(F,[at(y0,v0),at(y1,v0),at(y1,v1),at(y0,v1)],P.sail,[1,0,0],{tag:"sail",double:true,back:P.back,amb:0.66,gain:0.46});}
+   }
+  }
  }
  /* A triangular sail is one tall panel between three corners rather than a stack
     of bands, so it is drawn from the band it occupies: tack forward and low,
@@ -769,7 +822,7 @@ function buildShip(rig){
   const mix=(p,q,s)=>[lerp(p[0],q[0],s),lerp(p[1],q[1],s),lerp(p[2],q[2],s)];
   for(let i=0;i<12;i++){const t0=i/12,t1=(i+1)/12,a0=on(B,A,t0),a1=on(B,A,t1),c0=on(B,C,t0),c1=on(B,C,t1);
    for(const[s0v,s1v]of[[0,1/3],[1/3,2/3],[2/3,1]])
-    addFace(F,[mix(a0,c0,s0v),mix(a1,c1,s0v),mix(a1,c1,s1v),mix(a0,c0,s1v)],P.sail,[0,1,0],{tag:"sail",double:true,back:P.back});}
+    addFace(F,[mix(a0,c0,s0v),mix(a1,c1,s0v),mix(a1,c1,s1v),mix(a0,c0,s1v)],P.sail,[0,1,0],{tag:"sail",double:true,back:P.back,amb:0.66,gain:0.46});}
  };
  function lateen(mx,zb,zt){if(!OPT.sails)return;
   const h=zt-zb;
@@ -784,6 +837,51 @@ function buildShip(rig){
   addSpar(F,yq(1),[mx-0.828*h,1.1-0.75,zt+0.069*h],0.42,0.36,P.dark,"mast",0);
   triPanel(B,A,C,3.6);
  }
+ /* The cloth of a four-cornered fore-and-aft sail: two rails, luff and leech,
+    with the panel lofted between them and bellied out in y. Both rails keep
+    their corners, so the head and foot stay straight enough to read as spars
+    and everything between them stands full. */
+ const quadPanel=(tack,head,clew,peak,belly)=>{
+  const mix=(p,q,s)=>[lerp(p[0],q[0],s),lerp(p[1],q[1],s),lerp(p[2],q[2],s)];
+  const at=(u,v)=>{const a=mix(tack,head,v),b=mix(clew,peak,v),p=mix(a,b,u);
+   return[p[0],p[1]+belly*Math.sin(Math.PI*u)*Math.sin(Math.PI*(0.12+0.76*v)),p[2]];};
+  const NV=12,NU=3;
+  for(let i=0;i<NV;i++){const v0=i/NV,v1=(i+1)/NV;
+   for(let j=0;j<NU;j++){const u0=j/NU,u1=(j+1)/NU;
+    addFace(F,[at(u0,v0),at(u1,v0),at(u1,v1),at(u0,v1)],P.sail,[0,1,0],{tag:"sail",double:true,back:P.back,amb:0.66,gain:0.46});}}
+ };
+ /* A gaff sail: four sided, all of it abaft the mast. Tack and throat stand at
+    the pole, the boom runs aft at the foot, and the gaff runs up and aft from
+    the throat with the peak the highest corner of the sail. Proportions are
+    cut from the band it stands in, the same way the lateen's are. */
+ function gaffSail(mx,zb,zt,run){if(!OPT.sails)return;
+  const h=zt-zb,y=1.1;
+  const reach=Math.min(1.05*h,run||1.05*h);
+  const tack=[mx-0.6,y,zb+0.03*h], clew=[mx-reach,y,zb+0.10*h];
+  const throat=[mx-0.6,y,zt-0.22*h], peak=[mx-0.74*reach,y,zt];
+  const off=(p)=>[p[0],p[1]-0.75,p[2]];
+  const past=(a,b,t)=>[lerp(a[0],b[0],t),lerp(a[1],b[1],t),lerp(a[2],b[2],t)];
+  // the boom, jaw at the mast and run a little past the clew
+  addSpar(F,off(past(tack,clew,-0.04)),off(past(tack,clew,1.06)),0.5,0.4,P.dark,"mast",0);
+  // the gaff, jaw at the throat and run a little past the peak
+  addSpar(F,off(past(throat,peak,-0.04)),off(past(throat,peak,1.08)),0.45,0.35,P.dark,"mast",0);
+  quadPanel(tack,throat,clew,peak,2.8);
+ }
+ /* A lugsail: four sided on a yard slung across the pole and raking the way a
+    lateen's does, the forward end low and the peak high and aft. More of the
+    cloth stands abaft the mast than forward of it, which is what makes it a
+    lug rather than a square sail askew. */
+ function lugSail(mx,zb,zt,run){if(!OPT.sails)return;
+  const h=zt-zb,y=1.1;
+  const aft=Math.min(1,(run||0.64*h)/(0.64*h));
+  const tack=[mx+0.36*h,y,zb], clew=[mx-0.62*h*aft,y,zb+0.05*h];
+  const fore=[mx+0.46*h,y,zt-0.28*h], peak=[mx-0.64*h*aft,y,zt];
+  const off=(p)=>[p[0],p[1]-0.75,p[2]];
+  const past=(a,b,t)=>[lerp(a[0],b[0],t),lerp(a[1],b[1],t),lerp(a[2],b[2],t)];
+  // the slung yard, run past both ends of the head
+  addSpar(F,off(past(fore,peak,-0.06)),off(past(fore,peak,1.06)),0.5,0.38,P.dark,"mast",0);
+  quadPanel(tack,fore,clew,peak,2.6);
+ }
  /* A headsail has no spar at all: it is tacked down to the bowsprit, hoisted up
     the stay to the masthead, and sheeted home to the deck aft of both. So it is
     three loose corners and its luff is the stay it is hanked to, which is
@@ -795,7 +893,9 @@ function buildShip(rig){
  }
  for(const m of masts) for(const s of m.sails){
   if(s.cut==="triangle") lateen(m.x,s.zb,s.zt);
-  else sail(m.x,s.span,s.zt,s.zb,s.bulge,s.seg);
+  else if(s.cut==="gaff") gaffSail(m.x,s.zb,s.zt,s.run);
+  else if(s.cut==="lug") lugSail(m.x,s.zb,s.zt,s.run);
+  else sail(m.x,s.span,s.zt,s.zb,s.bulge,s.seg,s.stud);
  }
  // and whatever is set on the bowsprit: headsails out on the stay, a spritsail
  // slung under the spar
@@ -839,20 +939,21 @@ function buildShip(rig){
   masts.forEach((m,i)=>{
    const fwd=masts[i-1];
    if(fwd) addSpar(F,[m.x,0,m.top*m.stay.from],[fwd.x,0,fwd.top*m.stay.to],r,r,rope,"rig",0);
-   else if(rig.bowsprit) addSpar(F,[m.x,0,m.top*m.stay.from],[BOWSPRIT.tip[0],0,BOWSPRIT.tip[2]-0.4],r,r,rope,"rig",0);
+   else if(rig.bowsprit) addSpar(F,[m.x,0,m.top*m.stay.from],[form.bowsprit.tip[0],0,form.bowsprit.tip[2]-0.4],r,r,rope,"rig",0);
   });
  }
  /* ---- timbers and deck fittings ---- */
  {
   const waist=x=>stationAt(x).sheer;
-  // beakhead knee under the bowsprit
-  addSpar(F,[57,0,14.5],[71,0,27.4],1.0,0.62,P.wood,"hull",0,6,0.9);
+  // beakhead knee under the bowsprit, on the hulls built up enough to carry one
+  if(form.beak) addSpar(F,[0.95*Lh,0,0.684*stationAt(Lh).sheer],[1.183*Lh,0,form.bowsprit.heel[2]+4.8*fk],1.0*fk,0.62*fk,P.wood,"hull",0,6,0.9);
   /* Hatch, forward of the main mast: a low box whose lid is a single horizontal
      plane — brown ground with evenly spaced black squares painted on it, inside
      a thick brown border. Reads as a crossed grating from every heading without
      any bar geometry to sort. */
   {
-   const hz=waist(12), lz=hz+1.9, X0=7,X1=17,Y0=-5.2,Y1=5.2, BORDER=1.2;
+   const hmid=0.2*Lh, hhw=stationAt(hmid).w*0.293;
+   const hz=waist(hmid), lz=hz+1.9*fk, X0=0.117*Lh,X1=0.283*Lh,Y0=-hhw,Y1=hhw, BORDER=1.2*fk;
    // coaming sides only — no lid face of its own: one quad that wide outsorts
    // the small cells painted on it and hides half the grid
    // walls stand inboard of the lid edge, so the lid overhangs them a little and
@@ -878,9 +979,9 @@ function buildShip(rig){
   }
   {
    // capstan, just forward of the quarterdeck break
-   const cz=waist(-9);
-   addPrism(F,[-9,0,cz],[-9,0,cz+2.7],1.45,1.15,P.wood,"deck",10,4.4);
-   addPrism(F,[-9,0,cz+2.7],[-9,0,cz+3.5],1.85,1.7,P.cap,"deck",10,4.5);
+   const cx=-0.15*Lh, cz=waist(cx);
+   addPrism(F,[cx,0,cz],[cx,0,cz+2.7*fk],1.45*fk,1.15*fk,P.wood,"deck",10,4.4);
+   addPrism(F,[cx,0,cz+2.7*fk],[cx,0,cz+3.5*fk],1.85*fk,1.7*fk,P.cap,"deck",10,4.5);
   }
   // stairs from the waist up through the gap in each castle rail
   for(const[fx,dir,topz]of STAIR){
@@ -974,10 +1075,11 @@ function buildShip(rig){
    for(let i=6;i>=0;i--){const t=i/6;pts.push([mx-t*len,Math.sin(t*4.2)*1.6,top-3.4+t*1.9]);}
    addFace(F,pts,P.flag,null,{tag:"flag",double:true,back:P.flag});}
   // ensign staff stepped on the taffrail itself, raking aft
-  addPrism(F,[-58,0,25.6],[-58,0,37],0.5,0.4,P.wood,"mast");
-  const fl=[];for(let i=0;i<=5;i++){const t=i/5;fl.push([-58-t*13,Math.sin(t*3.6)*1.4,36.4]);}
-  for(let i=5;i>=0;i--){const t=i/5;fl.push([-58-t*13,Math.sin(t*3.6)*1.4,30.2]);}
-  addFace(F,fl,P.flag,null,{tag:"flag",double:true,back:P.flag});
+  {const ex=sternX+2, ez=deckZAt(ex)+BULWARK-0.7, et=ez+11.4*fk;
+   addPrism(F,[ex,0,ez],[ex,0,et],0.5*fk,0.4*fk,P.wood,"mast");
+   const fl=[];for(let i=0;i<=5;i++){const t=i/5;fl.push([ex-t*13*fk,Math.sin(t*3.6)*1.4,et-0.6]);}
+   for(let i=5;i>=0;i--){const t=i/5;fl.push([ex-t*13*fk,Math.sin(t*3.6)*1.4,et-0.6-6.2*fk]);}
+   addFace(F,fl,P.flag,null,{tag:"flag",double:true,back:P.flag});}
  }
  return F;
 }
@@ -1005,13 +1107,14 @@ function cache(map,key,make){
 function rigFor(spec){
  if(!spec) return GALLEON_RIG;
  const key=JSON.stringify(spec);
- return cache(RIGS,key,()=>Object.assign(rigFromSpec(spec),{key}));
+ // the spec names the hull, so the key already tells one class's ship from another's
+ return cache(RIGS,key,()=>Object.assign(rigFromSpec(spec,hullForm(spec.hull)),{key}));
 }
 const facesFor=rig=>cache(BUILT,rig.key||"default",()=>buildShip(rig));
 
 function shade(hex,k){const n=parseInt(hex.slice(1),16),f=c=>Math.min(255,Math.round(c*k));
  return`rgb(${f(n>>16&255)},${f(n>>8&255)},${f(n&255)})`;}
-const SPAN=248, NEAR_W=0.35;
+const NEAR_W=0.35;
 /**
  * Draw one frame of a ship, centred in a W x H box at bearing `deg`.
  *
@@ -1021,10 +1124,12 @@ const SPAN=248, NEAR_W=0.35;
  */
 function drawGalleon(ctx,W,H,deg,spec){
  const rig=rigFor(spec);
- /* Every rig is drawn at the one size the box was cut for. Classes really do
-    differ in size, but a hull is going to be modelled per class rather than
-    scaled off this one, so the size comes with the model when it is built. */
- const a=deg*Math.PI/180,ca=Math.cos(a),sa=Math.sin(a),scale=W/SPAN,ox=W/2,oy=H*0.71,items=[];
+ /* Every class draws at her own size in the one box: her form says how much air
+    her model needs, so a cutter reads small at the galleon's scale and the few
+    hulls bigger than the box was cut for pull the scale in rather than poking
+    through the frame. */
+ const span=(rig.form||DEFAULT_FORM).menu.span;
+ const a=deg*Math.PI/180,ca=Math.cos(a),sa=Math.sin(a),scale=W/span,ox=W/2,oy=H*0.71,items=[];
  for(const f of facesFor(rig)){
   let bias=f.bias||0;
   if(f.cull){const cx=f.cull[0]*ca-f.cull[1]*sa,cy=f.cull[0]*sa+f.cull[1]*ca;
@@ -1066,13 +1171,13 @@ function drawGalleon(ctx,W,H,deg,spec){
    sixty frames a second and the wrong thing to find out that way: `npm run
    catalogue` checks the whole fleet against this list so a class with a station
    nobody has drawn yet is caught in the catalogue rather than on the menu. */
-const RIG_STATIONS = Object.keys(STATION_GEOM);
+const RIG_STATIONS = Object.keys(GALLEON_GEOM);
 
 /* The sail categories this renderer draws in a shape of their own. Anything else
    falls back to a square sail, which is a wrong-looking ship rather than a broken
    one: the bench says which categories are in that position so a rig nobody has
    drawn yet is a known gap rather than a surprise. */
-const RIG_KINDS = ["LSQ", "SSQ", "TRI", "LAT"];
+const RIG_KINDS = ["LSQ", "SSQ", "TRI", "LAT", "GAF", "LUG", "STU"];
 
 /* How many sails this renderer can place up one mast and have them land in
    different places. The bands are generated from the authored profile and the
@@ -1089,7 +1194,9 @@ const RIG_BERTHS = MAX_BERTHS;
    that overlaps the one under it is a sail a captain paid for and cannot see,
    and that is exactly the fault the old clamp produced. */
 function rigBands(station, n) {
-  const g = STATION_GEOM[station];
+  // checked against the authored profile: every class's geometry is a uniform
+  // scaling of it, so a band that lands clear here lands clear on every hull
+  const g = GALLEON_GEOM[station];
   if (!g || n < 1) return null;
   // A spar's sails are spread along it rather than up it, so what has to be
   // distinct is where each one is tacked. Reported as bands so the same check

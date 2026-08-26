@@ -90,8 +90,9 @@ export const SPAR_STATIONS = new Set(["bowsprit"]);
  *
  * STU is the odd one and is marked `additive`. A studdingsail is not a berth on a mast: it booms out
  * beyond a square sail already set, and its area comes off that sail rather than off a place in the
- * rig. Nothing models that yet, so the bench refuses a berth that asks for one rather than letting a
- * mast pretend to carry studdingsails in a slot.
+ * rig. It is modelled as exactly that, an attachment to a sail (see `studFitsSail`), and the bench
+ * still refuses a berth that asks for one rather than letting a mast pretend to carry studdingsails
+ * in a slot.
  */
 export const SAIL_KINDS = {
   LSQ: { id: "LSQ", name: "Large square", blurb: "Courses and lower topsails. The driving power, low on the mast." },
@@ -128,9 +129,9 @@ export const kindOf = (id) => SAIL_KINDS[id] || null;
  * tier: a tier is measured from a finished ship, and a bare galleon is the last class on the shelf
  * and a second-rung ship at the same time.
  *
- * How big she is is deliberately not a number here. Classes differ in size, but each hull is to be
- * modelled in its own right rather than scaled off one shape, so her size arrives with her art and
- * there is nothing for the catalogue to multiply.
+ * How big she is is deliberately not a number here. Her size arrived with her art: `hullform.js`
+ * models each class from her reference proportions and both views read it there, so there is still
+ * nothing for the catalogue to multiply.
  */
 /* generated:hulls -- edit data/hulls.tsv and run `npm run import` */
 const FLEET = [
@@ -726,6 +727,16 @@ export const SAILS = {
     drive: 0.12,
     hand: -0.01,
   },
+  skysailFine: {
+    id: "skysailFine",
+    part: "sail",
+    kind: "SSQ",
+    name: "Duck canvas skysail",
+    price: 250,
+    blurb: "Heavier cloth at the very top of the rig, where the plain one is first to blow out.",
+    drive: 0.16,
+    hand: -0.01,
+  },
   spritsail: {
     id: "spritsail",
     part: "sail",
@@ -735,6 +746,16 @@ export const SAILS = {
     blurb: "Slung under the bowsprit on a yard athwart. Old fashioned, and it drags her head round.",
     drive: 0.25,
     hand: -0.05,
+  },
+  spritsailFine: {
+    id: "spritsailFine",
+    part: "sail",
+    kind: "SSQ",
+    name: "Duck canvas spritsail",
+    price: 400,
+    blurb: "Stouter cloth under the spar, where every sea that comes over the bow lands on it.",
+    drive: 0.33,
+    hand: -0.04,
   },
   staysail: {
     id: "staysail",
@@ -785,6 +806,16 @@ export const SAILS = {
     blurb: "Right out at the boom end. The last scrap of canvas anybody sets forward.",
     drive: 0.12,
     hand: 0.09,
+  },
+  flyingJibFine: {
+    id: "flyingJibFine",
+    part: "sail",
+    kind: "TRI",
+    name: "Cut flying jib",
+    price: 530,
+    blurb: "Cut flat for the boom end, so it keeps an edge where the plain one flogs.",
+    drive: 0.16,
+    hand: 0.11,
   },
   lateen: {
     id: "lateen",
@@ -856,6 +887,16 @@ export const SAILS = {
     drive: 0.18,
     hand: 0.08,
   },
+  gaffTopsailFine: {
+    id: "gaffTopsailFine",
+    part: "sail",
+    kind: "GAF",
+    name: "Cut gaff topsail",
+    price: 390,
+    blurb: "The same scrap cut to stand, so the space over the gaff keeps pulling in a blow.",
+    drive: 0.24,
+    hand: 0.1,
+  },
   spanker: {
     id: "spanker",
     part: "sail",
@@ -886,6 +927,16 @@ export const SAILS = {
     drive: 0.3,
     hand: 0.14,
   },
+  trysailFine: {
+    id: "trysailFine",
+    part: "sail",
+    kind: "GAF",
+    name: "Storm trysail",
+    price: 700,
+    blurb: "The best cloth aboard, in the smallest sail. She rides out weather under this and nothing else.",
+    drive: 0.4,
+    hand: 0.17,
+  },
   dippingLug: {
     id: "dippingLug",
     part: "sail",
@@ -895,6 +946,16 @@ export const SAILS = {
     blurb: "Four sided on a slung yard, and the yard comes round the mast on every tack.",
     drive: 0.45,
     hand: 0.12,
+  },
+  dippingLugFine: {
+    id: "dippingLugFine",
+    part: "sail",
+    kind: "LUG",
+    name: "Cut dipping lug",
+    price: 600,
+    blurb: "Better cloth on the same yard. Worth the work of dipping it round on every tack.",
+    drive: 0.59,
+    hand: 0.15,
   },
   standingLug: {
     id: "standingLug",
@@ -925,6 +986,49 @@ export const SAILS = {
     blurb: "A small lug over the mainsail, set flying in light airs.",
     drive: 0.18,
     hand: 0.07,
+  },
+  lugTopsailFine: {
+    id: "lugTopsailFine",
+    part: "sail",
+    kind: "LUG",
+    name: "Cut lug topsail",
+    price: 350,
+    blurb: "Flat cut and light, and it stays drawing after the plain one has come in.",
+    drive: 0.24,
+    hand: 0.09,
+  },
+  lowerStudding: {
+    id: "lowerStudding",
+    part: "sail",
+    kind: "STU",
+    name: "Lower studdingsail",
+    price: 240,
+    blurb: "Boomed out beyond the course in light airs. Half the course again, off two spars and a lot of patience.",
+    drive: 0.55,
+    hand: -0.03,
+    level: 0,
+  },
+  topmastStudding: {
+    id: "topmastStudding",
+    part: "sail",
+    kind: "STU",
+    name: "Topmast studdingsail",
+    price: 220,
+    blurb: "Set beside the topsail, and the biggest of the three. What a ship cracks on when she means to run something down.",
+    drive: 0.7,
+    hand: -0.02,
+    level: 1,
+  },
+  topgallantStudding: {
+    id: "topgallantStudding",
+    part: "sail",
+    kind: "STU",
+    name: "Topgallant studdingsail",
+    price: 150,
+    blurb: "High and light, beside the topgallant. The last of a full press, and the first to come in.",
+    drive: 0.65,
+    hand: -0.01,
+    level: 2,
   },
 };
 /* end:sails */
@@ -1010,6 +1114,17 @@ export const GUNS = {
     reload: 1.35,
     weight: 1.6,
   },
+  longEighteen: {
+    id: "longEighteen",
+    part: "gun",
+    name: "Long eighteen",
+    price: 1900,
+    blurb: "A frigate's chaser. Iron enough to open a stern at a distance, if she can bear the weight of it.",
+    mount: "bow",
+    damage: 20,
+    reload: 1.6,
+    weight: 2.4,
+  },
   swivelGun: {
     id: "swivelGun",
     part: "gun",
@@ -1020,6 +1135,31 @@ export const GUNS = {
     damage: 5,
     reload: 0.8,
     weight: 0.35,
+    group: 1,
+  },
+  bronzeSwivel: {
+    id: "bronzeSwivel",
+    part: "gun",
+    name: "Bronze swivel",
+    price: 620,
+    blurb: "Cast true, so the ball goes where it was pointed. The volley lands closer to the bow.",
+    mount: "swivel",
+    damage: 6.5,
+    reload: 0.8,
+    weight: 0.35,
+    group: 0.8,
+  },
+  longSwivel: {
+    id: "longSwivel",
+    part: "gun",
+    name: "Long swivel",
+    price: 1150,
+    blurb: "A longer barrel on the same mount. It hits harder and throws truer than anything else on the rail.",
+    mount: "swivel",
+    damage: 8,
+    reload: 0.8,
+    weight: 0.4,
+    group: 0.62,
   },
 };
 /* end:guns */
@@ -1061,6 +1201,43 @@ export function sailFitsBerth(sail, berth) {
 /** Every berth on a mast, as `{ index, kind }`, deck upward. */
 export function berthsOf(mast) {
   return mast ? mast.berths.map((b, index) => ({ index, ...b })) : [];
+}
+
+/**
+ * A STUDDINGSAIL IS NOT A BERTH, and this is the attachment it wanted instead.
+ *
+ * It booms out beyond a square sail that is already set, and its area comes off that sail: a square
+ * sail carries at most one studdingsail, the stud's `drive` is a share of its host's, and it goes
+ * loose the moment the host does. What decides which stud goes on which sail is the LEVEL of square
+ * canvas up the mast, counting from the deck: a lower studdingsail booms out from the lowest square
+ * sail, a topmast studdingsail from the one over it, a topgallant studdingsail from the third. The
+ * berth number is deliberately not the level, because a driver mast's lowest square sail sits at
+ * berth 1 with a spanker under it, and it is still the sail a lower studdingsail belongs beside.
+ */
+export function squareLevel(mast, berthIndex) {
+  const berth = mast && mast.berths[berthIndex];
+  if (!berth || (berth.kind !== "LSQ" && berth.kind !== "SSQ")) return null;
+  let level = 0;
+  for (let i = 0; i < berthIndex; i++) {
+    const k = mast.berths[i].kind;
+    if (k === "LSQ" || k === "SSQ") level++;
+  }
+  return level;
+}
+
+/** Whether this studdingsail booms out from the sail in that berth: a stud of the berth's own level, on a square sail actually set. */
+export function studFitsSail(stud, mast, berthIndex, sail) {
+  if (!stud || stud.part !== "sail" || stud.kind !== "STU") return false;
+  if (!sail || (sail.kind !== "LSQ" && sail.kind !== "SSQ")) return false;
+  const level = squareLevel(mast, berthIndex);
+  return level != null && stud.level === level;
+}
+
+/** Studdingsails in the catalogue that would boom out from this berth's sail, cheapest first. */
+export function studsForBerth(mast, berthIndex) {
+  const level = squareLevel(mast, berthIndex);
+  if (level == null) return [];
+  return SAIL_LIST.filter((s) => s.kind === "STU" && s.level === level).sort((a, b) => a.price - b.price);
 }
 
 /** Masts in the catalogue that would go in this socket, cheapest first. */
@@ -1122,7 +1299,7 @@ export function emptyLoadout(hullId) {
   // catalogue can be reordered or rewritten without a dangling id in here
   const hull = hullType(hullId) || HULL_LIST[0];
   const rig = {};
-  for (const socket of hull.sockets) rig[socket.id] = { mast: null, sails: [] };
+  for (const socket of hull.sockets) rig[socket.id] = { mast: null, sails: [], studs: [] };
   return { hull, rig, guns: { broadside: [], bow: [], swivel: [] } };
 }
 
@@ -1130,6 +1307,12 @@ export function emptyLoadout(hullId) {
 function sailsOn(entry) {
   if (!entry || !entry.mast) return [];
   return entry.mast.berths.map((_, i) => entry.sails[i] || null);
+}
+
+/** The studdingsails boomed out from those sails, padded the same way. */
+function studsOn(entry) {
+  if (!entry || !entry.mast) return [];
+  return entry.mast.berths.map((_, i) => (entry.studs || [])[i] || null);
 }
 
 /* ---------------------------------------------------------------------------------------------- */
@@ -1194,28 +1377,28 @@ const MAST_SHARE = 0.55;
  * nothing she could see and the second move it by one. A part that does nothing until you own two of
  * it is a part nobody buys.
  *
- * A better swivel, and more of them, is to make the volley HIT HARDER and GROUP TIGHTER off the bow.
- * Not add to the count: one swivel is one ball whatever it cost. Nothing does either yet, and the
- * numbers to do it with have not been set, but all three figures already exist in the fight as
- * constants, which is where they come from and what they are today:
+ * WHAT A BETTER SWIVEL BUYS is that the volley hits harder and groups tighter off the bow. Never a
+ * ball on the count: one swivel is one shot whatever it cost. Both halves come out of `rate()` now:
  *
- *   count    `for (let i = 0; i < 6; i++)` in `fire()`. A flat six balls for every hull afloat, so a
- *            cutter and a galleon throw the same volley and the `muskets` figure the yard screen
- *            prints is a promise the fight does not keep. Substituting `rate().muskets` is the first
- *            of these and is worth doing on its own, before any of the quality work.
- *   damage   `musketDmg()`, a flat 3.2, beside `sideDmg()` and `frontDmg()` which are flat too.
- *            Becomes what one ball does, off the swivels aboard.
- *   spread   the `0.8` in that same line: the arc in radians the six balls are scattered across,
- *            about 23 degrees either side of the bow. This is the one to tighten. Note it is added
- *            to `noise`, the AI's own aiming error, so tightening the spread must not tighten that
- *            as well or better swivels would quietly make every rival captain a better shot.
+ *   damage   `musketDamage`, what one ball of the volley carries. A hand's musket throws
+ *            `MUSKET_BALL` and a swivel throws its own catalogue `damage`, so the figure is the
+ *            average over the balls actually going out: no swivels leaves it exactly at 3.2, the flat
+ *            the fight used to hard-code.
+ *   spread   `musketSpread`, the arc the volley is scattered across. A musket scatters over the full
+ *            `MUSKET_ARC`; a swivel is laid on its mount and scatters over its own `group` share of
+ *            it, so the volley's arc is the ball-weighted average and quality and number both pull it
+ *            in. It can never reach zero: the hands at the rail keep their whole scatter however fine
+ *            the iron beside them is. The fight adds its own `noise` for an AI captain's aim, and
+ *            that stays out of here on purpose: a better swivel aboard the player must not quietly
+ *            make every rival a better shot.
  *
- * `rate()` grows a musket damage and a musket spread beside the count, `measure()` multiplies by the
- * damage instead of its own `MUSKET_DPS`, and the fight reads all three off the loadout. A swivel's
- * `damage` and `reload` in the catalogue are the numbers waiting on the second of those; nothing
- * carries a grouping figure yet, so that field arrives with the quality tiers.
+ * When the cap bites, the HANDS give way, never the swivels: only so many men fit at the rail, and a
+ * mounted gun does not queue for elbow room. That is also the accounting that keeps a bought part
+ * from doing nothing.
  */
 const SWIVEL_MUSKETS = 1;
+const MUSKET_BALL = 3.2; // what one hand's musket takes off a crew, the flat the fight was tuned on
+const MUSKET_ARC = 0.8; // the arc a musket volley scatters over, in radians, about 23 degrees a side
 
 const sum = (xs, f) => xs.reduce((a, x) => a + f(x), 0);
 
@@ -1237,12 +1420,21 @@ export function rate(loadout) {
   for (const socket of hull.sockets) {
     const entry = loadout.rig[socket.id];
     const set = sailsOn(entry);
+    const studs = studsOn(entry);
     set.forEach((sail, i) => {
       if (!sail) return;
       const k = canvasFalloff(i, socket.station);
       drive += sail.drive * k;
       hand += sail.hand * k;
       sails += 1;
+      // a studdingsail's area comes off the sail it booms out from, so its drive is a share of its
+      // host's and it fades up the mast exactly as the host does
+      const stud = studs[i];
+      if (stud) {
+        drive += stud.drive * sail.drive * k;
+        hand += stud.hand * k;
+        sails += 1;
+      }
     });
   }
 
@@ -1264,6 +1456,19 @@ export function rate(loadout) {
     MUSKET_CAP,
     Math.max(1, Math.floor(Math.sqrt(hull.maxCrew / CREW_PER_FIRST)) + guns.swivel.length * SWIVEL_MUSKETS),
   );
+  // The hands give way at the rail before a mounted gun does, so under the cap every swivel still
+  // fires and the balance of the volley is muskets.
+  const swivelBalls = Math.min(guns.swivel.length, muskets);
+  const handBalls = muskets - swivelBalls;
+  const firing = guns.swivel.slice(0, swivelBalls);
+  const swivelThrow = sum(firing, (g) => g.damage);
+  // One ball of the volley, averaged over what is actually throwing it: 3.2 with nothing on the
+  // rail, and pulled up by every swivel aboard because a swivel ball outweighs a musket's.
+  const musketDamage = (handBalls * MUSKET_BALL + swivelThrow) / muskets;
+  // The arc the volley scatters over. A musket keeps its whole scatter; a swivel is laid on its
+  // mount and holds its own `group` share of one, so quality and number both pull the volley in
+  // and the muskets keep it from ever closing to a point.
+  const musketSpread = (MUSKET_ARC * (handBalls + sum(firing, (g) => g.group ?? 1))) / muskets;
 
   /**
    * A VOLLEY IS NOT ONE BALL PER GUN, past a point.
@@ -1314,6 +1519,8 @@ export function rate(loadout) {
     bow: volley(guns.bow),
     swivel: volley(guns.swivel),
     muskets,
+    musketDamage,
+    musketSpread,
   };
 }
 
@@ -1325,6 +1532,7 @@ export function riggingValue(loadout) {
     if (!entry || !entry.mast) continue;
     total += entry.mast.price;
     for (const sail of sailsOn(entry)) if (sail) total += sail.price;
+    for (const stud of studsOn(entry)) if (stud) total += stud.price;
   }
   return total;
 }
@@ -1409,6 +1617,13 @@ export function fitOut(hullId, quality = 1) {
     // her courses. At least one sail always, or she is not a ship under way.
     const bent = Math.max(1, Math.ceil(q * berths.length));
     lo.rig[socket.id].sails = berths.map((b, i) => (i < bent ? grade(sailsForBerth(b)) : null));
+    // a ship close to fully found flies her studdingsails: they boom out beyond square canvas
+    // already set, so they are the last thing aboard rather than a step on the way
+    if (q >= 0.85) {
+      lo.rig[socket.id].studs = berths.map((b, i) =>
+        lo.rig[socket.id].sails[i] ? grade(studsForBerth(mast, i)) : null,
+      );
+    }
   }
 
   const mounts = ["broadside", "bow", "swivel"];
@@ -1532,11 +1747,15 @@ export function outfitCost(hullId) {
  * The derby has no guns at all, so throw weight is meaningless there and `ram` is the figure it wants
  * instead: what she can take and how hard she can bring it, which is the whole of a ramming match.
  *
- * Swivels count once, through `muskets`. They are part of the small-arms volley by design and never a
- * battery of their own, so the swivel volley `rate()` returns is a count of what is fitted and nothing
- * reads its damage: adding it here would arm every big hull twice. See `SWIVEL_MUSKETS`.
+ * Swivels count once, through `muskets` and the `musketDamage` they pull up. They are part of the
+ * small-arms volley by design and never a battery of their own, so the swivel volley `rate()` returns
+ * is a count of what is fitted and nothing reads its damage: adding it here would arm every big hull
+ * twice. See `SWIVEL_MUSKETS`.
  */
-const MUSKET_DPS = 2.4; // one musket in a volley, averaged over its reload
+// Volleys a second the rail keeps up. A plain musket ball at this pace is the 2.4 a musket the blend
+// was placed with, so a ship with no swivels measures exactly what she did before quality existed and
+// only better iron on the rail moves her.
+const MUSKET_VOLLEYS = 0.75;
 const BOTH_SIDES = 2; // a broadside goes off both sides at once
 
 // Round numbers, near a middling ship, chosen so the components come out around 1 and can be blended.
@@ -1548,7 +1767,8 @@ const MIX = { throwWeight: 0.44, endurance: 0.41, mobility: 0.15 };
 
 export function measure(r) {
   const dps = (v) => (v.count ? v.damage / v.reload : 0);
-  const throwWeight = dps(r.broadside) * BOTH_SIDES + dps(r.bow) + r.muskets * MUSKET_DPS;
+  const throwWeight =
+    dps(r.broadside) * BOTH_SIDES + dps(r.bow) + r.muskets * (r.musketDamage ?? MUSKET_BALL) * MUSKET_VOLLEYS;
   const endurance = r.hull + r.crew;
   const mobility = (r.speed + r.turn) / 2;
 
@@ -1753,6 +1973,12 @@ export function resolve(record, lookup) {
       const sail = partType(id((src.sails || [])[i]));
       return sailFitsBerth(sail, berth) ? sail : null;
     });
+    // a studdingsail only stands while its host sail does, so one recorded against a berth that
+    // came back empty is dropped the same way a sail that no longer fits is
+    lo.rig[socket.id].studs = berthsOf(mast).map((berth, i) => {
+      const stud = partType(id((src.studs || [])[i]));
+      return studFitsSail(stud, mast, i, lo.rig[socket.id].sails[i]) ? stud : null;
+    });
   }
 
   for (const mount of ["broadside", "bow", "swivel"]) {
@@ -1771,20 +1997,23 @@ export function resolve(record, lookup) {
  * hangs on them. `galleon.js` turns this into geometry; the shipyard has no opinion about how a sail
  * is drawn, only that there is one and what category it belongs to.
  *
- * Hulls per class are still to be modelled, so every class is drawn on the one hull the renderer has,
- * at the one size it was drawn at. The rig on top of it is real: a cutter with one small sail draws
- * one small sail.
+ * The hull the rig stands on is the class's own: the renderer reads the spec's `hull` id against
+ * `hullform.js` and builds her model at her size. The rig on top is real the same way: a cutter with
+ * one small sail draws one small sail.
  */
 export function rigSpec(loadout) {
   const masts = [];
   for (const socket of loadout.hull.sockets) {
     const entry = loadout.rig[socket.id];
     if (!entry || !entry.mast) continue;
+    const studs = studsOn(entry);
     masts.push({
       station: socket.station,
       height: entry.mast.height,
+      // `stud` says a studdingsail is boomed out beyond this sail, which the renderer draws as an
+      // extension of the sail rather than a sail of its own, because that is what it is
       sails: sailsOn(entry).map((sail, i) =>
-        sail ? { kind: sail.kind, berth: i } : null,
+        sail ? { kind: sail.kind, berth: i, ...(studs[i] ? { stud: true } : {}) } : null,
       ).filter(Boolean),
     });
   }
