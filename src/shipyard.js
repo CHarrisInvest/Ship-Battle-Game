@@ -129,9 +129,9 @@ export const kindOf = (id) => SAIL_KINDS[id] || null;
  * tier: a tier is measured from a finished ship, and a bare galleon is the last class on the shelf
  * and a second-rung ship at the same time.
  *
- * How big she is is deliberately not a number here. Classes differ in size, but each hull is to be
- * modelled in its own right rather than scaled off one shape, so her size arrives with her art and
- * there is nothing for the catalogue to multiply.
+ * How big she is is deliberately not a number here. Her size arrived with her art: `hullform.js`
+ * models each class from her reference proportions and both views read it there, so there is still
+ * nothing for the catalogue to multiply.
  */
 /* generated:hulls -- edit data/hulls.tsv and run `npm run import` */
 const FLEET = [
@@ -1997,9 +1997,9 @@ export function resolve(record, lookup) {
  * hangs on them. `galleon.js` turns this into geometry; the shipyard has no opinion about how a sail
  * is drawn, only that there is one and what category it belongs to.
  *
- * Hulls per class are still to be modelled, so every class is drawn on the one hull the renderer has,
- * at the one size it was drawn at. The rig on top of it is real: a cutter with one small sail draws
- * one small sail.
+ * The hull the rig stands on is the class's own: the renderer reads the spec's `hull` id against
+ * `hullform.js` and builds her model at her size. The rig on top is real the same way: a cutter with
+ * one small sail draws one small sail.
  */
 export function rigSpec(loadout) {
   const masts = [];

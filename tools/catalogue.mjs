@@ -24,6 +24,7 @@ import {
   squareLevel,
 } from "../src/shipyard.js";
 import { RIG_STATIONS, RIG_KINDS, RIG_BERTHS, rigBands } from "../src/galleon.js";
+import { hullForm, DEFAULT_FORM } from "../src/hullform.js";
 
 // A set, not a list. The same fault reached from forty hulls is one fault about one part, and a
 // bench that printed it forty times would bury the other thirty-nine.
@@ -61,6 +62,12 @@ for (const h of HULL_LIST) {
       fault(at, `the renderer cannot draw a mast at "${s.station}" (it knows ${RIG_STATIONS.join(", ")}), so this mast would be missing from the menu ship`);
     }
     if (!mastsForSocket(s).length) fault(at, `size "${s.size}" fits no mast in the catalogue`);
+  }
+
+  // every class draws on a hull modelled from her own reference row; one without a row falls back
+  // to the galleon's, which is exactly the every-ship-is-the-galleon fault the forms exist to end
+  if (h.id !== "galleon" && hullForm(h.id) === DEFAULT_FORM) {
+    fault(where, "no reference row in shipref.js, so she draws on the galleon's hull at the galleon's size");
   }
 
   // she has to be riggable in practice, not only in principle

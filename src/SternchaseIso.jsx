@@ -1,5 +1,6 @@
 import React, { useRef, useState, useEffect, useCallback, useMemo } from "react";
 import { drawGalleon } from "./galleon.js";
+import { hullForm } from "./hullform.js";
 import {
   getHold, bankVoyage, resetHold, subscribeHold, modeRecord, shipLoadout, shortfall,
   buyShip, buyPart, fitMast, fitSail, fitStud, fitGun, unfitGun, setActiveShip, loosePartIds, ownedShips, partOf,
@@ -578,6 +579,9 @@ const MAX_ZOOM = 1.5;
 const EDGE_PEEK = 40; // screen pixels
 
 const SHIP_R = 17;
+// The hull every ship at sea used to share, kept as the yardstick the per-class forms are anchored
+// to: the galleon still comes out exactly this size, and a few constants below (ram gaps, the AI's
+// sense of "a hull length") still read the fleet's middle rather than any one ship.
 const HULL_L = 36;
 const HULL_W = 13;
 const HULL_A = HULL_L / 2; // hulls collide as ellipses: semi-length along the heading...
@@ -587,32 +591,27 @@ const HULL_B = HULL_W / 2; // ...and semi-beam across it
  * THE RIG SHE CARRIES, AT SEA. Every ship afloat used to draw the same three hard-coded masts, so a
  * launch and a first rate were told apart only by their health bars. The masts and sails drawn on the
  * water now come off the ship's own loadout, through the same `rigSpec()` the menu ship reads:
- * a mast stands where its station is, as tall as the mast bought for it, and carries one band of
- * canvas per sail actually bent on, in the shape of its category. Square canvas is the bellied band
- * the fight has always drawn; triangular, gaff and lug canvas are fore-and-aft panels; headsails run
- * from the bowsprit up toward the foremost masthead.
+ * a mast stands where its station is on HER hull, as tall as the mast bought for it, and carries one
+ * band of canvas per sail actually bent on, in the shape of its category. Square canvas is the
+ * bellied band the fight has always drawn; triangular, gaff and lug canvas are fore-and-aft panels;
+ * headsails run from the bowsprit up toward the foremost masthead.
  *
  * Worked out once per ship at `makeShip`, because nothing about her rig changes at sea short of the
  * whole thing coming down.
  */
-const SEA_STATIONS = {
-  fore: { u: 11, top: 30, w: 14 },
-  main: { u: 1, top: 36, w: 18 },
-  mizzen: { u: -9, top: 26, w: 13 },
-  bonaventure: { u: -14, top: 20, w: 10 },
-};
 const SEA_FOREAFT = new Set(["TRI", "LAT", "GAF", "LUG"]);
-function buildSeaRig(loadout) {
+function buildSeaRig(loadout, sea) {
   const spec = rigSpec(loadout);
   const masts = [];
   for (const m of spec.masts) {
-    const g = SEA_STATIONS[m.station];
-    if (!g) continue;
-    const top = Math.max(10, g.top * (m.height || 1));
+    const u = sea.masts[m.station];
+    if (u === undefined) continue;
+    const top = Math.max(8, sea.tops[m.station] * (m.height || 1));
+    const wB = sea.wBase[m.station];
     const n = m.sails.length;
     // bands from the deck up: each sail keeps about three quarters of the height of the one below
     // it and narrows the same way, with a little air between bands
-    const zb0 = 6.5, gap = 1.6;
+    const zb0 = 0.18 * top, gap = 1.6;
     const room = Math.max(4, top - 3 - zb0 - gap * (n - 1));
     const weights = Array.from({ length: n }, (_, i) => Math.pow(0.74, i));
     const wsum = weights.reduce((a, b) => a + b, 0) || 1;
@@ -620,29 +619,30 @@ function buildSeaRig(loadout) {
     const sails = m.sails.map((sail, i) => {
       const h = room * (weights[i] / wsum);
       // a studdingsail is the band run out sideways, so the band just carries the extra beam
-      const band = { kind: sail.kind, sb: z, st: z + h, w: g.w * Math.pow(0.82, i) * (sail.stud ? 1.45 : 1) };
+      const band = { kind: sail.kind, sb: z, st: z + h, w: wB * Math.pow(0.82, i) * (sail.stud ? 1.45 : 1) };
       z += h + gap;
       return band;
     });
-    masts.push({ u: g.u, h: top, sails });
+    masts.push({ u, h: top, sails });
   }
   // what the bowsprit carries: headsails run up toward the foremost masthead, and square canvas
   // under the spar is a spritsail
   const fore = masts.reduce((a, m) => (!a || m.u > a.u ? m : a), null);
   const heads = [];
   const sprits = [];
+  const bowTip = 0.61 * sea.L;
   for (const m of spec.masts) {
     if (m.station !== "bowsprit") continue;
     m.sails.forEach((sail, i) => {
       if (SEA_FOREAFT.has(sail.kind)) {
-        if (fore) heads.push({ tack: 16 + i * 2.5, mastU: fore.u, mastZ: fore.h * (0.55 + 0.14 * i) });
+        if (fore) heads.push({ tack: bowTip * (0.72 + 0.11 * i), mastU: fore.u, mastZ: fore.h * (0.55 + 0.14 * i) });
       } else {
-        sprits.push({ kind: sail.kind, sb: -1.5, st: 3, w: 7, u: 19 });
+        sprits.push({ kind: sail.kind, sb: -1.5, st: 3, w: 0.54 * sea.W, u: 0.53 * sea.L });
       }
     });
   }
   const topmost = masts.reduce((a, m) => Math.max(a, m.h), 0);
-  return { masts, heads, sprits, top: Math.max(topmost, 20) };
+  return { masts, heads, sprits, top: Math.max(topmost, 14) };
 }
 const HULL_PAD = 3; // rigging and oars, so hulls never touch pixels
 const RAM_MIN_CLOSE = 25; // closing speed at which a collision starts to count as a ram
@@ -689,13 +689,16 @@ const BAULK_RATE = 6; // once held, her way falls away, halving in about an eigh
 // For hull against hull a ship is her keel — a line down her length — swelled by her beam. Measuring
 // between the two keels finds where they truly foul, which the distance between two centres cannot:
 // hulls this long can cross well off the line joining them, and would slide through one another.
-const KEEL = HULL_A - HULL_B; // half the keel, so keel plus beam is her full length
-const HULL_TOUCH = 2 * (HULL_B + HULL_PAD); // keels this close and the hulls are alongside
+// Both figures are each ship's own now: a first rate's keel is half again a cutter's, and the two
+// are alongside when the gap closes to the sum of their own beams.
+const keelHalf = (s) => s.hullA - s.hullB;
+const hullTouch = (a, b) => a.hullB + b.hullB + 2 * HULL_PAD;
 
 // closest approach of the two keels: distance, and the unit vector from a's keel to b's
 function keelGap(a, b) {
-  const ux = Math.cos(a.heading) * KEEL, uy = Math.sin(a.heading) * KEEL;
-  const vx = Math.cos(b.heading) * KEEL, vy = Math.sin(b.heading) * KEEL;
+  const aK = keelHalf(a), bK = keelHalf(b);
+  const ux = Math.cos(a.heading) * aK, uy = Math.sin(a.heading) * aK;
+  const vx = Math.cos(b.heading) * bK, vy = Math.sin(b.heading) * bK;
   // segments a.x±u and b.x±v, walked as p0 + s*(2u) and q0 + t*(2v)
   const wx = a.x - ux - (b.x - vx), wy = a.y - uy - (b.y - vy);
   const A2 = 4 * (ux * ux + uy * uy), B2 = 4 * (ux * vx + uy * vy), C2 = 4 * (vx * vx + vy * vy);
@@ -731,7 +734,7 @@ function keelGap(a, b) {
 // through about a pace at the worst of it, against the ten or more the shoving throws her.
 const shotHitsHull = (s, x0, y0, x1, y1, pad) => {
   const c = Math.cos(s.heading), sn = Math.sin(s.heading);
-  const A = HULL_A + pad, B = HULL_B + pad;
+  const A = s.hullA + pad, B = s.hullB + pad;
   const wx = s.x - (s.px ?? s.x), wy = s.y - (s.py ?? s.y); // the ground she made this frame
   const px = ((x0 + wx - s.x) * c + (y0 + wy - s.y) * sn) / A;
   const py = ((y0 + wy - s.y) * c - (x0 + wx - s.x) * sn) / B;
@@ -1126,10 +1129,14 @@ export default function App() {
       // a ship changes at sea except her damage.
       const loadout = opts.loadout || STOCK_LOADOUT;
       const rating = rate(loadout);
+      // Her hull's own size, from the class's form: what she draws as, and also what she collides
+      // as, because a first rate really is a bigger target than a yawl.
+      const sea = hullForm(loadout.hull.id).sea;
       const s = {
         x, y, heading, spdCur: 0, alive: true,
         isPlayer: !!opts.isPlayer,
-        loadout, rating, seaRig: buildSeaRig(loadout),
+        loadout, rating, sea, seaRig: buildSeaRig(loadout, sea),
+        hullA: sea.L / 2, hullB: sea.W / 2,
         coins: 0, earned: 0, repaired: 0, patches: 0, rank: 0, kills: 0, dmgDealt: 0, rams: 0, exposure: 0,
         maxHull: rating.hull, maxMast: rating.mast, maxCrew: rating.crew,
         hull: rating.hull, mast: rating.mast, crew: rating.crew,
@@ -1513,8 +1520,8 @@ export default function App() {
       const w = WP[weapon];
       const h = s.heading;
       const dmg = weapon === "broadside" ? sideDmg(s) : weapon === "bow" ? frontDmg(s) : musketDmg(s);
-      const bx = s.x + Math.cos(h) * (HULL_L / 2);
-      const by = s.y + Math.sin(h) * (HULL_L / 2);
+      const bx = s.x + Math.cos(h) * s.hullA;
+      const by = s.y + Math.sin(h) * s.hullA;
       const noise = s.isPlayer ? 0 : 0.14;
       const push = (px, py, ang) =>
         g.shots.push({ x: px, y: py, vx: Math.cos(ang) * w.speed, vy: Math.sin(ang) * w.speed, life: w.life, r: w.r, bar: w.bar, dmg, owner: s, kind: weapon });
@@ -1522,7 +1529,8 @@ export default function App() {
         // As many balls as she has columns, spaced down her side, and one fewer once she is holed
         // below half: guns go silent as the crew serving them are wanted elsewhere. A boat with one
         // gun a side keeps it, or being hurt would disarm her outright.
-        const offs = spread(balls(s, "broadside"), 13);
+        // spaced down her own side, so a long hull's volley rolls off the length of her
+        const offs = spread(balls(s, "broadside"), 0.72 * s.hullA);
         // The volley opens out along the hull as it travels, but it used to open out a long way:
         // at the range these fights are actually fought, about 150 paces, the four balls arrived
         // spread across 76 of them, more than two hull lengths, so a broadside laid dead on a ship
@@ -1540,7 +1548,7 @@ export default function App() {
         // the middle of the deck.
         for (const sd of [-1, 1]) {
           const dir = h + (sd * Math.PI) / 2;
-          const rx = Math.cos(dir) * (HULL_W / 2), ry = Math.sin(dir) * (HULL_W / 2);
+          const rx = Math.cos(dir) * s.hullB, ry = Math.sin(dir) * s.hullB;
           for (const off of offs) smoke(s.x + Math.cos(h) * off + rx, s.y + Math.sin(h) * off + ry, dir, 2, 1);
           muzzle(s.x, s.y, dir);
         }
@@ -1898,18 +1906,19 @@ export default function App() {
           const hostile = g.rules.melee || a.isPlayer !== b.isPlayer;
           const heldSince = a.locked.get(b);
           if (heldSince !== undefined && g.time - heldSince > RAM_LOCK_MAX) { a.locked.delete(b); b.locked.delete(a); }
+          const touch = hullTouch(a, b);
           const { d, nx, ny } = keelGap(a, b); // where the two hulls come nearest to fouling
-          // pressed hulls sit right on HULL_TOUCH and cross it every other frame as they drive
+          // pressed hulls sit right on the touch line and cross it every other frame as they drive
           // together and are pushed apart, so the margin is what keeps this from flickering
-          if (d < HULL_TOUCH + 4) a.foul = b.foul = true;
-          if (d >= HULL_TOUCH) {
+          if (d < touch + 4) a.foul = b.foul = true;
+          if (d >= touch) {
             // a pair has to break properly clear of each other before it can ram again
-            if (d >= HULL_TOUCH + RAM_REARM_GAP) { a.locked.delete(b); b.locked.delete(a); }
+            if (d >= touch + RAM_REARM_GAP) { a.locked.delete(b); b.locked.delete(a); }
             continue;
           }
           const toB = Math.atan2(ny, nx); // the line of the impact, from her side to theirs
           // always de-overlap so hulls never sit inside each other
-          const ov = HULL_TOUCH - d;
+          const ov = touch - d;
           a.x -= nx * ov * 0.5; a.y -= ny * ov * 0.5;
           b.x += nx * ov * 0.5; b.y += ny * ov * 0.5;
 
@@ -2171,7 +2180,7 @@ export default function App() {
           const sf = clamp(s.spdCur / 130, 0, 1); // longer trail only when she's really moving
           const wlife = 0.24 + 0.42 * sf;
           const h = s.heading;
-          const bx = s.x - Math.cos(h) * (HULL_L / 2), by = s.y - Math.sin(h) * (HULL_L / 2);
+          const bx = s.x - Math.cos(h) * s.hullA, by = s.y - Math.sin(h) * s.hullA;
           const px = Math.cos(h + Math.PI / 2), py = Math.sin(h + Math.PI / 2);
           for (const sd of [-1, 1]) g.wakes.push({ x: bx + px * sd * 4, y: by + py * sd * 4, life: wlife, max: wlife });
         }
@@ -2180,7 +2189,7 @@ export default function App() {
           if (s.sprayT <= 0) {
             s.sprayT = 0.05;
             const h = s.heading;
-            const fx = s.x + Math.cos(h) * (HULL_L / 2 + 2), fy = s.y + Math.sin(h) * (HULL_L / 2 + 2);
+            const fx = s.x + Math.cos(h) * (s.hullA + 2), fy = s.y + Math.sin(h) * (s.hullA + 2);
             for (const sd of [-1, 1]) {
               const a = h + sd * 0.28 + (Math.random() - 0.5) * 0.18, sp = 35 + Math.random() * 45;
               g.parts.push({ x: fx, y: fy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 0.28, max: 0.38, col: "rgba(232,246,244,0.9)", kind: "spark" });
@@ -2522,14 +2531,14 @@ export default function App() {
       if (inp.bow) {
         ctx.strokeStyle = "rgba(122,156,198,0.32)";
         const R = WP.bow.speed * WP.bow.life;
-        ctx.beginPath(); ctx.moveTo(HULL_L / 2, 0); ctx.lineTo(R, -R * 0.09); ctx.moveTo(HULL_L / 2, 0); ctx.lineTo(R, R * 0.09); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(p.hullA, 0); ctx.lineTo(R, -R * 0.09); ctx.moveTo(p.hullA, 0); ctx.lineTo(R, R * 0.09); ctx.stroke();
       }
       if (inp.musket) {
         ctx.strokeStyle = "rgba(223,239,255,0.28)";
         const R = WP.musket.speed * WP.musket.life;
         // the guide cone follows the volley's own scatter, so better swivels visibly narrow it
         const arc = 0.875 * musketArc(p);
-        ctx.beginPath(); ctx.moveTo(HULL_L / 2, 0); ctx.lineTo(Math.cos(arc) * R, Math.sin(arc) * R); ctx.moveTo(HULL_L / 2, 0); ctx.lineTo(Math.cos(-arc) * R, Math.sin(-arc) * R); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(p.hullA, 0); ctx.lineTo(Math.cos(arc) * R, Math.sin(arc) * R); ctx.moveTo(p.hullA, 0); ctx.lineTo(Math.cos(-arc) * R, Math.sin(-arc) * R); ctx.stroke();
       }
       ctx.restore();
     }
@@ -2540,7 +2549,8 @@ export default function App() {
       const roll = s.roll + Math.sin(s.rollPhase * 1.2) * 0.05; // bank into turns + gentle idle heel
       const cR = Math.cos(roll), sR = Math.sin(roll);
       const gx = SX(s.x, cam), gy = SY(s.y, cam);
-      const deckH = 4, STERN_H = 9;
+      const sea = s.sea;
+      const deckH = sea.deckH;
       // local (u=fore, v=starboard, z=up) -> screen, via roll about keel, yaw, then iso projection
       const P3 = (u, v, z) => {
         const v2 = v * cR - z * sR;
@@ -2555,16 +2565,16 @@ export default function App() {
       ctx.globalAlpha = 0.28;
       ctx.fillStyle = "#000";
       ctx.beginPath();
-      ctx.ellipse(gx, gy + 2, HULL_L * 0.5, HULL_W * 0.5 * TILT + 2, s.heading, 0, Math.PI * 2);
+      ctx.ellipse(gx, gy + 2, s.hullA, s.hullB * TILT + 2, s.heading, 0, Math.PI * 2);
       ctx.fill();
       ctx.globalAlpha = 1;
 
       // V-shaped bow wave — subtle at cruise, pronounced on a charge
       const sf = clamp((s.spdCur - 28) / 110, 0, 1);
       if (sf > 0.03) {
-        const apex = P3(18 + 2 * sf, 0, 0);
-        const spread = 6 + 6 * sf, len = 10 + 10 * sf;
-        const lft = P3(20 - len, -spread, 0), rgt = P3(20 - len, spread, 0);
+        const apex = P3(s.hullA + 2 * sf, 0, 0);
+        const spread = (6 + 6 * sf) * (s.hullB / 6.5), len = (10 + 10 * sf) * (s.hullA / 18);
+        const lft = P3(s.hullA + 2 - len, -spread, 0), rgt = P3(s.hullA + 2 - len, spread, 0);
         ctx.strokeStyle = `rgba(232,246,244,${0.18 + 0.4 * sf})`;
         ctx.lineWidth = 1.3 + 1.4 * sf;
         ctx.lineJoin = "round";
@@ -2585,8 +2595,9 @@ export default function App() {
       // ship colour reads as TRIM; the hull itself is brown wood
       const trim = s.isPlayer ? C.gold : s.fill;
 
-      // hull: dark waterline body + brown deck, trimmed in the ship's colour
-      const hull = [[18, 0], [11, -6], [-13, -6], [-17, 0], [-13, 6], [11, 6]];
+      // hull: dark waterline body + brown deck, trimmed in the ship's colour. The outline is the
+      // class's own: her length, her beam, her entry and her stern.
+      const hull = sea.outline;
       const tracePoly = (z) => {
         ctx.beginPath();
         hull.forEach(([u, v], i) => { const [X, Y] = P3(u, v, z); if (i === 0) ctx.moveTo(X, Y); else ctx.lineTo(X, Y); });
@@ -2600,13 +2611,15 @@ export default function App() {
       // painted trim stripe around the hull side
       tracePoly(deckH * 0.5); ctx.lineWidth = 1.6; ctx.strokeStyle = trim; ctx.globalAlpha = 0.85; ctx.stroke(); ctx.globalAlpha = 1;
       // bowsprit, on the hulls that have one
-      if (s.loadout.hull.bowsprit) line(P3(-4, 0, deckH + 1), P3(22, 0, deckH + 2), C.wood, 1.4);
+      if (s.loadout.hull.bowsprit) line(P3(-0.11 * sea.L, 0, deckH + 1), P3(0.61 * sea.L, 0, deckH + 2), C.wood, 1.4);
 
-      // raised stern castle (quarterdeck cabin) on the back quarter, like a real ship
-      {
-        const cf = [[-11, -5], [-11, 5], [-18, 3.8], [-18, -3.8]]; // FL, FR, BR, BL — overhangs the stern slightly
+      // raised stern castle (quarterdeck cabin) on the back quarter, on the classes built up
+      // enough to carry one: an open boat has no cabin at all
+      if (sea.castle) {
+        const { fx, bx, hw, h } = sea.castle;
+        const cf = [[fx, -hw], [fx, hw], [bx - 1, hw * 0.76], [bx - 1, -hw * 0.76]]; // FL, FR, BR, BL — overhangs the stern slightly
         const baseC = cf.map(([u, v]) => P3(u, v, deckH));
-        const topC = cf.map(([u, v]) => P3(u, v, deckH + STERN_H));
+        const topC = cf.map(([u, v]) => P3(u, v, deckH + h));
         const walls = [];
         for (let k = 0; k < 4; k++) {
           const a = k, b = (k + 1) % 4;
@@ -2642,7 +2655,8 @@ export default function App() {
       const rig = s.seaRig;
       const masts = s.mastDown ? [] : rig.masts;
       const fwd = 1.5, belly = 3, MINW = 4, N = 6;
-      const mz = (u) => (u <= -11 ? deckH + STERN_H : deckH); // a mast stands on the quarterdeck only if it's aft of its front wall
+      // a mast stands on the quarterdeck only if she has one and it's aft of its front wall
+      const mz = (u) => (sea.castle && u <= sea.castle.fx ? deckH + sea.castle.h : deckH);
       const drawSail = (u, m) => {
         const bz = mz(u);
         const topZ = bz + m.st, botZ = bz + m.sb;

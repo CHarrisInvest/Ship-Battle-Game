@@ -20,7 +20,8 @@ are cheap to change and are deliberately left rough.
 | | |
 |---|---|
 | `src/shipyard.js` | The catalogue and the maths. Hulls, masts, sails, guns as data; what fits what; what a set of them rates. No state, no storage, no imports. |
-| `src/shipref.js` | GENERATED. What each class was: her dimensions, her shape, her timber, her era. Nothing reads it; it is there for whoever models the hulls. |
+| `src/shipref.js` | GENERATED. What each class was: her dimensions, her shape, her timber, her era. `hullform.js` reads it and nothing else does. |
+| `src/hullform.js` | Each class's hull, modelled from her reference row: the menu's 3-D model and the hull at sea, size and collision included. The galleon's numbers are the authored anchor. |
 | `src/hold.js` | What a captain owns. The yard sits in the same record as the coins, so a purchase moves both in one write. |
 | `src/galleon.js` | Draws a rig rather than *the* rig. Given a spec it builds the ship; given nothing it builds the galleon it always drew. |
 | `src/SternchaseIso.jsx` | The menu ship plate, the yard, the Boat Commission and the Rigging Outfitter, plus the repair rail that replaced the upgrade rail. |
@@ -135,10 +136,10 @@ with minions, a xebec with carriage guns, and anything from a corvette up with d
 that is declared per class: it falls out of `tons`, which is why fine-lined hulls carry lighter iron
 than beamy ones of the same displacement.
 
-**Size** is deliberately absent. Classes differ in how big they are, but each hull is to be modelled
-in its own right rather than scaled off one shape, so a class's size arrives with its art and there is
-nothing here for the catalogue to multiply. Every rig is drawn on the one hull the renderer has, at the
-one size it was drawn at.
+**Size** is deliberately absent from the catalogue, and it arrived where it belonged: with the art.
+`hullform.js` models each class from her reference proportions, and her size in both views, and her
+collision ellipse in the fight, come out of that model. There is still nothing in the catalogue for a
+balance pass to multiply, which is the point.
 
 Parts are catalogue **types**; a captain owns **instances**. `hold.js` keeps a flat table of every
 spar, sail and gun owned, and a ship record says which instance sits in which slot. An instance is in
@@ -234,9 +235,11 @@ The station numbers are the galleon's own, so handing her rig back reproduces th
 always drawn. Verified against the pre-change code through the same renderer: 6 pixels of 177,952
 differ, which is one stay moving 0.014 model units.
 
-**Hull shapes per class are not drawn yet.** Every class turns on the galleon's hull for now; the rig
-on top of it is the part that is real. A cutter therefore reads as a small rig on a large hull, which
-is the most visible thing still outstanding.
+**Hull shapes per class are drawn now.** `buildShip` takes a form from `hullform.js` beside the rig:
+her own station table, castles or no castles, gunports counted off her historical battery, a windowed
+gallery or a plain transom, and mast geometry scaled into her hull. The galleon's form is the
+authored numbers, so she still builds the exact ship this file always drew, and a cutter is finally a
+small hull under a small rig.
 
 ## What replaced the upgrade rail
 
@@ -300,10 +303,10 @@ round, not her savings.
   that already existed. Nothing in `hold.js` changed to make them work.
 - ~~**The fight still does not read the catalogue.**~~ Done. `rate()` feeds `speedCap`, `turnCap`,
   both gun damages, the volley's shape and all three bars, and every mode issues from `STOCK`.
-- No per-class hulls, and so no per-class size. Each one is to be modelled rather than scaled off the
-  hull the renderer has, which is why there is no size figure in the catalogue to go stale first.
-- No per-class hull art, and no sail designs or cloth patterns. Those hang off ids without touching
-  any of the numbers here.
+- ~~No per-class hulls, and so no per-class size.~~ Built: `hullform.js` models every class from her
+  reference row, menu and sea alike, and her size and collision ellipse come with the model. There is
+  still no size figure in the catalogue, which is why none can go stale.
+- No sail designs or cloth patterns. Those hang off ids without touching any of the numbers here.
 - No selling parts back. Easy to add; wanted a decision on whether it refunds in full first.
 - **No hull blurbs, and that is a decision rather than a gap.** The 38 rows carry none, `blurb` is an
   optional column, and the shops sell a class on her figures instead. 38 invented lines nobody asked
@@ -617,10 +620,12 @@ with it is as cheap as changing it.
    beaten in a ship you chose is the point of choosing one. Free-for-all fields her own tier, so the
    fight is equal without being identical; the derby matches on `ram`, because `overall` counts guns
    nobody in that mode has aboard; arena aims a shade under her and raises the bar with every sinking.
-4. **How big should the classes actually get?** A question for whoever models the hulls, not for the
-   catalogue. Worth settling early anyway: a galleon twice a cutter's length is a very large target in
-   a sea 2000 across, and the fight's hull geometry, the collision ellipse and the camera all have an
-   opinion about it.
+4. ~~**How big should the classes actually get?**~~ **Settled, with the compression the worry asked
+   for.** Real lengths run a factor of nearly nine and the sea is 2000 across, so both views raise
+   the size ratio to a power below one, anchored on the galleon: at sea the fleet runs from a 16-unit
+   launch to a 52-unit first rate around the 36 every hull used to share, and the collision ellipse
+   is each hull's own drawn size. Whether the big rates are now too big a target is a balance
+   question for play, and the lever is `SEA_POW` in `hullform.js`, one number.
 5. ~~**Stations and sizes beyond the three of each.**~~ **Settled.** Five stations, `bowsprit` `fore`
    `main` `mizzen` `bonaventure`, and five sizes, `boat` `small` `medium` `large` `heavy`. The
    bowsprit is a station rather than a flag, which is what gave headsails somewhere to live; it takes
