@@ -102,11 +102,16 @@ and the berth was decoration. They do different work, a lateen driving from a ma
 balancing her off a stay forward, so they are different categories. That is a split on what a sail
 *is*, which is what the categories are for, and not the size dimension the model threw out.
 
-**`STU` is not a berth**, and it is the one category that does not fit the model. A studdingsail booms
-out beyond a square sail that is already set, and its area comes off that sail rather than off a place
-in the rig: roughly half to four fifths of the square sail it extends. So it wants an attachment to a
-sail, not a slot on a mast. Nothing models that yet, `SAIL_KINDS.STU` is marked `additive`, and the
-bench refuses a berth that asks for one rather than letting a mast pretend otherwise.
+**`STU` is not a berth**, and it is the one category that does not fit the berth model, so it got the
+attachment it wanted instead. A studdingsail booms out beyond a square sail that is already set, and
+its area comes off that sail rather than off a place in the rig: its `drive` in the table is a share
+of its host's, half to four fifths, and `rate()` multiplies the two. A square sail carries at most
+one, matched by `level`: which square sail up the mast it booms out from, counting square canvas from
+the deck, so a lower studdingsail goes beside the lowest square sail even on a driver mast whose
+course sits at berth 1 with a spanker under it. `studFitsSail` is the rule, `fitStud` in `hold.js` is
+the move, and the stud comes loose the moment its host sail does. `fitOut` runs them out only near
+fully found, because they are the last thing aboard rather than a step on the way. The bench still
+refuses a berth that asks for `STU`, so a mast cannot pretend to carry studdingsails in a slot.
 
 A part carries `part`, one of `"mast"`, `"sail"` or `"gun"`, for what sort of thing it is. A sail also
 carries `kind` for its category. Those were one field until the categories arrived and collided with

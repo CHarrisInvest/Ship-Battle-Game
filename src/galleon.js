@@ -417,7 +417,7 @@ function rigFromSpec(spec) {
         return {
           cut: "square",
           span: slot.span * k, zt: slot.zt * k, zb: slot.zb * k,
-          bulge: slot.bulge * k, seg: slot.seg,
+          bulge: slot.bulge * k, seg: slot.seg, stud: !!s.stud,
         };
       });
       /* The pole is then cut down to the canvas actually bent on it. A mast is as
@@ -766,14 +766,19 @@ function buildShip(rig){
   }
  }
  if(rig.bowsprit) addSpar(F,BOWSPRIT.heel,BOWSPRIT.tip,BOWSPRIT.r0,BOWSPRIT.r1,P.wood,"mast",0);
- function sail(mx,span,zt,zb,bulge,seg){if(!OPT.sails)return;
+ function sail(mx,span,zt,zb,bulge,seg,stud){if(!OPT.sails)return;
   /* The cloth stands clear of the pole in x (CLEAR), and the yard sits between
      the two — so no part of the mast can be closer to the eye than the canvas
      it belongs to, at any heading. */
   /* The yard rides fully above the head of the cloth (bottom of the spar clears
      zt), so its segments can never notch through the top edge of the sail. */
   const CLEAR=2.4, YARD=1.5, YR=0.62;
-  addSpar(F,[mx+YARD,-(span+2),zt+YR+0.2],[mx+YARD,span+2,zt+YR+0.2],YR,YR,P.dark,"mast",0);
+  /* A studdingsail is drawn as what it is: not a sail of its own but this sail
+     run out sideways. The yard carries on past its arms on booms, and a narrow
+     panel of cloth hangs from each boom beyond the leech, cut a little shorter
+     than the sail it extends. */
+  const yardEnd=stud?span*1.52:span+2;
+  addSpar(F,[mx+YARD,-yardEnd,zt+YR+0.2],[mx+YARD,yardEnd,zt+YR+0.2],YR,YR,P.dark,"mast",0);
   const ROWS=8;
   const pt=(t,fv)=>{
    const y=t*span*(1-0.10*fv);
@@ -786,6 +791,15 @@ function buildShip(rig){
   for(let i=0;i<seg;i++){const t0=-1+2*i/seg,t1=-1+2*(i+1)/seg;
    for(let r=0;r<ROWS;r++){const v0=r/ROWS,v1=(r+1)/ROWS;
     addFace(F,[pt(t0,v0),pt(t1,v0),pt(t1,v1),pt(t0,v1)],P.sail,[1,0,0],{tag:"sail",double:true,back:P.back});}}
+  if(stud){
+   const h=zt-zb, sTop=zt-0.06*h, sBot=zb+0.10*h, SROWS=5;
+   for(const sd of[-1,1]){
+    const y0=sd*(span+0.7), y1=sd*(span*1.45);
+    for(let r=0;r<SROWS;r++){const v0=r/SROWS,v1=(r+1)/SROWS;
+     const at=(y,v)=>[mx+CLEAR+0.3,y,lerp(sTop,sBot,v)-0.7*v*v];
+     addFace(F,[at(y0,v0),at(y1,v0),at(y1,v1),at(y0,v1)],P.sail,[1,0,0],{tag:"sail",double:true,back:P.back});}
+   }
+  }
  }
  /* A triangular sail is one tall panel between three corners rather than a stack
     of bands, so it is drawn from the band it occupies: tack forward and low,
@@ -875,7 +889,7 @@ function buildShip(rig){
   if(s.cut==="triangle") lateen(m.x,s.zb,s.zt);
   else if(s.cut==="gaff") gaffSail(m.x,s.zb,s.zt,s.run);
   else if(s.cut==="lug") lugSail(m.x,s.zb,s.zt,s.run);
-  else sail(m.x,s.span,s.zt,s.zb,s.bulge,s.seg);
+  else sail(m.x,s.span,s.zt,s.zb,s.bulge,s.seg,s.stud);
  }
  // and whatever is set on the bowsprit: headsails out on the stay, a spritsail
  // slung under the spar
@@ -1152,7 +1166,7 @@ const RIG_STATIONS = Object.keys(STATION_GEOM);
    falls back to a square sail, which is a wrong-looking ship rather than a broken
    one: the bench says which categories are in that position so a rig nobody has
    drawn yet is a known gap rather than a surprise. */
-const RIG_KINDS = ["LSQ", "SSQ", "TRI", "LAT", "GAF", "LUG"];
+const RIG_KINDS = ["LSQ", "SSQ", "TRI", "LAT", "GAF", "LUG", "STU"];
 
 /* How many sails this renderer can place up one mast and have them land in
    different places. The bands are generated from the authored profile and the

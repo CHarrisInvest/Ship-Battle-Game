@@ -54,8 +54,10 @@ are built from. `broadside` in the code is the side guns, not the old title, and
   everything, so `mastFitsSocket` matches the sort of thing first and consults the size rung second.
   `SPAR_STATIONS` is which stations take one.
 - **A studdingsail is not a berth.** It booms out beyond a square sail already set and its area comes
-  off that sail, so `STU` is marked `additive` and the bench fails a berth that asks for one. Wiring
-  it up means an attachment on a sail, not a slot on a mast.
+  off that sail, so `STU` is marked `additive` and the bench fails a berth that asks for one. It is
+  wired as exactly that: an attachment on a sail (`studFitsSail`, `fitStud`), matched by the *level*
+  of square canvas it extends rather than by berth number, its drive a share of its host's, and it
+  comes loose the moment the host sail does.
 - **A part's `part` says what sort of thing it is; a sail's `kind` says which category.** They were
   one field, and the two meanings collided the moment the categories arrived.
 - **The renderer draws up to five sails up a mast, and the bands are generated.** Three or fewer are

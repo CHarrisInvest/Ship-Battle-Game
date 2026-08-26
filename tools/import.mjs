@@ -151,6 +151,9 @@ function sailRows() {
     const id = need(r, "id", file);
     if (seen.has(id)) throw new Error(`${file}: two sails share the id "${id}"`);
     seen.add(id);
+    // `level` is a studdingsail's business and blank on everything else: which square sail up the
+    // mast it booms out from, so it is only written where the table says something
+    const level = maybe(r, "level");
     return [
       `  ${id}: {`,
       `    id: ${str(id)},`,
@@ -161,6 +164,7 @@ function sailRows() {
       `    blurb: ${str(need(r, "blurb", file))},`,
       `    drive: ${number(r, "drive", file)},`,
       `    hand: ${number(r, "hand", file)},`,
+      ...(level != null ? [`    level: ${level},`] : []),
       "  },",
     ].join("\n");
   });

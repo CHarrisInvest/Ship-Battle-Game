@@ -90,8 +90,9 @@ export const SPAR_STATIONS = new Set(["bowsprit"]);
  *
  * STU is the odd one and is marked `additive`. A studdingsail is not a berth on a mast: it booms out
  * beyond a square sail already set, and its area comes off that sail rather than off a place in the
- * rig. Nothing models that yet, so the bench refuses a berth that asks for one rather than letting a
- * mast pretend to carry studdingsails in a slot.
+ * rig. It is modelled as exactly that, an attachment to a sail (see `studFitsSail`), and the bench
+ * still refuses a berth that asks for one rather than letting a mast pretend to carry studdingsails
+ * in a slot.
  */
 export const SAIL_KINDS = {
   LSQ: { id: "LSQ", name: "Large square", blurb: "Courses and lower topsails. The driving power, low on the mast." },
@@ -751,7 +752,7 @@ export const SAILS = {
     part: "sail",
     kind: "SSQ",
     name: "Duck canvas spritsail",
-    price: 460,
+    price: 400,
     blurb: "Stouter cloth under the spar, where every sea that comes over the bow lands on it.",
     drive: 0.33,
     hand: -0.04,
@@ -951,7 +952,7 @@ export const SAILS = {
     part: "sail",
     kind: "LUG",
     name: "Cut dipping lug",
-    price: 660,
+    price: 600,
     blurb: "Better cloth on the same yard. Worth the work of dipping it round on every tack.",
     drive: 0.59,
     hand: 0.15,
@@ -995,6 +996,39 @@ export const SAILS = {
     blurb: "Flat cut and light, and it stays drawing after the plain one has come in.",
     drive: 0.24,
     hand: 0.09,
+  },
+  lowerStudding: {
+    id: "lowerStudding",
+    part: "sail",
+    kind: "STU",
+    name: "Lower studdingsail",
+    price: 240,
+    blurb: "Boomed out beyond the course in light airs. Half the course again, off two spars and a lot of patience.",
+    drive: 0.55,
+    hand: -0.03,
+    level: 0,
+  },
+  topmastStudding: {
+    id: "topmastStudding",
+    part: "sail",
+    kind: "STU",
+    name: "Topmast studdingsail",
+    price: 220,
+    blurb: "Set beside the topsail, and the biggest of the three. What a ship cracks on when she means to run something down.",
+    drive: 0.7,
+    hand: -0.02,
+    level: 1,
+  },
+  topgallantStudding: {
+    id: "topgallantStudding",
+    part: "sail",
+    kind: "STU",
+    name: "Topgallant studdingsail",
+    price: 150,
+    blurb: "High and light, beside the topgallant. The last of a full press, and the first to come in.",
+    drive: 0.65,
+    hand: -0.01,
+    level: 2,
   },
 };
 /* end:sails */
@@ -1169,6 +1203,43 @@ export function berthsOf(mast) {
   return mast ? mast.berths.map((b, index) => ({ index, ...b })) : [];
 }
 
+/**
+ * A STUDDINGSAIL IS NOT A BERTH, and this is the attachment it wanted instead.
+ *
+ * It booms out beyond a square sail that is already set, and its area comes off that sail: a square
+ * sail carries at most one studdingsail, the stud's `drive` is a share of its host's, and it goes
+ * loose the moment the host does. What decides which stud goes on which sail is the LEVEL of square
+ * canvas up the mast, counting from the deck: a lower studdingsail booms out from the lowest square
+ * sail, a topmast studdingsail from the one over it, a topgallant studdingsail from the third. The
+ * berth number is deliberately not the level, because a driver mast's lowest square sail sits at
+ * berth 1 with a spanker under it, and it is still the sail a lower studdingsail belongs beside.
+ */
+export function squareLevel(mast, berthIndex) {
+  const berth = mast && mast.berths[berthIndex];
+  if (!berth || (berth.kind !== "LSQ" && berth.kind !== "SSQ")) return null;
+  let level = 0;
+  for (let i = 0; i < berthIndex; i++) {
+    const k = mast.berths[i].kind;
+    if (k === "LSQ" || k === "SSQ") level++;
+  }
+  return level;
+}
+
+/** Whether this studdingsail booms out from the sail in that berth: a stud of the berth's own level, on a square sail actually set. */
+export function studFitsSail(stud, mast, berthIndex, sail) {
+  if (!stud || stud.part !== "sail" || stud.kind !== "STU") return false;
+  if (!sail || (sail.kind !== "LSQ" && sail.kind !== "SSQ")) return false;
+  const level = squareLevel(mast, berthIndex);
+  return level != null && stud.level === level;
+}
+
+/** Studdingsails in the catalogue that would boom out from this berth's sail, cheapest first. */
+export function studsForBerth(mast, berthIndex) {
+  const level = squareLevel(mast, berthIndex);
+  if (level == null) return [];
+  return SAIL_LIST.filter((s) => s.kind === "STU" && s.level === level).sort((a, b) => a.price - b.price);
+}
+
 /** Masts in the catalogue that would go in this socket, cheapest first. */
 export function mastsForSocket(socket) {
   return MAST_LIST.filter((m) => mastFitsSocket(m, socket)).sort((a, b) => a.price - b.price);
@@ -1228,7 +1299,7 @@ export function emptyLoadout(hullId) {
   // catalogue can be reordered or rewritten without a dangling id in here
   const hull = hullType(hullId) || HULL_LIST[0];
   const rig = {};
-  for (const socket of hull.sockets) rig[socket.id] = { mast: null, sails: [] };
+  for (const socket of hull.sockets) rig[socket.id] = { mast: null, sails: [], studs: [] };
   return { hull, rig, guns: { broadside: [], bow: [], swivel: [] } };
 }
 
@@ -1236,6 +1307,12 @@ export function emptyLoadout(hullId) {
 function sailsOn(entry) {
   if (!entry || !entry.mast) return [];
   return entry.mast.berths.map((_, i) => entry.sails[i] || null);
+}
+
+/** The studdingsails boomed out from those sails, padded the same way. */
+function studsOn(entry) {
+  if (!entry || !entry.mast) return [];
+  return entry.mast.berths.map((_, i) => (entry.studs || [])[i] || null);
 }
 
 /* ---------------------------------------------------------------------------------------------- */
@@ -1343,12 +1420,21 @@ export function rate(loadout) {
   for (const socket of hull.sockets) {
     const entry = loadout.rig[socket.id];
     const set = sailsOn(entry);
+    const studs = studsOn(entry);
     set.forEach((sail, i) => {
       if (!sail) return;
       const k = canvasFalloff(i, socket.station);
       drive += sail.drive * k;
       hand += sail.hand * k;
       sails += 1;
+      // a studdingsail's area comes off the sail it booms out from, so its drive is a share of its
+      // host's and it fades up the mast exactly as the host does
+      const stud = studs[i];
+      if (stud) {
+        drive += stud.drive * sail.drive * k;
+        hand += stud.hand * k;
+        sails += 1;
+      }
     });
   }
 
@@ -1446,6 +1532,7 @@ export function riggingValue(loadout) {
     if (!entry || !entry.mast) continue;
     total += entry.mast.price;
     for (const sail of sailsOn(entry)) if (sail) total += sail.price;
+    for (const stud of studsOn(entry)) if (stud) total += stud.price;
   }
   return total;
 }
@@ -1530,6 +1617,13 @@ export function fitOut(hullId, quality = 1) {
     // her courses. At least one sail always, or she is not a ship under way.
     const bent = Math.max(1, Math.ceil(q * berths.length));
     lo.rig[socket.id].sails = berths.map((b, i) => (i < bent ? grade(sailsForBerth(b)) : null));
+    // a ship close to fully found flies her studdingsails: they boom out beyond square canvas
+    // already set, so they are the last thing aboard rather than a step on the way
+    if (q >= 0.85) {
+      lo.rig[socket.id].studs = berths.map((b, i) =>
+        lo.rig[socket.id].sails[i] ? grade(studsForBerth(mast, i)) : null,
+      );
+    }
   }
 
   const mounts = ["broadside", "bow", "swivel"];
@@ -1879,6 +1973,12 @@ export function resolve(record, lookup) {
       const sail = partType(id((src.sails || [])[i]));
       return sailFitsBerth(sail, berth) ? sail : null;
     });
+    // a studdingsail only stands while its host sail does, so one recorded against a berth that
+    // came back empty is dropped the same way a sail that no longer fits is
+    lo.rig[socket.id].studs = berthsOf(mast).map((berth, i) => {
+      const stud = partType(id((src.studs || [])[i]));
+      return studFitsSail(stud, mast, i, lo.rig[socket.id].sails[i]) ? stud : null;
+    });
   }
 
   for (const mount of ["broadside", "bow", "swivel"]) {
@@ -1906,11 +2006,14 @@ export function rigSpec(loadout) {
   for (const socket of loadout.hull.sockets) {
     const entry = loadout.rig[socket.id];
     if (!entry || !entry.mast) continue;
+    const studs = studsOn(entry);
     masts.push({
       station: socket.station,
       height: entry.mast.height,
+      // `stud` says a studdingsail is boomed out beyond this sail, which the renderer draws as an
+      // extension of the sail rather than a sail of its own, because that is what it is
       sails: sailsOn(entry).map((sail, i) =>
-        sail ? { kind: sail.kind, berth: i } : null,
+        sail ? { kind: sail.kind, berth: i, ...(studs[i] ? { stud: true } : {}) } : null,
       ).filter(Boolean),
     });
   }

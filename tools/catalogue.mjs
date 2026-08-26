@@ -21,6 +21,7 @@ import {
   mastsForSocket, sailsForBerth, berthsOf, gunsForMount,
   rate, measure, statBand, fitOut, minimumLoadout, maximumLoadout, loadoutValue, outfitCost,
   TIERS, tierAt, ladder, stockOfTier, resolve, STARTER, STOCK, riggingValue, mastRebuildCost,
+  squareLevel,
 } from "../src/shipyard.js";
 import { RIG_STATIONS, RIG_KINDS, RIG_BERTHS, rigBands } from "../src/galleon.js";
 
@@ -155,6 +156,15 @@ for (const m of MAST_LIST) {
 }
 for (const s of SAIL_LIST) {
   if (!SAIL_KINDS[s.kind]) fault(`sail "${s.id}"`, `category "${s.kind}" is not one of the sail categories`);
+  // a studdingsail attaches by the level of square canvas it booms out from, so one without a level
+  // fits nothing and one nothing reaches is a part nobody can use
+  if (s.kind === "STU") {
+    if (!(s.level >= 0)) {
+      fault(`sail "${s.id}"`, "a studdingsail needs `level`: which square sail up the mast it booms out from");
+    } else if (!MAST_LIST.some((m) => m.berths.some((_, i) => squareLevel(m, i) === s.level))) {
+      fault(`sail "${s.id}"`, `no mast in the catalogue carries square canvas at level ${s.level}, so it can never be run out`);
+    }
+  }
 }
 const undrawn = KIND_LIST.filter((k) => !RIG_KINDS.includes(k.id) && SAIL_LIST.some((s) => s.kind === k.id)).map((k) => k.id);
 

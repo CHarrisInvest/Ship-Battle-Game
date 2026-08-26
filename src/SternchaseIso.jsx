@@ -2,13 +2,13 @@ import React, { useRef, useState, useEffect, useCallback, useMemo } from "react"
 import { drawGalleon } from "./galleon.js";
 import {
   getHold, bankVoyage, resetHold, subscribeHold, modeRecord, shipLoadout, shortfall,
-  buyShip, buyPart, fitMast, fitSail, fitGun, unfitGun, setActiveShip, loosePartIds, ownedShips, partOf,
+  buyShip, buyPart, fitMast, fitSail, fitStud, fitGun, unfitGun, setActiveShip, loosePartIds, ownedShips, partOf,
 } from "./hold.js";
 import {
   STARTER, kindOf, mastRebuildCost, measure, rate, resolve, rigSpec, tierAt,
   ladder, peers, stockOfTier,
   HULLS, HULL_LIST, statBand, minimumLoadout, maximumLoadout, outfitCost,
-  mastsForSocket, sailsForBerth, gunsForMount,
+  mastsForSocket, sailsForBerth, studsForBerth, gunsForMount,
 } from "./shipyard.js";
 import { roll, tally } from "./achievements.js";
 
@@ -619,7 +619,8 @@ function buildSeaRig(loadout) {
     let z = zb0;
     const sails = m.sails.map((sail, i) => {
       const h = room * (weights[i] / wsum);
-      const band = { kind: sail.kind, sb: z, st: z + h, w: g.w * Math.pow(0.82, i) };
+      // a studdingsail is the band run out sideways, so the band just carries the extra beam
+      const band = { kind: sail.kind, sb: z, st: z + h, w: g.w * Math.pow(0.82, i) * (sail.stud ? 1.45 : 1) };
       z += h + gap;
       return band;
     });
@@ -3799,15 +3800,25 @@ function YardScreen({ hold, onBack, onCommission, onOutfit }) {
               {mast &&
                 mast.berths.map((berth, i) => {
                   const sail = entry.sails[i];
+                  const stud = (entry.studs || [])[i];
                   return (
-                    <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 8, marginTop: 3, paddingLeft: 10 }}>
-                      <span style={{ fontSize: 9, color: "rgba(238,244,242,0.45)" }}>
-                        {kindOf(berth.kind)?.name || berth.kind}
-                      </span>
-                      <span style={{ fontSize: 10, color: sail ? "rgba(238,244,242,0.8)" : "rgba(238,244,242,0.35)" }}>
-                        {sail ? sail.name : "bare"}
-                      </span>
-                    </div>
+                    <React.Fragment key={i}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginTop: 3, paddingLeft: 10 }}>
+                        <span style={{ fontSize: 9, color: "rgba(238,244,242,0.45)" }}>
+                          {kindOf(berth.kind)?.name || berth.kind}
+                        </span>
+                        <span style={{ fontSize: 10, color: sail ? "rgba(238,244,242,0.8)" : "rgba(238,244,242,0.35)" }}>
+                          {sail ? sail.name : "bare"}
+                        </span>
+                      </div>
+                      {/* run out beyond the sail above, so it reads as part of that sail's row */}
+                      {stud && (
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginTop: 2, paddingLeft: 18 }}>
+                          <span style={{ fontSize: 9, color: "rgba(238,244,242,0.45)" }}>Studdingsail</span>
+                          <span style={{ fontSize: 10, color: "rgba(238,244,242,0.8)" }}>{stud.name}</span>
+                        </div>
+                      )}
+                    </React.Fragment>
                   );
                 })}
             </div>
@@ -4224,37 +4235,70 @@ function OutfitterScreen({ hold, onBack }) {
               {mast &&
                 mast.berths.map((berth, i) => {
                   const sail = entry.sails[i];
+                  // a square sail that takes one gets a studdingsail row of its own under it: the
+                  // stud hangs off the sail, so the row only exists while the sail does
+                  const stud = (entry.studs || [])[i];
+                  const takesStud = sail && studsForBerth(mast, i).length > 0;
                   return (
-                    <FitRow
-                      key={i}
-                      indent
-                      label={kindOf(berth.kind)?.name || berth.kind}
-                      value={sail ? sail.name : "bare"}
-                      empty={!sail}
-                      onClick={() => setPicking({ what: "sail", socket: socket.id, berth: i })}
-                    />
+                    <React.Fragment key={i}>
+                      <FitRow
+                        indent
+                        label={kindOf(berth.kind)?.name || berth.kind}
+                        value={sail ? sail.name : "bare"}
+                        empty={!sail}
+                        onClick={() => setPicking({ what: "sail", socket: socket.id, berth: i })}
+                      />
+                      {takesStud && (
+                        <FitRow
+                          indent
+                          label="Studdingsail"
+                          value={stud ? stud.name : "none run out"}
+                          empty={!stud}
+                          onClick={() => setPicking({ what: "stud", socket: socket.id, berth: i })}
+                        />
+                      )}
+                    </React.Fragment>
                   );
                 })}
               {picking && picking.socket === socket.id && (
                 <Picker
-                  title={picking.what === "mast" ? (socket.spar ? "Spars that fit" : "Masts that fit") : "Sails that fit"}
+                  title={
+                    picking.what === "mast"
+                      ? socket.spar ? "Spars that fit" : "Masts that fit"
+                      : picking.what === "stud"
+                        ? "Studdingsails that boom out from this sail"
+                        : "Sails that fit"
+                  }
                   options={
                     picking.what === "mast"
                       ? mastsForSocket(socket)
-                      : sailsForBerth(mast.berths[picking.berth])
+                      : picking.what === "stud"
+                        ? studsForBerth(mast, picking.berth)
+                        : sailsForBerth(mast.berths[picking.berth])
                   }
-                  fitted={picking.what === "mast" ? mast : entry.sails[picking.berth]}
-                  removeLabel={picking.what === "mast" ? (socket.spar ? "Unrig the spar" : "Take the mast down") : "Take the sail off"}
+                  fitted={
+                    picking.what === "mast" ? mast
+                      : picking.what === "stud" ? (entry.studs || [])[picking.berth]
+                      : entry.sails[picking.berth]
+                  }
+                  removeLabel={
+                    picking.what === "mast"
+                      ? socket.spar ? "Unrig the spar" : "Take the mast down"
+                      : picking.what === "stud" ? "Take it in"
+                      : "Take the sail off"
+                  }
                   loose={loose}
                   coins={hold.coins}
                   onRemove={() => {
                     if (picking.what === "mast") fitMast(shipId, socket.id, null);
+                    else if (picking.what === "stud") fitStud(shipId, socket.id, picking.berth, null);
                     else fitSail(shipId, socket.id, picking.berth, null);
                     close();
                   }}
                   onPick={(type) => {
                     fitFrom(type.id, (pid) => {
                       if (picking.what === "mast") fitMast(shipId, socket.id, pid);
+                      else if (picking.what === "stud") fitStud(shipId, socket.id, picking.berth, pid);
                       else fitSail(shipId, socket.id, picking.berth, pid);
                     });
                     close();
@@ -4410,6 +4454,8 @@ function partLine(type) {
   }
   if (type.part === "sail") {
     const helm = type.hand >= 0 ? `helps the helm by ${type.hand.toFixed(2)}` : `stiffens the helm by ${Math.abs(type.hand).toFixed(2)}`;
+    // a studdingsail's drive is a share of the sail it booms out from, not of a course
+    if (type.kind === "STU") return `adds ${type.drive.toFixed(2)} of the sail it extends, ${helm}`;
     return `pulls ${type.drive.toFixed(2)} of a course, ${helm}`;
   }
   // a swivel's grouping is the other half of what quality buys, so a tighter one says so
