@@ -780,6 +780,11 @@ function buildShip(rig){
      than the sail it extends. */
   const yardEnd=stud?span*1.52:span+2;
   addSpar(F,[mx+YARD,-yardEnd,zt+YR+0.2],[mx+YARD,yardEnd,zt+YR+0.2],YR,YR,P.dark,"mast",0);
+  /* Canvas carries a higher lighting floor than timber (amb 0.66 against the
+     default 0.5). Cloth is thin and lit through from both sides, and under the
+     default shading the back of a fore-and-aft sail rendered as a murky slab at
+     half the bearings: a fleet in profile looked like it had hung out wet
+     laundry. The floor keeps a sail's back reading as cloth in shadow. */
   const ROWS=8;
   const pt=(t,fv)=>{
    const y=t*span*(1-0.10*fv);
@@ -791,14 +796,14 @@ function buildShip(rig){
   };
   for(let i=0;i<seg;i++){const t0=-1+2*i/seg,t1=-1+2*(i+1)/seg;
    for(let r=0;r<ROWS;r++){const v0=r/ROWS,v1=(r+1)/ROWS;
-    addFace(F,[pt(t0,v0),pt(t1,v0),pt(t1,v1),pt(t0,v1)],P.sail,[1,0,0],{tag:"sail",double:true,back:P.back});}}
+    addFace(F,[pt(t0,v0),pt(t1,v0),pt(t1,v1),pt(t0,v1)],P.sail,[1,0,0],{tag:"sail",double:true,back:P.back,amb:0.66,gain:0.46});}}
   if(stud){
    const h=zt-zb, sTop=zt-0.06*h, sBot=zb+0.10*h, SROWS=5;
    for(const sd of[-1,1]){
     const y0=sd*(span+0.7), y1=sd*(span*1.45);
     for(let r=0;r<SROWS;r++){const v0=r/SROWS,v1=(r+1)/SROWS;
      const at=(y,v)=>[mx+CLEAR+0.3,y,lerp(sTop,sBot,v)-0.7*v*v];
-     addFace(F,[at(y0,v0),at(y1,v0),at(y1,v1),at(y0,v1)],P.sail,[1,0,0],{tag:"sail",double:true,back:P.back});}
+     addFace(F,[at(y0,v0),at(y1,v0),at(y1,v1),at(y0,v1)],P.sail,[1,0,0],{tag:"sail",double:true,back:P.back,amb:0.66,gain:0.46});}
    }
   }
  }
@@ -817,7 +822,7 @@ function buildShip(rig){
   const mix=(p,q,s)=>[lerp(p[0],q[0],s),lerp(p[1],q[1],s),lerp(p[2],q[2],s)];
   for(let i=0;i<12;i++){const t0=i/12,t1=(i+1)/12,a0=on(B,A,t0),a1=on(B,A,t1),c0=on(B,C,t0),c1=on(B,C,t1);
    for(const[s0v,s1v]of[[0,1/3],[1/3,2/3],[2/3,1]])
-    addFace(F,[mix(a0,c0,s0v),mix(a1,c1,s0v),mix(a1,c1,s1v),mix(a0,c0,s1v)],P.sail,[0,1,0],{tag:"sail",double:true,back:P.back});}
+    addFace(F,[mix(a0,c0,s0v),mix(a1,c1,s0v),mix(a1,c1,s1v),mix(a0,c0,s1v)],P.sail,[0,1,0],{tag:"sail",double:true,back:P.back,amb:0.66,gain:0.46});}
  };
  function lateen(mx,zb,zt){if(!OPT.sails)return;
   const h=zt-zb;
@@ -843,7 +848,7 @@ function buildShip(rig){
   const NV=12,NU=3;
   for(let i=0;i<NV;i++){const v0=i/NV,v1=(i+1)/NV;
    for(let j=0;j<NU;j++){const u0=j/NU,u1=(j+1)/NU;
-    addFace(F,[at(u0,v0),at(u1,v0),at(u1,v1),at(u0,v1)],P.sail,[0,1,0],{tag:"sail",double:true,back:P.back});}}
+    addFace(F,[at(u0,v0),at(u1,v0),at(u1,v1),at(u0,v1)],P.sail,[0,1,0],{tag:"sail",double:true,back:P.back,amb:0.66,gain:0.46});}}
  };
  /* A gaff sail: four sided, all of it abaft the mast. Tack and throat stand at
     the pole, the boom runs aft at the foot, and the gaff runs up and aft from
