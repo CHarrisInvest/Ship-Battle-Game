@@ -582,6 +582,67 @@ const HULL_L = 36;
 const HULL_W = 13;
 const HULL_A = HULL_L / 2; // hulls collide as ellipses: semi-length along the heading...
 const HULL_B = HULL_W / 2; // ...and semi-beam across it
+
+/**
+ * THE RIG SHE CARRIES, AT SEA. Every ship afloat used to draw the same three hard-coded masts, so a
+ * launch and a first rate were told apart only by their health bars. The masts and sails drawn on the
+ * water now come off the ship's own loadout, through the same `rigSpec()` the menu ship reads:
+ * a mast stands where its station is, as tall as the mast bought for it, and carries one band of
+ * canvas per sail actually bent on, in the shape of its category. Square canvas is the bellied band
+ * the fight has always drawn; triangular, gaff and lug canvas are fore-and-aft panels; headsails run
+ * from the bowsprit up toward the foremost masthead.
+ *
+ * Worked out once per ship at `makeShip`, because nothing about her rig changes at sea short of the
+ * whole thing coming down.
+ */
+const SEA_STATIONS = {
+  fore: { u: 11, top: 30, w: 14 },
+  main: { u: 1, top: 36, w: 18 },
+  mizzen: { u: -9, top: 26, w: 13 },
+  bonaventure: { u: -14, top: 20, w: 10 },
+};
+const SEA_FOREAFT = new Set(["TRI", "LAT", "GAF", "LUG"]);
+function buildSeaRig(loadout) {
+  const spec = rigSpec(loadout);
+  const masts = [];
+  for (const m of spec.masts) {
+    const g = SEA_STATIONS[m.station];
+    if (!g) continue;
+    const top = Math.max(10, g.top * (m.height || 1));
+    const n = m.sails.length;
+    // bands from the deck up: each sail keeps about three quarters of the height of the one below
+    // it and narrows the same way, with a little air between bands
+    const zb0 = 6.5, gap = 1.6;
+    const room = Math.max(4, top - 3 - zb0 - gap * (n - 1));
+    const weights = Array.from({ length: n }, (_, i) => Math.pow(0.74, i));
+    const wsum = weights.reduce((a, b) => a + b, 0) || 1;
+    let z = zb0;
+    const sails = m.sails.map((sail, i) => {
+      const h = room * (weights[i] / wsum);
+      const band = { kind: sail.kind, sb: z, st: z + h, w: g.w * Math.pow(0.82, i) };
+      z += h + gap;
+      return band;
+    });
+    masts.push({ u: g.u, h: top, sails });
+  }
+  // what the bowsprit carries: headsails run up toward the foremost masthead, and square canvas
+  // under the spar is a spritsail
+  const fore = masts.reduce((a, m) => (!a || m.u > a.u ? m : a), null);
+  const heads = [];
+  const sprits = [];
+  for (const m of spec.masts) {
+    if (m.station !== "bowsprit") continue;
+    m.sails.forEach((sail, i) => {
+      if (SEA_FOREAFT.has(sail.kind)) {
+        if (fore) heads.push({ tack: 16 + i * 2.5, mastU: fore.u, mastZ: fore.h * (0.55 + 0.14 * i) });
+      } else {
+        sprits.push({ kind: sail.kind, sb: -1.5, st: 3, w: 7, u: 19 });
+      }
+    });
+  }
+  const topmost = masts.reduce((a, m) => Math.max(a, m.h), 0);
+  return { masts, heads, sprits, top: Math.max(topmost, 20) };
+}
 const HULL_PAD = 3; // rigging and oars, so hulls never touch pixels
 const RAM_MIN_CLOSE = 25; // closing speed at which a collision starts to count as a ram
 const RAM_FULL_CLOSE = 94; // closing speed for a full-weight ram: a fresh ship's top speed
@@ -1067,7 +1128,7 @@ export default function App() {
       const s = {
         x, y, heading, spdCur: 0, alive: true,
         isPlayer: !!opts.isPlayer,
-        loadout, rating,
+        loadout, rating, seaRig: buildSeaRig(loadout),
         coins: 0, earned: 0, repaired: 0, patches: 0, rank: 0, kills: 0, dmgDealt: 0, rams: 0, exposure: 0,
         maxHull: rating.hull, maxMast: rating.mast, maxCrew: rating.crew,
         hull: rating.hull, mast: rating.mast, crew: rating.crew,
@@ -2537,8 +2598,8 @@ export default function App() {
       ctx.lineWidth = s.isPlayer ? 2 : 1.6; ctx.strokeStyle = trim; ctx.stroke(); // gunwale trim
       // painted trim stripe around the hull side
       tracePoly(deckH * 0.5); ctx.lineWidth = 1.6; ctx.strokeStyle = trim; ctx.globalAlpha = 0.85; ctx.stroke(); ctx.globalAlpha = 1;
-      // bowsprit
-      line(P3(-4, 0, deckH + 1), P3(22, 0, deckH + 2), C.wood, 1.4);
+      // bowsprit, on the hulls that have one
+      if (s.loadout.hull.bowsprit) line(P3(-4, 0, deckH + 1), P3(22, 0, deckH + 2), C.wood, 1.4);
 
       // raised stern castle (quarterdeck cabin) on the back quarter, like a real ship
       {
@@ -2574,24 +2635,21 @@ export default function App() {
         ctx.lineWidth = 1.2; ctx.strokeStyle = trim; ctx.stroke();
       }
 
-      // masts + bellied square sails hung on the BOW side of each pole
-      const masts = s.mastDown
-        ? []
-        : [
-            { u: 11, h: 27, w: 14, sb: 7, st: 24 },
-            { u: 1, h: 34, w: 18, sb: 9, st: 30 },
-            { u: -9, h: 24, w: 13, sb: 6, st: 21 },
-          ];
+      // masts and canvas, off her own loadout: each mast at its station, each band of sail in the
+      // shape of its category. Square canvas bellies on the BOW side of the pole as it always has;
+      // fore-and-aft canvas stands along the keel line.
+      const rig = s.seaRig;
+      const masts = s.mastDown ? [] : rig.masts;
       const fwd = 1.5, belly = 3, MINW = 4, N = 6;
       const mz = (u) => (u <= -11 ? deckH + STERN_H : deckH); // a mast stands on the quarterdeck only if it's aft of its front wall
-      const drawSail = (m) => {
-        const bz = mz(m.u);
+      const drawSail = (u, m) => {
+        const bz = mz(u);
         const topZ = bz + m.st, botZ = bz + m.sb;
         // sample the bellied cloth across the beam into columns
         const cols = [];
         for (let k = 0; k <= N; k++) {
           const t = k / N, v = -m.w / 2 + m.w * t, nrm = v / (m.w / 2);
-          const uu = m.u + fwd + belly * (1 - nrm * nrm); // bellies forward toward the bow
+          const uu = u + fwd + belly * (1 - nrm * nrm); // bellies forward toward the bow
           cols.push({ top: P3(uu, v, topZ), bot: P3(uu, v, botZ), nrm });
         }
         // keep a small minimum on-screen width so she never vanishes edge-on
@@ -2629,22 +2687,73 @@ export default function App() {
         ctx.fillStyle = trim;
         ctx.beginPath(); ctx.moveTo(top[0], top[1]); ctx.lineTo(f2[0], f2[1]); ctx.lineTo(f3[0], f3[1]); ctx.closePath(); ctx.fill();
       };
+      // a fore-and-aft panel: cloth standing along the keel line, filled from its outline. Kept to
+      // a small on-screen minimum the same way the square bands are, so it never quite vanishes
+      // when she sails straight up or down the screen.
+      const drawPanel = (pts) => {
+        const proj = pts.map(([uu, zz]) => P3(uu, 0, zz));
+        let minX = Infinity, maxX = -Infinity;
+        for (const p of proj) { if (p[0] < minX) minX = p[0]; if (p[0] > maxX) maxX = p[0]; }
+        const wpx = maxX - minX;
+        if (wpx > 0 && wpx < MINW) {
+          const cx = (minX + maxX) / 2, sc = MINW / wpx;
+          for (const p of proj) p[0] = cx + (p[0] - cx) * sc;
+        }
+        ctx.beginPath();
+        proj.forEach((p, i) => { if (i === 0) ctx.moveTo(p[0], p[1]); else ctx.lineTo(p[0], p[1]); });
+        ctx.closePath();
+        ctx.fillStyle = C.sail; ctx.fill();
+        ctx.globalAlpha = 0.09; ctx.fillStyle = trim; ctx.fill(); ctx.globalAlpha = 1;
+        ctx.lineWidth = 1; ctx.strokeStyle = "rgba(0,0,0,0.28)"; ctx.stroke();
+      };
+      // the outline of one fore-and-aft band, by its category: a gaff sail peaks high and aft of
+      // the mast, a lug hangs from its raking yard with some cloth forward of the pole, and
+      // triangular canvas is the lateen's fin, tacked forward and peaked aft
+      const drawFin = (u, band) => {
+        const bz = mz(u), sb = bz + band.sb, st = bz + band.st, h = band.st - band.sb;
+        if (band.kind === "GAF") {
+          const r = 0.85 * h + 3;
+          drawPanel([[u, sb], [u, st - 0.24 * h], [u - 0.72 * r, st], [u - r, sb + 0.1 * h]]);
+        } else if (band.kind === "LUG") {
+          drawPanel([[u + 0.34 * h, sb], [u + 0.42 * h, st - 0.3 * h], [u - 0.58 * h, st], [u - 0.5 * h, sb + 0.06 * h]]);
+        } else {
+          drawPanel([[u + 0.45 * h, sb + 0.12 * h], [u - 0.55 * h, st], [u - 0.42 * h, sb]]);
+        }
+      };
+      // a headsail: tacked on the bowsprit, hoisted toward the foremost masthead, clewed down aft
+      const drawHead = (hd) => {
+        const bz = mz(hd.mastU);
+        drawPanel([[hd.tack, deckH + 2], [hd.mastU, bz + hd.mastZ], [hd.tack - 7, deckH + 2.5]]);
+      };
       // depth-sort every pole and sail together: whichever is farther from the
       // camera is painted first, so the mast sits behind its bow-side sail when
       // she sails toward you and in front of it when she sails away.
       const prims = [];
       for (const m of masts) {
         prims.push({ d: m.u * sH, kind: "pole", m, base: P3(m.u, 0, mz(m.u)), top: P3(m.u, 0, mz(m.u) + m.h) });
-        prims.push({ d: (m.u + fwd + belly * 0.5) * sH, kind: "sail", m });
+        for (const band of m.sails) {
+          if (SEA_FOREAFT.has(band.kind)) prims.push({ d: m.u * sH, kind: "fin", u: m.u, band });
+          else prims.push({ d: (m.u + fwd + belly * 0.5) * sH, kind: "sail", u: m.u, band });
+        }
+      }
+      if (!s.mastDown) {
+        for (const hd of rig.heads) prims.push({ d: hd.tack * sH, kind: "head", hd });
+        for (const sp of rig.sprits) prims.push({ d: sp.u * sH, kind: "sail", u: sp.u, band: sp });
       }
       prims.sort((a, b) => a.d - b.d);
-      for (const p of prims) { if (p.kind === "pole") drawPole(p.m, p.base, p.top); else drawSail(p.m); }
+      for (const p of prims) {
+        if (p.kind === "pole") drawPole(p.m, p.base, p.top);
+        else if (p.kind === "fin") drawFin(p.u, p.band);
+        else if (p.kind === "head") drawHead(p.hd);
+        else drawSail(p.u, p.band);
+      }
       if (s.mastDown) line(P3(-2, 0, deckH), P3(-2, 3, deckH + 8), C.wood, 1.8);
 
       // health bars + rank, above the rig
       if (!s.isPlayer) {
         const bw = 26, bxL = gx - bw / 2;
-        const byT = P3(1, 0, deckH + 34)[1] - 14;
+        // above her own rig, so a boat's bars sit close over her and a tall ship's clear the royals
+        const byT = P3(1, 0, deckH + rig.top + 6)[1] - 14;
         if (g.rules.ranked && s.rank) {
           ctx.font = `700 10px ${UI}`;
           ctx.textAlign = "right";
