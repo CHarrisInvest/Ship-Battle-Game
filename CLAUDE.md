@@ -17,6 +17,10 @@ are built from. `broadside` in the code is the side guns, not the old title, and
   gives, so a fully found cutter outranks a bare brig and the two cannot disagree. A hull's `order` is
   its place on the shop shelf and is a different thing: do not match opponents on it. Nothing in
   `STOCK` carries a tier of its own for the same reason.
+- `src/shipref.js` is generated beside it and holds what each class *was*: her dimensions, the shape
+  of her, her timber, her era and what she was for. Nothing reads it and it is not for the fight; it
+  is there so a hull can be modelled from her real proportions later. Keep it out of `shipyard.js`,
+  which is what a fight reads and has no use for a tumblehome score.
 - `src/hold.js` persists coins, lifetime stats and the yard to localStorage. Nothing else is saved;
   worlds and islands are generated fresh every match.
 - `src/achievements.js` is the achievement list, and **an achievement is a question asked of the hold,
@@ -27,23 +31,38 @@ are built from. `broadside` in the code is the side guns, not the old title, and
   from the shipyard between voyages. Repairs are paid out of the voyage's own takings, so a coin spent
   on the carpenter is a coin that never reaches the hold. If you find yourself adding a stat that
   grows mid-round, that is the upgrade rail coming back and it was deliberately removed.
-- **The hull, mast and sail tables are generated.** `data/hulls.tsv`, `data/masts.tsv` and
-  `data/sails.tsv` are the source; `npm run import` writes them into the marked blocks in
+- **The catalogue tables are generated.** `data/hulls.tsv`, `data/masts.tsv`, `data/sails.tsv` and
+  `data/guns.tsv` are the source; `npm run import` writes them into the marked blocks in
   `shipyard.js`. Editing those blocks by hand works until the next import throws it away, so edit the
   table.
-- **A sail's category is the whole of the fitting rule.** A berth names one of the six in
+- **A mast type is a shape of rig, not a station.** A mast carrying three square sails is that mast
+  wherever it is stepped, so a brig's fore and main are one part bought twice. Only the size rung
+  says where it can go. Berths run deck upward, and a fore-and-aft driving sail sharing the lowest
+  level with a course takes berth 0 with the square canvas above it, because the model holds one sail
+  to a band and a spanker belongs at the bottom of the rig rather than over the topgallant.
+- **A sail's category is the whole of the fitting rule.** A berth names one of the seven in
   `SAIL_KINDS` and a sail belongs to one, and they are compared as a single key. Area is not the
-  category: a lateen can rival a course and a staysail is a scrap, and both are `TRI`, so the range
-  inside a category belongs in `drive` rather than in a second field. This replaced a cut-and-size
-  pair that produced combinations no real rig has; do not reintroduce one.
+  category: a topgallant is nearly four times a skysail and both are `SSQ`, so the range inside a
+  category belongs in `drive` rather than in a second field. This replaced a cut-and-size pair that
+  produced combinations no real rig has; do not reintroduce one.
+- **A lateen is not a headsail**, which is why there are seven categories and not six. They were one
+  until the bowsprit became a station: the moment a jib had a berth, a lateen fitted it and pulled
+  better, so the choice made itself. `TRI` is jibs and staysails, `LAT` is lateens and the Bermuda
+  mainsail. Splitting on what a sail *is* is not the size dimension the model threw out.
+- **A spar is not a mast.** A jibboom goes on the bowsprit and nowhere else, and a topgallant mast
+  never goes over the bow. Size alone would allow both, since a spar is small and small fits
+  everything, so `mastFitsSocket` matches the sort of thing first and consults the size rung second.
+  `SPAR_STATIONS` is which stations take one.
 - **A studdingsail is not a berth.** It booms out beyond a square sail already set and its area comes
   off that sail, so `STU` is marked `additive` and the bench fails a berth that asks for one. Wiring
   it up means an attachment on a sail, not a slot on a mast.
 - **A part's `part` says what sort of thing it is; a sail's `kind` says which category.** They were
   one field, and the two meanings collided the moment the categories arrived.
-- **The renderer draws three sails up a mast, and no more.** A fourth or fifth berth is clamped to the
-  third band and draws on top of it, invisible. The bench fails on it; the fix is generating the
-  bands from the pole height rather than adding a row to `STATION_GEOM`.
+- **The renderer draws up to five sails up a mast, and the bands are generated.** Three or fewer are
+  the ones authored in `STATION_GEOM`, so the galleon is unchanged; a taller stack is that profile
+  resampled and squeezed into the same air, because three sails already reach the masthead and there
+  is nothing above them to extend into. Five is the ceiling and the bench holds the catalogue to it.
+  Adding a row to `STATION_GEOM` is not how a sixth would be added.
 - **`npm run catalogue` before and after touching the catalogue.** A hull that cannot be rigged or
   carries a station the renderer cannot draw fails silently at runtime; the bench fails loudly. It
   prints the whole fleet side by side, which is the only way the numbers mean anything.
@@ -136,6 +155,7 @@ Rules above that the code does not yet satisfy. Tracked cleanups, not exceptions
   modelled in its own right rather than scaled off this one, so its size comes with its art: do not
   add a size multiplier to the catalogue in the meantime. `STATION_GEOM` in `galleon.js` is where a
   hull's mast positions live.
-- **The catalogue's blurbs have not been read at 1x in the game.** Hull, mast and sail *names* now
-  show on the yard screen and have been checked there. The blurbs still have nowhere to appear, so no
-  line of one has been seen at a real width. Check them when the shipyard sells anything.
+- **The catalogue's blurbs have still never been read at 1x.** Names are checked, and so are the part
+  figures the shops print, but the shelves say what a part *does* rather than quoting its blurb, and
+  the 38 hull rows have no blurb at all. So no line of one has been seen at a real width. Check them
+  before anything starts showing them.

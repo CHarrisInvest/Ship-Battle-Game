@@ -1,0 +1,27 @@
+# THE GUNS. One row per piece a captain can buy.
+# Edit here, then: npm run import && npm run catalogue
+#
+# Guns fit BY THE PIECE up to what the hull bears, and `mount` says which of her counts a gun draws
+# against. Broadside is counted A SIDE and mirrored, because that is how a volley fires: one
+# carriage gun bought is one gun each side and two guns aboard.
+#
+# Muskets are not in this table and never will be. Small arms come off the crew she musters, with the
+# swivels on her rail firing in the same volley, which is `rate()`'s business.
+#
+# id      short camelCase name, unique.
+# name    what a captain reads.
+# mount   broadside, bow or swivel.
+# price   coins.
+# damage  what one ball takes off a hull.
+# reload  seconds between rounds. A mixed battery serves at the pace of its slowest piece.
+# weight  what she carries for it. Enough of it takes the edge off her handling, which is the reason
+#         to leave a port empty.
+# blurb   one line a captain reads.
+id	name	mount	price	damage	reload	weight	blurb
+minion	Minion	broadside	140	6	1.4	0.6	A light piece for a boat that cannot stand the weight of real iron.
+carriageGun	Carriage gun	broadside	260	9	1.6	1.0	The gun a broadside is made of. Fires fast enough to keep a hull holed.
+culverin	Culverin	broadside	520	12	1.9	1.4	A long barrel of middling weight. What a ship carries when she cannot stand a demi-cannon.
+demiCannon	Demi-cannon	broadside	880	16	2.2	1.9	Heavier iron, slower to serve. One of these does what two carriage guns do, in one blow.
+bowChaser	Bow chaser	bow	240	9	1.1	0.9	Points where the bow points. Aimed high, it brings a rig down.
+longNine	Long nine	bow	810	15	1.35	1.6	A long barrel on the bow. Reaches further than anything else aboard and hits what it reaches.
+swivelGun	Swivel gun	swivel	250	5	0.8	0.35	Mounted on the rail and served by one hand. Clears a deck rather than holing a hull.

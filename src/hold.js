@@ -499,7 +499,8 @@ export function shortfall(rec, shipId) {
   for (const socket of hull.sockets) {
     const slot = ship.rig[socket.id] || { mast: null, sails: [] };
     if (!slot.mast) {
-      gaps.push(gap({ part: "mast", socket: socket.id, station: socket.station, size: socket.size },
+      // `spar` rather than a mast on the bowsprit, so a screen can name what is missing correctly
+      gaps.push(gap({ part: "mast", spar: !!socket.spar, socket: socket.id, station: socket.station, size: socket.size },
         (t) => mastFitsSocket(t, socket), mastsForSocket(socket)));
       continue;
     }

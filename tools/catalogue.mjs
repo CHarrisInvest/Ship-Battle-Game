@@ -22,7 +22,7 @@ import {
   rate, measure, statBand, fitOut, minimumLoadout, maximumLoadout, loadoutValue, outfitCost,
   TIERS, tierAt, ladder, stockOfTier, resolve, STARTER, STOCK, riggingValue, mastRebuildCost,
 } from "../src/shipyard.js";
-import { RIG_STATIONS, RIG_KINDS, RIG_BERTHS } from "../src/galleon.js";
+import { RIG_STATIONS, RIG_KINDS, RIG_BERTHS, rigBands } from "../src/galleon.js";
 
 // A set, not a list. The same fault reached from forty hulls is one fault about one part, and a
 // bench that printed it forty times would bury the other thirty-nine.
@@ -72,11 +72,61 @@ for (const h of HULL_LIST) {
 for (const mount of ["broadside", "bow", "swivel"]) {
   if (!gunsForMount(mount).length) fault("guns", `nothing in the catalogue mounts on "${mount}"`);
 }
+/* A stock ship names its parts by id, and `resolve()` drops anything that does not fit rather than
+   throwing: that is right at runtime, where an old save must not take the record down with it, and
+   wrong here, where it means a hand-written opponent quietly sails with a berth empty and a stat line
+   nobody meant. Moving `topsail` from one category to another is all it takes. So every part a stock
+   ship names has to actually land in the slot it was named for. */
 for (const s of STOCK) {
-  if (!HULLS[s.hull]) fault(`stock "${s.id}"`, `unknown hull "${s.hull}"`);
+  const where = `stock "${s.id}"`;
+  if (!HULLS[s.hull]) { fault(where, `unknown hull "${s.hull}"`); continue; }
+  const lo = resolve(s);
+  for (const socket of HULLS[s.hull].sockets) {
+    const named = (s.rig && s.rig[socket.id]) || null;
+    if (!named) continue;
+    const fitted = lo.rig[socket.id];
+    if (named.mast && !fitted.mast) {
+      fault(where, `"${named.mast}" does not fit the ${socket.station} socket, so she sails with nothing stepped there`);
+      continue;
+    }
+    (named.sails || []).forEach((sailId, i) => {
+      if (!sailId || fitted.sails[i]) return;
+      const berth = fitted.mast ? fitted.mast.berths[i] : null;
+      fault(where, `"${sailId}" does not fit berth ${i} of "${named.mast}"${berth ? `, which wants ${berth.kind}` : ""}, so that berth is bare`);
+    });
+  }
+  for (const mount of ["broadside", "bow", "swivel"]) {
+    const named = ((s.guns && s.guns[mount]) || []).length;
+    if (lo.guns[mount].length !== named) {
+      fault(where, `carries ${named} on the ${mount} and only ${lo.guns[mount].length} of them fit`);
+    }
+  }
 }
 for (const st of STATIONS) {
   if (!RIG_STATIONS.includes(st)) fault("stations", `"${st}" is declared but the renderer cannot draw it`);
+}
+
+// Every sail up a mast has to land somewhere of its own. The bands are generated
+// from the authored profile now rather than clamped to the last one, and a
+// generator that ran two of them together would put a sail behind another sail:
+// paid for, drawn, and invisible, which is the fault the clamp used to produce
+// and the only one this file cannot see from the catalogue alone.
+for (const st of RIG_STATIONS) {
+  for (let n = 1; n <= RIG_BERTHS; n++) {
+    const bands = rigBands(st, n);
+    if (!bands) { fault(`station "${st}"`, `has no geometry for a stack of ${n}`); continue; }
+    for (const [cut, list] of Object.entries(bands)) {
+      if (list.length !== n) fault(`station "${st}"`, `${n} ${cut} sails come back as ${list.length} bands`);
+      list.forEach((b, i) => {
+        if (!(b.zt > b.zb)) fault(`station "${st}"`, `${cut} band ${i} of ${n} has no height`);
+        // triangular canvas overlaps by nature: a jib and a staysail share the
+        // same air. Square yards must not, or one hides behind another.
+        if (cut === "square" && i > 0 && b.zb < list[i - 1].zt - 1e-9) {
+          fault(`station "${st}"`, `${cut} band ${i} of ${n} starts inside band ${i - 1}, so that sail draws over the one below it`);
+        }
+      });
+    }
+  }
 }
 
 // Masts are checked once each rather than once per socket they happen to fit. A berth no sail fits is
@@ -85,8 +135,7 @@ for (const st of STATIONS) {
 for (const m of MAST_LIST) {
   if (!m.berths.length) fault(`mast "${m.id}"`, "no berths, so she can carry no sail at all");
   if (m.berths.length > RIG_BERTHS) {
-    const lost = m.berths.length - RIG_BERTHS;
-    fault(`mast "${m.id}"`, `carries ${m.berths.length} sails and the renderer has bands for ${RIG_BERTHS}, so ${lost} of them would draw on top of the topmost one and be invisible. Adding a band is not a new row in STATION_GEOM: three sails already reach the masthead, so the bands have to be generated from the pole height and the berth count instead`);
+    fault(`mast "${m.id}"`, `carries ${m.berths.length} sails and the renderer places ${RIG_BERTHS} up one mast. The bands are generated and squeezed into the air the authored ones occupy, so the limit is where the squeeze stops being worth drawing rather than a row that can be added: past it a stack is stripes on a pole`);
   }
   for (const b of berthsOf(m)) {
     const kind = SAIL_KINDS[b.kind];
@@ -121,15 +170,15 @@ if (undrawn.length) {
 }
 
 console.log(`\nTHE FLEET  (${HULL_LIST.length} classes)`);
-console.log("  class        price   masts                    guns a side/bow/sw   bare  ->  found   tier   outfit");
+console.log("  " + pad("class", 19) + num("price", 7) + " " + pad("masts", 46) + pad("guns a side/bow/sw", 20) + num("bare", 5) + " -> " + num("found", 6) + num("tier", 6) + num("outfit", 8));
 for (const h of HULL_LIST) {
   const bare = measure(rate(minimumLoadout(h.id)));
   const found = measure(rate(maximumLoadout(h.id)));
   const rig = h.sockets.map((s) => `${s.station}/${s.size[0]}`).join(" ");
   console.log(
-    "  " + pad(h.name, 12),
-    num(h.price, 6),
-    " " + pad(rig, 24),
+    "  " + pad(h.name, 19),
+    num(h.price, 7),
+    " " + pad(rig, 46),
     pad(`${h.guns.broadside}/${h.guns.bow}/${h.guns.swivel}`, 20),
     num(n1(bare.overall), 5), " -> ", num(n1(found.overall), 6),
     num(`${tierAt(bare.overall).tier}-${tierAt(found.overall).tier}`, 6),
@@ -138,12 +187,12 @@ for (const h of HULL_LIST) {
 }
 
 console.log("\nSTAT BANDS  (fully found is the second figure; handling runs backwards on purpose)");
-console.log("  class         speed          turn           hull  crew   broadside   muskets");
+console.log("  " + pad("class", 19) + pad("speed", 14) + pad("turn", 14) + num("hull", 4) + num("crew", 5) + num("broadside", 11) + num("muskets", 9));
 for (const h of HULL_LIST) {
   const b = statBand(h.id);
   const span = (k, f = n2) => `${f(b[k].bare)} to ${f(b[k].found)}`;
   console.log(
-    "  " + pad(h.name, 12),
+    "  " + pad(h.name, 19),
     pad(span("speed"), 14),
     pad(span("turn"), 14),
     num(b.hull.found, 4), num(b.crew.found, 5),
@@ -153,19 +202,19 @@ for (const h of HULL_LIST) {
 }
 
 console.log("\nFITTED OUT  (the same hull at rising quality, which is what a stock opponent is built from)");
-console.log("  class        " + [0, 0.25, 0.5, 0.75, 1].map((q) => num(`q${q}`, 8)).join(""));
+console.log("  class              " + [0, 0.25, 0.5, 0.75, 1].map((q) => num(`q${q}`, 8)).join(""));
 for (const h of HULL_LIST) {
   const row = [0, 0.25, 0.5, 0.75, 1].map((q) => num(n1(measure(rate(fitOut(h.id, q))).overall), 8)).join("");
-  console.log("  " + pad(h.name, 12) + row);
+  console.log("  " + pad(h.name, 19) + row);
 }
 
 console.log("\nTHE STOCK LADDER  (what the modes issue, in ascending strength)");
-console.log("  ship             tier               overall     ram   throw  endurance  mobility    value   rigging  rebuild");
+console.log("  " + pad("ship", 26) + num("tier", 6) + num("overall", 8) + num("ram", 7) + num("throw", 7) + num("endurance", 10) + num("mobility", 9) + num("value", 8) + num("rigging", 9) + num("rebuild", 8));
 for (const s of ladder()) {
   console.log(
-    "  " + pad(s.name, 16),
-    pad(`${s.tier} ${tierAt(s.measure.overall).name}`, 18),
-    num(n1(s.measure.overall), 7),
+    "  " + pad(s.name, 26),
+    num(s.tier, 6),
+    num(n1(s.measure.overall), 8),
     num(n1(s.measure.ram), 7),
     num(n1(s.measure.throwWeight), 7),
     num(s.measure.endurance, 10),
@@ -179,15 +228,17 @@ for (const s of ladder()) {
 console.log("\nTIER OCCUPANCY");
 for (const t of TIERS) {
   const inTier = stockOfTier(t.tier);
-  console.log(`  ${t.tier} ${pad(t.name, 17)} from ${num(t.from, 4)}   ${inTier.map((s) => s.name).join(", ") || "(nothing stocked at this rung)"}`);
-  if (!inTier.length) fault("tiers", `rung ${t.tier} (${t.name}) has no stock ship, so no mode can field one`);
+  const names = inTier.map((s) => s.name);
+  const shown = names.slice(0, 3).join("; ") + (names.length > 3 ? ` and ${names.length - 3} more` : "");
+  console.log(`  tier ${t.tier}  from ${num(t.from, 4)}  ${num(names.length, 4)} ships   ${shown || "(nothing stocked at this rung)"}`);
+  if (!inTier.length) fault("tiers", `rung ${t.tier} has no stock ship, so no mode can field one`);
 }
 
 const first = resolve(STARTER);
 const start = measure(rate(first));
 console.log(`\nTHE FIRST SHIP  overall ${n1(start.overall)}, ram ${n1(start.ram)}, tier ${tierAt(start.overall).tier}`);
 console.log(`  her rigging is worth ${riggingValue(first)}, so a new mast at sea costs her ${mastRebuildCost(first)}.`);
-console.log("  Every hull in a fight carries this rig today, so that is what a mast rebuild costs anybody.");
+console.log("  Every hull in a fight brings her own rig, so that is what a rebuild costs HER and nobody else.");
 
 /* ---- verdict --------------------------------------------------------------------------------- */
 
