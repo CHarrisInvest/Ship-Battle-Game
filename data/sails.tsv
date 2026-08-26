@@ -2,7 +2,7 @@
 # Edit here, then: npm run import && npm run catalogue
 #
 # A sail belongs to ONE category and fits a berth of that category. That is the whole fitting rule.
-# Area is not the category: a lateen can rival a course and a staysail is a scrap, and both are TRI.
+# Area is not the category: a topgallant is nearly four times a skysail and both are SSQ.
 #
 #   LSQ  Large square    courses, lower topsails            driving power, low on the mast
 #   SSQ  Small square    topgallants, royals, skysails,     light-air lift, high up
@@ -15,6 +15,10 @@
 #                        lug topsail
 #   STU  Studdingsail    boomed-out extensions             ADDITIVE. Not a berth: see below.
 #
+# A LATEEN IS NOT A HEADSAIL. Both are triangles and they were one category until the bowsprit became
+# a station: the moment a jib had a berth of its own a lateen fitted it and pulled better, so the
+# choice made itself. They do different work, so they are different categories.
+#
 # STU does not go in a berth. A studdingsail booms out beyond a square sail that is already set and
 # its area comes off that sail, so it is an attachment rather than a place in the rig. Nothing models
 # that yet and `npm run catalogue` refuses a berth that asks for one, deliberately, so that a mast
@@ -22,24 +26,47 @@
 #
 # id      short camelCase name, unique.
 # name    what a captain reads.
-# kind    one of the six labels above.
+# kind    one of the seven labels above.
 # price   coins.
-# drive   what she pulls, as a share of a course's. Physical area is where this number starts, and
-#         the proportions to use are: course 1.00, lower topsail 0.70, topgallant 0.40, royal 0.22,
-#         skysail 0.12, studdingsail 0.50 to 0.80 of the square sail it booms out from. Better cloth
-#         holds its shape and adds to it, which is why two sails of one area can differ here.
+# drive   what she pulls, as a share of a course's, which is why a course is exactly 1. Physical area
+#         is where this number starts and the proportions are: course 1.00, lower topsail 0.70,
+#         topgallant 0.40, royal 0.22, skysail 0.12, studdingsail 0.50 to 0.80 of the square sail it
+#         booms out from. Better cloth holds its shape and adds to it, which is why two sails of one
+#         area can differ here.
 # hand    what it does to her helm. Square canvas stiffens her, so it is negative; fore-and-aft
 #         canvas helps her round, so it is positive.
 # blurb   one line a captain reads.
 #
-# These eight are placeholders standing in until the real sail list arrives. Their categories are
-# right; their prices and figures are only placed relative to each other.
+# Two grades of most of them: the plain one a captain can afford early, and a fine one in heavier
+# cloth that is strictly better and priced for it. Prices are placed against each other and have not
+# been tuned against what a voyage actually pays.
 id	name	kind	price	drive	hand	blurb
 course	Square course	LSQ	180	1.00	-0.10	The big lower sail. Plain flax, and it pulls.
 courseFine	Duck canvas course	LSQ	640	1.32	-0.08	The same sail in heavier cloth. Holds its shape when the plain one is bellying out of it.
-topsail	Square topsail	SSQ	120	0.58	-0.04	Half the cloth of a course, and it sits where the wind is cleaner.
-topsailFine	Duck canvas topsail	SSQ	430	0.78	-0.03	A topsail worth setting in weather that would split the plain one.
-staysail	Staysail	TRI	130	0.40	0.12	A small triangle set on a stay. Not much pull, and she feels it in the rudder.
-staysailFine	Cut staysail	TRI	460	0.55	0.15	The staysail a captain keeps when she changes ships.
-lateen	Lateen sail	LAT	210	0.72	0.14	A long triangle on a raking yard. Less pull than a course, and she comes round on it.
-lateenFine	Cut lateen sail	LAT	720	0.95	0.18	Cut flat rather than full, so it holds an edge to the wind the plain one spills.
+topsail	Square topsail	LSQ	150	0.70	-0.07	The sail over the course, and the one she works hardest. Seven tenths of the cloth below it.
+topsailFine	Duck canvas topsail	LSQ	520	0.92	-0.06	A topsail worth setting in weather that would split the plain one.
+topgallant	Topgallant	SSQ	120	0.40	-0.04	Third sail up, where the wind is cleaner and every hand aboard is a long way from the deck.
+topgallantFine	Duck canvas topgallant	SSQ	430	0.53	-0.03	Heavy cloth where it is worth having. She carries it later into a blow.
+royal	Royal	SSQ	90	0.22	-0.02	A small sail over the topgallant, for a captain in a hurry and a sea that will allow it.
+royalFine	Duck canvas royal	SSQ	320	0.29	-0.02	The royal a ship keeps set after the plain one would have come in.
+skysail	Skysail	SSQ	70	0.12	-0.01	A handkerchief in the clouds. It pulls very little and it looks magnificent.
+spritsail	Spritsail	SSQ	130	0.25	-0.05	Slung under the bowsprit on a yard athwart. Old fashioned, and it drags her head round.
+staysail	Staysail	TRI	130	0.15	0.12	A small triangle set on a stay. Not much pull, and she feels it in the rudder.
+staysailFine	Cut staysail	TRI	460	0.20	0.15	The staysail a captain keeps when she changes ships.
+jib	Jib	TRI	190	0.22	0.14	Set out on the bowsprit. What balances her head against everything she carries aft.
+jibFine	Cut jib	TRI	620	0.29	0.17	Cut flat rather than full, so it holds an edge to the wind the plain one spills.
+flyingJib	Flying jib	TRI	150	0.12	0.09	Right out at the boom end. The last scrap of canvas anybody sets forward.
+lateen	Lateen sail	LAT	210	0.65	0.14	A long triangle on a raking yard. Less pull than a course, and she comes round on it.
+lateenFine	Cut lateen sail	LAT	720	0.86	0.18	Cut flat rather than full. A xebec runs down what she pleases under one of these.
+bermudaMain	Bermuda mainsail	LAT	380	0.85	0.20	One tall triangle and no yard at all. Points closer to the wind than square canvas can.
+bermudaMainFine	Cut Bermuda mainsail	LAT	980	1.10	0.24	The sail a sloop is really for. She will weather anything of her own size.
+gaffMain	Gaff mainsail	GAF	260	0.62	0.16	Four sided, on a gaff abaft the mast. Handy, and one watch can take it in.
+gaffMainFine	Cut gaff mainsail	GAF	780	0.82	0.20	The same sail in cloth that keeps its shape on a long board.
+gaffTopsail	Gaff topsail	GAF	110	0.18	0.08	A scrap above the gaff, filling the space nothing else reaches.
+spanker	Spanker	GAF	300	0.45	0.18	The fore-and-aft sail on her after mast. She steers on it as much as on the rudder.
+spankerFine	Cut spanker	GAF	840	0.60	0.22	A spanker worth keeping set when the square canvas has come in.
+trysail	Trysail	GAF	200	0.30	0.14	Small, heavy, and bent to a little mast of its own. What she wears when it is blowing.
+dippingLug	Dipping lug	LUG	190	0.45	0.12	Four sided on a slung yard, and the yard comes round the mast on every tack.
+standingLug	Standing lug	LUG	210	0.50	0.14	The lug that stays where it is put. Slower than a dipping lug and far less work.
+standingLugFine	Cut standing lug	LUG	640	0.66	0.17	The sail a Channel lugger shows a revenue cutter her heels under.
+lugTopsail	Lug topsail	LUG	100	0.18	0.07	A small lug over the mainsail, set flying in light airs.

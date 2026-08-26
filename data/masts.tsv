@@ -6,36 +6,53 @@
 # will never carry two square ones however much a captain spends. It is why the fleet wants a type
 # per configuration rather than one mast with a number of slots.
 #
-# spar     yes for a SPAR rather than a mast: a jibboom or a spritsail yard, which goes on the
-#          bowsprit and nowhere else. A spar and a mast are different sorts of thing and are
-#          matched as such, or a jibboom would be legal as somebody's main mast.
+# A TYPE IS NOT TIED TO A STATION. A mast that carries three square sails is that mast wherever she
+# steps it, so the fore and main of a brig are one part bought twice rather than two parts. What
+# decides where it can go is the size rung and nothing else.
+#
+# BERTHS RUN DECK UPWARD, and a fore-and-aft driving sail sharing the lowest level with a course
+# takes berth 0 with the square canvas above it. A spanker and a course are both set at the deck, one
+# abaft the mast and one on a yard across it, and the model has one sail to a band: putting the
+# spanker lowest is what keeps a brig's rig reading bottom to top the way she is really rigged.
 #
 # id       short camelCase name, unique.
 # name     what a captain reads.
 # price    coins.
 # size     the SMALLEST socket it fits. A mast also fits any larger socket, which is a legal poor
 #          choice rather than an error: sizes are boat, small, medium, large, heavy.
+# spar     yes for a SPAR rather than a mast: a jibboom or a spritsail yard, which goes on the
+#          bowsprit and nowhere else. A spar and a mast are different sorts of thing and are
+#          matched as such, or a jibboom would be legal as somebody's main mast.
 # height   how tall she stands as a share of a full mast at her station, 0 to 1. The renderer cuts
 #          the pole down to the canvas actually bent on it, so this is an upper bound, not a look.
 # berths   the sails she can carry, DECK UPWARD, as category labels separated by spaces.
 #          LSQ large square   SSQ small square   TRI headsail   LAT lateen   GAF gaff   LUG lugsail
-#          Canvas is bent on from the bottom, so berth 0 is the big low sail and the last is the
-#          small one at the head. A four berth mast is the first thing that reaches the diminishing
-#          return past a third sail, and also the first the renderer cannot draw: see the bench.
+#          Five is the most the renderer can place up one mast in bands of their own, and the bench
+#          fails a mast that asks for more.
 #          STU is a studdingsail and is NOT a berth. It booms out beyond a square sail already set,
 #          so it attaches to a sail rather than filling a place in the rig, and the bench refuses it.
 # blurb    one line a captain reads.
 id	name	price	size	spar	height	berths	blurb
-poleMast	Pole mast	0	small	no	0.62	SSQ	A single spar and a single sail. Everything starts here.
-bermudaMast	Bermuda mast	320	small	no	0.86	LAT	Tall and bare, cut for one big triangular sail. Points closer to the wind than square canvas.
-lowerMast	Lower mast	420	medium	no	0.70	LSQ	One heavy square sail on a stout pole. The plain way to move a big hull.
-lateenMast	Lateen mast	760	medium	no	0.74	LAT SSQ	A long raking yard for the after station, with room for a small square sail above it.
-topmast	Topmast	980	medium	no	0.88	LSQ SSQ	A lower mast with a second spar fidded above it: a course below, a topsail over.
-topgallantMast	Topgallant mast	2100	large	no	1.0	LSQ SSQ SSQ	Three spars, and the highest sail is a small one. Every hand aboard is up there in a blow.
-royalMast	Royal mast	3400	large	no	1.0	LSQ SSQ SSQ SSQ	Four yards crossed, and a royal above the topgallant. A press of canvas for a ship that can carry it.
-skysailMast	Skysail mast	5200	heavy	no	1.0	LSQ SSQ SSQ SSQ SSQ	Five yards, the last of them a handkerchief in the clouds. Only the tallest hulls can step one.
-standingBowsprit	Standing bowsprit	140	boat	yes	0.55	TRI	The spar over her stem, with a staysail hanked to it. Enough to balance her helm.
-jibboom	Jibboom	520	small	yes	0.8	TRI TRI	Run out beyond the bowsprit, for a jib outside the staysail.
-flyingJibboom	Flying jibboom	1250	medium	yes	1.0	TRI TRI TRI	The whole head of her: staysail, jib and a flying jib at the boom end.
-spritsailYard	Spritsail yard	380	small	yes	0.7	SSQ	A yard slung under the bowsprit, the way a carrack carried hers.
-spritTopmast	Sprit topmast	900	medium	yes	0.95	SSQ SSQ	A spritsail and a sprit-topsail above it. Old-fashioned, and it pulls her head round.
+poleMast	Pole mast	0	boat	no	0.60	LSQ	A single spar and a single square sail. Everything starts here.
+spritMast	Sprit mast	80	boat	no	0.56	GAF	A sprit across one four sided sail. What a boat carries, and what one hand can manage.
+lugMast	Lug mast	110	boat	no	0.58	LUG	A short mast for one lugsail. Cheap, quick, and the whole rig of a fishing boat.
+lateenYard	Lateen yard	260	small	no	0.76	LAT	A long raking yard and one triangular sail. The Mediterranean answer to everything.
+bermudaMast	Bermuda mast	340	small	no	0.86	LAT	Tall and bare, cut for one big triangular sail. Points closer to the wind than square canvas.
+gaffMast	Gaff mast	290	small	no	0.72	GAF GAF	A gaff mainsail and a topsail in the space above it. The working rig of a smack.
+lugTopmast	Lug topmast	320	small	no	0.74	LUG LUG	A standing lug with a second small one over it, for a lugger that means to outrun somebody.
+lowerMast	Lower mast	420	medium	no	0.68	LSQ	One heavy square sail on a stout pole. The plain way to move a big hull.
+lateenMast	Lateen mast	760	medium	no	0.78	LAT SSQ	A long raking yard for the after station, with room for a small square sail above it.
+topmast	Topmast	980	medium	no	0.86	LSQ LSQ	A lower mast with a second spar fidded above it: a course below, a topsail over.
+schoonerMast	Schooner mast	1050	medium	no	0.84	GAF LSQ	A gaff sail low and a square topsail over it. Weatherly, and quick in stays.
+driverMast	Driver mast	1420	medium	no	0.90	GAF LSQ SSQ	A fore-and-aft driver at the deck with square canvas over it. What a cutter carries, and what a ship steers on aft.
+topgallantMast	Topgallant mast	2100	large	no	0.94	LSQ LSQ SSQ	Three spars, and the highest sail is a small one. Every hand aboard is up there in a blow.
+driverRoyalMast	Driver royal mast	2900	large	no	0.96	GAF LSQ SSQ SSQ	A driver below and three square sails over it, the last a royal. A frigate's mizzen.
+spankerMast	Spanker mast	3400	large	no	0.97	GAF LSQ LSQ SSQ	Spanker, course, topsail and topgallant. The after mast of anything that fights in a line.
+royalMast	Royal mast	3600	large	no	0.98	LSQ LSQ SSQ SSQ	Four yards crossed and a royal above the topgallant. A press of canvas for a ship that can carry it.
+skysailMast	Skysail mast	5400	heavy	no	1.0	LSQ LSQ SSQ SSQ SSQ	Five yards, the last of them a handkerchief in the clouds. Only the tallest hulls can step one.
+spankerRoyalMast	Spanker royal mast	5800	heavy	no	1.0	GAF LSQ LSQ SSQ SSQ	Everything a mast can carry, with a spanker under it. There is nothing above this one.
+standingBowsprit	Standing bowsprit	140	boat	yes	0.55	TRI	The spar over her stem with one staysail hanked to it. Enough to balance her helm.
+jibboom	Jibboom	520	small	yes	0.80	TRI TRI	Run out beyond the bowsprit, for a jib outside the staysail.
+flyingJibboom	Flying jibboom	1250	medium	yes	1.0	TRI TRI TRI	The whole head of her: staysail, jib, and a flying jib at the boom end.
+spritsailYard	Spritsail yard	380	small	yes	0.70	SSQ	A yard slung under the bowsprit, the way a carrack carried hers.
+spritTopmast	Sprit topmast	900	medium	yes	0.95	SSQ SSQ	A spritsail and a sprit-topsail above it. Old fashioned, and it pulls her head round.

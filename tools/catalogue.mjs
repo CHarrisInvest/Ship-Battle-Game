@@ -72,8 +72,35 @@ for (const h of HULL_LIST) {
 for (const mount of ["broadside", "bow", "swivel"]) {
   if (!gunsForMount(mount).length) fault("guns", `nothing in the catalogue mounts on "${mount}"`);
 }
+/* A stock ship names its parts by id, and `resolve()` drops anything that does not fit rather than
+   throwing: that is right at runtime, where an old save must not take the record down with it, and
+   wrong here, where it means a hand-written opponent quietly sails with a berth empty and a stat line
+   nobody meant. Moving `topsail` from one category to another is all it takes. So every part a stock
+   ship names has to actually land in the slot it was named for. */
 for (const s of STOCK) {
-  if (!HULLS[s.hull]) fault(`stock "${s.id}"`, `unknown hull "${s.hull}"`);
+  const where = `stock "${s.id}"`;
+  if (!HULLS[s.hull]) { fault(where, `unknown hull "${s.hull}"`); continue; }
+  const lo = resolve(s);
+  for (const socket of HULLS[s.hull].sockets) {
+    const named = (s.rig && s.rig[socket.id]) || null;
+    if (!named) continue;
+    const fitted = lo.rig[socket.id];
+    if (named.mast && !fitted.mast) {
+      fault(where, `"${named.mast}" does not fit the ${socket.station} socket, so she sails with nothing stepped there`);
+      continue;
+    }
+    (named.sails || []).forEach((sailId, i) => {
+      if (!sailId || fitted.sails[i]) return;
+      const berth = fitted.mast ? fitted.mast.berths[i] : null;
+      fault(where, `"${sailId}" does not fit berth ${i} of "${named.mast}"${berth ? `, which wants ${berth.kind}` : ""}, so that berth is bare`);
+    });
+  }
+  for (const mount of ["broadside", "bow", "swivel"]) {
+    const named = ((s.guns && s.guns[mount]) || []).length;
+    if (lo.guns[mount].length !== named) {
+      fault(where, `carries ${named} on the ${mount} and only ${lo.guns[mount].length} of them fit`);
+    }
+  }
 }
 for (const st of STATIONS) {
   if (!RIG_STATIONS.includes(st)) fault("stations", `"${st}" is declared but the renderer cannot draw it`);

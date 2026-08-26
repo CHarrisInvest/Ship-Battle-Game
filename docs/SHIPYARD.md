@@ -22,7 +22,7 @@ are cheap to change and are deliberately left rough.
 | `src/hold.js` | What a captain owns. The yard sits in the same record as the coins, so a purchase moves both in one write. |
 | `src/galleon.js` | Draws a rig rather than *the* rig. Given a spec it builds the ship; given nothing it builds the galleon it always drew. |
 | `src/SternchaseIso.jsx` | The menu ship plate and the yard screen, plus the repair rail that replaced the upgrade rail. |
-| `data/hulls.tsv`, `data/masts.tsv` | The tables a person edits. One row per class and per mast type. |
+| `data/hulls.tsv`, `data/masts.tsv`, `data/sails.tsv`, `data/guns.tsv` | The tables a person edits. One row per class, per mast type, per sail and per gun. |
 | `tools/import.mjs` | `npm run import`. Writes those tables into the generated blocks in `shipyard.js`. |
 | `tools/catalogue.mjs` | `npm run catalogue`. Checks the fleet is riggable and drawable, then prints every class side by side for calibration. |
 
@@ -47,9 +47,20 @@ wants either a column of its own or to come off `tons`, which already says what 
 
 **Masts** fit a socket of their own size or larger, and carry a fixed set of *berths* decided when the
 mast is built. A berth names the *category* of the one sail that goes in it. That is what makes buying
-a mast a choice of rig shape rather than a choice of size: `lateenMast` will carry one triangular sail
-and one small square one for as long as it exists, and no amount of money changes it into a
-topgallant.
+a mast a choice of rig shape rather than a choice of size: `lateenMast` will carry one lateen and one
+small square sail for as long as it exists, and no amount of money changes it into a topgallant.
+
+A mast type is not tied to a station. A mast carrying three square sails is that mast wherever she
+steps it, so a brig's fore and main are one part bought twice rather than two parts in the catalogue,
+and only the size rung says where it can go. **Berths run deck upward, and a fore-and-aft driving sail
+sharing the lowest level with a course takes berth 0**, square canvas above it. A spanker and a course
+are both set at the deck, one abaft the mast and one on a yard across it, and the model holds one sail
+to a band: putting the spanker lowest is what keeps a brig reading bottom to top the way she is
+rigged, rather than flying her spanker over the topgallant.
+
+A **spar** is not a mast. A jibboom goes on the bowsprit and nowhere else, and a topgallant mast never
+goes over the bow. Size alone would allow both, since a spar is small and small fits everything, so
+`mastFitsSocket` matches the sort of thing first and consults the size rung second.
 
 **Sails** fit a berth of their own category, and that is the whole of the rule. This is also the whole
 of "a sloop's triangular canvas is no use on a square-rigged ship": a frigate has no triangular berth
@@ -160,6 +171,10 @@ moves on the day the shipyard opens, and each hull can then be pulled around one
 
 Bare means one mast, one sail, one bow gun. Fully found means the dearest mast in every socket, the
 dearest sail in every berth, every gun port filled.
+
+The figures below are the five classes the catalogue held before the fleet arrived, and the parts
+tables have moved under them since. `npm run catalogue` prints the live version of this table, which
+is the one to read.
 
 | | price | speed | turn | hull | crew | broadside | bow | muskets |
 |---|---|---|---|---|---|---|---|---|

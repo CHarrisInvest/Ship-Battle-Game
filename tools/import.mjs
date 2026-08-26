@@ -135,6 +135,29 @@ function sailRows() {
   });
 }
 
+function gunRows() {
+  const file = "guns.tsv";
+  const seen = new Set();
+  return readTable(file).map((r) => {
+    const id = need(r, "id", file);
+    if (seen.has(id)) throw new Error(`${file}: two guns share the id "${id}"`);
+    seen.add(id);
+    return [
+      `  ${id}: {`,
+      `    id: ${str(id)},`,
+      `    part: "gun",`,
+      `    name: ${str(need(r, "name", file))},`,
+      `    price: ${number(r, "price", file)},`,
+      `    blurb: ${str(need(r, "blurb", file))},`,
+      `    mount: ${str(need(r, "mount", file))},`,
+      `    damage: ${number(r, "damage", file)},`,
+      `    reload: ${number(r, "reload", file)},`,
+      `    weight: ${number(r, "weight", file)},`,
+      "  },",
+    ].join("\n");
+  });
+}
+
 // Replace what sits between a pair of markers, leaving the markers and everything around them alone.
 function splice(text, tag, body) {
   const open = `/* generated:${tag} -- edit data/${tag}.tsv and run \`npm run import\` */`;
@@ -148,12 +171,14 @@ function splice(text, tag, body) {
 const hulls = hullRows();
 const masts = mastRows();
 const sails = sailRows();
+const guns = gunRows();
 
 let out = readFileSync(src, "utf8");
 out = splice(out, "hulls", `const FLEET = [\n${hulls.join("\n")}\n];`);
 out = splice(out, "masts", `export const MASTS = {\n${masts.join("\n")}\n};`);
 out = splice(out, "sails", `export const SAILS = {\n${sails.join("\n")}\n};`);
+out = splice(out, "guns", `export const GUNS = {\n${guns.join("\n")}\n};`);
 writeFileSync(src, out);
 
-console.log(`Wrote ${hulls.length} classes, ${masts.length} masts and ${sails.length} sails into src/shipyard.js.`);
+console.log(`Wrote ${hulls.length} classes, ${masts.length} masts, ${sails.length} sails and ${guns.length} guns into src/shipyard.js.`);
 console.log("Now run `npm run catalogue` to check the fleet is riggable and see where it lands.");

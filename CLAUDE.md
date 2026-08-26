@@ -27,10 +27,15 @@ are built from. `broadside` in the code is the side guns, not the old title, and
   from the shipyard between voyages. Repairs are paid out of the voyage's own takings, so a coin spent
   on the carpenter is a coin that never reaches the hold. If you find yourself adding a stat that
   grows mid-round, that is the upgrade rail coming back and it was deliberately removed.
-- **The hull, mast and sail tables are generated.** `data/hulls.tsv`, `data/masts.tsv` and
-  `data/sails.tsv` are the source; `npm run import` writes them into the marked blocks in
+- **The catalogue tables are generated.** `data/hulls.tsv`, `data/masts.tsv`, `data/sails.tsv` and
+  `data/guns.tsv` are the source; `npm run import` writes them into the marked blocks in
   `shipyard.js`. Editing those blocks by hand works until the next import throws it away, so edit the
   table.
+- **A mast type is a shape of rig, not a station.** A mast carrying three square sails is that mast
+  wherever it is stepped, so a brig's fore and main are one part bought twice. Only the size rung
+  says where it can go. Berths run deck upward, and a fore-and-aft driving sail sharing the lowest
+  level with a course takes berth 0 with the square canvas above it, because the model holds one sail
+  to a band and a spanker belongs at the bottom of the rig rather than over the topgallant.
 - **A sail's category is the whole of the fitting rule.** A berth names one of the seven in
   `SAIL_KINDS` and a sail belongs to one, and they are compared as a single key. Area is not the
   category: a topgallant is nearly four times a skysail and both are `SSQ`, so the range inside a
