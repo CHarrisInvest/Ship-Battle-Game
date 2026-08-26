@@ -173,6 +173,9 @@ function gunRows() {
     const id = need(r, "id", file);
     if (seen.has(id)) throw new Error(`${file}: two guns share the id "${id}"`);
     seen.add(id);
+    // `group` is a swivel's business and blank on everything else, so it is only written where the
+    // table actually says something
+    const group = maybe(r, "group");
     return [
       `  ${id}: {`,
       `    id: ${str(id)},`,
@@ -184,6 +187,7 @@ function gunRows() {
       `    damage: ${number(r, "damage", file)},`,
       `    reload: ${number(r, "reload", file)},`,
       `    weight: ${number(r, "weight", file)},`,
+      ...(group != null ? [`    group: ${group},`] : []),
       "  },",
     ].join("\n");
   });

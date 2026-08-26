@@ -308,7 +308,8 @@ round, not her savings.
   shore, which is a second kind of weapon rather than a row in `data/guns.tsv`: it wants an arc, a
   fall of shot and a mount that is not one of the three she bears. She sails with her 3 guns a side
   meanwhile, which is what the reference gives her broadside anyway. A future consideration.
-- **Swivel quality.** Settled in intent, unbuilt, and with no numbers set: see below.
+- ~~**Swivel quality.**~~ Built: three grades on the rail, and what quality buys is a volley that
+  hits harder and groups tighter, never one more ball. See below.
 
 ### What a better swivel is to buy
 
@@ -333,10 +334,21 @@ One trap in the spread. That `0.8` has `noise` added to it, which is the AI's ow
 zero for the player. Tightening the spread must leave `noise` alone, or better swivels aboard the
 player's ship would quietly make every rival captain a better shot as well.
 
-`rate()` grows a musket damage and a musket spread beside the count, `measure()` multiplies by the
-damage rather than its own constant, and the fight reads all three off the loadout. A swivel's
-`damage` and `reload` in the catalogue are already there for the middle row. Nothing carries a
-grouping figure, so that field arrives with the quality tiers rather than being guessed now.
+**All three rows are done now.** `rate()` returns `musketDamage` and `musketSpread` beside the count,
+and the fight reads all three off the loadout with `noise` left untouched. One ball's damage is the
+average over what actually throws it: a hand's musket carries `MUSKET_BALL` (3.2, the flat the fight
+used to hard-code) and a swivel carries its own catalogue `damage`, so a plain rail is exactly what
+it always was and every swivel aboard pulls the figure up. The spread averages the same way over
+`group`, a new column in `data/guns.tsv` that is blank on every mount but the swivel: a musket keeps
+the whole `MUSKET_ARC` and a swivel holds its own `group` share of one, so quality and number both
+pull the volley in and the hands keep it from ever closing to a point. When the 14-ball cap bites the
+hands give way and every swivel still fires, because a mounted gun does not queue for elbow room —
+which is also what keeps a bought part from doing nothing, the trap the half-musket fell into.
+
+Three grades on the rail now: the swivel gun, the bronze swivel and the long swivel, told apart by
+`damage` and `group`. `measure()` multiplies the count by `musketDamage` at `MUSKET_VOLLEYS` a second
+rather than by its old flat `MUSKET_DPS`; the pace is set so a plain ball still measures the 2.4 a
+musket the blend was placed with, and only better iron on the rail moves a ship's strength.
 
 ## Tiers, the stock fleet, and what each mode does with them
 

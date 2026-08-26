@@ -16,12 +16,19 @@
 # reload  seconds between rounds. A mixed battery serves at the pace of its slowest piece.
 # weight  what she carries for it. Enough of it takes the edge off her handling, which is the reason
 #         to leave a port empty.
+# group   swivels only, and blank everywhere else. How true one throws, as a share of a musket's own
+#         scatter: 1 is no better than the hands beside it, and smaller is tighter. A better swivel
+#         never adds a ball to the volley; what quality buys is that the volley hits harder and lands
+#         closer to where the bow points, and this is the second half of that.
 # blurb   one line a captain reads.
-id	name	mount	price	damage	reload	weight	blurb
-minion	Minion	broadside	140	6	1.4	0.6	A light piece for a boat that cannot stand the weight of real iron.
-carriageGun	Carriage gun	broadside	260	9	1.6	1.0	The gun a broadside is made of. Fires fast enough to keep a hull holed.
-culverin	Culverin	broadside	520	12	1.9	1.4	A long barrel of middling weight. What a ship carries when she cannot stand a demi-cannon.
-demiCannon	Demi-cannon	broadside	880	16	2.2	1.9	Heavier iron, slower to serve. One of these does what two carriage guns do, in one blow.
-bowChaser	Bow chaser	bow	240	9	1.1	0.9	Points where the bow points. Aimed high, it brings a rig down.
-longNine	Long nine	bow	810	15	1.35	1.6	A long barrel on the bow. Reaches further than anything else aboard and hits what it reaches.
-swivelGun	Swivel gun	swivel	250	5	0.8	0.35	Mounted on the rail and served by one hand. Clears a deck rather than holing a hull.
+id	name	mount	price	damage	reload	weight	group	blurb
+minion	Minion	broadside	140	6	1.4	0.6		A light piece for a boat that cannot stand the weight of real iron.
+carriageGun	Carriage gun	broadside	260	9	1.6	1.0		The gun a broadside is made of. Fires fast enough to keep a hull holed.
+culverin	Culverin	broadside	520	12	1.9	1.4		A long barrel of middling weight. What a ship carries when she cannot stand a demi-cannon.
+demiCannon	Demi-cannon	broadside	880	16	2.2	1.9		Heavier iron, slower to serve. One of these does what two carriage guns do, in one blow.
+bowChaser	Bow chaser	bow	240	9	1.1	0.9		Points where the bow points. Aimed high, it brings a rig down.
+longNine	Long nine	bow	810	15	1.35	1.6		A long barrel on the bow. Reaches further than anything else aboard and hits what it reaches.
+longEighteen	Long eighteen	bow	1900	20	1.6	2.4		A frigate's chaser. Iron enough to open a stern at a distance, if she can bear the weight of it.
+swivelGun	Swivel gun	swivel	250	5	0.8	0.35	1.0	Mounted on the rail and served by one hand. Clears a deck rather than holing a hull.
+bronzeSwivel	Bronze swivel	swivel	620	6.5	0.8	0.35	0.8	Cast true, so the ball goes where it was pointed. The volley lands closer to the bow.
+longSwivel	Long swivel	swivel	1150	8	0.8	0.4	0.62	A longer barrel on the same mount. It hits harder and throws truer than anything else on the rail.

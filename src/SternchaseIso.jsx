@@ -905,7 +905,13 @@ const turnCap = (s) => 2.4 * s.rating.turn * (0.22 + 0.78 * (s.mast / s.maxMast)
 // throws the same number of balls as a middling one and each of hers is worth more.
 const sideDmg = (s) => s.rating.broadside.perBall;
 const frontDmg = (s) => s.rating.bow.perBall;
-const musketDmg = () => 3.2;
+// One ball of the small-arms volley. A plain rail is the old flat 3.2; swivels aboard pull it up,
+// because a swivel ball outweighs a musket's, and better swivels pull harder.
+const musketDmg = (s) => s.rating.musketDamage;
+// The arc that volley scatters over. Quality iron on the rail tightens it; the AI's own aiming
+// error is added separately in `fire()` and must stay separate, or better swivels aboard the player
+// would quietly make every rival captain a better shot.
+const musketArc = (s) => s.rating.musketSpread;
 /**
  * A ram is worth a quarter of the hull BEHIND it, so what she does with her bow scales with the ship
  * she is driving. A flat 26 was right when every hull afloat had a hundred points; against a first
@@ -1484,9 +1490,10 @@ export default function App() {
         muzzle(bx, by, h);
         smoke(bx, by, h, 4, 0.92);
       } else {
-        // The hands at the rail and the swivels on it, firing together. A flat six for every hull
-        // afloat was the promise the yard screen's musket figure did not keep.
-        for (let i = 0; i < s.rating.muskets; i++) push(bx, by, h + (Math.random() - 0.5) * (0.8 + noise));
+        // The hands at the rail and the swivels on it, firing together. The count, the weight of
+        // one ball and the scatter all come off the loadout now; only `noise`, an AI captain's own
+        // aim, is the fight's to add.
+        for (let i = 0; i < s.rating.muskets; i++) push(bx, by, h + (Math.random() - 0.5) * (musketArc(s) + noise));
         muzzle(bx, by, h);
         smoke(bx, by, h, 2, 0.45); // muskets make little enough of it, and fire often
       }
@@ -2458,7 +2465,9 @@ export default function App() {
       if (inp.musket) {
         ctx.strokeStyle = "rgba(223,239,255,0.28)";
         const R = WP.musket.speed * WP.musket.life;
-        ctx.beginPath(); ctx.moveTo(HULL_L / 2, 0); ctx.lineTo(Math.cos(0.7) * R, Math.sin(0.7) * R); ctx.moveTo(HULL_L / 2, 0); ctx.lineTo(Math.cos(-0.7) * R, Math.sin(-0.7) * R); ctx.stroke();
+        // the guide cone follows the volley's own scatter, so better swivels visibly narrow it
+        const arc = 0.875 * musketArc(p);
+        ctx.beginPath(); ctx.moveTo(HULL_L / 2, 0); ctx.lineTo(Math.cos(arc) * R, Math.sin(arc) * R); ctx.moveTo(HULL_L / 2, 0); ctx.lineTo(Math.cos(-arc) * R, Math.sin(-arc) * R); ctx.stroke();
       }
       ctx.restore();
     }
@@ -4294,7 +4303,9 @@ function partLine(type) {
     const helm = type.hand >= 0 ? `helps the helm by ${type.hand.toFixed(2)}` : `stiffens the helm by ${Math.abs(type.hand).toFixed(2)}`;
     return `pulls ${type.drive.toFixed(2)} of a course, ${helm}`;
   }
-  return `${type.damage} damage every ${type.reload.toFixed(2)}s, weighs ${type.weight.toFixed(2)}`;
+  // a swivel's grouping is the other half of what quality buys, so a tighter one says so
+  const group = type.group != null && type.group < 1 ? `, groups ${Math.round((1 - type.group) * 100)}% tighter than a musket` : "";
+  return `${type.damage} damage every ${type.reload.toFixed(2)}s, weighs ${type.weight.toFixed(2)}${group}`;
 }
 
 // "1 sails" is the sort of thing that makes a screen look unfinished, and this shelf counts four

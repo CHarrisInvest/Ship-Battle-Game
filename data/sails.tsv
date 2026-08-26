@@ -50,12 +50,15 @@ topgallantFine	Duck canvas topgallant	SSQ	430	0.53	-0.03	Heavy cloth where it is
 royal	Royal	SSQ	90	0.22	-0.02	A small sail over the topgallant, for a captain in a hurry and a sea that will allow it.
 royalFine	Duck canvas royal	SSQ	320	0.29	-0.02	The royal a ship keeps set after the plain one would have come in.
 skysail	Skysail	SSQ	70	0.12	-0.01	A handkerchief in the clouds. It pulls very little and it looks magnificent.
+skysailFine	Duck canvas skysail	SSQ	250	0.16	-0.01	Heavier cloth at the very top of the rig, where the plain one is first to blow out.
 spritsail	Spritsail	SSQ	130	0.25	-0.05	Slung under the bowsprit on a yard athwart. Old fashioned, and it drags her head round.
+spritsailFine	Duck canvas spritsail	SSQ	460	0.33	-0.04	Stouter cloth under the spar, where every sea that comes over the bow lands on it.
 staysail	Staysail	TRI	130	0.15	0.12	A small triangle set on a stay. Not much pull, and she feels it in the rudder.
 staysailFine	Cut staysail	TRI	460	0.20	0.15	The staysail a captain keeps when she changes ships.
 jib	Jib	TRI	190	0.22	0.14	Set out on the bowsprit. What balances her head against everything she carries aft.
 jibFine	Cut jib	TRI	620	0.29	0.17	Cut flat rather than full, so it holds an edge to the wind the plain one spills.
 flyingJib	Flying jib	TRI	150	0.12	0.09	Right out at the boom end. The last scrap of canvas anybody sets forward.
+flyingJibFine	Cut flying jib	TRI	530	0.16	0.11	Cut flat for the boom end, so it keeps an edge where the plain one flogs.
 lateen	Lateen sail	LAT	210	0.65	0.14	A long triangle on a raking yard. Less pull than a course, and she comes round on it.
 lateenFine	Cut lateen sail	LAT	720	0.86	0.18	Cut flat rather than full. A xebec runs down what she pleases under one of these.
 bermudaMain	Bermuda mainsail	LAT	380	0.85	0.20	One tall triangle and no yard at all. Points closer to the wind than square canvas can.
@@ -63,10 +66,14 @@ bermudaMainFine	Cut Bermuda mainsail	LAT	980	1.10	0.24	The sail a sloop is reall
 gaffMain	Gaff mainsail	GAF	260	0.62	0.16	Four sided, on a gaff abaft the mast. Handy, and one watch can take it in.
 gaffMainFine	Cut gaff mainsail	GAF	780	0.82	0.20	The same sail in cloth that keeps its shape on a long board.
 gaffTopsail	Gaff topsail	GAF	110	0.18	0.08	A scrap above the gaff, filling the space nothing else reaches.
+gaffTopsailFine	Cut gaff topsail	GAF	390	0.24	0.1	The same scrap cut to stand, so the space over the gaff keeps pulling in a blow.
 spanker	Spanker	GAF	300	0.45	0.18	The fore-and-aft sail on her after mast. She steers on it as much as on the rudder.
 spankerFine	Cut spanker	GAF	840	0.60	0.22	A spanker worth keeping set when the square canvas has come in.
 trysail	Trysail	GAF	200	0.30	0.14	Small, heavy, and bent to a little mast of its own. What she wears when it is blowing.
+trysailFine	Storm trysail	GAF	700	0.40	0.17	The best cloth aboard, in the smallest sail. She rides out weather under this and nothing else.
 dippingLug	Dipping lug	LUG	190	0.45	0.12	Four sided on a slung yard, and the yard comes round the mast on every tack.
+dippingLugFine	Cut dipping lug	LUG	660	0.59	0.15	Better cloth on the same yard. Worth the work of dipping it round on every tack.
 standingLug	Standing lug	LUG	210	0.50	0.14	The lug that stays where it is put. Slower than a dipping lug and far less work.
 standingLugFine	Cut standing lug	LUG	640	0.66	0.17	The sail a Channel lugger shows a revenue cutter her heels under.
 lugTopsail	Lug topsail	LUG	100	0.18	0.07	A small lug over the mainsail, set flying in light airs.
+lugTopsailFine	Cut lug topsail	LUG	350	0.24	0.09	Flat cut and light, and it stays drawing after the plain one has come in.
