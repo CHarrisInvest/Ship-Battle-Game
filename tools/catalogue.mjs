@@ -170,15 +170,15 @@ if (undrawn.length) {
 }
 
 console.log(`\nTHE FLEET  (${HULL_LIST.length} classes)`);
-console.log("  class        price   masts                    guns a side/bow/sw   bare  ->  found   tier   outfit");
+console.log("  " + pad("class", 19) + num("price", 7) + " " + pad("masts", 46) + pad("guns a side/bow/sw", 20) + num("bare", 5) + " -> " + num("found", 6) + num("tier", 6) + num("outfit", 8));
 for (const h of HULL_LIST) {
   const bare = measure(rate(minimumLoadout(h.id)));
   const found = measure(rate(maximumLoadout(h.id)));
   const rig = h.sockets.map((s) => `${s.station}/${s.size[0]}`).join(" ");
   console.log(
-    "  " + pad(h.name, 12),
-    num(h.price, 6),
-    " " + pad(rig, 24),
+    "  " + pad(h.name, 19),
+    num(h.price, 7),
+    " " + pad(rig, 46),
     pad(`${h.guns.broadside}/${h.guns.bow}/${h.guns.swivel}`, 20),
     num(n1(bare.overall), 5), " -> ", num(n1(found.overall), 6),
     num(`${tierAt(bare.overall).tier}-${tierAt(found.overall).tier}`, 6),
@@ -187,12 +187,12 @@ for (const h of HULL_LIST) {
 }
 
 console.log("\nSTAT BANDS  (fully found is the second figure; handling runs backwards on purpose)");
-console.log("  class         speed          turn           hull  crew   broadside   muskets");
+console.log("  " + pad("class", 19) + pad("speed", 14) + pad("turn", 14) + num("hull", 4) + num("crew", 5) + num("broadside", 11) + num("muskets", 9));
 for (const h of HULL_LIST) {
   const b = statBand(h.id);
   const span = (k, f = n2) => `${f(b[k].bare)} to ${f(b[k].found)}`;
   console.log(
-    "  " + pad(h.name, 12),
+    "  " + pad(h.name, 19),
     pad(span("speed"), 14),
     pad(span("turn"), 14),
     num(b.hull.found, 4), num(b.crew.found, 5),
@@ -202,17 +202,17 @@ for (const h of HULL_LIST) {
 }
 
 console.log("\nFITTED OUT  (the same hull at rising quality, which is what a stock opponent is built from)");
-console.log("  class        " + [0, 0.25, 0.5, 0.75, 1].map((q) => num(`q${q}`, 8)).join(""));
+console.log("  class              " + [0, 0.25, 0.5, 0.75, 1].map((q) => num(`q${q}`, 8)).join(""));
 for (const h of HULL_LIST) {
   const row = [0, 0.25, 0.5, 0.75, 1].map((q) => num(n1(measure(rate(fitOut(h.id, q))).overall), 8)).join("");
-  console.log("  " + pad(h.name, 12) + row);
+  console.log("  " + pad(h.name, 19) + row);
 }
 
 console.log("\nTHE STOCK LADDER  (what the modes issue, in ascending strength)");
-console.log("  ship             tier               overall     ram   throw  endurance  mobility    value   rigging  rebuild");
+console.log("  " + pad("ship", 26) + pad("tier", 18) + num("overall", 7) + num("ram", 7) + num("throw", 7) + num("endurance", 10) + num("mobility", 9) + num("value", 8) + num("rigging", 9) + num("rebuild", 8));
 for (const s of ladder()) {
   console.log(
-    "  " + pad(s.name, 16),
+    "  " + pad(s.name, 26),
     pad(`${s.tier} ${tierAt(s.measure.overall).name}`, 18),
     num(n1(s.measure.overall), 7),
     num(n1(s.measure.ram), 7),

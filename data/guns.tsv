@@ -20,6 +20,7 @@
 id	name	mount	price	damage	reload	weight	blurb
 minion	Minion	broadside	140	6	1.4	0.6	A light piece for a boat that cannot stand the weight of real iron.
 carriageGun	Carriage gun	broadside	260	9	1.6	1.0	The gun a broadside is made of. Fires fast enough to keep a hull holed.
+culverin	Culverin	broadside	520	12	1.9	1.4	A long barrel of middling weight. What a ship carries when she cannot stand a demi-cannon.
 demiCannon	Demi-cannon	broadside	880	16	2.2	1.9	Heavier iron, slower to serve. One of these does what two carriage guns do, in one blow.
 bowChaser	Bow chaser	bow	240	9	1.1	0.9	Points where the bow points. Aimed high, it brings a rig down.
 longNine	Long nine	bow	810	15	1.35	1.6	A long barrel on the bow. Reaches further than anything else aboard and hits what it reaches.

@@ -19,6 +19,7 @@ are cheap to change and are deliberately left rough.
 | | |
 |---|---|
 | `src/shipyard.js` | The catalogue and the maths. Hulls, masts, sails, guns as data; what fits what; what a set of them rates. No state, no storage, no imports. |
+| `src/shipref.js` | GENERATED. What each class was: her dimensions, her shape, her timber, her era. Nothing reads it; it is there for whoever models the hulls. |
 | `src/hold.js` | What a captain owns. The yard sits in the same record as the coins, so a purchase moves both in one write. |
 | `src/galleon.js` | Draws a rig rather than *the* rig. Given a spec it builds the ship; given nothing it builds the galleon it always drew. |
 | `src/SternchaseIso.jsx` | The menu ship plate and the yard screen, plus the repair rail that replaced the upgrade rail. |
@@ -129,9 +130,11 @@ references is loose, and loose is the inventory.
   mode into one record. The yard is a field of that record, and every writer spends through the same
   ledger, so `coins` and `spent` still reconstruct what was earned.
 - **An inventory of interchangeable components.** `loosePartIds()`, and fitting as a move.
-- **Start with one ship, a basic sail, one front gun and no broadside.** `STARTER` in `shipyard.js`.
-  A cutter, a pole mast with one small square sail, one bow chaser. The first broadside gun a captain
-  buys is the first time she can fire at anything abeam, and she should feel it.
+- **Start with one ship, ready to fight.** `STARTER` in `shipyard.js`: an armed launch, a sprit mast
+  with one sail bent on, a light gun each side, a chaser on the bow and one swivel. Her broadside is
+  FULL at one gun a side, which is all a launch bears, so a captain can fight from the moment the game
+  opens. What she cannot do is fight anything much, and every gap in her is a gap the shipyard fills:
+  the bowsprit she carries has no spar on it at all.
 - **Rigging and guns move ship to ship.** Falls out of instances.
 - **A mast only ever carries the sails it was built for.** `berths`, fixed on the mast type.
 - **Various sail types.** Six categories, `LSQ` `SSQ` `TRI` `GAF` `LUG` `STU`, one on each berth and
@@ -172,17 +175,13 @@ moves on the day the shipyard opens, and each hull can then be pulled around one
 Bare means one mast, one sail, one bow gun. Fully found means the dearest mast in every socket, the
 dearest sail in every berth, every gun port filled.
 
-The figures below are the five classes the catalogue held before the fleet arrived, and the parts
-tables have moved under them since. `npm run catalogue` prints the live version of this table, which
-is the one to read.
-
-| | price | speed | turn | hull | crew | broadside | bow | muskets |
-|---|---|---|---|---|---|---|---|---|
-| Cutter | 0 | 0.69 to 0.81 | 1.18 down to 0.98 | 90 | 55 | 0 to 2 | 1 | 2 to 3 |
-| Sloop | 900 | 0.65 to 0.97 | 1.12 down to 0.88 | 120 | 72 | 0 to 4 | 1 | 3 to 4 |
-| Brig | 2400 | 0.50 to 0.95 | 0.98 down to 0.75 | 155 | 96 | 0 to 6 | 1 to 2 | 4 to 5 |
-| Frigate | 5200 | 0.44 to 0.94 | 0.89 down to 0.66 | 195 | 124 | 0 to 8 | 1 to 2 | 5 to 7 |
-| Galleon | 9600 | 0.37 to 0.79 | 0.77 down to 0.57 | 250 | 155 | 0 to 10 | 1 to 3 | 6 to 9 |
+**`npm run catalogue` prints this table and there is no copy of it here**, because 38 classes is too
+many to keep in step by hand and a stale figure in a design note is worse than none. The shape of it:
+an armed launch has 100 hull points, 30 hands, one gun a side and rates about 0.6 on speed; a first
+rate has 3,290, 950, twenty a side and rates 0.79 before canvas. Hull runs a factor of 33, and the
+economy runs with it: coins are earned a point of damage and repairs are charged a point of damage,
+so a bigger fleet pays proportionally more and costs proportionally more to patch, with no scaling
+term anywhere.
 
 Handling is the one stat that runs *backwards*: a ship carrying every gun she can bear under a full
 press of square canvas is stiffer on the helm than the same hull with one sail and one gun. That is
@@ -337,30 +336,27 @@ on different ones:
 The blend is geometric, so being hopeless at one thing is not paid for by being splendid at another.
 `TIERS` bands `overall` into five rungs and `tierOf(loadout)` places a finished ship on one.
 
-**`STOCK` is the fleet the game issues**, written in the same id-shaped form as a stored ship so
-`resolve()` turns one into a loadout exactly as it does the player's. Nothing in that table declares a
-tier: every rung is measured, so changing a fit moves the ship up or down the ladder on its own and
-cannot disagree with its own stat line.
+**`STOCK` is the fleet the game issues**, and it is generated rather than written out. Every class
+appears at three standards, plain, well found and fully found, built by `fitOut(hull, quality)`; a row
+may still carry a hand-written `rig` and `guns` where a class wants a fit of her own, and `resolve()`
+handles that one exactly as it handles the player's ship. 38 classes at three fits is 114 opponents,
+which is not a table anybody keeps in step by hand: two hand-written fits per class would drift out of
+step with the parts table every time a price moved, and every entry is a chance to name a sail that no
+longer fits the berth it was written for. The bench checks the hand-written ones for exactly that.
 
-| ship | tier | overall | ram | throw | endurance | mobility |
-|---|---|---|---|---|---|---|
-| Bare cutter | 1 Coastal | 49.5 | 70.3 | 13.0 | 145 | 0.94 |
-| Coastal cutter | 1 Coastal | 65.1 | 70.4 | 24.2 | 145 | 0.94 |
-| Armed cutter | 2 Privateer | 78.8 | 69.6 | 37.9 | 145 | 0.90 |
-| Plain sloop | 2 Privateer | 88.1 | 84.0 | 37.9 | 192 | 0.88 |
-| Full sloop | 3 Cruiser | 113.4 | 85.8 | 65.7 | 192 | 0.94 |
-| Plain brig | 3 Cruiser | 121.8 | 99.7 | 62.8 | 251 | 0.83 |
-| Full brig | 4 Ship of the line | 162.2 | 99.0 | 121.5 | 251 | 0.81 |
-| Plain frigate | 4 Ship of the line | 162.7 | 116.5 | 98.3 | 319 | 0.80 |
-| Plain galleon | 4 Ship of the line | 176.9 | 131.1 | 100.7 | 405 | 0.68 |
-| Full frigate | 5 Flagship | 199.2 | 116.8 | 155.4 | 319 | 0.81 |
-| Full galleon | 5 Flagship | 239.8 | 131.4 | 200.4 | 405 | 0.69 |
+Nothing declares a tier. Every rung is measured, so changing a fit moves the ship up or down the
+ladder on its own and cannot disagree with its own stat line, and `npm run catalogue` prints the whole
+ladder in ascending strength.
 
-The overlaps are the point and they came out of the numbers rather than being placed. A full sloop
-outranks a bare brig. A full brig and a plain frigate are within a point of each other across two
-classes. And the two measures genuinely disagree: under gunfire a plain galleon towers over a plain
-brig, 177 to 122, while as ramming stock they are far closer at 131 to 100 — an armed cutter even
-rates *below* a bare one for ramming, because her guns are dead weight in a match where nobody fires.
+The overlaps are the point and they come out of the numbers rather than being placed. A fully found
+cutter outranks a plain brig-sloop. And the two measures genuinely disagree: under gunfire a galleon
+towers over a xebec, while as ramming stock they are far closer, and a ship's guns are dead weight in
+a match where nobody fires.
+
+**The tier bands have not been moved yet.** They were placed against eleven stock ships when the
+catalogue held five classes, and `overall` now runs from about 43 to 856 rather than 50 to 240, so the
+top band holds most of the fleet. Rebanding waits on the musket curve and the broadside columns, which
+move `measure()`'s inputs: doing it before those would be work thrown away.
 
 ### What each mode is to do with it
 
@@ -378,7 +374,7 @@ None of it is wired yet — the fight still issues one stock hull to everybody, 
 piece that needs `rate()` feeding the combat constants. What the modes were waiting on was a way to
 say "an even fight" that survives the player bringing her own galleon, and that now exists.
 
-## Room for forty classes
+## Room for forty classes, and now holding 38
 
 The catalogue is built for a fleet of around 38 classes rather than the five it currently holds, and
 three things had to change shape for that to be true.
@@ -456,9 +452,17 @@ bench, which is the next command and the one that says whether the result is a f
 together: a hull's socket sizes mean nothing until masts exist that fit them, and a mast's berths mean
 nothing until sails exist of those categories. The bench will say so in both directions.
 
-### What the 38 will need
+### What the 38 needed
 
-When the ship details arrive, each class needs: a name and a blurb, a price, hull and crew points,
+They are in. `data/hulls.tsv` now carries one row per class, and the gameplay columns are derived from
+the reference figures beside them: hull points from the timber formula, crew from her battle
+complement floored at 25, `speed` from her working speed under sail, `hand` from the handling
+components less the rig and the crew (her sails carry the rig half themselves), `canvas` as
+displacement to the two thirds, and `tons` the same way, moved by how fine she is. Prices came off
+measured strength afterwards. Blurbs are empty for now.
+
+The original note, for whoever adds the thirty-ninth: each class needs a name and a blurb, a price,
+hull and crew points,
 `speed` and `hand` (her own contribution before canvas, both near 1), `canvas` (how much sail she
 wants, which is what makes a big hull a commitment), `tons` (what she carries before the guns tell on
 her handling), gun bearing as `[broadside a side, bow, swivel]`, and her masts as `station/size`.
@@ -492,12 +496,20 @@ are in that position rather than letting it pass unremarked.
 Things a design document should settle, listed with what the code currently assumes so that agreeing
 with it is as cheap as changing it.
 
-1. **The economy.** Prices are placed relative to each other and are not tuned against what a voyage
-   actually pays, and repairs now take a bite out of that too. At the current rate (25 a kill, a coin
-   a point of damage, a derby win about 250) a sloop is roughly three voyages and a galleon roughly
-   thirty, before the carpenter. Fully outfitting a cutter costs more than a bare sloop, which reads
-   as "move up rather than max out your first boat" and may or may not be the intent. Forty classes
-   need a price curve rather than five hand-placed numbers.
+1. **The economy.** The shelf is a curve now rather than five hand-placed numbers: price goes as
+   measured strength to the power of about 2.07, anchored so a cutter is 2,500 and a first rate
+   120,000, with the launch free because she is the ship a captain starts in. The first ten classes
+   all come in under 600, which is the "play with a cheap boat before committing" opening that was
+   asked for. What is NOT tuned is any of it against what a voyage actually pays: at a coin a point of
+   damage a first rate is a hundred-odd good rounds.
+
+   One shape worth deciding on. **Fitting out costs roughly the same whatever she is**, from about
+   2,800 for a launch to about 47,000 for a third rate, because a sail costs what it costs and a big
+   ship differs only in having more berths to fill. Against a hull shelf that runs 0 to 120,000 that
+   means outfitting dominates early and is a rounding error late: a captain's first three purchases
+   are all rigging, and her last is a hull she can then barely afford to bend canvas on. It follows
+   directly from one sail type serving every hull, which is deliberate, so the fix if it wants one is
+   in the price curve rather than the model.
 2. **Where the tier bands fall.** The five thresholds were placed against eleven stock ships, so the
    fleet lands two or three to a rung and the class overlaps straddle them. Nothing about how a fight
    actually plays went into them, and a catalogue eight times the size will fill the range

@@ -19,6 +19,7 @@ import { dirname, join } from "node:path";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const src = join(root, "src", "shipyard.js");
+const ref = join(root, "src", "shipref.js");
 
 /* ---- reading ---------------------------------------------------------------------------------- */
 
@@ -56,6 +57,34 @@ const yesNo = (v) => /^(y|yes|true|1)$/i.test(v);
 
 /* ---- writing ---------------------------------------------------------------------------------- */
 
+/**
+ * The reference columns: what a ship WAS, rather than what she is in a fight.
+ *
+ * Her dimensions, the shape of her, what she was built of, when and where she sailed and what for.
+ * None of it is read by the game and all of it is wanted later, by whoever models the hulls: a class
+ * drawn from her real length, beam, sheer and stern is a class that looks like herself.
+ *
+ * It goes to a module of its own rather than into `shipyard.js`, which is the catalogue the fight
+ * reads and has no business carrying a tumblehome score. Anything not named here is a gameplay
+ * column and the hull writer below knows what to do with it.
+ */
+const REFERENCE = [
+  "era", "region", "role", "lod", "lbp", "beam", "draft", "depth", "freeboard", "lb", "bd",
+  "burthen", "disp", "bowFine", "tumblehome", "deadrise", "sheer", "castle", "stern", "mastHeight",
+  "decks", "wale", "topside", "roomSpace", "species", "timber", "crewMin", "cruise", "topSpeed",
+  "manoeuvre", "histGuns",
+];
+
+function referenceRows() {
+  return readTable("hulls.tsv").map((r) => {
+    const fields = REFERENCE.filter((k) => r[k] !== undefined && r[k] !== "").map((k) => {
+      const n = Number(r[k]);
+      return `    ${k}: ${r[k] !== "" && Number.isFinite(n) ? n : str(r[k])},`;
+    });
+    return [`  ${need(r, "id", "hulls.tsv")}: {`, ...fields, "  },"].join("\n");
+  });
+}
+
 function hullRows() {
   const file = "hulls.tsv";
   const seen = new Set();
@@ -76,7 +105,9 @@ function hullRows() {
     return [
       "  {",
       `    id: ${str(id)}, name: ${str(need(r, "name", file))}, price: ${number(r, "price", file)},`,
-      `    blurb: ${str(need(r, "blurb", file))},`,
+      // a blurb is optional: a class with none reads as her name and her figures, which is enough
+      // to buy her by, and an invented line is worse than no line
+      ...(r.blurb ? [`    blurb: ${str(r.blurb)},`] : []),
       `    hull: ${number(r, "hull", file)}, crew: ${number(r, "crew", file)}${optional ? ", " + optional : ""},`,
       `    guns: [${number(r, "broadside", file)}, ${number(r, "bow", file)}, ${number(r, "swivel", file)}],` +
         ` masts: [${masts.map(str).join(", ")}]` +
@@ -172,6 +203,31 @@ const hulls = hullRows();
 const masts = mastRows();
 const sails = sailRows();
 const guns = gunRows();
+const reference = referenceRows();
+
+// The reference table is a whole file rather than a block, because nothing hand-written belongs in
+// it. `shipyard.js` must not import it: the catalogue reads what a ship IS, and this is what she was.
+writeFileSync(ref, [
+  "/**",
+  " * WHAT EACH CLASS WAS: her dimensions, her shape, her timber, and where and when she sailed.",
+  " *",
+  " * GENERATED from data/hulls.tsv by `npm run import`. Edit the table, not this file.",
+  " *",
+  " * None of this is read by the game and all of it is wanted later. A hull drawn from her real",
+  " * length, beam, sheer and stern is a hull that looks like herself, and a figure not recorded now",
+  " * cannot be recovered when somebody comes to draw her. It is kept out of `shipyard.js` on purpose:",
+  " * that file is the catalogue a fight reads, and a fight has no use for a tumblehome score.",
+  " *",
+  " * Lengths are feet, weights are tons, and the 1 to 5 spectra are the reference's own judgement",
+  " * scores, 1 for least and 5 for most.",
+  " */",
+  "export const HULL_REF = {",
+  reference.join("\n"),
+  "};",
+  "",
+  "export const hullRef = (id) => HULL_REF[id] || null;",
+  "",
+].join("\n"));
 
 let out = readFileSync(src, "utf8");
 out = splice(out, "hulls", `const FLEET = [\n${hulls.join("\n")}\n];`);
@@ -180,5 +236,6 @@ out = splice(out, "sails", `export const SAILS = {\n${sails.join("\n")}\n};`);
 out = splice(out, "guns", `export const GUNS = {\n${guns.join("\n")}\n};`);
 writeFileSync(src, out);
 
-console.log(`Wrote ${hulls.length} classes, ${masts.length} masts, ${sails.length} sails and ${guns.length} guns into src/shipyard.js.`);
+console.log(`Wrote ${hulls.length} classes, ${masts.length} masts, ${sails.length} sails and ${guns.length} guns into src/shipyard.js,`);
+console.log(`and what those ${reference.length} classes were into src/shipref.js.`);
 console.log("Now run `npm run catalogue` to check the fleet is riggable and see where it lands.");

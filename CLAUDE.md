@@ -17,6 +17,10 @@ are built from. `broadside` in the code is the side guns, not the old title, and
   gives, so a fully found cutter outranks a bare brig and the two cannot disagree. A hull's `order` is
   its place on the shop shelf and is a different thing: do not match opponents on it. Nothing in
   `STOCK` carries a tier of its own for the same reason.
+- `src/shipref.js` is generated beside it and holds what each class *was*: her dimensions, the shape
+  of her, her timber, her era and what she was for. Nothing reads it and it is not for the fight; it
+  is there so a hull can be modelled from her real proportions later. Keep it out of `shipyard.js`,
+  which is what a fight reads and has no use for a tumblehome score.
 - `src/hold.js` persists coins, lifetime stats and the yard to localStorage. Nothing else is saved;
   worlds and islands are generated fresh every match.
 - `src/achievements.js` is the achievement list, and **an achievement is a question asked of the hold,
