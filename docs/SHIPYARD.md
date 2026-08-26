@@ -503,13 +503,23 @@ with it is as cheap as changing it.
    asked for. What is NOT tuned is any of it against what a voyage actually pays: at a coin a point of
    damage a first rate is a hundred-odd good rounds.
 
-   One shape worth deciding on. **Fitting out costs roughly the same whatever she is**, from about
+   One shape, and the answer to it. **Fitting out costs roughly the same whatever she is**, from about
    2,800 for a launch to about 47,000 for a third rate, because a sail costs what it costs and a big
    ship differs only in having more berths to fill. Against a hull shelf that runs 0 to 120,000 that
    means outfitting dominates early and is a rounding error late: a captain's first three purchases
-   are all rigging, and her last is a hull she can then barely afford to bend canvas on. It follows
-   directly from one sail type serving every hull, which is deliberate, so the fix if it wants one is
-   in the price curve rather than the model.
+   are all rigging, and her last is a hull she can then barely afford to bend canvas on.
+
+   **Advanced sails are what closes that**, and they are planned. There are two grades of most sails
+   today, plain and fine; a dearer grade above them multiplies by BERTH COUNT, and berth count is the
+   one thing that genuinely scales with the hull. A launch has two berths and a fully rigged first
+   rate has seventeen, so lifting the top of the sail ladder raises a great ship's bill about eight
+   times as fast as a boat's, which is the curve that is missing. It wants doing in the same pass as
+   the economy rather than before it, since what a voyage pays decides how far the ladder should
+   reach.
+
+   What that does not touch is the bottom end: a launch still pays a few thousand to fill out against
+   a 120 coin hoy. If the opening should be cheaper as well, the lever is a cheaper low grade of sail,
+   not the hull prices.
 2. **Where the tier bands fall.** The five thresholds were placed against eleven stock ships, so the
    fleet lands two or three to a rung and the class overlaps straddle them. Nothing about how a fight
    actually plays went into them, and a catalogue eight times the size will fill the range
