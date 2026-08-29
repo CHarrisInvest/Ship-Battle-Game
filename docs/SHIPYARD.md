@@ -28,6 +28,8 @@ are cheap to change and are deliberately left rough.
 | `data/hulls.tsv`, `data/masts.tsv`, `data/sails.tsv`, `data/guns.tsv` | The tables a person edits. One row per class, per mast type, per sail and per gun. |
 | `tools/import.mjs` | `npm run import`. Writes those tables into the generated blocks in `shipyard.js`. |
 | `tools/catalogue.mjs` | `npm run catalogue`. Checks the fleet is riggable and drawable, then prints every class side by side for calibration. |
+| `tools/workbook.mjs` | `npm run workbook` and `npm run workbook:read`. The same four tables as one spreadsheet, for editing the fleet in Numbers or Excel and reading it back. |
+| `data/ships.xlsx` | GENERATED, and a convenience rather than a source. The workbook the two commands above write and read. |
 
 ## The model
 
@@ -541,6 +543,40 @@ bench, which is the next command and the one that says whether the result is a f
 `data/masts.tsv` and `data/sails.tsv` are the same for mast and sail types, and the three go in
 together: a hull's socket sizes mean nothing until masts exist that fit them, and a mast's berths mean
 nothing until sails exist of those categories. The bench will say so in both directions.
+
+### The same tables as a spreadsheet
+
+Forty-six columns across thirty-eight classes is a lot to hold in a text editor, and comparing two
+figures eight columns apart is exactly what a spreadsheet is for. So the four tables also travel as
+one workbook:
+
+```
+npm run workbook       writes data/ships.xlsx from the four tables
+                       edit it in Numbers or Excel, export back over the same file
+npm run workbook:read  writes the four tables back from data/ships.xlsx
+npm run import && npm run catalogue
+```
+
+**The TSVs remain the source.** The workbook is a way of editing them and nothing reads it: `import`
+still reads the tables, the tables are what git diffs, and a change that never comes back through
+`workbook:read` never happened. A fifth sheet carries each table's comment block, because that is
+where the columns are documented and a spreadsheet has nowhere else to put it.
+
+Reading back is deliberately narrow. It takes the four sheets by name, matches columns by their
+header so they may be reordered, skips blank rows, and keeps a figure spelled the way the table
+spelled it, so a height of `0.60` survives a trip through a program that thinks it is 0.6 and a round
+trip with no edits in it produces no diff. A formula comes back as the value it worked out. Colour,
+comments, extra sheets and extra columns are not read at all.
+
+What it checks is what the importer and the bench cannot say clearly: a missing column, a row with
+figures and no id, two rows sharing one, an id that is not a plain word (ids become object keys, so a
+space in one writes a source file that will not parse). Nothing is written unless every sheet is
+clean. Then it warns if a row `STARTER` names has been deleted, because a first ship that cannot be
+built is a fault nobody meets until a new captain opens the game.
+
+`tools/xlsx.mjs` writes and reads the .xlsx itself, in about three hundred lines over `node:zlib`.
+An .xlsx is a zip of XML and the repository has six packages in it; a workbook opened twice a month
+is not a seventh.
 
 ### What the 38 needed
 

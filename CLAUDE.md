@@ -43,7 +43,9 @@ are built from. `broadside` in the code is the side guns, not the old title, and
 - **The catalogue tables are generated.** `data/hulls.tsv`, `data/masts.tsv`, `data/sails.tsv` and
   `data/guns.tsv` are the source; `npm run import` writes them into the marked blocks in
   `shipyard.js`. Editing those blocks by hand works until the next import throws it away, so edit the
-  table.
+  table. `npm run workbook` writes the four tables out as `data/ships.xlsx` for editing in Numbers or
+  Excel and `npm run workbook:read` reads them back; the workbook is a way of editing the tables and
+  never a second source, so anything that does not come back through it never happened.
 - **A mast type is a shape of rig, not a station.** A mast carrying three square sails is that mast
   wherever it is stepped, so a brig's fore and main are one part bought twice. Only the size rung
   says where it can go. Berths run deck upward, and a fore-and-aft driving sail sharing the lowest

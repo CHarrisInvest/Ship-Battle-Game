@@ -245,7 +245,9 @@ sea is still the same hull. `docs/SHIPYARD.md` is the design note; the short ver
 - **The catalogue is entered as tables.** `data/hulls.tsv` and `data/masts.tsv` are what a person
   edits, one row per class and per mast type; `npm run import` writes them into the generated blocks
   in `shipyard.js`. Tab separated so a spreadsheet exports straight in, and the generated block is
-  committed so a diff still shows what changed.
+  committed so a diff still shows what changed. `npm run workbook` lays all four tables out as one
+  .xlsx for editing in Numbers or Excel, and `npm run workbook:read` puts them back; the tables stay
+  the source and nothing reads the workbook.
 - **`npm run catalogue`** checks the fleet is riggable and drawable, then prints every class side by
   side: stat bands, what each rates bare and fully found, the same hull at rising quality, and the
   stock ladder. A socket no mast fits, a berth no sail fits or a station the renderer cannot draw all
