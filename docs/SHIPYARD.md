@@ -559,8 +559,17 @@ npm run import && npm run catalogue
 
 **The TSVs remain the source.** The workbook is a way of editing them and nothing reads it: `import`
 still reads the tables, the tables are what git diffs, and a change that never comes back through
-`workbook:read` never happened. A fifth sheet carries each table's comment block, because that is
-where the columns are documented and a spreadsheet has nowhere else to put it.
+`workbook:read` never happened. Two sheets ride along in front of the four: a Read me carrying each
+table's comment block, because that is where the columns are documented and a spreadsheet has
+nowhere else to put it, and a Columns sheet that is the legend.
+
+**The legend is parsed, not written.** Every column is already documented at the head of its own
+table as `# name  what it is`, so the Columns sheet reads those definitions rather than keeping a
+second set to disagree with them, and `npm run workbook` reports any column nothing has said
+anything about. Its third column, whether a figure is read by the fight, by the drawing, or by
+nothing yet, comes from asking `hullform.js` which reference fields it actually touches: a list kept
+here would go stale the first time somebody drew a hull from her deadrise. The `(drawn)` marks in
+`hulls.tsv` are checked against that same answer and reported when the two fall out of step.
 
 Reading back is deliberately narrow. It takes the four sheets by name, matches columns by their
 header so they may be reordered, skips blank rows, and keeps a figure spelled the way the table

@@ -129,8 +129,12 @@ function readmeSheet(tables) {
     ["  it comes out of her figures, so a class you make faster and better armed climbs the ladder"],
     ["  by herself and starts meeting harder opponents."],
     [],
-    ["  Blank is not zero everywhere. On the hull sheet, speed, hand, canvas and tons left empty are"],
-    ["  worked out from the rest of the row; anywhere else a blank is a missing figure."],
+    ["  A blank is a missing figure, not a sensible default. Left empty, a hull's speed, hand, canvas"],
+    ["  and tons each fall back to 1, which is right for no class above a boat, and every other"],
+    ["  column but a blurb has to be filled."],
+    [],
+    ["  The Columns sheet is the legend: every column of every sheet, what it means, and whether the"],
+    ["  fight reads it, the drawing reads it, or nothing reads it yet."],
     [],
     ["  Formulas are fine. What comes back into the table is the value a formula worked out, not the"],
     ["  formula, so a column of prices scaled by a factor lands as prices."],
@@ -148,10 +152,91 @@ function readmeSheet(tables) {
   return { name: "Read me", rows, freeze: false, widths: [104] };
 }
 
+/**
+ * THE LEGEND, and it is parsed rather than written.
+ *
+ * Every column is already documented at the head of its own table, in the shape `# name  what it
+ * is`, with anything indented under it belonging to the entry above. Writing the same definitions
+ * out again here would give the catalogue two legends to disagree with each other, so this reads the
+ * one that exists. A column with nothing said about it is reported when the workbook is written,
+ * which is the only way a new column gets documented before it is used.
+ */
+function definitions(notes) {
+  const out = new Map();
+  let open = null;
+  for (const line of notes) {
+    const entry = line.match(/^#\s(\w+(?:,\s*\w+)*)\s{2,}(\S.*)$/);
+    if (entry) {
+      open = entry[1].split(/,\s*/);
+      for (const name of open) out.set(name, (out.get(name) ? out.get(name) + " " : "") + entry[2].trim());
+      continue;
+    }
+    const more = line.match(/^#\s{6,}(\S.*)$/);
+    if (more && open) {
+      for (const name of open) out.set(name, out.get(name) + " " + more[1].trim());
+      continue;
+    }
+    open = null;
+  }
+  return out;
+}
+
+/**
+ * Which of the three things a column is: a figure the game plays with, a figure the hull is drawn
+ * from, or one recorded and not yet read by anything.
+ *
+ * The drawn ones are found by asking `hullform.js` what it actually reads, rather than by keeping a
+ * list here that would go stale the first time somebody drew a hull from her deadrise. Everything
+ * from `era` rightward is reference, which is the split `import.mjs` writes on.
+ */
+function reading(header) {
+  let art = null;
+  try {
+    art = readFileSync(join(root, "src", "hullform.js"), "utf8");
+  } catch {
+    art = "";
+  }
+  const first = header.indexOf("era");
+  return (column, i) => {
+    if (first < 0 || i < first) return "The fight";
+    if (new RegExp(`\\bref\\.${column}\\b`).test(art)) return "Her drawing";
+    return "Recorded only";
+  };
+}
+
+function columnSheet(tables) {
+  const rows = [["Sheet", "Column", "Read by", "What it is"]];
+  const missing = [];
+  const disagree = [];
+  for (const t of tables) {
+    const said = definitions(t.notes);
+    const how = t.sheet === "Hulls" ? reading(t.header) : () => "The fight";
+    t.header.forEach((column, i) => {
+      const text = said.get(column) || "";
+      if (!text) missing.push(`${t.sheet}.${column}`);
+      const read = how(column, i);
+      // The table marks a reference column `(drawn)` by hand and `hullform.js` is asked the same
+      // question above. The mark is dropped here, where the sheet has a column saying it better, but
+      // the two are compared first: a mark that has gone out of step with the art is worth hearing
+      // about, in either direction.
+      const marked = /^\(drawn\)/.test(text);
+      if (marked !== (read === "Her drawing") && text) disagree.push(`${t.sheet}.${column}`);
+      rows.push([t.sheet, column, read, text.replace(/^\(drawn\)\s*/, "")]);
+    });
+  }
+  return {
+    sheet: { name: "Columns", rows, widths: [9, 13, 15, 100] },
+    missing,
+    disagree,
+  };
+}
+
 function write(to) {
   const tables = TABLES.map((t) => ({ ...t, ...readTable(t.file) }));
+  const legend = columnSheet(tables);
   const sheets = [
     readmeSheet(tables),
+    legend.sheet,
     ...tables.map((t) => ({
       name: t.sheet,
       rows: [t.header, ...t.rows],
@@ -161,6 +246,13 @@ function write(to) {
   writeFileSync(to, writeWorkbook(sheets));
   console.log(`Wrote ${to.replace(root + "/", "")}:`);
   for (const t of tables) console.log(`  ${t.sheet.padEnd(6)} ${String(t.rows.length).padStart(3)} ${t.what}`);
+  if (legend.missing.length) {
+    console.log(`  ${legend.missing.length} column${legend.missing.length === 1 ? " has" : "s have"} no line in the legend: ${legend.missing.join(", ")}.`);
+    console.log("  Document it at the head of its table and it lands on the Columns sheet.");
+  }
+  if (legend.disagree.length) {
+    console.log(`  marked (drawn) but not what hullform.js reads, or the other way about: ${legend.disagree.join(", ")}.`);
+  }
   console.log("Open it in Numbers. When you are done: export to .xlsx over the same file, then");
   console.log("`npm run workbook:read && npm run import && npm run catalogue`.");
 }

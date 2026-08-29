@@ -21,7 +21,10 @@
 # tons        what she carries before her guns start telling on her handling. Set so a class with the
 #             heaviest iron in every port sits at her limit, and moved by how fine she is: a beamy
 #             hull carries her guns better than a sharp one.
-# broadside   guns A SIDE, mirrored. bow and swivel are totals.
+# broadside   guns A SIDE, mirrored, because that is how a volley fires: one gun bought is one gun
+#             each side and two aboard.
+# bow         chasers on her bow. A total rather than a side, because she has only the one bow.
+# swivel      swivels on her rails, and a total as well. They fire in the volley with her muskets.
 # masts       where she can step one, "station/size", space separated, bow aft.
 #             stations: bowsprit fore main mizzen bonaventure
 #             sizes:    boat small medium large heavy
@@ -29,10 +32,63 @@
 # bowsprit    yes or no. Whether she carries the spar at all.
 # blurb       one line a captain reads. May be left empty.
 #
+# A BLANK IN speed, hand, canvas OR tons IS NOT A DERIVATION. Each falls back to 1, which describes
+# a quick, handy, easily driven ship that can carry nothing, and is right for no class above a boat.
+# Fill them in. Every other gameplay column has to be filled as well.
+#
 # THE REFERENCE COLUMNS. Everything from `era` rightward is what the class WAS rather than what she
-# does in a fight: nothing reads it, `npm run import` writes it to src/shipref.js, and it is there
-# for whoever comes to model the hulls. Lengths are feet and weights are tons; bowFine, tumblehome,
-# deadrise, sheer and castle are 1 to 5 judgement scores, 1 for least and 5 for most.
+# does in a fight: no fight reads any of it, `npm run import` writes it to src/shipref.js, and
+# `hullform.js` is the one reader. The thirteen marked (drawn) are how she is DRAWN, in the menu
+# model and at sea. The rest are recorded for whoever comes to refine her form and are read by
+# nothing yet, which is not the same as being free to invent: a wrong figure here is a wrong hull
+# the day somebody does read it.
+#
+# Lengths are feet and weights are tons. bowFine, tumblehome, deadrise, sheer and castle are 1 to 5
+# judgement scores, 1 for least and 5 for most.
+#
+# era         the years she was in service, written as a range. Text rather than a number.
+# region      where she was built and sailed.
+# role        what she was for.
+# lod         (drawn) length on deck, feet. With beam, how big she is drawn in both views. Sizes are
+#             compressed around the galleon, so twice the length is not twice the ship on screen.
+# lbp         length between perpendiculars, feet. The measured length, shorter than on deck.
+# beam        (drawn) extreme breadth, feet. Her drawn width, and with her length her collision
+#             ellipse in a fight.
+# draft       how deep she floats, feet.
+# depth       depth of hold, feet: keelson to the deck above it.
+# freeboard   (drawn) height of side above the water amidships, feet. The depth of side in the model.
+# lb          length to beam, as a ratio. High is long and lean, low is short and beamy.
+# bd          beam to depth, as a ratio. High is shallow and beamy, low is deep and narrow.
+# burthen     builder's old measurement tons: what she was rated to carry.
+# disp        displacement, tons: what she actually weighs afloat.
+# bowFine     (drawn) how fine her entry is. 5 is a clipper's bow and 1 a carrack's. It narrows her
+#             bow and pulls her shoulders aft.
+# tumblehome  (drawn) how far her sides roll inward above the waterline. 5 is a fluyt.
+# deadrise    how sharply her bottom rises from the keel. 1 is a flat floor.
+# sheer       (drawn) how much her deck sweeps up towards bow and stern.
+# castle      (drawn) how built up her ends are. 1 is an open boat, 2 raises a quarterdeck, 3 and up
+#             add a forecastle. It is also what a windowed stern needs before it shows any lights.
+# stern       (drawn) the shape of her stern, as one of the named types. Scow, Round, Pear,
+#             Elliptical, Raking transom, Overhanging and Square each have geometry of their own,
+#             and any other name draws a plain transom, which is what Transom and Gallery do. A name
+#             holding "gallery" or "castle" lights her stern windows if her castle is 3 or more.
+# mastHeight  (drawn) how tall her rig stands, as a multiple of the galleon's. Scales her masts in
+#             both views.
+# decks       (drawn) how many of her decks carry guns: 1, 1-2, 2, 2-3 or 3. Text, because a range is
+#             not a number. A 3 or a 2-3 with four ports a side or more draws two tiers of them.
+# wale        the thickness of her main wale, inches: the heavy belt of timber along her side.
+# topside     the thickness of her topside planking, inches.
+# roomSpace   room and space, feet: from one frame to the next.
+# species     (drawn) what she was built of, which is also her colour: Oak, Live oak, Teak, Cedar or
+#             Pine. Any other name is painted as oak.
+# timber      (drawn) how dense that timber is, oak being 1. Denser timber reads a little darker.
+# crewMin     the fewest hands she could be worked with, as against the battle complement in `crew`.
+# cruise      her everyday speed, knots.
+# topSpeed    the best she was ever driven, knots.
+# manoeuvre   how handy she was, 0 to 100. The reference's own score, and what `hand` came out of.
+# histGuns    (drawn) how many guns she really carried, of every sort. She shows one gunport a side
+#             per dozen of them, up to seven. It is not the game's armament: that is the three
+#             bearing columns above, and they are deliberately smaller.
 id	name	price	hull	crew	speed	hand	canvas	tons	broadside	bow	swivel	masts	bowsprit	blurb	era	region	role	lod	lbp	beam	draft	depth	freeboard	lb	bd	burthen	disp	bowFine	tumblehome	deadrise	sheer	castle	stern	mastHeight	decks	wale	topside	roomSpace	species	timber	crewMin	cruise	topSpeed	manoeuvre	histGuns
 launch	Armed launch	0	100	30	0.55	1.28	0.1	0.21	1	1	1	bowsprit/boat main/boat	yes		1650-1865	Global	Boarding and inshore harassment	32	30	8	2.5	3	1.5	4.0	3.2	6	8	3	1	2	2	1	Transom	0.9	1	1.5	1.0	1.2	Pine	0.85	6	2	5	92	1
 shallop	Armed shallop	130	117	25	0.61	1.28	0.18	0.47	1	1	1	bowsprit/boat fore/boat main/boat	yes		1600-1720	North Europe	Coastal and colonial patrol	34	32	10	3.5	4	2	3.4	2.9	15	20	3	1	2	2	1	Transom	0.8	1	2.0	1.25	1.4	Oak	1.0	4	3	6	92	2
