@@ -297,16 +297,23 @@ function sheetToTable(table, grid, problems) {
     problems.push(`${where} has no ${missing.join(", ")} column${missing.length > 1 ? "s" : ""}`);
     return null;
   }
-  const extra = head.filter((h) => h && !table.header.includes(h));
-  if (extra.length) {
-    console.log(`  note: ${where} has a ${extra.join(", ")} column that nothing reads. Left out.`);
-  }
+
+  // A COLUMN THE SHEET HAS AND THE TABLE DOES NOT IS A NEW COLUMN, and it is kept. Dropping it would
+  // mean a figure typed into a spreadsheet quietly going nowhere, which is the one thing a round trip
+  // must never do. The header comes out in the sheet's own order so a column added at the front stays
+  // at the front. A column that has gone the other way is still an error above: losing one is how a
+  // table breaks, and gaining one is how it grows.
+  const header = head.filter(Boolean);
+  const added = header.filter((h) => !table.header.includes(h));
+  if (added.length) console.log(`  note: ${where} has a new ${added.join(", ")} column. Kept, and it wants a line in the legend.`);
 
   const idCol = head.indexOf("id");
+  const activeCol = head.indexOf("active");
   const was = new Map(table.rows.map((r) => [r[table.header.indexOf("id")], r]));
 
   const rows = [];
-  const seen = new Set();
+  const sailing = new Set();
+  const retired = new Set();
   grid.slice(1).forEach((cells, i) => {
     const line = i + 2;
     if (cells.every((c) => !String(c ?? "").trim())) return; // a blank row is a deleted one
@@ -319,15 +326,24 @@ function sheetToTable(table, grid, problems) {
       problems.push(`${where} row ${line}: "${id}" is not a usable id. Letters and digits, starting with a letter, no spaces.`);
       return;
     }
+    // Two rows may share an id as long as only one of them sails. That is the whole use of the
+    // `active` column: a class laid up stays in the table beside the one that replaced her, with her
+    // old figures intact, and flipping the column is how she comes back.
+    const active = activeCol < 0 || /^(y|yes|true|1)$/i.test(flat(cells[activeCol]));
+    const seen = active ? sailing : retired;
     if (seen.has(id)) {
-      problems.push(`${where} row ${line}: two rows share the id "${id}"`);
+      problems.push(
+        active
+          ? `${where} row ${line}: two active rows share the id "${id}"`
+          : `${where} row ${line}: two laid-up rows share the id "${id}"`,
+      );
       return;
     }
     seen.add(id);
 
     const old = was.get(id);
     rows.push(
-      table.header.map((h) => {
+      header.map((h) => {
         const now = flat(cells[head.indexOf(h)]);
         const before = old ? old[table.header.indexOf(h)] : null;
         return same(before, now) ? before : now;
@@ -335,7 +351,7 @@ function sheetToTable(table, grid, problems) {
     );
   });
 
-  return { ...table, rows };
+  return { ...table, header, rows };
 }
 
 async function read(from) {

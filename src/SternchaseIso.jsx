@@ -6,9 +6,9 @@ import {
   buyShip, buyPart, fitMast, fitSail, fitStud, fitGun, unfitGun, setActiveShip, loosePartIds, ownedShips, partOf,
 } from "./hold.js";
 import {
-  STARTER, kindOf, mastRebuildCost, measure, rate, resolve, rigSpec, tierAt,
-  ladder, peers, stockOfTier,
-  HULLS, HULL_LIST, statBand, minimumLoadout, maximumLoadout, outfitCost,
+  STARTER, kindOf, mastRebuildCost, measure, rate, rateOf, resolve, rigSpec,
+  ladder, peers, stockOfRate,
+  HULLS, HULL_LIST, statBand, maximumLoadout, outfitCost,
   mastsForSocket, sailsForBerth, studsForBerth, gunsForMount,
 } from "./shipyard.js";
 import { roll, tally } from "./achievements.js";
@@ -1254,7 +1254,7 @@ export default function App() {
       // Every hull she has put under raises the bar for the next one out of the horizon.
       return makeShip(p.x, p.y, heading, {
         ci: g.ships.length,
-        loadout: rivalLoadout(g.rules, g.playerStrength, g.sunk),
+        loadout: rivalLoadout(g.rules, g.playerStrength, g.sunk, g.playerLoadout.hull),
       });
     }
 
@@ -1267,15 +1267,15 @@ export default function App() {
      *   arena        climbs. The first hunter is a shade under her, and every sinking raises the
      *                bar, so the mode escalates by putting harder ships on the water rather than
      *                more of the same one.
-     *   free-for-all fields her own tier: equal without being identical, which is what having three
-     *                fits of every class is for.
-     *   derby        matches on `ram` rather than on tier, because tier is banded on `overall` and
-     *                `overall` counts guns that nobody in that mode has aboard.
+     *   free-for-all fields her own rate: ships of her own class of ship, at every standard of
+     *                fitting out, which is equal without being identical.
+     *   derby        matches on `ram` rather than on rate, because a rate is a count of guns and
+     *                nobody in that mode has one aboard.
      *
      * Falls back to the nearest rung by the same measure when a band comes up empty, so a captain in
      * something the fleet has no answer to still gets a fight.
      */
-    function rivalLoadout(rules, strength, step) {
+    function rivalLoadout(rules, strength, step, hull) {
       const key = rules.guns ? "overall" : "ram";
       const rungs = ladder();
       if (rules.reinforcements) {
@@ -1284,7 +1284,7 @@ export default function App() {
         return nearestRung(rungs, key, want).loadout;
       }
       if (rules.guns) {
-        const band = stockOfTier(tierAt(strength.overall).tier);
+        const band = stockOfRate(rateOf(hull).rung);
         if (band.length) return band[Math.floor(Math.random() * band.length)].loadout;
       } else {
         const band = peers(strength.ram, 0.15, "ram");
@@ -1318,7 +1318,7 @@ export default function App() {
         if (rules.reinforcements) g.ships.push(spawnArenaEnemy());
         else {
           const pos = farPos(g, 440);
-          g.ships.push(makeShip(pos.x, pos.y, Math.random() * Math.PI * 2, { ci: i, loadout: rivalLoadout(rules, g.playerStrength, 0) }));
+          g.ships.push(makeShip(pos.x, pos.y, Math.random() * Math.PI * 2, { ci: i, loadout: rivalLoadout(rules, g.playerStrength, 0, g.playerLoadout.hull) }));
         }
       }
       g.fieldSize = g.ships.length;
@@ -3769,7 +3769,7 @@ function YardScreen({ hold, onBack, onCommission, onOutfit }) {
   const stats = useMemo(() => rate(loadout), [loadout]);
   const strength = useMemo(() => measure(stats), [stats]);
   const want = useMemo(() => shortfall(hold), [hold]);
-  const tier = tierAt(strength.overall);
+  const rated = rateOf(loadout.hull);
 
   // Named for the parts rather than for the HUD buttons: this is the shipyard, where a captain is
   // looking at guns she owns, not at the three keys she fires them with.
@@ -3784,7 +3784,7 @@ function YardScreen({ hold, onBack, onCommission, onOutfit }) {
       <BackLink label="Back to the sea" onClick={onBack} />
       <div style={{ fontFamily: DISPLAY, fontSize: 30, color: C.gold, letterSpacing: 1 }}>THE YARD</div>
       <div style={{ fontSize: 12, color: "rgba(238,244,242,0.7)", margin: "6px 0 2px" }}>
-        {loadout.hull.name}, rated {Math.round(strength.overall)}, which puts her at tier {tier.tier}.
+        {loadout.hull.name}, {rated.name}, and she measures {Math.round(strength.overall)} as she stands.
       </div>
       <MenuGalleon rig={rig} />
 
@@ -3981,8 +3981,7 @@ const SHELF = HULL_LIST.map((hull) => {
   return {
     hull,
     band: statBand(hull.id),
-    bareTier: tierAt(measure(rate(minimumLoadout(hull.id))).overall).tier,
-    foundTier: tierAt(measure(foundRating).overall).tier,
+    rated: rateOf(hull),
     found: foundRating,
     masts: hull.sockets.filter((s) => !s.spar).length,
     berths,
@@ -4167,7 +4166,7 @@ function HullRow({ shelf, first, owned, coins, open, onToggle, onBuy }) {
           <TallyRow label="Swivel guns" value={range("swivel")} rule="hair" />
           <TallyRow label="Muskets in a volley" value={range("muskets")} rule="hair" />
           <TallyRow label="Broadside balls, a side" value={shelf.found.broadside.columns} rule="hair" />
-          <TallyRow label="Tier" value={shelf.bareTier === shelf.foundTier ? shelf.bareTier : `${shelf.bareTier} to ${shelf.foundTier}`} rule="group" />
+          <TallyRow label="Rated" value={shelf.rated.name} rule="group" />
           <TallyRow label="Rigging and guns to fill her out" value={<Coins n={shelf.outfit} />} rule="hair" />
           <div style={{ marginTop: 10 }}>
             <WideButton

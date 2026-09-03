@@ -11,7 +11,7 @@
  *
  * Then it PRINTS the fleet, because the numbers in `shipyard.js` are the ones that want calibrating
  * and they are only meaningful next to each other. What a class is at her barest and fully found,
- * what she costs to fill out, and where she lands on the tier ladder against everyone else.
+ * what she costs to fill out, what she is rated, and where she lands against everyone else.
  *
  * It imports the real modules. There is no second copy of the maths here to disagree with the game.
  */
@@ -20,7 +20,7 @@ import {
   HULLS, HULL_LIST, STATIONS, SAIL_KINDS, KIND_LIST, MAST_LIST, SAIL_LIST, GUN_LIST,
   mastsForSocket, sailsForBerth, berthsOf, gunsForMount,
   rate, measure, statBand, fitOut, minimumLoadout, maximumLoadout, loadoutValue, outfitCost,
-  TIERS, tierAt, ladder, stockOfTier, resolve, STARTER, STOCK, riggingValue, mastRebuildCost,
+  RATES, rateOf, gunsBorne, ladder, stockOfRate, resolve, STARTER, STOCK, riggingValue, mastRebuildCost,
   squareLevel,
 } from "../src/shipyard.js";
 import { RIG_STATIONS, RIG_KINDS, RIG_BERTHS, rigBands } from "../src/galleon.js";
@@ -187,7 +187,7 @@ if (undrawn.length) {
 }
 
 console.log(`\nTHE FLEET  (${HULL_LIST.length} classes)`);
-console.log("  " + pad("class", 19) + num("price", 7) + " " + pad("masts", 46) + pad("guns a side/bow/sw", 20) + num("bare", 5) + " -> " + num("found", 6) + num("tier", 6) + num("outfit", 8));
+console.log("  " + pad("class", 19) + num("price", 7) + " " + pad("masts", 46) + pad("guns a side/bow/sw", 20) + num("bare", 5) + " -> " + num("found", 6) + "  " + pad("rated", 15) + num("outfit", 8));
 for (const h of HULL_LIST) {
   const bare = measure(rate(minimumLoadout(h.id)));
   const found = measure(rate(maximumLoadout(h.id)));
@@ -198,7 +198,7 @@ for (const h of HULL_LIST) {
     " " + pad(rig, 46),
     pad(`${h.guns.broadside}/${h.guns.bow}/${h.guns.swivel}`, 20),
     num(n1(bare.overall), 5), " -> ", num(n1(found.overall), 6),
-    num(`${tierAt(bare.overall).tier}-${tierAt(found.overall).tier}`, 6),
+    "  " + pad(`${rateOf(h).name}, ${gunsBorne(h)}`, 15),
     num(outfitCost(h.id), 8),
   );
 }
@@ -226,11 +226,11 @@ for (const h of HULL_LIST) {
 }
 
 console.log("\nTHE STOCK LADDER  (what the modes issue, in ascending strength)");
-console.log("  " + pad("ship", 26) + num("tier", 6) + num("overall", 8) + num("ram", 7) + num("throw", 7) + num("endurance", 10) + num("mobility", 9) + num("value", 8) + num("rigging", 9) + num("rebuild", 8));
+console.log("  " + pad("ship", 32) + pad("rated", 15) + num("overall", 8) + num("ram", 7) + num("throw", 7) + num("endurance", 10) + num("mobility", 9) + num("value", 8) + num("rigging", 9) + num("rebuild", 8));
 for (const s of ladder()) {
   console.log(
-    "  " + pad(s.name, 26),
-    num(s.tier, 6),
+    "  " + pad(s.name, 32),
+    pad(s.rate.name, 15),
     num(n1(s.measure.overall), 8),
     num(n1(s.measure.ram), 7),
     num(n1(s.measure.throwWeight), 7),
@@ -242,18 +242,21 @@ for (const s of ladder()) {
   );
 }
 
-console.log("\nTIER OCCUPANCY");
-for (const t of TIERS) {
-  const inTier = stockOfTier(t.tier);
-  const names = inTier.map((s) => s.name);
-  const shown = names.slice(0, 3).join("; ") + (names.length > 3 ? ` and ${names.length - 3} more` : "");
-  console.log(`  tier ${t.tier}  from ${num(t.from, 4)}  ${num(names.length, 4)} ships   ${shown || "(nothing stocked at this rung)"}`);
-  if (!inTier.length) fault("tiers", `rung ${t.tier} has no stock ship, so no mode can field one`);
+console.log("\nTHE RATES  (a rung is a count of guns borne, both sides, and every class sits on one)");
+for (const r of RATES) {
+  const classes = HULL_LIST.filter((h) => rateOf(h).rung === r.rung);
+  const top = RATES[r.rung] ? `to ${RATES[r.rung].from - 1}` : "and up";
+  const names = classes.map((h) => `${h.name} (${gunsBorne(h)})`).join("; ");
+  console.log(`  ${pad(r.name, 15)} ${num(r.from, 4)} ${pad(top, 8)} ${num(classes.length, 3)} class${classes.length === 1 ? "" : "es"}  ${names || "(no class is rated here)"}`);
+  // A rung with no class on it is a hole in the ladder rather than a fault: the fleet is edited a
+  // row at a time and a rung fills the moment a hull is pierced for the guns. What IS a fault is a
+  // rung a mode would field from and cannot, and that is the stock check below.
+  if (classes.length && !stockOfRate(r.rung).length) fault("rates", `no stock ship is rated ${r.name}, so no mode can field one`);
 }
 
 const first = resolve(STARTER);
 const start = measure(rate(first));
-console.log(`\nTHE FIRST SHIP  overall ${n1(start.overall)}, ram ${n1(start.ram)}, tier ${tierAt(start.overall).tier}`);
+console.log(`\nTHE FIRST SHIP  ${rateOf(first.hull).name}, overall ${n1(start.overall)}, ram ${n1(start.ram)}`);
 console.log(`  her rigging is worth ${riggingValue(first)}, so a new mast at sea costs her ${mastRebuildCost(first)}.`);
 console.log("  Every hull in a fight brings her own rig, so that is what a rebuild costs HER and nobody else.");
 

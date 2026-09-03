@@ -133,10 +133,21 @@ does not move when her battery crosses ten; the same iron arrives in fewer, heav
 returns `columns` for how many balls and `perBall` for what each carries.
 
 **She cannot work iron she cannot carry.** `fitOut` takes the dearest piece a mount allows and then
-steps the battery down a grade at a time until it fits under her tonnage, so a ship's launch comes out
-with minions, a xebec with carriage guns, and anything from a corvette up with demi-cannon. None of
-that is declared per class: it falls out of `tons`, which is why fine-lined hulls carry lighter iron
-than beamy ones of the same displacement.
+steps the battery down a grade at a time until it fits under her tonnage, so a gundalow comes out with
+three pounders, a light xebec with sixes, a corvette with long nines, a frigate with twenty-fours and
+a first rate with thirty-twos. None of that is declared per class: it falls out of `tons`, which is
+why fine-lined hulls carry lighter iron than beamy ones of the same displacement.
+
+**`tons` is tons of iron**, in the same weights the guns are priced in, and the limit is the column
+itself: a full battery of the gun she was built around, both sides, plus her chasers and her rail. It
+was a dimensionless figure read against eight times itself once, which is a thing to know when reading
+an old table: a column rewritten in real tons made the limit stop binding, and every hull in the fleet
+could bear the heaviest gun in the shop until the multiplier came out.
+
+**And no one piece heavier than her broadside.** The tonnage loop lightens whichever mount carries the
+most, which is always the battery, so a boat could come out legal on total weight with four pounders
+in the ports and a frigate's eighteen on the bow. A chaser is a gun on the same deck as the rest: if
+her scantlings will not stand an eighteen abeam they will not stand one over the stem.
 
 **Size** is deliberately absent from the catalogue, and it arrived where it belonged: with the art.
 `hullform.js` models each class from her reference proportions, and her size in both views, and her
@@ -200,10 +211,10 @@ moves on the day the shipyard opens, and each hull can then be pulled around one
 Bare means one mast, one sail, one bow gun. Fully found means the dearest mast in every socket, the
 dearest sail in every berth, every gun port filled.
 
-**`npm run catalogue` prints this table and there is no copy of it here**, because 38 classes is too
-many to keep in step by hand and a stale figure in a design note is worse than none. The shape of it:
-an armed launch has 100 hull points, 30 hands, one gun a side and rates about 0.6 on speed; a first
-rate has 3,290, 950, twenty a side and rates 0.79 before canvas. Hull runs a factor of 33, and the
+**`npm run catalogue` prints this table and there is no copy of it here**, because a fleet this size is
+too much to keep in step by hand and a stale figure in a design note is worse than none. The shape of
+it: a gundalow has 100 hull points, 30 hands, one gun a side and rates 0.55 on speed; a first
+rate has 2,699, 800, fifty a side and rates 0.79 before canvas. Hull runs a factor of 27, and the
 economy runs with it: coins are earned a point of damage and repairs are charged a point of damage,
 so a bigger fleet pays proportionally more and costs proportionally more to patch, with no scaling
 term anywhere.
@@ -316,10 +327,10 @@ round, not her savings.
   still no size figure in the catalogue, which is why none can go stale.
 - No sail designs or cloth patterns. Those hang off ids without touching any of the numbers here.
 - No selling parts back. Easy to add; wanted a decision on whether it refunds in full first.
-- **No hull blurbs, and that is a decision rather than a gap.** The 38 rows carry none, `blurb` is an
-  optional column, and the shops sell a class on her figures instead. 38 invented lines nobody asked
-  for would be worse than none, and the reference module already holds her era, her region and what
-  she was for if a card ever wants prose.
+- ~~**No hull blurbs.**~~ The sixteen classes at sea each carry one now, written with the fleet rather
+  than invented for the rows that had none. `blurb` remains an optional column and the shops still
+  sell a class on her figures; the line is there for a card that wants prose. None of them has been
+  read at 1x yet.
 - **No mortars, and so no vertical fire.** A bomb vessel's real weapon is two mortars that lob over a
   shore, which is a second kind of weapon rather than a row in `data/guns.tsv`: it wants an arc, a
   fall of shot and a mount that is not one of the three she bears. She sails with her 3 guns a side
@@ -366,14 +377,19 @@ Three grades on the rail now: the swivel gun, the bronze swivel and the long swi
 rather than by its old flat `MUSKET_DPS`; the pace is set so a plain ball still measures the 2.4 a
 musket the blend was placed with, and only better iron on the rail moves a ship's strength.
 
-## Tiers, the stock fleet, and what each mode does with them
+## Rates, the stock fleet, and what each mode does with them
 
-Settled. Every mode issues **stock ships**, and matches them to the player by **measured strength**
-rather than by class.
+Every mode issues **stock ships**. Who a captain meets is her **rate**; the order they arrive in is
+**measured strength**. Those are two different questions and the code answers them separately.
 
-**A tier comes off the stat line, not the class.** Using the hull's shelf position would have been
-the obvious move and it is wrong: a fully found cutter genuinely outclasses a bare brig, so a mode
-matching on class would call that an even fight. `measure()` takes what `rate()` already says about a
+**A rate is her ports, counted as the navy counted them:** her broadside, both sides, so a hull
+pierced for fifty a side is a hundred-gun ship and a first rate. Chasers and swivels are no part of
+it, which is why every band edge is a whole number of guns a side. `RATES` holds the eight rungs,
+`gunsBorne(hull)` counts them and `rateOf(hull)` places her. It is read off `guns.broadside` and
+never written down anywhere, so a class cannot be handed a rating her ports do not support.
+
+**Strength is still measured off the stat line**, and it is not the rate: a first rate with half her
+ports empty is a first rate, badly found. `measure()` takes what `rate()` already says about a
 finished ship and returns three components kept deliberately separate, because different modes fight
 on different ones:
 
@@ -386,18 +402,36 @@ on different ones:
 | `ram` | endurance and mobility only, for a mode without |
 
 The blend is geometric, so being hopeless at one thing is not paid for by being splendid at another.
-`TIERS` bands `overall` into five rungs and `tierOf(loadout)` places a finished ship on one.
+It orders the stock ladder, matches the derby, and is the figure the yard prints beside her rating.
+
+The eight rungs, and every one of them occupied by the fleet as it stands:
+
+| Rung | Guns borne | Classes |
+|---|---|---|
+| Unrated light | up to 10 | Gundalow, Bermuda Sloop light, Sloop light, Cutter light |
+| Unrated heavy | 11 to 19 | Baltimore Clipper, Brigantine, Xebec light |
+| 6th rate | 20 to 31 | Corvette, 6th rate |
+| 5th rate | 32 to 49 | Xebec heavy, 5th rate |
+| 4th rate | 50 to 63 | Heavy frigate, 4th rate |
+| 3rd rate | 64 to 89 | 3rd rate |
+| 2nd rate | 90 to 99 | 2nd rate |
+| 1st rate | 100 and up | 1st rate |
+
+The rungs were numbered and nameless before, and the reason was good while a rung was a band of
+blended strength: eight names had to be read against one another to mean anything, where `tier 6`
+sorted itself. A rate is the navy's own word for the same ship and arrives already meaning something,
+and the two unrated rungs below the rated six are where most of a career is spent.
 
 **`STOCK` is the fleet the game issues**, and it is generated rather than written out. Every class
 appears at three standards, plain, well found and fully found, built by `fitOut(hull, quality)`; a row
 may still carry a hand-written `rig` and `guns` where a class wants a fit of her own, and `resolve()`
-handles that one exactly as it handles the player's ship. 38 classes at three fits is 114 opponents,
+handles that one exactly as it handles the player's ship. 16 classes at three fits is 48 opponents,
 which is not a table anybody keeps in step by hand: two hand-written fits per class would drift out of
 step with the parts table every time a price moved, and every entry is a chance to name a sail that no
 longer fits the berth it was written for. The bench checks the hand-written ones for exactly that.
 
-Nothing declares a tier. Every rung is measured, so changing a fit moves the ship up or down the
-ladder on its own and cannot disagree with its own stat line, and `npm run catalogue` prints the whole
+Nothing declares a rate or a rung. A rate comes off her ports and her place in the ladder off her
+stat line, so neither can be written down to disagree with the ship it describes, and `npm run catalogue` prints the whole
 ladder in ascending strength.
 
 The overlaps are the point and they come out of the numbers rather than being placed. A fully found
@@ -405,26 +439,26 @@ cutter outranks a plain brig-sloop. And the two measures genuinely disagree: und
 towers over a xebec, while as ramming stock they are far closer, and a ship's guns are dead weight in
 a match where nobody fires.
 
-**The tier bands have not been moved yet.** They were placed against eleven stock ships when the
-catalogue held five classes, and `overall` now runs from about 43 to 856 rather than 50 to 240, so the
-top band holds most of the fleet. Rebanding waits on the musket curve and the broadside columns, which
-move `measure()`'s inputs: doing it before those would be work thrown away.
+**The bands are gun counts now, so they do not need rebanding as `measure()` moves.** That was the
+standing worry while the rungs were strength bands: `overall` runs from about 49 to 1090 across the
+current fleet, and any change to the musket curve or the broadside columns moved every edge. A rung
+is a count of ports, and ports do not move when a formula does.
 
 ### What each mode is to do with it
 
 - **Arena** climbs the ladder. Open on the weakest rung and work up through the stock fleet, so the
   mode escalates by putting harder ships on the water rather than more of the same one. `ladder()` is
   that list, in ascending strength.
-- **Demolition derby** fields ships of similar stats, matched on `ram` rather than on tier, because
-  tier is banded on `overall` and `overall` counts guns nobody has. `peers(strength, tol, "ram")`.
-- **Free-for-all** fields stock ships of one tier: `stockOfTier(n)`. Equal without being identical,
-  which is what having more than one ship per rung is for.
+- **Demolition derby** fields ships of similar stats, matched on `ram` rather than on rate, because a
+  rate is a count of guns and nobody in that mode has one aboard. `peers(strength, tol, "ram")`.
+- **Free-for-all** fields stock ships of her own rate: `stockOfRate(rung)`. Ships of her own sort of
+  ship at every standard of fitting out, which is equal without being identical.
 - **A ranked free-for-all**, later: win a rung to move up against the next. The ladder and the bands
   are the same ones, so this needs no new model, only a record of the highest rung a captain has won.
 
-All of it is wired. A starting captain in an armed launch meets yawls, shallops and hoys; the same
-captain in a fully found third rate meets first rates, razees and heavy frigates, and neither of those
-is written down anywhere. **She sails her own ship in every mode**, which settles the open question
+All of it is wired. A starting captain in a gundalow meets sloops and cutters at every standard of
+fitting out; the same captain in a third rate meets third rates, plain, well found and fully found.
+Neither field is written down anywhere: one comes off her ports and the other off her stat line. **She sails her own ship in every mode**, which settles the open question
 below: the field is matched to her rather than her being issued a stock hull, because that is what the
 measures were built to make possible and because being beaten in a ship you chose is the point.
 
@@ -587,16 +621,16 @@ built is a fault nobody meets until a new captain opens the game.
 An .xlsx is a zip of XML and the repository has six packages in it; a workbook opened twice a month
 is not a seventh.
 
-### What the 38 needed
+### What the fleet needed
 
-They are in. `data/hulls.tsv` now carries one row per class, and the gameplay columns are derived from
-the reference figures beside them: hull points from the timber formula, crew from her battle
+They are in. `data/hulls.tsv` carries one row per class, sailing or laid up, and the gameplay columns
+are derived from the reference figures beside them: hull points from the timber formula, crew from her battle
 complement floored at 25, `speed` from her working speed under sail, `hand` from the handling
 components less the rig and the crew (her sails carry the rig half themselves), `canvas` as
 displacement to the two thirds, and `tons` the same way, moved by how fine she is. Prices came off
-measured strength afterwards. Blurbs are empty for now.
+measured strength afterwards.
 
-The original note, for whoever adds the thirty-ninth: each class needs a name, a price,
+The original note, for whoever adds the next class: she needs a name, a price,
 hull and crew points,
 `speed` and `hand` (her own contribution before canvas, both near 1), `canvas` (how much sail she
 wants, which is what makes a big hull a commitment), `tons` (what she carries before the guns tell on
@@ -716,8 +750,9 @@ with it is as cheap as changing it.
     in, and square canvas on a bowsprit is slung under it on a yard athwart, the way a carrack carried
     hers. The hull's `bowsprit` flag still says whether she has the spar at all, which is what decides
     whether she has the socket to fit anything to.
-12. ~~**Tier names.**~~ **Settled: a tier is a number and has no name.** The five names were doing a job
-    the number does better. `Ship of the line` said less about who a captain would meet than `6` does,
-    and it had to be read against seven other names to mean anything at all, where eight rungs of
-    `tier 6` sort themselves in the reader's head. The yard screen reads "rated 668, which puts her at
-    tier 8", checked at 1x.
+12. ~~**Tier names.**~~ **Reopened and settled the other way: the rungs are rates, and rates have
+    names.** A nameless number was right while a rung was a band of blended strength invented for this
+    game. It is wrong now that a rung is a count of guns borne, because that is the navy's own rating
+    and it already has the names: a captain arrives knowing roughly what a third rate is, which is
+    more than `tier 6` ever told her. The yard screen reads "Cutter light, Unrated light, and she
+    measures 115 as she stands"; the shop card reads "Rated: 6th rate". Both want checking at 1x.
