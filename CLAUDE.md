@@ -104,14 +104,27 @@ are built from. `broadside` in the code is the side guns, not the old title, and
   port, which is what leaves a two-decker's waist bare. Do not read `decks` for this. It says how
   many decks carried guns and nothing about where, which is how a frigate came to draw two full
   tiers she never had and a first rate's quarterdeck ended up cut into her side.
-- **A port is cut to the side it is pierced in.** The authored port is 4.4 deep, which is more than
-  the whole freeboard of half this fleet, so `hullform.js` spreads the tiers over the usable side
-  and sizes the port to what is left between and along them, never larger than the galleon's own.
-  Fixed port sizes are what made a first rate's top tier one continuous smear and hung a cutter's
-  ports off her rail into her wales. Guns run out one port in three on a big battery: fifty barrels
-  a side is a centipede, and the port itself is what says gun deck. Above a dozen ports the barrel
-  is drawn in fewer faces, because the menu plate is sorted per frame and a first rate's model is
-  already the slowest thing in the game.
+- **A boat has no side to pierce.** A lidded port is cut through the topside under the deck above it,
+  and a castle score of 1 is a hull with neither, so a gundalow through a Baltimore clipper carry
+  their whole battery standing at the rail, which is the same fitting the upper works use and where
+  a cutter's five guns really were. Drawn as ports they were a 4.4-deep opening in three feet of
+  freeboard, hanging off her rail at the top and into her wales at the bottom.
+- **A port is the size a port was, and her side is the cap rather than the figure.** `roomSpace` is
+  in the reference for this: a gunport was framed on her room and space, so it runs a little over
+  one frame space wide, worked in feet and brought into units by her own compression. Tiers hang
+  from the rail downward with the calibre falling off as they rise, because her lower deck carried
+  her heaviest guns, and the whole battery shrinks by one factor only if her side cannot carry it.
+  Nothing exceeds the galleon's authored port. Fixed port sizes are what made a first rate's top
+  tier one continuous smear.
+- **An open port means a gun is aboard, and an empty port is shut.** `rigSpec` carries her fitted
+  broadside and she arms from the lowest deck up, the way a ship was armed, so a first rate with
+  three guns shows three open ports on her lower deck and lids down everywhere else. Her ports are
+  hers whatever she carries in them; the guns are what make her found. Guns run out one port in
+  three on a big battery, one of each three chosen by a hash: fifty barrels a side is a centipede,
+  a plain count laid a stripe down her side, and a free hash left eight ports bare together, which
+  reads as unarmed rather than as housed. Above a dozen ports the barrel is drawn in fewer faces,
+  because the menu plate is sorted per frame and a first rate's model is already the slowest thing
+  in the game.
 - **`npm run catalogue` before and after touching the catalogue.** A hull that cannot be rigged or
   carries a station the renderer cannot draw fails silently at runtime; the bench fails loudly. It
   prints the whole fleet side by side, which is the only way the numbers mean anything. It counts

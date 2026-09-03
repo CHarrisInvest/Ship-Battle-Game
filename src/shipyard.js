@@ -2013,6 +2013,12 @@ export function resolve(record, lookup) {
  * The hull the rig stands on is the class's own: the renderer reads the spec's `hull` id against
  * `hullform.js` and builds her model at her size. The rig on top is real the same way: a cutter with
  * one small sail draws one small sail.
+ *
+ * `guns` is the one thing here that is not rigging, and it is here for the same reason the rest is:
+ * a ship shows what she has got. It is her fitted broadside a side, and the renderer shuts the lid
+ * on every port she has not filled, so a first rate with three guns aboard is visibly a first rate
+ * with three guns aboard. Her ports are hers whatever she carries in them, which is what makes her
+ * a first rate; the guns are what make her a found one.
  */
 export function rigSpec(loadout) {
   const masts = [];
@@ -2030,5 +2036,10 @@ export function rigSpec(loadout) {
       ).filter(Boolean),
     });
   }
-  return { hull: loadout.hull.id, bowsprit: loadout.hull.bowsprit, masts };
+  return {
+    hull: loadout.hull.id,
+    bowsprit: loadout.hull.bowsprit,
+    masts,
+    guns: (loadout.guns.broadside || []).length,
+  };
 }

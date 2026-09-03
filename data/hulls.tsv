@@ -48,7 +48,7 @@
 #
 # THE REFERENCE COLUMNS. Everything from `era` rightward is what the class WAS rather than what she
 # does in a fight: no fight reads any of it, `npm run import` writes it to src/shipref.js, and
-# `hullform.js` is the one reader. The thirteen marked (drawn) are how she is DRAWN, in the menu
+# `hullform.js` is the one reader. The fourteen marked (drawn) are how she is DRAWN, in the menu
 # model and at sea. The rest are recorded for whoever comes to refine her form and are read by
 # nothing yet, which is not the same as being free to invent: a wrong figure here is a wrong hull
 # the day somebody does read it.
@@ -89,7 +89,8 @@
 #             stood, and that is what her ports are drawn from.
 # wale        the thickness of her main wale, inches: the heavy belt of timber along her side.
 # topside     the thickness of her topside planking, inches.
-# roomSpace   room and space, feet: from one frame to the next.
+# roomSpace   (drawn) room and space, feet: from one frame to the next. A gunport was framed on it,
+#             running a little over one space wide, so this is the size of every port she shows.
 # species     (drawn) what she was built of, which is also her colour: Oak, Live oak, Teak, Cedar or
 #             Pine. Any other name is painted as oak.
 # timber      (drawn) how dense that timber is, oak being 1. Denser timber reads a little darker.
@@ -115,6 +116,9 @@
 #             her waist bare between them. One figure is a battery that ran the whole length of her
 #             upper works, which is what a spar-decked heavy frigate had. Write "2/0" rather than
 #             "2" for a ship who carried hers aft only.
+#             A BOAT IS NOT PIERCED AT ALL. A lidded port is cut through her topside under the deck
+#             above it, and a hull with a castle score of 1 has neither, so her whole battery is
+#             drawn standing at her rail however this column is written.
 active	id	name	price	hull	crew	speed	hand	canvas	tons	broadside	bow	swivel	masts	bowsprit	blurb	era	region	role	lod	lbp	beam	draft	depth	freeboard	lb	bd	burthen	disp	bowFine	tumblehome	deadrise	sheer	castle	stern	mastHeight	decks	wale	topside	roomSpace	species	timber	crewMin	cruise	topSpeed	manoeuvre	histGuns	battery
 yes	gundalow	Gundalow	0	100	30	0.55	0.65	0.18	2	1	1	1	main/small	no	A raft with a mast and one gun. She floats, she fires, and she is yours.	1770-1815	American lakes	Floating gun battery	40	37	13	3.5	4	2	3.08	3.25	15	20	2	1	1	1	1	Scow	0.7	1	2	1	2	Pine	1	12	2	4	40	2	2
 yes	bermudaSloop	Bermuda Sloop light	900	137	30	0.97	1.22	0.28	6.6	3	1	1	bowsprit/small main/medium	yes	One raking mast and a deep heel aft. Nothing this small goes faster.	1700-1820	Caribbean	Fast dispatch and privateer	46	42	16	9.5	8	3	2.88	2.0	30	39	4	2	4	3	1	Transom	1.5	1	2.5	1.5	1.7	Cedar	1.0	10	8	12	87	6	6

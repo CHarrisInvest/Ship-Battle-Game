@@ -112,7 +112,7 @@ const GALLEON_MENU = {
   bowsprit: { heel: [50, 0, 22.6], tip: [88, 0, 33.5], r0: 1.3, r1: 0.66 },
   // Four ports a side at the authored size, and nothing on her upper works: she is the anchor, and
   // what she draws is what this game has always drawn rather than anything derived from a row.
-  ports: { hw: 2.6, hh: 2.2, gun: 1, rows: [{ f: 0.47, xs: [-21, -8, 6, 19] }], works: [] },
+  ports: { rows: [{ f: 0.47, xs: [-21, -8, 6, 19], hw: 2.6, hh: 2.2, gun: 1 }], works: [] },
   lights: true,
   beak: true,
   geom: GALLEON_GEOM,
@@ -188,15 +188,39 @@ const STERNS = {
 };
 
 /**
- * THE PORT ITSELF, and the room one needs. `hw` and `hh` are the galleon's authored opening, which is
- * the largest any class shows; `sill` is how far a port's lower edge stands clear of the water and
- * `head` how far its upper edge stays under the sheer; `pad` is how much of her own depth a port
- * keeps between herself and the tier above; `fill` is how much of the space between two ports along
- * a deck the port itself may take. The last two are what a port is sized against, and they are near
- * enough what a real one measured: about two fifths of the way from one port to the next, and a
- * clear port's depth of timber between one deck's ports and the next deck's.
+ * THE PORT ITSELF: THE SIZE A GUNPORT WAS, and the room a tier of them needs.
+ *
+ * A port was framed on her room and space, which is why `roomSpace` is in the reference: the opening
+ * ran a little over one frame space wide and stood a little less than that tall, so a first rate's
+ * two-foot frames gave her a port about three and a half feet across and a cutter's twenty inches
+ * gave her one under three. `space` and `tall` are those two proportions, worked in feet and then
+ * brought into model units by the class's own compression, so the ports on any two ships are to each
+ * other as the real ones were rather than as the drawing happens to be scaled.
+ *
+ * `hw` and `hh` are the galleon's authored opening, which nothing may exceed. She was drawn with a
+ * port nearly twice the size a port really is, and it looks right on her, so it stands as the
+ * ceiling rather than as the figure to derive against.
+ *
+ * The rest is the room a tier needs on a hull whose side is shallower than a real one: `sill` is how
+ * far a port's lower edge stands clear of the water, `head` how far its upper edge stays under the
+ * sheer, `pad` how far apart two tiers stand as a multiple of the two half-depths between them, and
+ * `fill` the most of the space from one port to the next that a port may take. `pad` is the one
+ * figure here that is frankly the drawing's rather than the ship's: a real deck stood about two and
+ * a half port-depths above the one below, and `freeboard` in the table is nothing like deep enough
+ * to carry three of those, so this is as much timber as can be kept between tiers on the hull the
+ * game actually draws.
+ *
+ * `taper` is the calibre falling off as you go up. Her lower deck carried her heaviest guns and her
+ * upper deck the lightest, and a heavier gun wants a bigger port, so each tier above the lowest is
+ * drawn this much of the one below it. That grading is most of what makes a three-decker read as
+ * three decks rather than as one pattern repeated.
  */
-const PORT = { hw: 2.6, hh: 2.2, sill: 0.9, head: 0.4, pad: 1.15, fill: 0.42 };
+const PORT = {
+  hw: 2.6, hh: 2.2,
+  space: 1.7, tall: 0.85,
+  sill: 0.9, head: 0.4, pad: 1.5, fill: 0.55,
+  taper: 0.87,
+};
 
 /**
  * HER ESTABLISHMENT, deck by deck, as guns A SIDE.
@@ -231,11 +255,17 @@ export function parseBattery(ref) {
  * spacing of 2.8 against a port 5.2 wide: not a row of ports but one continuous smear. The waist is
  * in fact the one stretch of a two-decker's side with no ports in it at all.
  *
- * THE PORT IS SIZED TO THE SIDE IT IS CUT IN, which is the other half of the same fault. The
- * authored port is 4.4 deep, which is more than the whole freeboard of half this fleet and more than
- * three tiers of them can stand in on any of it, so the tiers are spread over the usable side and
- * the port sized to the space left between them and along them. Nothing is ever larger than the
- * galleon's own, and a hull with the room keeps hers exactly.
+ * A BOAT HAS NO SIDE TO PIERCE. A lidded port is cut through her topside under the deck above it,
+ * and a hull with a castle score of 1 has neither: her deck is her only deck and her guns stood on
+ * it, behind a rail low enough to fire over. So a gundalow through a Baltimore clipper carry their
+ * whole battery as open positions along the rail, the same fitting the upper works use, rather than
+ * as a row of lidded squares cut into three feet of freeboard. Drawing them as ports put a 4.4-deep
+ * opening in a side 3.2 deep, which hung off her rail at the top and into her wales at the bottom.
+ *
+ * THE PORT IS SIZED AS A PORT WAS, and the side she has is the cap rather than the figure. See
+ * `PORT` above for the derivation: her room and space gives the opening, her tiers are hung from the
+ * rail downward with the heaviest guns lowest, and the whole thing is shrunk to fit only if her side
+ * cannot carry it. Nothing is ever larger than the galleon's authored port.
  */
 function portsOf(ref, { Lh, ST, aft, fore }) {
   const bat = parseBattery(ref);
@@ -247,47 +277,86 @@ function portsOf(ref, { Lh, ST, aft, fore }) {
   // evenly along the run, and inset by half a gap so the end ports do not sit on her stem and post
   const run = (a, b, n) => Array.from({ length: n }, (_, j) => lerp(a, b, n > 1 ? (j + 0.5) / n : 0.5));
   const lo = -0.86 * Lh, hi = 0.66 * Lh;
+  const inset = 0.05 * Lh;
+
+  const works = [];
+  const group = (deck, a, b, n, main) => { if (n > 0) works.push({ deck, xs: run(a, b, n), main: !!main }); };
+
+  /* HER UPPER WORKS, and a boat's whole battery, which are the same fitting. Two figures after the
+     plus are her quarterdeck and her forecastle, each group kept to the castle it stood on and the
+     waist left bare between them. One figure is a battery running the whole length of her upper
+     works, as a spar-decked frigate's did, which lands partly on each castle and partly along her
+     waist rail: `deck` is which of the three a gun stands on and the renderer takes its height from
+     there. `main` says these are her own battery rather than a few pieces above one, so a boat's
+     guns are drawn full size instead of as the stubby carronades a quarterdeck carried. */
+  const spread = (n, main) => {
+    const stands = (x) => (aft && x <= aft.x1 ? "aft" : fore && x >= fore.x0 ? "fore" : "rail");
+    const xs = run(lo, hi, n);
+    for (const deck of ["aft", "rail", "fore"]) {
+      const g = xs.filter((x) => stands(x) === deck);
+      if (g.length) works.push({ deck, xs: g, main: !!main });
+    }
+  };
+  if (bat.works.length > 1) {
+    // The importer will not pass a class quarterdeck guns without a quarterdeck to stand them on,
+    // so a group with no castle under it can only be a hand-edited row: put it at her rail.
+    if (aft) group("aft", aft.x0 + inset, aft.x1 - inset, bat.works[0]);
+    else spread(bat.works[0]);
+    if (fore) group("fore", fore.x0 + inset, fore.x1 - inset, bat.works[1]);
+  } else if (bat.works.length === 1) {
+    spread(bat.works[0]);
+  }
+
+  // A boat's guns stand on her deck, so her gun decks become rail positions and she is pierced for
+  // nothing at all.
+  if (ref.castle < 2) {
+    for (const n of bat.decks) spread(n, true);
+    return { rows: [], works };
+  }
 
   // The shallowest side under the battery is what every tier has to fit inside: her sheer sweeps up
   // toward the ends, so the ports have more room there than the figure this solves against.
   let side = Infinity;
   for (let i = 0; i <= 12; i++) side = Math.min(side, sheerAt(lerp(lo, hi, i / 12)));
 
+  // The size a port was: over a frame space wide and a little less than that tall, in feet, brought
+  // into units by her own compression. Length is compressed and depth is not, so the two axes take
+  // different scales, which is also why the opening comes out a touch wider than it is deep.
+  const wide = ref.roomSpace * PORT.space;
+  const perFtX = (2 * Lh) / ref.lod, perFtZ = 0.923;
+  let hw = Math.min(PORT.hw, (wide * perFtX) / 2);
+  let hh = Math.min(PORT.hh, (wide * PORT.tall * perFtZ) / 2);
+
+  // Tier by tier, the calibre falls off going up. `size` is what each tier's port is of the lowest.
   const tiers = bat.decks.length;
-  let hh = Math.min(PORT.hh, (side - PORT.sill - PORT.head) / (2 + 2 * PORT.pad * (tiers - 1)));
-  let hw = hh * (PORT.hw / PORT.hh);
-  // and she can be pierced no thicker along a deck than there is timber to pierce
-  const tight = Math.min(...bat.decks.map((n) => (hi - lo) / n));
-  if (hw > PORT.fill * tight) { const t = (PORT.fill * tight) / hw; hw *= t; hh *= t; }
+  const size = bat.decks.map((_, i) => Math.pow(PORT.taper, i));
 
-  // Her topmost tier sits just under her rail, which is where a flush-decked ship's one deck of guns
-  // goes too, and the rest hang below it at the spacing the solve left.
-  const top = side - PORT.head - hh, bottom = PORT.sill + hh;
-  const step = tiers > 1 ? (top - bottom) / (tiers - 1) : 0;
-  const rows = bat.decks.map((n, i) => ({ f: (top - (tiers - 1 - i) * step) / side, xs: run(lo, hi, n) }));
-
-  /* HER UPPER WORKS. Two figures are her quarterdeck and her forecastle, each group kept to the
-     castle it stood on. One figure is a battery running the whole length of her upper works, as a
-     spar-decked frigate's did, which lands partly on each castle and partly along her waist rail:
-     `deck` is which of the three a gun stands on, and the renderer takes its height from there. */
-  const works = [];
-  const group = (deck, a, b, n) => { if (n > 0) works.push({ deck, xs: run(a, b, n) }); };
-  const inset = 0.05 * Lh;
-  if (bat.works.length > 1) {
-    if (aft) group("aft", aft.x0 + inset, aft.x1 - inset, bat.works[0]);
-    if (fore) group("fore", fore.x0 + inset, fore.x1 - inset, bat.works[1]);
-  } else if (bat.works.length === 1) {
-    const stands = (x) => (aft && x <= aft.x1 ? "aft" : fore && x >= fore.x0 ? "fore" : "rail");
-    const xs = run(lo, hi, bat.works[0]);
-    for (const deck of ["aft", "rail", "fore"]) {
-      const g = xs.filter((x) => stands(x) === deck);
-      if (g.length) works.push({ deck, xs: g });
-    }
+  /* WILL THEY FIT? The tiers are stacked from the sill up: the lowest port's edge stands `sill`
+     clear of the water, each tier above it `pad` times the two half-depths higher, and the topmost
+     port's head stays `head` under the sheer. Everything below shrinks by one factor if the sum of
+     that comes to more side than she has, so the grading and the proportions survive a hull that is
+     simply too shallow for a full-size battery. */
+  let need = size[0] + size[tiers - 1];
+  for (let i = 1; i < tiers; i++) need += PORT.pad * (size[i - 1] + size[i]);
+  const room = side - PORT.sill - PORT.head;
+  let fit = Math.min(1, room / (hh * need));
+  // and no thicker along a deck than there is timber between one port and the next
+  for (let i = 0; i < tiers; i++) {
+    const gap = (hi - lo) / bat.decks[i];
+    fit = Math.min(fit, (PORT.fill * gap) / (2 * hw * size[i]));
   }
+  hw *= fit;
+  hh *= fit;
 
-  // `gun` is what the barrel standing out of a port scales by: the authored gun belongs to the
-  // authored port and looks stuck on a smaller one.
-  return { hw, hh, gun: hh / PORT.hh, rows, works };
+  // Hung from the rail downward, because that is where a deck is: her upper deck's ports sit just
+  // under her sheer and each deck below stands off the one above it.
+  const rows = [];
+  let z = side - PORT.head - hh * size[tiers - 1];
+  for (let i = tiers - 1; i >= 0; i--) {
+    rows[i] = { f: z / side, xs: run(lo, hi, bat.decks[i]), hw: hw * size[i], hh: hh * size[i], gun: (hh * size[i]) / PORT.hh };
+    if (i) z -= PORT.pad * (hh * size[i] + hh * size[i - 1]);
+  }
+  return { rows, works };
 }
 
 function menuForm(ref) {

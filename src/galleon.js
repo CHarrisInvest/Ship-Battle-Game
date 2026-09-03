@@ -411,7 +411,10 @@ function rigFromSpec(spec, form) {
     if (!g || !g.spar) continue;
     spars.push({ x: g.x, sails: sparSails(g, m.sails || [], masts[0], form) });
   }
-  return { bowsprit: spec.bowsprit !== false, masts, spars, form };
+  // `guns` is her fitted broadside a side, and it decides which of her ports have a gun in them and
+  // which are shut. A spec that names no count is a ship fully armed, which is what the galleon and
+  // anything drawn without a loadout has always been.
+  return { bowsprit: spec.bowsprit !== false, masts, spars, form, guns: spec.guns };
 }
 
 /** The ship this file has always drawn, and what it falls back to when asked for no rig in particular. */
@@ -542,24 +545,48 @@ function buildShip(rig){
    }
   };
   /* HER GUN DECKS, and then her upper works: `hullform.js` lays both out off her
-     real establishment and this draws what it hands over. The port's own size
-     comes with them, because a port is cut to the side it is pierced in and the
-     authored one is deeper than half this fleet's freeboard; the gun standing out
-     of it scales with it, or a small port wears a gun that was cut for a bigger. */
-  const PW=form.ports.hw, PH=form.ports.hh, gk=form.ports.gun;
+     real establishment and this draws what it hands over. Each tier brings its
+     own size, because a port was framed on her room and space and her lower deck
+     carried heavier guns than her upper, and the gun standing out of one scales
+     with it or a small port wears a gun that was cut for a bigger. */
   const works=form.ports.works||[];
-  const fine=form.ports.rows.reduce((n,r)=>n+r.xs.length,0)
-            +works.reduce((n,r)=>n+r.xs.length,0)<=12;
-  /* GUNS ARE HOUSED UNTIL THEY ARE WANTED, and on a three-decker that is what
+  const borne=form.ports.rows.reduce((n,r)=>n+r.xs.length,0)
+             +works.reduce((n,r)=>n+r.xs.length,0);
+  const fine=borne<=12;
+  /* WHICH PORTS HAVE A GUN IN THEM IS WHAT SHE HAS BOUGHT. `guns` is her fitted
+     broadside a side, and she arms from the lowest deck up, which is how a ship
+     was armed: the main battery first and the quarterdeck last. An armed port is
+     open, a black square in tan trim, which is what says gun deck at this size.
+     An EMPTY port is SHUT, a lid of timber in the same trim, so a first rate with
+     three guns aboard looks like a first rate with three guns aboard rather than
+     like a fully found one. No count at all is a ship fully armed, which is what
+     the galleon has always been.
+
+     GUNS ARE HOUSED UNTIL THEY ARE WANTED, and on a three-decker that is what
      saves her from looking like a centipede: fifty barrels a side, every one of
-     them run out, is a fringe of grey spines rather than a wall of gunports. So
-     a big battery runs out one gun in three and shows the rest as the port
-     alone, a black square in tan trim, which is what says gun deck at this size
-     anyway. A ship of a dozen ports or fewer runs all of hers out, which is the
-     ship this file was written around. */
+     them run out, is a fringe of grey spines rather than a wall of gunports. So a
+     big battery runs out one gun in three and shows the rest as the open port
+     alone. WHICH one in three is one of each three ports, drawn by a hash of the
+     group rather than every third port along the side: `%3` on the count laid a
+     stripe down her that stepped between the tiers like a zip fastener, and a
+     free hash left eight ports together with nothing run out, which reads as a
+     stretch of her side she has not armed rather than as guns housed. One per
+     group of three keeps the count exactly where the face budget wants it and
+     bounds the bare stretch at four, while the hash still puts two guns side by
+     side here and none for a few ports there. */
+  const armed=rig&&rig.guns!=null?Math.max(0,Math.min(borne,rig.guns)):borne;
+  const runsOut=(i)=>{
+   if(fine)return true;
+   let h=Math.imul(Math.floor(i/3)+1,0x9e3779b1)>>>0;
+   h=(h^(h>>>15))>>>0;   // the shift is signed, so the mask goes back on before the modulo
+   return i%3===h%3;
+  };
   let portN=0;
   for(const row of form.ports.rows) for(const px of row.xs){
-   const runOut=fine||(portN++%3===0);
+   const n=portN++;
+   const open=n<armed;
+   const runOut=open&&runsOut(n);
+   const PW=row.hw, PH=row.hh, gk=row.gun;
    const rowF=row.f;
    /* A port that would sit at or under her waterline is not drawn. Nothing should
       reach this now: the tiers are solved against the shallowest side under the
@@ -568,14 +595,20 @@ function buildShip(rig){
       because a row of holes in her wales is what a bad figure in the table draws. */
    const z=stationAt(px).sheer*rowF; if(z-PH<0.45) continue;
    for(const side of[1,-1]){
-    /* Gunport: a small square of tan trim, a flat black opening inside it, and a
-       cannon standing out of the black. Trim, opening and gun are strongly biased
-       forward of the planking so they stay whole at grazing headings instead of
-       breaking into slivers where the hull faces sort past them. */
+    /* Gunport: a small square of tan trim, and inside it either a flat black
+       opening with a cannon standing out of it or the closed lid of an empty
+       port. Trim, opening and gun are strongly biased forward of the planking so
+       they stay whole at grazing headings instead of breaking into slivers where
+       the hull faces sort past them.
+
+       The lid is a mid brown rather than the topside's own colour, so a shut port
+       still reads as a port: against the dark planking above the wale it is the
+       lighter mass, against the bright strake it is the darker one, and at 1x the
+       difference from an open port is a pale dot where there was a dark one. */
     const i0=F.length;
     const iGun=()=>F.length;
     patch(px,side,z,PW,PH,0.05,P.port,4.0);
-    patch(px,side,z,PW*0.931,PH*0.918,0.11,"#0b0806",4.4,0.09);   // black fills the port to a hairline of trim
+    patch(px,side,z,PW*0.931,PH*0.918,0.11,open?"#0b0806":P.cap,4.4,open?0.09:null);
     const g0=iGun();
     if(runOut){
     // straight athwartships, so the gun is centred in its port from every heading
@@ -621,27 +654,42 @@ function buildShip(rig){
      The bulwark is a flat face at her extreme half-beam rather than the hull's
      own skin, which rolls in under it, so these lie on `railAt` instead.
 
-     The gun is sized off the bulwark it stands behind rather than off the ports
-     below. That is the space it actually occupies, and it comes out short and
-     thick, which is both what a carronade was and the only sort of barrel that
-     still reads at the size a quarterdeck is drawn. */
+     The gun is sized off the bulwark it stands behind rather than off any port,
+     because that is the space it actually occupies. A gun above a battery comes
+     out short and thick, which is both what a carronade was and the only sort of
+     barrel that still reads at the size a quarterdeck is drawn; a BOAT'S OWN
+     battery is marked `main` and stands taller, because these are her great guns
+     and not a few pieces over somebody else's.
+
+     A boat is here for the same reason. A lidded port is cut through the topside
+     under the deck above it and a hull with no castle has neither, so her guns
+     stand on her deck and show over her rail, which is where a cutter's five
+     really were. Drawn as ports they were a 4.4-deep opening in three feet of
+     freeboard, hanging off her rail at the top and into her wales at the bottom.
+
+     An empty position simply has no gun standing in it. There is no lid to shut:
+     the opening is a gap in her rail, and a gap is there whether a gun is or
+     not. */
   const railAt=(x)=>stationAt(x).w;
   for(const row of works){
    const deck=row.deck==="aft"?form.aft:row.deck==="fore"?form.fore:null;
    if(row.deck!=="rail"&&!deck)continue;
    const tag=deck?"castle":"hull";
-   const oh=Math.min(PH*0.62,BULWARK*0.30), ow=Math.min(PW*0.66,BULWARK*0.42);
-   const len=0.75*BULWARK, rad=0.19*BULWARK;
+   const oh=BULWARK*(row.main?0.34:0.30), ow=BULWARK*(row.main?0.46:0.42);
+   const len=BULWARK*(row.main?1.1:0.75), rad=BULWARK*(row.main?0.22:0.19);
    for(const px of row.xs){
     const z=(deck?deck.z:stationAt(px).sheer)+BULWARK*0.5;
     const w=railAt(px);
+    const open=portN++<armed;
     for(const side of[1,-1]){
      const i0=F.length;
      patch(px,side,z,ow,oh,0.06,"#0b0806",4.4,0.09,tag,railAt);
      const g0=F.length;
-     const at=t=>[px,side*(w+t),z];
-     addSpar(F,at(0),at(len*0.86),rad,rad*0.82,"#57504a",tag,fine?4:1,fine?10:5,4.6);
-     addPrism(F,at(len*0.84),at(len),rad*0.86,rad*0.68,"#6a635c",tag,fine?10:5,4.7);
+     if(open){
+      const at=t=>[px,side*(w+t),z];
+      addSpar(F,at(0),at(len*0.86),rad,rad*0.82,"#57504a",tag,fine?4:1,fine?10:5,4.6);
+      addPrism(F,at(len*0.84),at(len),rad*0.86,rad*0.68,"#6a635c",tag,fine?10:5,4.7);
+     }
      for(let i=i0;i<F.length;i++){
       F[i].cull=[0,side,0];
       F[i].cullT=0.32;

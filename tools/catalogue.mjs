@@ -114,16 +114,22 @@ for (const h of HULL_LIST) {
 
   let low = Infinity, tightX = Infinity, tightZ = Infinity;
   ports.rows.forEach((r, i) => {
-    for (const x of r.xs) low = Math.min(low, sheerAt(x) * r.f - ports.hh);
-    if (r.xs.length > 1) tightX = Math.min(tightX, r.xs[1] - r.xs[0]);
+    for (const x of r.xs) low = Math.min(low, sheerAt(x) * r.f - r.hh);
+    if (r.xs.length > 1) tightX = Math.min(tightX, r.xs[1] - r.xs[0] - 2 * r.hw);
     // tiers are placed as a fraction of the sheer, so they close up where the side is shallowest
     if (i) {
-      for (const x of r.xs) tightZ = Math.min(tightZ, (r.f - ports.rows[i - 1].f) * sheerAt(x));
+      const p = ports.rows[i - 1];
+      for (const x of r.xs) tightZ = Math.min(tightZ, (r.f - p.f) * sheerAt(x) - r.hh - p.hh);
     }
   });
   if (low < 0.45) fault(where, `her lowest port sits ${n2(low)} above the water, which the renderer refuses to draw`);
-  if (tightX < 2 * ports.hw) fault(where, `her ports stand ${n2(tightX)} apart and are ${n2(2 * ports.hw)} wide, so a tier draws as one smear rather than a row of ports`);
-  if (tightZ < 2 * ports.hh) fault(where, `two of her tiers stand ${n2(tightZ)} apart and her ports are ${n2(2 * ports.hh)} deep, so one tier draws through the other`);
+  if (tightX < 0) fault(where, `her ports overlap their neighbours along a deck by ${n2(-tightX)}, so a tier draws as one smear rather than a row of ports`);
+  if (tightZ < 0) fault(where, `two of her tiers overlap by ${n2(-tightZ)}, so one tier draws through the other`);
+  // A hull with no castle has no topside to pierce, so her guns stand on her deck. One drawn both
+  // ways would be a boat with ports cut into three feet of freeboard, or a ship of the line with her
+  // whole battery sitting on her rail.
+  if (ref.castle < 2 && ports.rows.length) fault(where, "is an open boat and drawn with ports cut in her side");
+  if (ref.castle >= 2 && !ports.rows.length) fault(where, "has a built-up deck and no gun deck pierced under it");
   portAudit.push({ h, ref, ports, borne, above, low, tightX, tightZ });
 }
 
@@ -253,20 +259,22 @@ for (const h of HULL_LIST) {
   );
 }
 
-console.log("\nHER BATTERY  (ports a side by tier, lowest first, then what stands on her upper works)");
-console.log("  " + pad("class", 19) + pad("battery", 16) + pad("gun decks", 26) + pad("upper works", 32) + pad("port", 12) + num("spacing", 8) + num("tiers", 7) + num("sill", 6));
+console.log("\nHER BATTERY  (ports a side by tier, lowest first, then the guns standing on her decks)");
+console.log("  " + pad("class", 19) + pad("battery", 16) + pad("pierced for", 20) + pad("on her decks", 30) + pad("port, lowest tier", 19) + num("clear", 7) + num("tiers", 7) + num("sill", 6));
 for (const a of portAudit) {
-  const tiers = a.ports.rows.map((r) => `${r.xs.length}`).join(" over ");
-  const above = a.ports.works.map((w) => `${w.xs.length} ${w.deck === "rail" ? "in her waist" : w.deck === "aft" ? "aft" : "forward"}`).join(", ");
+  const low = a.ports.rows[0];
+  const tiers = a.ports.rows.length ? a.ports.rows.map((r) => `${r.xs.length}`).join(" over ") + " a side" : "nothing";
+  const where = { rail: "at her rail", aft: "aft", fore: "forward" };
+  const above = a.ports.works.map((w) => `${w.xs.length} ${where[w.deck]}`).join(", ");
   console.log(
     "  " + pad(a.h.name, 19),
     pad(String(a.ref.battery), 16),
-    pad(`${tiers} a side`, 26),
-    pad(above || "none", 32),
-    pad(`${n2(2 * a.ports.hw)} by ${n2(2 * a.ports.hh)}`, 12),
-    num(Number.isFinite(a.tightX) ? n2(a.tightX) : "one", 8),
+    pad(tiers, 20),
+    pad(above || "none", 30),
+    pad(low ? `${n2(2 * low.hw)} by ${n2(2 * low.hh)}` : "none", 19),
+    num(Number.isFinite(a.tightX) ? n2(a.tightX) : "one", 7),
     num(Number.isFinite(a.tightZ) ? n2(a.tightZ) : "one", 7),
-    num(n2(a.low), 6),
+    num(Number.isFinite(a.low) ? n2(a.low) : "none", 6),
   );
 }
 
