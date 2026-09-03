@@ -619,7 +619,7 @@ const EDGE_PEEK = 40; // screen pixels
 
 /**
  * THE RIG SHE CARRIES, AT SEA. Every ship afloat used to draw the same three hard-coded masts, so a
- * launch and a first rate were told apart only by their health bars. The masts and sails drawn on the
+ * gundalow and a first rate were told apart only by their health bars. The masts and sails drawn on the
  * water now come off the ship's own loadout, through the same `rigSpec()` the menu ship reads:
  * a mast stands where its station is on HER hull, as tall as the mast bought for it, and carries one
  * band of canvas per sail actually bent on, in the shape of its category. Square canvas is the
@@ -1479,7 +1479,7 @@ export default function App() {
      * rest of the economy already does.
      *
      * A coin is earned a point of damage and a coin is charged a point of damage, so putting a first
-     * rate under pays thirty-three times what a launch pays and costs thirty-three times as much to
+     * rate under pays twenty-seven times what a gundalow pays and costs twenty-seven times as much to
      * undo, with no scaling term anywhere in either. The bounty was the one flat term left, and
      * against a class worth three thousand points of hull a flat 25 was a rounding error rather than
      * the reward for finishing her. A quarter of her hull comes to exactly 25 on the smallest ship
