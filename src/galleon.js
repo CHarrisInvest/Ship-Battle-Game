@@ -627,7 +627,10 @@ function buildShip(rig){
        frames a second to seven on the ports alone. Above a dozen ports she draws a
        five sided barrel in one length and no bore, which at the size a gun is drawn
        is a difference nobody can see and the sort a sort can. A hull at or under
-       twelve keeps the authored gun exactly, which is what the galleon shows. */
+       twelve keeps the ten-sided gun and its bore, which from a cutter up to a
+       brigantine is every gun she has. The galleon used to be in that half of the
+       fleet on four ports a side; pierced for the forty-six she really carried,
+       she is in the other half with everything else of her size. */
     addSpar(F,at(0),at(2.85*gk),0.70*gk,0.50*gk,"#57504a","hull",fine?4:1,fine?10:5,4.6);
     addPrism(F,at(2.70*gk),at(3.14*gk),0.60*gk,0.54*gk,"#6a635c","hull",fine?10:5,4.7);    // muzzle swell
     addPrism(F,at(3.12*gk),at(3.32*gk),0.48*gk,0.32*gk,"#6a635c","hull",fine?10:5,4.8);    // rounded off at the mouth

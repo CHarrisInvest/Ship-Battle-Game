@@ -34,6 +34,10 @@ are built from. `broadside` in the code is the side guns, not the old title, and
   agree to within a few hundredths of a unit, and every other class is derived by the same rules from
   her own row. Sizes are deliberately compressed around her, so she is the size she always was. A
   class's size lives here, with her art, and still never in the catalogue.
+  **Her battery is the one part of her that is solved rather than authored.** `GALLEON_REF` is her
+  row and her ports come out of the same `portsOf` as everyone's, because an anchor the port rules do
+  not apply to is an anchor nobody can check them against. She was drawn pierced for eight guns on a
+  130-foot hull; she carries the forty-six a great galleon of her size really did.
 - `src/hold.js` persists coins, lifetime stats and the yard to localStorage. Nothing else is saved;
   worlds and islands are generated fresh every match.
 - `src/achievements.js` is the achievement list, and **an achievement is a question asked of the hold,
@@ -114,14 +118,13 @@ are built from. `broadside` in the code is the side guns, not the old title, and
   one frame space wide, worked in feet and brought into units by her own compression. Tiers hang
   from the rail downward with the calibre falling off as they rise, because her lower deck carried
   her heaviest guns, and the whole battery shrinks by one factor only if her side cannot carry it.
-  Nothing exceeds the galleon's authored port. Fixed port sizes are what made a first rate's top
-  tier one continuous smear.
+  Nothing exceeds the galleon's authored port, which is a ceiling no class reaches rather than
+  anyone's figure. Fixed port sizes are what made a first rate's top tier one continuous smear.
 - **A tier is cut for one deck, so it hangs PARALLEL to her sheer.** `drop` is how far under the
   sheer a row sits and it is the same figure the whole length of her, which `portZ()` is the one
   reader of. A fraction of the sheer is not the same thing and is what this was: a row at 0.21 of it
   rose a fifth as fast as the deck above it, so a first rate's lower battery went from 7.1 under her
-  sheer amidships to 13.7 at her ends. The galleon keeps her authored fraction, because she is the
-  anchor and her ports are literal numbers; everything derived from a row takes a drop.
+  sheer amidships to 13.7 at her ends. There is no second rule beside it, the galleon included.
 - **An open port means a gun is aboard, and an empty port is shut.** `rigSpec` carries her fitted
   broadside and she arms from the lowest deck up, the way a ship was armed, so a first rate with
   three guns shows three open ports on her lower deck and lids down everywhere else. Her ports are
@@ -228,8 +231,9 @@ Rules above that the code does not yet satisfy. Tracked cleanups, not exceptions
 
 - **Hull art is parametric, not bespoke.** Every class now draws on a hull modelled from her own
   reference proportions in `hullform.js`, at her own size, in her own timber, with her own stern
-  type, in both views; the galleon is the authored anchor and comes out unchanged, checked by pixel
-  diff. What no class has yet is hand-finished art of her own beyond what the parameters express:
+  type, in both views; the galleon is the authored anchor and her hull comes out unchanged, checked
+  by pixel diff, her battery excepted, which is solved from her row like everybody else's.
+  What no class has yet is hand-finished art of her own beyond what the parameters express:
   a fluyt's extreme tumblehome or a carrack's built-up works are still the shared family of shapes
   with different numbers. Refining a class means refining her form, not adding a size multiplier to
   the catalogue, which stays deliberately size-free.

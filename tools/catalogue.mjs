@@ -24,7 +24,7 @@ import {
   squareLevel,
 } from "../src/shipyard.js";
 import { RIG_STATIONS, RIG_KINDS, RIG_BERTHS, rigBands } from "../src/galleon.js";
-import { hullForm, DEFAULT_FORM, parseBattery, portZ } from "../src/hullform.js";
+import { hullForm, DEFAULT_FORM, GALLEON_REF, parseBattery, portZ } from "../src/hullform.js";
 import { HULL_REF } from "../src/shipref.js";
 
 // A set, not a list. The same fault reached from forty hulls is one fault about one part, and a
@@ -86,12 +86,21 @@ for (const h of HULL_LIST) {
  * at the waterline, and a class whose ports do not add up to her guns is the "every gun has a port"
  * rule quietly broken. All three were true of the fleet before `battery` existed, and every one of
  * them survived because nothing counted. This counts.
+ *
+ * THE GALLEON IS AUDITED WITH THE REST OF THEM. She is in no catalogue and no captain can buy her,
+ * so she is here for one reason: she is the hull every other class is derived against, and rules the
+ * anchor is exempt from are rules nobody can check. She has no `broadside` to bear, being no part of
+ * the fleet, so that one check is the fleet's alone.
  */
 const portAudit = [];
-for (const h of HULL_LIST) {
-  const ref = HULL_REF[h.id];
-  const form = hullForm(h.id);
-  if (!ref || form === DEFAULT_FORM) continue;
+const anchor = { id: "galleon", name: "Galleon (the anchor)", ref: GALLEON_REF, form: DEFAULT_FORM, broadside: null };
+const pierced = [
+  ...HULL_LIST.map((h) => ({ id: h.id, name: h.name, ref: HULL_REF[h.id], form: hullForm(h.id), broadside: h.guns.broadside })),
+  anchor,
+];
+for (const h of pierced) {
+  const { ref, form } = h;
+  if (!ref || (form === DEFAULT_FORM && h !== anchor)) continue;
   const where = `hull "${h.id}"`;
   const { ST, ports } = form.menu;
   const sheerAt = (x) => {
@@ -108,8 +117,8 @@ for (const h of HULL_LIST) {
   if (borne + above !== meant) {
     fault(where, `carried ${meant * 2} guns and stands ${(borne + above) * 2} of them: her battery says ${ref.battery} and something in the layout is dropping guns`);
   }
-  if (borne !== h.guns.broadside - above) {
-    fault(where, `bears ${h.guns.broadside} a side and shows ${borne} gun-deck ports with ${above} on her upper works, so a gun she can buy has nowhere to fire from`);
+  if (h.broadside != null && borne !== h.broadside - above) {
+    fault(where, `bears ${h.broadside} a side and shows ${borne} gun-deck ports with ${above} on her upper works, so a gun she can buy has nowhere to fire from`);
   }
 
   let low = Infinity, tightX = Infinity, tightZ = Infinity, sag = 0;

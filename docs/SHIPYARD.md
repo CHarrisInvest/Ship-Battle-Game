@@ -256,8 +256,9 @@ scow barely narrows, and a round or pear tuck keeps some fullness. Her timber pa
 and `timber` from the reference become a per-channel cast over the wooden keys of the palette, so a
 pine launch is pale and yellow, teak runs warm, live oak dark, and canvas, glass and flags keep their
 colours; the same cast tints her hull and spars at sea. The galleon's form is the authored numbers
-under the plain Oak identity cast, so she still builds the exact ship this file always drew, checked
-by pixel diff, and a cutter is finally a small hull under a small rig.
+under the plain Oak identity cast, so she still builds the exact hull this file always drew, checked
+by pixel diff, and a cutter is finally a small hull under a small rig. Her battery is the exception,
+and deliberately: see **The anchor is pierced too** below.
 
 ### The volley
 
@@ -374,8 +375,8 @@ her side, against about 28% on Victory.
 `drop` is how far under the sheer a row of ports sits, and it is the same figure at every station
 along her, so each deck's ports follow the sweep of the deck they belong to. `portZ()` is the one
 reader, which is why the bench and the plate cannot come to different answers about where a port is.
-The galleon keeps a fraction of the sheer instead, because her four ports are literal numbers this
-game has always drawn and she is the anchor the rest are checked against.
+There is no second rule beside it. The galleon carried a fraction of the sheer for as long as her
+four ports were authored numbers, and she is pierced from her own row now, so the fraction is gone.
 
 A fraction of the sheer is not the same thing at all, and it is what every derived class had. Her
 sheer sweeps up at the ends, so a row at 0.83 of it rose only 83% as fast as the deck above it and a
@@ -413,6 +414,34 @@ Sized to her side they were correct and tiny; sized as the galleon's they were a
 three feet of freeboard, hanging off her rail at the top and into her wales at the bottom. Standing
 at the rail they read against the sky rather than against dark timber, which is also the first time
 these five have looked like the boats they are.
+
+### The anchor is pierced too
+
+The galleon showed four ports a side, at an authored size and an authored fraction of her sheer. That
+is a 130-foot ship pierced for eight guns, and worse than the number, it made the anchor the one hull
+in the game the port rules did not apply to. An anchor that has to be excused from the rules cannot
+be used to check them, which is the whole of what an anchor is for.
+
+So `GALLEON_REF` is her row, and her ports come out of `portsOf` like everybody else's. Her hull,
+castles, bow, bowsprit and mast geometry stay the literal numbers this game has always drawn; only
+the battery is solved. She is 130 ft on deck with 38 ft of beam, four masts with a bonaventure mizzen
+and a windowed gallery stern, which is an English or Spanish great galleon of about 1590 and some 600
+to 700 tons. Ark Royal was 37 ft in the beam and carried 55 guns, Revenge 32 ft and 46, Elizabeth
+Jonas 56, and those counts include a great many small pieces standing in the castles rather than
+carriage guns in ports, which is what the figures after the plus are for. Her row reads `22/16+6/2`:
+46 guns, 11 a side on her lower deck and 8 on her upper, with 3 on her quarterdeck and 1 on her
+forecastle. Ports 3.14 by 2.67 low and 2.73 by 2.32 above, 5.15 of timber between one port and the
+next, 1.25 between the tiers, her lowest sill 5.67 above the water and both drops flat the length of
+her.
+
+Two things followed. `portZ()` lost its second branch, since nothing carries a fraction of the sheer
+any more. And she crossed the twelve-port line, so she draws with the cheap five-sided barrel and one
+gun in three run out, like everything else of her size; the ten-sided gun with a bore is now what a
+cutter through a brigantine shows rather than what the galleon shows.
+
+She is also audited by `npm run catalogue` with the rest of the fleet now. She is in no catalogue and
+no captain can buy her, so the one check she sits out is the one against a `broadside` she does not
+have.
 
 ### An open port means a gun is aboard
 

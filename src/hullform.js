@@ -96,9 +96,27 @@ export const GALLEON_GEOM = {
   },
 };
 
-// The galleon's reference row, restated as the constants her model was drawn to. Every scale factor
-// below is a ratio against these, so handing her own row back reproduces her exactly.
-const G = { lod: 130, beam: 38, fb: 12, sheer: 4, castle: 4, mastH: 0.95 };
+/**
+ * The galleon's reference row, restated as the constants her model was drawn to. Every scale factor
+ * below is a ratio against these, so handing her own row back reproduces her exactly.
+ *
+ * HER BATTERY IS A REAL ONE, and it is here rather than in her model because her ports are solved
+ * the same way every other class's are. She is 130 ft on deck with 38 ft of beam, four masts with a
+ * bonaventure mizzen and a windowed gallery stern, which is an English or Spanish great galleon of
+ * about 1590 and some 600 to 700 tons: Ark Royal was 37 ft in the beam and carried 55 guns, Revenge
+ * 32 ft and 46, Elizabeth Jonas 56. Those counts include a great many small pieces standing in the
+ * castles, which is what the figures after the plus are for. So: two gun decks, her heavy metal
+ * below and lighter above, and eight more in her upper works.
+ *
+ * She used to show four ports a side at an authored size and an authored fraction of her sheer,
+ * which is a ship pierced for eight guns. That made the anchor the one hull in the game the port
+ * rules did not apply to, and it is a poor anchor that has to be excused.
+ */
+export const GALLEON_REF = {
+  lod: 130, beam: 38, fb: 12, sheer: 4, castle: 4, mastH: 0.95,
+  roomSpace: 2, histGuns: 46, battery: "22/16+6/2",
+};
+const G = GALLEON_REF;
 
 // The galleon's own menu form: her authored geometry, wrapped in the same shape generated forms use.
 const GALLEON_MENU = {
@@ -110,9 +128,9 @@ const GALLEON_MENU = {
   fore: { x0: 24, x1: 50, z: 20.2 },
   bow: { x0: 42, x1: 60, rake: 8.5 },
   bowsprit: { heel: [50, 0, 22.6], tip: [88, 0, 33.5], r0: 1.3, r1: 0.66 },
-  // Four ports a side at the authored size, and nothing on her upper works: she is the anchor, and
-  // what she draws is what this game has always drawn rather than anything derived from a row.
-  ports: { rows: [{ f: 0.47, xs: [-21, -8, 6, 19], hw: 2.6, hh: 2.2, gun: 1 }], works: [] },
+  // `ports` is filled in below, off her own row: it is the one part of her that is solved rather
+  // than authored, and the solve is not defined yet at this point in the file.
+  ports: null,
   lights: true,
   beak: true,
   geom: GALLEON_GEOM,
@@ -197,9 +215,10 @@ const STERNS = {
  * brought into model units by the class's own compression, so the ports on any two ships are to each
  * other as the real ones were rather than as the drawing happens to be scaled.
  *
- * `hw` and `hh` are the galleon's authored opening, which nothing may exceed. She was drawn with a
- * port nearly twice the size a port really is, and it looks right on her, so it stands as the
- * ceiling rather than as the figure to derive against.
+ * `hw` and `hh` are the largest opening the game will draw, and no class reaches them: they are the
+ * port the galleon was authored with, which is nearly twice the size a port really is. She is
+ * pierced off her own row now like everybody else, so this is a ceiling rather than anyone's figure,
+ * and it is kept as the rail that catches a silly `roomSpace` in the table.
  *
  * The rest is the room a tier needs on a hull whose side is shallower than a real one: `sill` is how
  * far a port's lower edge stands clear of the water, `head` how far its upper edge stays under the
@@ -244,13 +263,12 @@ export function parseBattery(ref) {
 /**
  * WHERE ONE TIER'S PORTS SIT, given the sheer at the station they are cut in.
  *
- * A derived class carries `drop`, which is how far under her sheer the tier hangs and is constant
- * the length of her, so her ports follow the deck they belong to. The galleon carries `f`, a
- * fraction of the sheer, because that is the literal number this game has always drawn her at and
- * she is the anchor everything else is checked against. Both live here rather than in the renderer
- * so the bench cannot come to a different answer than the plate.
+ * `drop` is how far under her sheer the tier hangs and it is constant the length of her, so the
+ * ports follow the deck they belong to. It lives here rather than in the renderer so the bench
+ * cannot come to a different answer than the plate, and there is no second rule beside it: the
+ * galleon used to carry a fraction of her sheer instead and now takes a drop like everybody else.
  */
-export const portZ = (row, sheer) => (row.drop != null ? sheer - row.drop : sheer * row.f);
+export const portZ = (row, sheer) => sheer - row.drop;
 
 /**
  * WHERE EVERY GUN SHE CARRIED ACTUALLY STOOD, which is two unlike fittings and not one.
@@ -276,7 +294,10 @@ export const portZ = (row, sheer) => (row.drop != null ? sheer - row.drop : shee
  * THE PORT IS SIZED AS A PORT WAS, and the side she has is the cap rather than the figure. See
  * `PORT` above for the derivation: her room and space gives the opening, her tiers are hung from the
  * rail downward with the heaviest guns lowest, and the whole thing is shrunk to fit only if her side
- * cannot carry it. Nothing is ever larger than the galleon's authored port.
+ * cannot carry it. Nothing is ever larger than the ceiling `PORT` sets.
+ *
+ * THE GALLEON COMES THROUGH HERE TOO, off `GALLEON_REF`. Her hull is authored and her battery is
+ * not, because an anchor the rules do not apply to cannot be used to check them.
  */
 function portsOf(ref, { Lh, ST, aft, fore }) {
   const bat = parseBattery(ref);
@@ -381,6 +402,14 @@ function portsOf(ref, { Lh, ST, aft, fore }) {
   }
   return { rows, works };
 }
+
+/* THE ANCHOR'S OWN PORTS, off her own row and through the same solve as every other class's. Her
+   hull, castles, bow, bowsprit and mast geometry stay the literal numbers this game has always
+   drawn; her battery does not, because a set of rules with one hull exempt from it is a set of rules
+   nobody can check against that hull. */
+GALLEON_MENU.ports = portsOf(G, {
+  Lh: GALLEON_MENU.Lh, ST: GALLEON_ST, aft: GALLEON_MENU.aft, fore: GALLEON_MENU.fore,
+});
 
 function menuForm(ref) {
   const lf = Math.pow(ref.lod / G.lod, MENU_POW); // length scale
