@@ -121,16 +121,15 @@ carries `kind` for its category. Those were one field until the categories arriv
 it, which is worth knowing when reading an old branch.
 
 **Guns** fit by the piece up to the hull's bearing. `broadside` counts guns *a side*, because that is
-how a volley fires, and runs 1 on a ship's boat to 20 on a first rate. Bow guns run 0 to 2. Muskets
+how a volley fires, and runs 1 on a gundalow to 50 on a first rate. Bow guns run 0 to 2. Muskets
 are not bought at all: they come off the crew the hull musters, with swivels adding to the volley.
 
-**A volley is not one ball per gun, past ten.** Ten is as many as can be told apart coming off one
-side and a first rate bears twice that, so a battery larger than that fires in COLUMNS: the guns stack
-up the levels of one column, the column throws one ball, and the ball carries the weight of everything
-in it. A seventy-four's nineteen a side is ten balls with nine of them doubled, which is both what she
-looked like and what a player can count. Total damage is unchanged by any of it, so a ship's strength
-does not move when her battery crosses ten; the same iron arrives in fewer, heavier pieces. `rate()`
-returns `columns` for how many balls and `perBall` for what each carries.
+**One ball per gun, and every gun she has.** A volley was capped at ten balls a side once, with the
+guns beyond that stacked into columns throwing one heavier ball apiece. Ten was as many as could be
+told apart coming off one side, and no ship then bore more than twenty. It is the wrong answer at
+fifty, and it was always an answer to a drawing problem rather than to a gunnery one, so `rate()`
+returns `balls` (her gun count) and `perBall` (one gun's damage) and the fight solved the drawing
+problem where it belonged. See **The rolling broadside** below.
 
 **She cannot work iron she cannot carry.** `fitOut` takes the dearest piece a mount allows and then
 steps the battery down a grade at a time until it fits under her tonnage, so a gundalow comes out with
@@ -259,6 +258,41 @@ pine launch is pale and yellow, teak runs warm, live oak dark, and canvas, glass
 colours; the same cast tints her hull and spars at sea. The galleon's form is the authored numbers
 under the plain Oak identity cast, so she still builds the exact ship this file always drew, checked
 by pixel diff, and a cutter is finally a small hull under a small rig.
+
+### The rolling broadside
+
+Every gun she has throws its own ball, which for a first rate is fifty a side and a hundred in the
+water. Fired together they cannot be told apart: down the length of her they would sit two thirds of
+a pace from each other, and the volley would read as one bar of iron however small the balls were
+drawn. Nothing that can be done to a ball's size fixes that, because a ball small enough to fit is a
+ball too small to see.
+
+**So her guns go off in sequence down her side**, `RIPPLE` seconds apart, and what separates one ball
+from the next is the ground the one before it has already made. At 250 paces a second and a fiftieth
+of a second between guns, consecutive balls fly five paces apart whatever the ship, because the
+interval is per gun rather than per volley: a cutter's five go off in a twentieth of a second and
+still look simultaneous, and a first rate's fifty roll off her side over a second. `stepRipple` fires
+each gun as the roll reaches it, off wherever she is by then, so a ship holding her course lays a
+straight bank of iron and a ship under helm walks it across the water.
+
+**Her guns are laid as they bear**, and this is what keeps a rolling broadside from being a worse
+one. She crosses better than a hull length while her side rolls through, so a gun fired at the end of
+the roll goes off from a long way ahead of where the first one did, and the whole volley walks off the
+front of what she was pointed at: at full speed she put 38% of her iron into a hull she had laid dead,
+against 85% before. Real crews answered this by laying each gun as it bears, and so does she: the
+ground made since the order comes off the lay at `LAY_RANGE`. That restores it to 88% at every speed,
+and it is honestly wrong at any range but that one, which is what laying a gun for a range you have
+guessed has always been worth.
+
+**The ball is smaller than it was**: `r` 3.0 to 1.8, drawn at exactly the size it bites rather than
+the seven tenths of it a fat ball could afford. That is the one real cost of the change and it falls
+on the small ships, who gain no extra balls to make it up: a cutter delivers 0.93 of what she used to
+against a hull laid dead. A first rate comes out at 1.03, the extra balls covering the smaller bite.
+
+Measured at 60 frames a second through twenty seconds of eleven first rates firing both sides in
+company, which is the heaviest field free-for-all can put up: about 1,100 balls and 1,100 puffs of
+smoke a volley round. One puff to a gun rather than two, and a bigger, longer-standing one, is what
+paid for it.
 
 ## What replaced the upgrade rail
 
@@ -441,7 +475,7 @@ a match where nobody fires.
 
 **The bands are gun counts now, so they do not need rebanding as `measure()` moves.** That was the
 standing worry while the rungs were strength bands: `overall` runs from about 49 to 1090 across the
-current fleet, and any change to the musket curve or the broadside columns moved every edge. A rung
+current fleet, and any change to the musket curve or the volley moved every edge. A rung
 is a count of ports, and ports do not move when a formula does.
 
 ### What each mode is to do with it
@@ -462,10 +496,10 @@ Neither field is written down anywhere: one comes off her ports and the other of
 below: the field is matched to her rather than her being issued a stock hull, because that is what the
 measures were built to make possible and because being beaten in a ship you chose is the point.
 
-## Room for forty classes, and now holding 38
+## Room for forty classes, and now holding 16 at sea
 
-The catalogue is built for a fleet of around 38 classes rather than the five it currently holds, and
-three things had to change shape for that to be true.
+The catalogue is built for a fleet of around 40 classes rather than the five it started with, and
+three things had to change shape for that to be true. It holds 54 rows now, 16 of them at sea.
 
 **One terse row per class.** A hull was seventeen lines of object literal; it is now six lines of the
 figures that differ between ships, expanded by `buildHull` with defaults for everything that does not.
@@ -544,6 +578,13 @@ she no longer sails is the reason instances move between hulls at all, and this 
 
 The rows say what a part *does* rather than what it is called: a mast lists the sails it will carry, a
 sail what it pulls and what it costs the helm, a gun what it throws and how fast.
+
+**A battery is bought and stripped by the battery.** Fifty ports a side is fifty taps through a
+picker, and fifty rows in the fitted list all saying the same three words. So guns of one sort are
+one row with what she has of them, "take one off" and "take them all off" beside it, and there is a
+"fill her empty ports" row that puts one gun in every one of them, out of what she already owns
+first and then out of her purse until it runs out. Masts and sails stay one slot to a row: a rig is
+a different sort of choice, and every socket on her takes something different.
 
 ### What the shipyard screen will ask
 

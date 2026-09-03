@@ -86,6 +86,13 @@ are built from. `broadside` in the code is the side guns, not the old title, and
   resampled and squeezed into the same air, because three sails already reach the masthead and there
   is nothing above them to extend into. Five is the ceiling and the bench holds the catalogue to it.
   Adding a row to `STATION_GEOM` is not how a sixth would be added.
+- **A broadside is one ball a gun, fired in a roll, and laid as it bears.** Fifty balls leaving
+  together cannot be told apart at any size they could be drawn, so the guns go off in sequence down
+  her side and what separates one ball from the next is the ground the one before made. A ship
+  crosses better than a hull length while her side rolls through, so every gun still to fire takes
+  that ground off its lay: without it a first rate at speed walked two thirds of her iron off the
+  front of a hull she had laid dead. Do not shorten the roll to fix an accuracy problem, and do not
+  cap the ball count to fix a drawing one. Both were tried and both are what this replaced.
 - **`npm run catalogue` before and after touching the catalogue.** A hull that cannot be rigged or
   carries a station the renderer cannot draw fails silently at runtime; the bench fails loudly. It
   prints the whole fleet side by side, which is the only way the numbers mean anything.

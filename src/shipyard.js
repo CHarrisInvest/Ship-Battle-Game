@@ -1345,14 +1345,6 @@ const CREW_PER_FIRST = 12;
  */
 const MUSKET_CAP = 14;
 
-/**
- * The most balls one side can throw in a volley, however many guns are behind them.
- *
- * A battery larger than this fires in columns of stacked guns, one ball to a column, and the ball
- * carries what the whole column weighs. See `volley()` in `rate()`.
- */
-const BROADSIDE_COLUMNS = 10;
-
 // Her rig's share of her hull, in health-bar points. 0.55 is the ratio the fight was tuned around
 // when every ship at sea was 100 hull and 55 mast, kept so that adopting the catalogue moves what a
 // ship IS without moving what dismasting one is worth.
@@ -1466,29 +1458,26 @@ export function rate(loadout) {
   const musketSpread = (MUSKET_ARC * (handBalls + sum(firing, (g) => g.group ?? 1))) / muskets;
 
   /**
-   * A VOLLEY IS NOT ONE BALL PER GUN, past a point.
+   * ONE BALL PER GUN, and every gun she has.
    *
-   * Ten is as many as can be told apart coming off one side, and a first rate bears twice that. So a
-   * battery bigger than the ports the eye can follow fires in COLUMNS: the guns stack up the levels
-   * of one column, the column throws one ball, and that ball carries the weight of everything in it.
-   * A seventy-four's nineteen a side is ten balls with nine of them doubled, which is both what the
-   * ship looked like and what a player can read at a glance.
+   * A volley used to be capped at ten balls a side, with the guns beyond that stacked into columns
+   * throwing one heavier ball apiece: ten was as many as could be told apart coming off one side,
+   * and no ship then bore more than twenty. It is the wrong answer now that a first rate bears
+   * fifty, and it was always an answer to a drawing problem rather than to a gunnery one. The fight
+   * solved the drawing problem properly instead, by firing her guns in sequence down her side, so
+   * what separates one ball from the next is the moment it left rather than the room beside it.
    *
-   * Total damage is unchanged by any of this, so a ship's strength does not move when her battery
-   * crosses ten: the same iron arrives in fewer, heavier pieces. What changes is how it lands, and
-   * that belongs to the fight, which reads `columns` for how many balls to throw and `perBall` for
-   * what each one carries.
+   * So `balls` is her gun count and `perBall` is one gun's damage. Total damage is what it always
+   * was: the same iron, in as many pieces as there are guns to throw it.
    */
   const volley = (list) => {
     const count = list.length;
     const damage = sum(list, (g) => g.damage);
-    const columns = Math.min(BROADSIDE_COLUMNS, count);
     return {
       count,
       damage,
-      columns,
-      levels: columns ? Math.ceil(count / columns) : 0,
-      perBall: columns ? damage / columns : 0,
+      balls: count,
+      perBall: count ? damage / count : 0,
       // a mixed battery reloads at the pace of its slowest piece, which is what serving it really means
       reload: count ? Math.max(...list.map((g) => g.reload)) : 0,
     };

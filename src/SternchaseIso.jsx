@@ -541,10 +541,36 @@ const DISPLAY = 'Georgia, "Iowan Old Style", "Times New Roman", serif';
 const UI = 'ui-monospace, "SF Mono", Menlo, Consolas, monospace';
 
 const WP = {
-  broadside: { cd: 1.6, speed: 250, life: 0.88, r: 3, bar: "hull" },
+  // `draw` overrides SHOT_DRAW for one weapon. Round shot off the side is drawn at exactly the size
+  // it bites now: there are fifty of them coming off a first rate and a ball that looked smaller
+  // than its own reach would be reading the volley wrong at the moment it matters most.
+  broadside: { cd: 1.6, speed: 250, life: 0.88, r: 1.8, draw: 1, bar: "hull" },
   bow: { cd: 1.1, speed: 270, life: 1.4, r: 2.6, bar: "mast" },
   musket: { cd: 0.75, speed: 320, life: 0.4, r: 1.6, bar: "crew" },
 };
+
+// THE ROLLING BROADSIDE: seconds between one gun going off and the next one down her side.
+//
+// She fires every gun she has now, and fifty balls leaving together cannot be told apart: down the
+// length of a first rate they would sit two thirds of a pace from each other, and the volley would
+// read as one bar of iron however small the balls were drawn. Firing them in sequence separates them
+// by the ground the first one has already made instead, which needs no room alongside at all. At
+// this interval consecutive balls fly five paces apart whatever the ship, because the gap is per
+// gun rather than per volley: a cutter's five go off in a twentieth of a second and still look
+// simultaneous, and a first rate's fifty roll off her side over a second, which is both what a
+// rolling broadside was and the only way to see one.
+const RIPPLE = 0.02;
+// THE RANGE HER GUNS ARE LAID FOR, and the reason a rolling broadside is not a worse broadside.
+//
+// A ship at speed crosses better than a hull length while her side rolls through, so a gun fired at
+// the end of the roll goes off from a long way ahead of where the first one did. Left alone, that
+// walks the whole volley off the front of anything she was pointed at: a first rate at full speed
+// put a third of her iron on a target she had laid dead, against six tenths lying still. Gun crews
+// answered this by laying each gun as it bears rather than all of them abeam, and so does she: the
+// ground she has made since the order comes off the lay, at the range a fight is actually fought at.
+// The correction is exact at this range and honestly wrong at any other, which is what laying a gun
+// for a range you have guessed has always been worth.
+const LAY_RANGE = 150;
 
 // A shot's `r` is how wide a bite it takes: it is what widens the hull when the flight is tested,
 // so a round shot holes a ship where a musket ball whistles past her rail. What gets drawn is
@@ -963,8 +989,7 @@ const topSpeed = (s) => BASE_SPEED * s.rating.speed;
 const rudder = (s) => 1 - RUDDER_HEAVY * Math.pow(clamp(s.spdCur / topSpeed(s), 0, 1), RUDDER_CURVE);
 const speedCap = (s) => topSpeed(s) * (0.5 + 0.5 * (s.mast / s.maxMast));
 const turnCap = (s) => 2.4 * s.rating.turn * (0.22 + 0.78 * (s.mast / s.maxMast)) * rudder(s);
-// What one ball carries. Past ten guns a side the battery fires in stacked columns, so a heavy ship
-// throws the same number of balls as a middling one and each of hers is worth more.
+// What one ball carries, which is one gun's worth: every gun aboard throws its own.
 const sideDmg = (s) => s.rating.broadside.perBall;
 const frontDmg = (s) => s.rating.bow.perBall;
 // One ball of the small-arms volley. A plain rail is the old flat 3.2; swivels aboard pull it up,
@@ -1298,7 +1323,7 @@ export default function App() {
     function reset(m) {
       const rules = modeOf(m);
       gameRef.current = {
-        mode: m, rules, player: null, ships: [], shots: [], parts: [], wakes: [], islands: [], texts: [],
+        mode: m, rules, player: null, ships: [], shots: [], ripple: [], parts: [], wakes: [], islands: [], texts: [],
         cam: { x: 0, y: 0 }, sunk: 0, fieldSize: 0, aliveCount: 0, leader: null, avgEarned: 0,
         _lastRank: 0, spawnT: 0, spawnQueue: 0, vign: 0, running: false, hudDirty: false, hudAcc: 0, time: 0,
         banked: false, stormR: STORM_R0, stormTick: -1, playerOut: false,
@@ -1507,16 +1532,20 @@ export default function App() {
     }
 
     /**
-     * How many balls go out of one mount, and where they sit.
+     * How many guns of a mount are served, and where they sit.
      *
-     * `balls` is her columns less one once she is holed below half, floored at one: a ship losing
-     * guns as she is beaten about is worth keeping, and a boat with a single gun a side must not be
-     * disarmed by the first hit that finds her.
+     * `balls` is her gun count, less a share of it once she is holed below half: guns go silent as
+     * the hands serving them are wanted elsewhere. It used to be exactly one gun fewer, which was a
+     * tenth of the biggest battery in the game when nothing threw more than ten balls and is a
+     * fiftieth of one now. A share falls the same way at every size, and the floor of one keeps a
+     * boat with a single gun a side from being disarmed by the first hit that finds her.
      *
      * `spread` lays that many evenly across a span, centred: one ball goes down the middle, two sit
      * at the ends, and the old hand-written offsets fall out of it for the counts they covered.
      */
-    const balls = (s, wk) => Math.max(1, s.rating[wk].columns - (s.hull < s.maxHull * 0.5 ? 1 : 0));
+    const SILENCED = 0.15; // of her battery, once she is holed below half
+    const balls = (s, wk) =>
+      Math.max(1, Math.round(s.rating[wk].balls * (s.hull < s.maxHull * 0.5 ? 1 - SILENCED : 1)));
     const spread = (n, half) =>
       n <= 1 ? [0] : Array.from({ length: n }, (_, i) => -half + (2 * half * i) / (n - 1));
 
@@ -1531,32 +1560,15 @@ export default function App() {
       const push = (px, py, ang) =>
         g.shots.push({ x: px, y: py, vx: Math.cos(ang) * w.speed, vy: Math.sin(ang) * w.speed, life: w.life, r: w.r, bar: w.bar, dmg, owner: s, kind: weapon });
       if (weapon === "broadside") {
-        // As many balls as she has columns, spaced down her side, and one fewer once she is holed
-        // below half: guns go silent as the crew serving them are wanted elsewhere. A boat with one
-        // gun a side keeps it, or being hurt would disarm her outright.
-        // spaced down her own side, so a long hull's volley rolls off the length of her
-        const offs = spread(balls(s, "broadside"), 0.72 * s.hullA);
-        // The volley opens out along the hull as it travels, but it used to open out a long way:
-        // at the range these fights are actually fought, about 150 paces, the four balls arrived
-        // spread across 76 of them, more than two hull lengths, so a broadside laid dead on a ship
-        // still had most of itself pass either side of her. Tightened to this the same volley
-        // covers 51, near enough one hull and a half, and a shot lined up properly lands more of
-        // itself. It is deliberately not nothing: a broadside is a wall of iron, not a rifle.
-        const FAN = 0.0045;
-        for (const sd of [-1, 1]) {
-          const dir = h + (sd * Math.PI) / 2;
-          for (const off of offs) push(s.x + Math.cos(h) * off, s.y + Math.sin(h) * off, dir - sd * FAN * off + (Math.random() - 0.5) * (0.05 + noise));
-        }
-        // and every gun that fired leaves its own smoke, spaced down her side, so a broadside
-        // reads as a bank rolling off the whole length of her rather than one puff amidships.
-        // It starts at the rail she fired over, not on her keel, or the bank comes up through
-        // the middle of the deck.
-        for (const sd of [-1, 1]) {
-          const dir = h + (sd * Math.PI) / 2;
-          const rx = Math.cos(dir) * s.hullB, ry = Math.sin(dir) * s.hullB;
-          for (const off of offs) smoke(s.x + Math.cos(h) * off + rx, s.y + Math.sin(h) * off + ry, dir, 2, 1);
-          muzzle(s.x, s.y, dir);
-        }
+        // She does not throw her broadside, she starts it. Every gun she has is laid out down her
+        // side and the ripple runs forward to aft from here; `stepRipple` fires each one as it
+        // reaches it, off wherever she is by then. Nothing else about the volley is decided now,
+        // because a ship a second into a turn is not the ship that gave the order.
+        g.ripple.push({
+        s, offs: spread(balls(s, "broadside"), 0.72 * s.hullA), n: 0, next: g.time, dmg, noise,
+        // where she lay when the order was given, which is what the guns are laid against
+        x0: s.x, y0: s.y, h0: h,
+      });
       } else if (weapon === "bow") {
         // Her chasers, opened out by half what they were: they are round shot too, and a chase gun
         // that sprays is no use to anybody.
@@ -2056,6 +2068,74 @@ export default function App() {
       }
     }
 
+    /**
+     * ONE GUN OF A ROLLING BROADSIDE, both sides at once.
+     *
+     * Fired from where she is at this instant rather than from where she was when the order was
+     * given, which is the whole point of rolling it: a ship holding her course lays a straight bank
+     * of iron, and a ship swinging her helm mid-volley walks it across the water, exactly as she
+     * would have. The gun's own smoke and flash go with it, at the port it came out of.
+     */
+    function rippleGun(v, off) {
+      const g = gameRef.current;
+      const s = v.s;
+      const w = WP.broadside;
+      const h = s.heading;
+      // The volley opens out along the hull as it travels, but it used to open out a long way:
+      // at the range these fights are actually fought, about 150 paces, the four balls arrived
+      // spread across 76 of them, more than two hull lengths, so a broadside laid dead on a ship
+      // still had most of itself pass either side of her. Tightened to this the same volley
+      // covers 51, near enough one hull and a half, and a shot lined up properly lands more of
+      // itself. It is deliberately not nothing: a broadside is a wall of iron, not a rifle.
+      const FAN = 0.0045;
+      const px = s.x + Math.cos(h) * off, py = s.y + Math.sin(h) * off;
+      // the ground she has made along her own heading since the order, which every gun still to fire
+      // takes off its lay
+      const made = (s.x - v.x0) * Math.cos(v.h0) + (s.y - v.y0) * Math.sin(v.h0);
+      const lay = made / LAY_RANGE;
+      for (const sd of [-1, 1]) {
+        const dir = h + (sd * Math.PI) / 2;
+        const ang = dir + sd * lay - sd * FAN * off + (Math.random() - 0.5) * (0.05 + v.noise);
+        g.shots.push({
+          x: px, y: py, vx: Math.cos(ang) * w.speed, vy: Math.sin(ang) * w.speed,
+          life: w.life, r: w.r, draw: w.draw, bar: w.bar, dmg: v.dmg, owner: s, kind: "broadside",
+        });
+        // her smoke stands at the rail she fired over, not on her keel, or the bank comes up
+        // through the middle of the deck. Two puffs a gun, and a little more of each than a gun
+        // used to make: a rolling broadside spends a second putting its smoke out, so the first
+        // guns' has begun to thin before the last has fired, and a bank has to be built to last
+        // that long or she looks as though she is firing blanks. One puff to a gun and a bigger,
+        // longer-standing one, rather than two apiece: a fleet of first rates in company is eleven
+        // hundred guns a volley, and the same bank drawn in half the pieces held sixty frames a
+        // second where two apiece did not.
+        smoke(px + Math.cos(dir) * s.hullB, py + Math.sin(dir) * s.hullB, dir, 1, 1.45);
+        muzzle(px, py, dir);
+      }
+    }
+
+    /**
+     * The guns still to go off, on every ship with a volley in the air.
+     *
+     * A ship sunk mid-broadside stops firing, which is the difference between a gun crew and a
+     * timer. Everything else is arithmetic: a gun goes off when the ripple reaches it, and the
+     * entry is done when her last one has.
+     */
+    function stepRipple() {
+      const g = gameRef.current;
+      for (let i = g.ripple.length - 1; i >= 0; i--) {
+        const v = g.ripple[i];
+        if (!v.s.alive) { g.ripple.splice(i, 1); continue; }
+        // Each gun goes off when the one before it has, and a gun crew is not a metronome: the
+        // interval carries a wide jitter about `RIPPLE`, which averages out to the same roll and
+        // breaks the string of evenly spaced beads that firing on the beat drew.
+        while (v.n < v.offs.length && g.time >= v.next) {
+          rippleGun(v, v.offs[v.n++]);
+          v.next += RIPPLE * (0.55 + Math.random() * 0.9);
+        }
+        if (v.n >= v.offs.length) g.ripple.splice(i, 1);
+      }
+    }
+
     function stepShots(dt) {
       const g = gameRef.current;
       const s = g.shots;
@@ -2176,6 +2256,7 @@ export default function App() {
       stepRam();
       measureWay(dt);
       stepStorm(dt);
+      stepRipple();
       stepShots(dt);
       stepParts(dt);
       maintain(dt);
@@ -2810,7 +2891,7 @@ export default function App() {
           // moment it lands under a pixel, where a shape narrowing to a point keeps its weight at
           // the ball and simply runs out. Two wedges, a long faint one and a short bright one,
           // give it a falling-off without a gradient per ball per frame.
-          const dr = b.r * SHOT_DRAW; // what it looks like, which is not what it bites
+          const dr = b.r * (b.draw ?? SHOT_DRAW); // what it looks like, which is not always what it bites
           const tail = 0.06; // seconds of her flight lie behind her
           const px = -b.vx * tail, py = -b.vy * tail * TILT; // astern, in screen terms
           const nx = -py, ny = px; // across the trail, to give the wedge its width at the ball
@@ -3784,7 +3865,11 @@ function YardScreen({ hold, onBack, onCommission, onOutfit }) {
       <BackLink label="Back to the sea" onClick={onBack} />
       <div style={{ fontFamily: DISPLAY, fontSize: 30, color: C.gold, letterSpacing: 1 }}>THE YARD</div>
       <div style={{ fontSize: 12, color: "rgba(238,244,242,0.7)", margin: "6px 0 2px" }}>
-        {loadout.hull.name}, {rated.name}, and she measures {Math.round(strength.overall)} as she stands.
+        {/* Six of the classes are named for the rate they are, so saying both would read "1st rate,
+            1st rate". Where the two are one word, she is only introduced once. */}
+        {loadout.hull.name.toLowerCase() === rated.name.toLowerCase()
+          ? `${loadout.hull.name}, and she measures ${Math.round(strength.overall)} as she stands.`
+          : `${loadout.hull.name}, ${rated.name}, and she measures ${Math.round(strength.overall)} as she stands.`}
       </div>
       <MenuGalleon rig={rig} />
 
@@ -3794,15 +3879,19 @@ function YardScreen({ hold, onBack, onCommission, onOutfit }) {
         <TallyRow label="Hull" value={stats.hull} rule="hair" />
         <TallyRow label="Crew" value={stats.crew} rule="hair" />
         <TallyRow label="Muskets in a volley" value={stats.muskets} rule="hair" />
-        {/* What a broadside actually throws, which stops matching the gun count once she bears more
-            than ten a side and the guns start firing in stacked columns. Shown only when she has a
-            broadside at all, because "0 balls" on a boat with no guns is a row saying nothing. */}
+        {/* Every gun throws its own ball, so the count above already says how many. What it does not
+            say is what one of them takes off a hull, or how long her side takes to roll through: a
+            first rate is a second of continuous firing and a cutter is an instant. Shown only when
+            she has a broadside at all, because these rows on a boat with no guns say nothing. */}
         {stats.broadside.count > 0 && (
-          <TallyRow
-            label="Broadside balls, a side"
-            value={stats.broadside.columns}
-            rule="hair"
-          />
+          <>
+            <TallyRow label="Damage a ball" value={stats.broadside.perBall.toFixed(1)} rule="hair" />
+            <TallyRow
+              label="Her side rolls through in"
+              value={`${((stats.broadside.count - 1) * RIPPLE).toFixed(2)}s`}
+              rule="hair"
+            />
+          </>
         )}
       </Slab>
 
@@ -4165,7 +4254,7 @@ function HullRow({ shelf, first, owned, coins, open, onToggle, onBuy }) {
           <TallyRow label="Bow chasers" value={range("bow")} rule="hair" />
           <TallyRow label="Swivel guns" value={range("swivel")} rule="hair" />
           <TallyRow label="Muskets in a volley" value={range("muskets")} rule="hair" />
-          <TallyRow label="Broadside balls, a side" value={shelf.found.broadside.columns} rule="hair" />
+          <TallyRow label="Damage a ball, fully found" value={shelf.found.broadside.perBall.toFixed(1)} rule="hair" />
           <TallyRow label="Rated" value={shelf.rated.name} rule="group" />
           <TallyRow label="Rigging and guns to fill her out" value={<Coins n={shelf.outfit} />} rule="hair" />
           <div style={{ marginTop: 10 }}>
@@ -4223,6 +4312,28 @@ function OutfitterScreen({ hold, onBack }) {
     if (held && held.length) return fit(held[0]);
     const bought = buyPart(typeId);
     if (bought) fit(bought.part);
+  };
+
+  /**
+   * The same thing `n` times, for a ship with fifty ports a side.
+   *
+   * Fitting one gun at a time is right for a rig, where every socket takes a different mast and the
+   * choice is the point. It is not right for a battery: nobody wants to tap fifty times to arm a
+   * first rate, and nobody wants to tap fifty times to strip her either. It spends out of what she
+   * already owns first, exactly as fitting one does, and stops the moment her purse or her ports
+   * run out rather than refusing the lot.
+   */
+  const fitMany = (typeId, n, fit) => {
+    const held = (loose.get(typeId) || []).slice();
+    for (let i = 0; i < n; i++) {
+      const pid = held.shift();
+      if (pid) {
+        if (!fit(pid)) return;
+        continue;
+      }
+      const bought = buyPart(typeId);
+      if (!bought || !fit(bought.part)) return; // her purse is out, and what she has bought is aboard
+    }
   };
 
   return (
@@ -4347,28 +4458,50 @@ function OutfitterScreen({ hold, onBack }) {
               ) : (
                 <>
                   <div style={{ fontSize: 10, color: "rgba(238,244,242,0.45)", lineHeight: 1.6, paddingBottom: 2 }}>{note}</div>
-                  {fitted.map(({ pid, type }) => (
-                    <div key={pid} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "6px 0", borderTop: "1px solid rgba(160,224,210,0.14)" }}>
-                      <span style={{ fontSize: 11, color: C.ink }}>{type.name}</span>
-                      <TinyButton label="Take it off" onClick={() => unfitGun(shipId, pid)} />
+                  {/* A battery is rows of the same gun, so it is listed as a battery: one row a type
+                      with what she has of it. Fifty rows saying "Thirty two pounder" told a captain
+                      nothing fifty times over, and buried the one row that was a different gun. */}
+                  {groupGuns(fitted).map(({ type, pids }) => (
+                    <div key={type.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "6px 0", borderTop: "1px solid rgba(160,224,210,0.14)" }}>
+                      <span style={{ fontSize: 11, color: C.ink }}>
+                        {type.name}{pids.length > 1 ? `, ${pids.length} of them` : ""}
+                      </span>
+                      <span style={{ display: "inline-flex", gap: 6 }}>
+                        <TinyButton label="Take one off" onClick={() => unfitGun(shipId, pids[pids.length - 1])} />
+                        {pids.length > 1 && (
+                          <TinyButton label="Take them all off" onClick={() => { for (const pid of pids) unfitGun(shipId, pid); }} />
+                        )}
+                      </span>
                     </div>
                   ))}
                   {fitted.length < bears && (
-                    <FitRow
-                      label="Another gun"
-                      value={`${plural(bears - fitted.length, "port")} still empty`}
-                      empty
-                      onClick={() => setPicking({ what: "gun", mount })}
-                    />
+                    <>
+                      <FitRow
+                        label="Another gun"
+                        value={`${plural(bears - fitted.length, "port")} still empty`}
+                        empty
+                        onClick={() => setPicking({ what: "gun", mount })}
+                      />
+                      {bears - fitted.length > 1 && (
+                        <FitRow
+                          label="Fill her empty ports"
+                          value={`${bears - fitted.length} at once, as far as your purse goes`}
+                          empty
+                          onClick={() => setPicking({ what: "gun", mount, fill: true })}
+                        />
+                      )}
+                    </>
                   )}
                   {picking && picking.what === "gun" && picking.mount === mount && (
                     <Picker
-                      title="Guns for this mount"
+                      title={picking.fill ? "One gun in every empty port" : "Guns for this mount"}
                       options={gunsForMount(mount)}
                       loose={loose}
                       coins={hold.coins}
                       onPick={(type) => {
-                        fitFrom(type.id, (pid) => fitGun(shipId, mount, pid));
+                        const fit = (pid) => fitGun(shipId, mount, pid);
+                        if (picking.fill) fitMany(type.id, bears - fitted.length, fit);
+                        else fitFrom(type.id, fit);
                         close();
                       }}
                       onClose={close}
@@ -4384,6 +4517,24 @@ function OutfitterScreen({ hold, onBack }) {
       <div style={{ height: 8 }} />
     </Shell>
   );
+}
+
+/**
+ * Guns of one sort, gathered. Keeps the order she has them in, so the row a captain sees is the row
+ * the shelf put there, and hands back the part ids in that order: taking one off takes the last one
+ * fitted, which is the one she just bought if she has changed her mind.
+ */
+function groupGuns(fitted) {
+  const rows = [];
+  const at = new Map();
+  for (const { pid, type } of fitted) {
+    if (!at.has(type.id)) {
+      at.set(type.id, rows.length);
+      rows.push({ type, pids: [] });
+    }
+    rows[at.get(type.id)].pids.push(pid);
+  }
+  return rows;
 }
 
 // The three mounts, and what each is for. A captain buying her first gun should not have to work out
