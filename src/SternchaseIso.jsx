@@ -549,17 +549,26 @@ const WP = {
   musket: { cd: 0.75, speed: 320, life: 0.4, r: 1.6, bar: "crew" },
 };
 
-// THE ROLLING BROADSIDE: seconds between one gun going off and the next one down her side.
+// THE ROLLING BROADSIDE, in two numbers: how fast the guns go off down her side, and how long her
+// whole side may take.
 //
 // She fires every gun she has now, and fifty balls leaving together cannot be told apart: down the
 // length of a first rate they would sit two thirds of a pace from each other, and the volley would
 // read as one bar of iron however small the balls were drawn. Firing them in sequence separates them
-// by the ground the first one has already made instead, which needs no room alongside at all. At
-// this interval consecutive balls fly five paces apart whatever the ship, because the gap is per
-// gun rather than per volley: a cutter's five go off in a twentieth of a second and still look
-// simultaneous, and a first rate's fifty roll off her side over a second, which is both what a
-// rolling broadside was and the only way to see one.
+// by the ground the first one has already made instead, which needs no room alongside at all.
+//
+// `RIPPLE` is the gap a small battery uses, and at it consecutive balls fly five paces apart: a
+// cutter's five guns go off in a twentieth of a second and still look simultaneous. `ROLL_MAX` is
+// the ceiling on the whole thing, and it is what a big battery is squeezed into: fifty guns at the
+// small ship's gap would take a full second, which is a ship firing in slow motion rather than a
+// ship firing a broadside. Under half a second she reads as one round of volleys going off down her
+// side, gunport after gunport, which is what she should look like and what her smoke and the flash
+// at every port are carrying. Nothing is lost by the squeeze: her guns are laid as they bear, so a
+// shorter roll is neither more nor less accurate than a longer one.
 const RIPPLE = 0.02;
+const ROLL_MAX = 0.4;
+/** How long a battery of `n` takes to roll through, which the yard prints and the fight fires on. */
+const rollTime = (n) => Math.min((n - 1) * RIPPLE, ROLL_MAX);
 // THE RANGE HER GUNS ARE LAID FOR, and the reason a rolling broadside is not a worse broadside.
 //
 // A ship at speed crosses better than a hull length while her side rolls through, so a gun fired at
@@ -1564,8 +1573,11 @@ export default function App() {
         // side and the ripple runs forward to aft from here; `stepRipple` fires each one as it
         // reaches it, off wherever she is by then. Nothing else about the volley is decided now,
         // because a ship a second into a turn is not the ship that gave the order.
-        g.ripple.push({
-        s, offs: spread(balls(s, "broadside"), 0.72 * s.hullA), n: 0, next: g.time, dmg, noise,
+        const offs = spread(balls(s, "broadside"), 0.72 * s.hullA);
+      g.ripple.push({
+        s, offs, n: 0, next: g.time, dmg, noise,
+        // her own gap, or as much of one as fits inside the ceiling on the whole roll
+        gap: offs.length > 1 ? rollTime(offs.length) / (offs.length - 1) : RIPPLE,
         // where she lay when the order was given, which is what the guns are laid against
         x0: s.x, y0: s.y, h0: h,
       });
@@ -2108,8 +2120,17 @@ export default function App() {
         // longer-standing one, rather than two apiece: a fleet of first rates in company is eleven
         // hundred guns a volley, and the same bank drawn in half the pieces held sixty frames a
         // second where two apiece did not.
-        smoke(px + Math.cos(dir) * s.hullB, py + Math.sin(dir) * s.hullB, dir, 1, 1.45);
-        muzzle(px, py, dir);
+        // A GUN FIRES OUT OF A PORT IN HER SIDE, so its flash and its smoke both stand at the rail
+        // it fired over rather than on her keel. The flash was amidships on her centreline, where a
+        // gun deck is stores rather than gunports, and with fifty of them going off in half a second
+        // that is the difference between a ship firing her broadside and a ship on fire.
+        const rx = px + Math.cos(dir) * s.hullB, ry = py + Math.sin(dir) * s.hullB;
+        // The bank stands just OUTSIDE the rail, and each puff is small enough that fifty of them
+        // make a band down her side rather than one cloud sitting on her. A puff as wide as she is
+        // long is a ship in a fog bank: her hull, her flashes and the first few paces of her shot
+        // all disappear into it, which is the opposite of what the smoke is there to show.
+        smoke(rx + Math.cos(dir) * 2.5, ry + Math.sin(dir) * 2.5, dir, 1, 0.9);
+        muzzle(rx, ry, dir);
       }
     }
 
@@ -2130,7 +2151,7 @@ export default function App() {
         // breaks the string of evenly spaced beads that firing on the beat drew.
         while (v.n < v.offs.length && g.time >= v.next) {
           rippleGun(v, v.offs[v.n++]);
-          v.next += RIPPLE * (0.55 + Math.random() * 0.9);
+          v.next += v.gap * (0.55 + Math.random() * 0.9);
         }
         if (v.n >= v.offs.length) g.ripple.splice(i, 1);
       }
@@ -2922,11 +2943,20 @@ export default function App() {
       }
     }
 
+    /**
+     * Smoke first and every flash over it, in two passes rather than in the order they were made.
+     *
+     * A gun's flash is pale yellow and its own smoke is white, so drawn in order the flash went
+     * under the bank the next gun down the side put up: fifty guns going off left a bank with
+     * nothing in it, which is a ship in a fog rather than a ship firing. The flash is the shortest
+     * lived thing on the water and the one that says a gun is going off HERE, so it is drawn last.
+     */
     function drawParts(cam) {
       const g = gameRef.current;
       for (const p of g.parts) {
+        if (p.kind === "muzzle") continue;
         const sx = SX(p.x, cam), sy = SY(p.y, cam);
-        if (p.kind === "muzzle") {
+        if (false) {
           const k = p.life / p.max;
           ctx.save();
           ctx.translate(sx, sy);
@@ -2977,6 +3007,24 @@ export default function App() {
           ctx.globalAlpha = 1;
         }
       }
+
+      // and now every flash, over all of it
+      for (const p of g.parts) {
+        if (p.kind !== "muzzle") continue;
+        ctx.save();
+        ctx.translate(SX(p.x, cam), SY(p.y, cam));
+        ctx.scale(1, TILT);
+        ctx.rotate(p.ang);
+        ctx.globalAlpha = p.life / p.max;
+        ctx.fillStyle = "#ffe9a8";
+        ctx.beginPath();
+        ctx.moveTo(6, 0); ctx.lineTo(14, -3); ctx.lineTo(20, 0); ctx.lineTo(14, 3);
+        ctx.closePath();
+        ctx.fill();
+        ctx.globalAlpha = 1;
+        ctx.restore();
+      }
+
       ctx.textAlign = "center";
       // SUNK and MAST DOWN are white, outlined in a dark halo so they carry on open water — which is a
       // mid tone, where plain white would sit too close to it. Halo first: the stroke is centred on the
@@ -3865,11 +3913,11 @@ function YardScreen({ hold, onBack, onCommission, onOutfit }) {
       <BackLink label="Back to the sea" onClick={onBack} />
       <div style={{ fontFamily: DISPLAY, fontSize: 30, color: C.gold, letterSpacing: 1 }}>THE YARD</div>
       <div style={{ fontSize: 12, color: "rgba(238,244,242,0.7)", margin: "6px 0 2px" }}>
-        {/* Six of the classes are named for the rate they are, so saying both would read "1st rate,
-            1st rate". Where the two are one word, she is only introduced once. */}
-        {loadout.hull.name.toLowerCase() === rated.name.toLowerCase()
-          ? `${loadout.hull.name}, and she measures ${Math.round(strength.overall)} as she stands.`
-          : `${loadout.hull.name}, ${rated.name}, and she measures ${Math.round(strength.overall)} as she stands.`}
+        {/* Her class and then her rating, always both, even where the class is named for the rating
+            and it reads "1st rate, 1st rate". Six of the sixteen are named that way today and the
+            fleet is still being written: a line that drops one of them when they happen to match
+            would hide the rating on exactly the ships whose names are about to stop matching. */}
+        {loadout.hull.name}, {rated.name}, and she measures {Math.round(strength.overall)} as she stands.
       </div>
       <MenuGalleon rig={rig} />
 
@@ -3888,7 +3936,7 @@ function YardScreen({ hold, onBack, onCommission, onOutfit }) {
             <TallyRow label="Damage a ball" value={stats.broadside.perBall.toFixed(1)} rule="hair" />
             <TallyRow
               label="Her side rolls through in"
-              value={`${((stats.broadside.count - 1) * RIPPLE).toFixed(2)}s`}
+              value={`${rollTime(stats.broadside.count).toFixed(2)}s`}
               rule="hair"
             />
           </>

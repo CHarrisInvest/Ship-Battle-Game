@@ -958,7 +958,7 @@ export const GUNS = {
   gun3: {
     id: "gun3",
     part: "gun",
-    name: "Three pounder",
+    name: "3-pounder",
     price: 55,
     blurb: "The lightest iron that is still a gun. A boat can stand it and little else can.",
     mount: "broadside",
@@ -969,7 +969,7 @@ export const GUNS = {
   gun4: {
     id: "gun4",
     part: "gun",
-    name: "Four pounder",
+    name: "4-pounder",
     price: 80,
     blurb: "A small piece for a small hull. Two of them do what one real gun does.",
     mount: "broadside",
@@ -980,7 +980,7 @@ export const GUNS = {
   gun6: {
     id: "gun6",
     part: "gun",
-    name: "Six pounder",
+    name: "6-pounder",
     price: 130,
     blurb: "The gun a working broadside is made of. Quick to serve and quick to reload.",
     mount: "broadside",
@@ -991,7 +991,7 @@ export const GUNS = {
   gun8: {
     id: "gun8",
     part: "gun",
-    name: "Eight pounder",
+    name: "8-pounder",
     price: 180,
     blurb: "A little more iron for the same port. She feels the weight but not badly.",
     mount: "broadside",
@@ -1002,7 +1002,7 @@ export const GUNS = {
   gun9long: {
     id: "gun9long",
     part: "gun",
-    name: "Long nine",
+    name: "Long 9-pounder",
     price: 335,
     blurb: "A long barrel on a light ball. It reaches further than anything of its weight.",
     mount: "broadside",
@@ -1013,7 +1013,7 @@ export const GUNS = {
   gun12: {
     id: "gun12",
     part: "gun",
-    name: "Twelve pounder",
+    name: "12-pounder",
     price: 295,
     blurb: "The upper deck gun of a ship of the line, and the main battery of a small one.",
     mount: "broadside",
@@ -1024,7 +1024,7 @@ export const GUNS = {
   gun18: {
     id: "gun18",
     part: "gun",
-    name: "Eighteen pounder",
+    name: "18-pounder",
     price: 480,
     blurb: "A frigate's gun. Enough iron to open a hull at the range she wants to fight.",
     mount: "broadside",
@@ -1035,7 +1035,7 @@ export const GUNS = {
   gun24: {
     id: "gun24",
     part: "gun",
-    name: "Twenty four pounder",
+    name: "24-pounder",
     price: 680,
     blurb: "Lower deck weight. Slow to run out, and it tells every time it goes off.",
     mount: "broadside",
@@ -1046,7 +1046,7 @@ export const GUNS = {
   gun32: {
     id: "gun32",
     part: "gun",
-    name: "Thirty two pounder",
+    name: "32-pounder",
     price: 960,
     blurb: "The heaviest gun that goes to sea in numbers. It breaks frames, not planks.",
     mount: "broadside",
@@ -1057,7 +1057,7 @@ export const GUNS = {
   gun36: {
     id: "gun36",
     part: "gun",
-    name: "Thirty six pounder",
+    name: "36-pounder",
     price: 1105,
     blurb: "French weight of metal. One tier of these is most of what she can carry.",
     mount: "broadside",
@@ -1068,7 +1068,7 @@ export const GUNS = {
   bow6: {
     id: "bow6",
     part: "gun",
-    name: "Six pounder chaser",
+    name: "6-pounder chaser",
     price: 200,
     blurb: "A light chaser that points where the bow points. Cheap, and it is something.",
     mount: "bow",
@@ -1079,7 +1079,7 @@ export const GUNS = {
   bow8: {
     id: "bow8",
     part: "gun",
-    name: "Eight pounder chaser",
+    name: "8-pounder chaser",
     price: 290,
     blurb: "A chaser with a little more weight behind the ball.",
     mount: "bow",
@@ -1090,7 +1090,7 @@ export const GUNS = {
   bow9long: {
     id: "bow9long",
     part: "gun",
-    name: "Long nine chaser",
+    name: "Long 9-pounder chaser",
     price: 500,
     blurb: "A long barrel on the bow. Reaches further than anything else aboard.",
     mount: "bow",
@@ -1101,7 +1101,7 @@ export const GUNS = {
   bow12: {
     id: "bow12",
     part: "gun",
-    name: "Twelve pounder chaser",
+    name: "12-pounder chaser",
     price: 780,
     blurb: "Heavy enough to hurt a hull at the range a chase is fought at.",
     mount: "bow",
@@ -1112,7 +1112,7 @@ export const GUNS = {
   bow18: {
     id: "bow18",
     part: "gun",
-    name: "Eighteen pounder chaser",
+    name: "18-pounder chaser",
     price: 1500,
     blurb: "A frigate's chaser. Iron enough to open a stern at a distance.",
     mount: "bow",

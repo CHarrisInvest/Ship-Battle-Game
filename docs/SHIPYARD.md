@@ -267,22 +267,34 @@ a pace from each other, and the volley would read as one bar of iron however sma
 drawn. Nothing that can be done to a ball's size fixes that, because a ball small enough to fit is a
 ball too small to see.
 
-**So her guns go off in sequence down her side**, `RIPPLE` seconds apart, and what separates one ball
-from the next is the ground the one before it has already made. At 250 paces a second and a fiftieth
-of a second between guns, consecutive balls fly five paces apart whatever the ship, because the
-interval is per gun rather than per volley: a cutter's five go off in a twentieth of a second and
-still look simultaneous, and a first rate's fifty roll off her side over a second. `stepRipple` fires
-each gun as the roll reaches it, off wherever she is by then, so a ship holding her course lays a
-straight bank of iron and a ship under helm walks it across the water.
+**So her guns go off in sequence down her side**, and what separates one ball from the next is the
+ground the one before it has already made. Two numbers set it. `RIPPLE`, a fiftieth of a second, is
+the gap a small battery uses, and at 250 paces a second it puts five paces between consecutive balls:
+a cutter's five guns go off in 0.08s and still look simultaneous. `ROLL_MAX` is the ceiling on the
+whole roll, and it is what a big battery is squeezed into: fifty guns at the small ship's gap would
+take a full second, which is a ship firing in slow motion. Capped at 0.4s she reads as one round of
+volleys going off down her side, gunport after gunport. `stepRipple` fires each gun as the roll
+reaches it, off wherever she is by then, so a ship holding her course lays a straight bank of iron
+and a ship under helm walks it across the water.
+
+**A gun fires out of a port in her side**, so its flash and its smoke stand at the rail it fired over
+rather than on her keel, and the flash is drawn in a pass of its own after every puff on the water.
+Both were wrong first time and both mattered more than they sound: the flash was amidships on her
+centreline, where a gun deck is stores rather than gunports, and it was drawn in the order it was
+made, so a pale yellow flash went under the white bank the next gun down the side put up. Fifty guns
+going off left a bank with nothing in it, which is a ship in a fog rather than a ship firing. The
+puff is small and stands just outside the rail for the same reason: one as wide as she is long
+swallows her hull, her flashes and the first few paces of her shot.
 
 **Her guns are laid as they bear**, and this is what keeps a rolling broadside from being a worse
 one. She crosses better than a hull length while her side rolls through, so a gun fired at the end of
 the roll goes off from a long way ahead of where the first one did, and the whole volley walks off the
-front of what she was pointed at: at full speed she put 38% of her iron into a hull she had laid dead,
-against 85% before. Real crews answered this by laying each gun as it bears, and so does she: the
-ground made since the order comes off the lay at `LAY_RANGE`. That restores it to 88% at every speed,
-and it is honestly wrong at any range but that one, which is what laying a gun for a range you have
-guessed has always been worth.
+front of what she was pointed at: measured over a one-second roll, she put 38% of her iron into a hull
+she had laid dead at full speed, against 85% before. Real crews answered this by laying each gun as it
+bears, and so does she: the ground made since the order comes off the lay at `LAY_RANGE`. That
+restores it to 88% at every speed and at every length of roll, which is why `ROLL_MAX` could be set
+from how the volley looks rather than from what it costs her. It is honestly wrong at any range but
+that one, which is what laying a gun for a range you have guessed has always been worth.
 
 **The ball is smaller than it was**: `r` 3.0 to 1.8, drawn at exactly the size it bites rather than
 the seven tenths of it a fat ball could afford. That is the one real cost of the change and it falls
