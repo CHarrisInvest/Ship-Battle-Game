@@ -86,13 +86,22 @@ are built from. `broadside` in the code is the side guns, not the old title, and
   resampled and squeezed into the same air, because three sails already reach the masthead and there
   is nothing above them to extend into. Five is the ceiling and the bench holds the catalogue to it.
   Adding a row to `STATION_GEOM` is not how a sixth would be added.
-- **A broadside is one ball a gun, fired in a roll, and laid as it bears.** Fifty balls leaving
-  together cannot be told apart at any size they could be drawn, so the guns go off in sequence down
-  her side and what separates one ball from the next is the ground the one before made. A ship
-  crosses better than a hull length while her side rolls through, so every gun still to fire takes
-  that ground off its lay: without it a first rate at speed walked two thirds of her iron off the
-  front of a hull she had laid dead. Do not shorten the roll to fix an accuracy problem, and do not
-  cap the ball count to fix a drawing one. Both were tried and both are what this replaced.
+- **A broadside is one ball a gun, spread over a moment, and laid as it bears.** Fifty balls leaving
+  in the same instant cannot be told apart at any size they could be drawn, so every gun takes her
+  own moment inside `volleyWindow`: several ports go off together, then a few more elsewhere, and
+  what separates one ball from the next is the ground the one before made. A ship crosses better than
+  a hull length while her side is firing, so every gun still to go takes that ground off its lay:
+  without it a first rate at speed walked two thirds of her iron off the front of a hull she had laid
+  dead. Do not cap the ball count to fix a drawing problem, and do not shorten the window to fix an
+  accuracy one. Both were tried, and so was a strict roll from bow to stern, which fires the same
+  guns in the same time and reads as a zip fastener.
+- **Every gun she carried has a port, and the ports are hers.** `histGuns / 2` is her broadside
+  bearing for every class in the fleet, so `hullform.js` draws exactly that many ports a side over
+  the tiers `decks` gives her, and the catalogue and the reference agree without importing each
+  other. Guns run out one port in three on a big battery: fifty barrels a side is a centipede, and
+  the port itself is what says gun deck. Above a dozen ports the barrel is drawn in fewer faces,
+  because the menu plate is sorted per frame and a first rate's model is already the slowest thing
+  in the game.
 - **`npm run catalogue` before and after touching the catalogue.** A hull that cannot be rigged or
   carries a station the renderer cannot draw fails silently at runtime; the bench fails loudly. It
   prints the whole fleet side by side, which is the only way the numbers mean anything.

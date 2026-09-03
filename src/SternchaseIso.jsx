@@ -549,26 +549,26 @@ const WP = {
   musket: { cd: 0.75, speed: 320, life: 0.4, r: 1.6, bar: "crew" },
 };
 
-// THE ROLLING BROADSIDE, in two numbers: how fast the guns go off down her side, and how long her
-// whole side may take.
+// THE VOLLEY: how long her whole side takes to go off, and why it is not one order.
 //
-// She fires every gun she has now, and fifty balls leaving together cannot be told apart: down the
-// length of a first rate they would sit two thirds of a pace from each other, and the volley would
-// read as one bar of iron however small the balls were drawn. Firing them in sequence separates them
-// by the ground the first one has already made instead, which needs no room alongside at all.
+// She fires every gun she has, and fifty balls leaving in the same instant cannot be told apart:
+// down the length of a first rate they would sit two thirds of a pace from each other and read as
+// one bar of iron however small they were drawn. What separates them is a moment, not a size.
 //
-// `RIPPLE` is the gap a small battery uses, and at it consecutive balls fly five paces apart: a
-// cutter's five guns go off in a twentieth of a second and still look simultaneous. `ROLL_MAX` is
-// the ceiling on the whole thing, and it is what a big battery is squeezed into: fifty guns at the
-// small ship's gap would take a full second, which is a ship firing in slow motion rather than a
-// ship firing a broadside. Under half a second she reads as one round of volleys going off down her
-// side, gunport after gunport, which is what she should look like and what her smoke and the flash
-// at every port are carrying. Nothing is lost by the squeeze: her guns are laid as they bear, so a
-// shorter roll is neither more nor less accurate than a longer one.
-const RIPPLE = 0.02;
-const ROLL_MAX = 0.4;
-/** How long a battery of `n` takes to roll through, which the yard prints and the fight fires on. */
-const rollTime = (n) => Math.min((n - 1) * RIPPLE, ROLL_MAX);
+// EVERY GUN TAKES HER OWN MOMENT, drawn at random inside the window. That is a gun crew rather than
+// a machine: several ports along her side go off together, then a few more somewhere else, and the
+// whole side is away inside `VOLLEY_MAX`. It replaced a strict roll from one end to the other, which
+// was the same length of time and read as a mechanism running down her side. A ship firing is not a
+// zip fastener.
+//
+// The window is per gun up to a ceiling, so a cutter's five go off in a twentieth of a second and
+// still look simultaneous, and a first rate's fifty spread over a third of one. Nothing is lost by
+// the spread: her guns are laid as they bear, so a wider window is neither more nor less accurate.
+const GUN_STAGGER = 0.012; // her side takes about this per gun...
+const VOLLEY_MIN = 0.05;
+const VOLLEY_MAX = 0.32; // ...up to this, however many she carries
+/** How long a battery of `n` takes to get away, which the yard prints and the fight fires on. */
+const volleyWindow = (n) => clamp(n * GUN_STAGGER, VOLLEY_MIN, VOLLEY_MAX);
 // THE RANGE HER GUNS ARE LAID FOR, and the reason a rolling broadside is not a worse broadside.
 //
 // A ship at speed crosses better than a hull length while her side rolls through, so a gun fired at
@@ -1332,7 +1332,7 @@ export default function App() {
     function reset(m) {
       const rules = modeOf(m);
       gameRef.current = {
-        mode: m, rules, player: null, ships: [], shots: [], ripple: [], parts: [], wakes: [], islands: [], texts: [],
+        mode: m, rules, player: null, ships: [], shots: [], volleys: [], parts: [], wakes: [], islands: [], texts: [],
         cam: { x: 0, y: 0 }, sunk: 0, fieldSize: 0, aliveCount: 0, leader: null, avgEarned: 0,
         _lastRank: 0, spawnT: 0, spawnQueue: 0, vign: 0, running: false, hudDirty: false, hudAcc: 0, time: 0,
         banked: false, stormR: STORM_R0, stormTick: -1, playerOut: false,
@@ -1569,18 +1569,21 @@ export default function App() {
       const push = (px, py, ang) =>
         g.shots.push({ x: px, y: py, vx: Math.cos(ang) * w.speed, vy: Math.sin(ang) * w.speed, life: w.life, r: w.r, bar: w.bar, dmg, owner: s, kind: weapon });
       if (weapon === "broadside") {
-        // She does not throw her broadside, she starts it. Every gun she has is laid out down her
-        // side and the ripple runs forward to aft from here; `stepRipple` fires each one as it
-        // reaches it, off wherever she is by then. Nothing else about the volley is decided now,
-        // because a ship a second into a turn is not the ship that gave the order.
+        // She does not throw her broadside, she gives the order. Every port down her side takes her
+        // own moment inside the window, in the order they happen to come, so several go off together
+        // and the rest follow in ones and twos; `stepVolley` fires each as her moment arrives, off
+        // wherever the ship is by then. Nothing else about the volley is decided now, because a ship
+        // a third of a second into a turn is not the ship that gave the order.
         const offs = spread(balls(s, "broadside"), 0.72 * s.hullA);
-      g.ripple.push({
-        s, offs, n: 0, next: g.time, dmg, noise,
-        // her own gap, or as much of one as fits inside the ceiling on the whole roll
-        gap: offs.length > 1 ? rollTime(offs.length) / (offs.length - 1) : RIPPLE,
-        // where she lay when the order was given, which is what the guns are laid against
-        x0: s.x, y0: s.y, h0: h,
-      });
+        const win = volleyWindow(offs.length);
+        g.volleys.push({
+          s, dmg, noise, n: 0,
+          guns: offs
+            .map((off) => ({ off, at: g.time + Math.random() * win }))
+            .sort((a, b) => a.at - b.at),
+          // where she lay when the order was given, which is what the guns are laid against
+          x0: s.x, y0: s.y, h0: h,
+        });
       } else if (weapon === "bow") {
         // Her chasers, opened out by half what they were: they are round shot too, and a chase gun
         // that sprays is no use to anybody.
@@ -2081,14 +2084,15 @@ export default function App() {
     }
 
     /**
-     * ONE GUN OF A ROLLING BROADSIDE, both sides at once.
+     * ONE GUN OF A BROADSIDE, both sides at once.
      *
      * Fired from where she is at this instant rather than from where she was when the order was
-     * given, which is the whole point of rolling it: a ship holding her course lays a straight bank
-     * of iron, and a ship swinging her helm mid-volley walks it across the water, exactly as she
-     * would have. The gun's own smoke and flash go with it, at the port it came out of.
+     * given, which is the whole point of spreading the volley at all: a ship holding her course lays
+     * a straight bank of iron, and a ship swinging her helm mid-volley walks it across the water,
+     * exactly as she would have. The gun's own smoke and flash go with it, at the port it came out
+     * of.
      */
-    function rippleGun(v, off) {
+    function fireGun(v, off) {
       const g = gameRef.current;
       const s = v.s;
       const w = WP.broadside;
@@ -2138,22 +2142,16 @@ export default function App() {
      * The guns still to go off, on every ship with a volley in the air.
      *
      * A ship sunk mid-broadside stops firing, which is the difference between a gun crew and a
-     * timer. Everything else is arithmetic: a gun goes off when the ripple reaches it, and the
-     * entry is done when her last one has.
+     * timer. Everything else is arithmetic: a gun goes off when her moment comes, however many that
+     * is in one frame, and the entry is done when her last one has.
      */
-    function stepRipple() {
+    function stepVolley() {
       const g = gameRef.current;
-      for (let i = g.ripple.length - 1; i >= 0; i--) {
-        const v = g.ripple[i];
-        if (!v.s.alive) { g.ripple.splice(i, 1); continue; }
-        // Each gun goes off when the one before it has, and a gun crew is not a metronome: the
-        // interval carries a wide jitter about `RIPPLE`, which averages out to the same roll and
-        // breaks the string of evenly spaced beads that firing on the beat drew.
-        while (v.n < v.offs.length && g.time >= v.next) {
-          rippleGun(v, v.offs[v.n++]);
-          v.next += v.gap * (0.55 + Math.random() * 0.9);
-        }
-        if (v.n >= v.offs.length) g.ripple.splice(i, 1);
+      for (let i = g.volleys.length - 1; i >= 0; i--) {
+        const v = g.volleys[i];
+        if (!v.s.alive) { g.volleys.splice(i, 1); continue; }
+        while (v.n < v.guns.length && g.time >= v.guns[v.n].at) fireGun(v, v.guns[v.n++].off);
+        if (v.n >= v.guns.length) g.volleys.splice(i, 1);
       }
     }
 
@@ -2277,7 +2275,7 @@ export default function App() {
       stepRam();
       measureWay(dt);
       stepStorm(dt);
-      stepRipple();
+      stepVolley();
       stepShots(dt);
       stepParts(dt);
       maintain(dt);
@@ -3935,8 +3933,8 @@ function YardScreen({ hold, onBack, onCommission, onOutfit }) {
           <>
             <TallyRow label="Damage a ball" value={stats.broadside.perBall.toFixed(1)} rule="hair" />
             <TallyRow
-              label="Her side rolls through in"
-              value={`${rollTime(stats.broadside.count).toFixed(2)}s`}
+              label="Her whole side is away in"
+              value={`${volleyWindow(stats.broadside.count).toFixed(2)}s`}
               rule="hair"
             />
           </>

@@ -259,7 +259,7 @@ colours; the same cast tints her hull and spars at sea. The galleon's form is th
 under the plain Oak identity cast, so she still builds the exact ship this file always drew, checked
 by pixel diff, and a cutter is finally a small hull under a small rig.
 
-### The rolling broadside
+### The volley
 
 Every gun she has throws its own ball, which for a first rate is fifty a side and a hundred in the
 water. Fired together they cannot be told apart: down the length of her they would sit two thirds of
@@ -267,18 +267,20 @@ a pace from each other, and the volley would read as one bar of iron however sma
 drawn. Nothing that can be done to a ball's size fixes that, because a ball small enough to fit is a
 ball too small to see.
 
-**So her guns go off in sequence down her side**, and what separates one ball from the next is the
-ground the one before it has already made. Two numbers set it. `RIPPLE`, a fiftieth of a second, is
-the gap a small battery uses, and at 250 paces a second it puts five paces between consecutive balls:
-a cutter's five guns go off in 0.08s and still look simultaneous. `ROLL_MAX` is the ceiling on the
-whole roll, and it is what a big battery is squeezed into: fifty guns at the small ship's gap would
-take a full second, which is a ship firing in slow motion. Capped at 0.4s she reads as one round of
-volleys going off down her side, gunport after gunport. `stepRipple` fires each gun as the roll
-reaches it, off wherever she is by then, so a ship holding her course lays a straight bank of iron
-and a ship under helm walks it across the water.
+**So every gun takes her own moment**, drawn at random inside a window: several ports go off
+together, a few more follow somewhere else along her side, and the whole broadside is away inside
+`VOLLEY_MAX`. What separates one ball from the next is the ground the one before it has already
+made, and what makes it read as a gun crew rather than a mechanism is that the moments are scattered.
+It replaced a strict roll from one end to the other, which fired the same guns in the same time and
+looked like a zip fastener running down her side. The window is `GUN_STAGGER` per gun up to the
+ceiling, so a cutter's five go off in a twentieth of a second and still look simultaneous while a
+first rate's fifty spread over a third of one. `stepVolley` fires each gun as her moment arrives, off
+wherever the ship is by then, so a ship holding her course lays a straight bank of iron and a ship
+under helm walks it across the water.
 
 **A gun fires out of a port in her side**, so its flash and its smoke stand at the rail it fired over
 rather than on her keel, and the flash is drawn in a pass of its own after every puff on the water.
+Those ports are drawn now, all of them: see **Every gun has a port** below.
 Both were wrong first time and both mattered more than they sound: the flash was amidships on her
 centreline, where a gun deck is stores rather than gunports, and it was drawn in the order it was
 made, so a pale yellow flash went under the white bank the next gun down the side put up. Fifty guns
@@ -286,14 +288,14 @@ going off left a bank with nothing in it, which is a ship in a fog rather than a
 puff is small and stands just outside the rail for the same reason: one as wide as she is long
 swallows her hull, her flashes and the first few paces of her shot.
 
-**Her guns are laid as they bear**, and this is what keeps a rolling broadside from being a worse
-one. She crosses better than a hull length while her side rolls through, so a gun fired at the end of
+**Her guns are laid as they bear**, and this is what keeps a spread volley from being a worse one.
+She crosses better than a hull length while her side is firing, so a gun fired at the end of
 the roll goes off from a long way ahead of where the first one did, and the whole volley walks off the
 front of what she was pointed at: measured over a one-second roll, she put 38% of her iron into a hull
 she had laid dead at full speed, against 85% before. Real crews answered this by laying each gun as it
 bears, and so does she: the ground made since the order comes off the lay at `LAY_RANGE`. That
-restores it to 88% at every speed and at every length of roll, which is why `ROLL_MAX` could be set
-from how the volley looks rather than from what it costs her. It is honestly wrong at any range but
+restores it to 88% at every speed and at every width of window, which is why `VOLLEY_MAX` could be
+set from how the volley looks rather than from what it costs her. It is honestly wrong at any range but
 that one, which is what laying a gun for a range you have guessed has always been worth.
 
 **The ball is smaller than it was**: `r` 3.0 to 1.8, drawn at exactly the size it bites rather than
@@ -305,6 +307,30 @@ Measured at 60 frames a second through twenty seconds of eleven first rates firi
 company, which is the heaviest field free-for-all can put up: about 1,100 balls and 1,100 puffs of
 smoke a volley round. One puff to a gun rather than two, and a bigger, longer-standing one, is what
 paid for it.
+
+### Every gun has a port
+
+`histGuns / 2` is exactly her `broadside` bearing for every class in the fleet, so `hullform.js` can
+draw her whole battery from the reference alone and the ports agree with the guns that fire out of
+them without the catalogue and the reference ever having to be introduced. She used to show one port
+per dozen of her guns to a maximum of seven, which was a way of suggesting a battery on a hull that
+had no room to draw one; she has the room. A first rate's fifty a side sit seventeen to a deck over
+the three tiers `decks` gives her, her lower tiers running the length of her under the castles the
+way a lower deck really did and the top one stopping at the castle breaks.
+
+Two things had to give for that to be free. **Guns are housed until they are wanted**: a big battery
+runs out one gun in three and shows the rest as the port alone, because fifty barrels a side is a
+fringe of grey spines rather than a wall of gunports, and the black square in tan trim is what says
+gun deck at this size anyway. And **a barrel is drawn in fewer faces where there are many of them**:
+a ten-sided gun over four segments is seventy faces, nothing on a ship showing four ports and seven
+thousand on a first rate showing a hundred. Together those put the menu plate back exactly where it
+was: 99.9ms a frame for a fully found first rate against 100.0ms before the change, and 16.8ms
+against 16.7ms for a cutter.
+
+**The menu plate is slow, and it was slow before this.** A hundred milliseconds a frame is ten frames
+a second for the biggest ship in the game, on a model that is built once and cached: the cost is
+transforming, sorting and filling every face, every frame, and a first rate has a great many. It
+wants a look, and it wants one whatever happens to her gunports.
 
 ## What replaced the upgrade rail
 

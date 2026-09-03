@@ -85,7 +85,8 @@
 # mastHeight  (drawn) how tall her rig stands, as a multiple of the galleon's. Scales her masts in
 #             both views.
 # decks       (drawn) how many of her decks carry guns: 1, 1-2, 2, 2-3 or 3. Text, because a range is
-#             not a number. A 3 or a 2-3 with four ports a side or more draws two tiers of them.
+#             not a number. It is how many tiers her ports are drawn on, the last figure counting, so
+#             a 2-3 is a three-decker and her battery is split three ways up her side.
 # wale        the thickness of her main wale, inches: the heavy belt of timber along her side.
 # topside     the thickness of her topside planking, inches.
 # roomSpace   room and space, feet: from one frame to the next.
@@ -96,9 +97,11 @@
 # cruise      her everyday speed, knots.
 # topSpeed    the best she was ever driven, knots.
 # manoeuvre   how handy she was, 0 to 100. The reference's own score, and what `hand` came out of.
-# histGuns    (drawn) how many guns she really carried, of every sort. She shows one gunport a side
-#             per dozen of them, up to seven. It is not the game's armament: that is the three
-#             bearing columns above, and they are deliberately smaller.
+# histGuns    (drawn) how many guns she really carried, of every sort. She shows HALF OF THEM as
+#             gunports a side, spread over the tiers `decks` gives her, so a first rate's hundred
+#             guns are fifty ports a side over three decks. That half is exactly her `broadside`
+#             bearing for every class in the fleet, which is how the ports and the guns that fire
+#             out of them agree without the catalogue and the reference ever meeting.
 active	id	name	price	hull	crew	speed	hand	canvas	tons	broadside	bow	swivel	masts	bowsprit	blurb	era	region	role	lod	lbp	beam	draft	depth	freeboard	lb	bd	burthen	disp	bowFine	tumblehome	deadrise	sheer	castle	stern	mastHeight	decks	wale	topside	roomSpace	species	timber	crewMin	cruise	topSpeed	manoeuvre	histGuns
 yes	gundalow	Gundalow	0	100	30	0.55	0.65	0.18	2	1	1	1	main/small	no	A raft with a mast and one gun. She floats, she fires, and she is yours.	1770-1815	American lakes	Floating gun battery	40	37	13	3.5	4	2	3.08	3.25	15	20	2	1	1	1	1	Scow	0.7	1	2	1	2	Pine	1	12	2	4	40	2
 yes	bermudaSloop	Bermuda Sloop light	900	137	30	0.97	1.22	0.28	6.6	3	1	1	bowsprit/small main/medium	yes	One raking mast and a deep heel aft. Nothing this small goes faster.	1700-1820	Caribbean	Fast dispatch and privateer	46	42	16	9.5	8	3	2.88	2.0	30	39	4	2	4	3	1	Transom	1.5	1	2.5	1.5	1.7	Cedar	1.0	10	8	12	87	6
@@ -116,6 +119,8 @@ yes	fourthRate	4th rate	35000	1305	390	0.85	0.76	3.18	142	27	2	4	bowsprit/large 
 yes	thirdRate	3rd rate	58000	1812	500	0.88	0.7	4.13	175	32	2	5	bowsprit/large fore/heavy main/heavy mizzen/large	yes	Sixty four guns, and the smallest ship anyone will put in the line of battle.	1750-1860	Global	Backbone of the line	165	150	45	22	19	8	3.67	2.37	1400	2170	3	4	3	4	3	Gallery	1.15	2	6.25	3.75	1.95	Oak	1.0	320	6	10.5	45	64
 yes	secondRate	2nd rate	80000	2421	700	0.79	0.68	5.12	259.4	45	2	6	bowsprit/large fore/heavy main/heavy mizzen/large	yes	Three decks of iron. She is slow, she is enormous, and nothing wants her attention.	1690-1850	Global	Fleet flagship	180	164	50	26	21	11	3.6	2.38	1900	3000	2	5	3	4	4	Gallery	1.1	3	6.75	4.25	2.0	Oak	1.0	450	5	9	41	90
 yes	firstRate	1st rate	100000	2699	800	0.79	0.62	5.68	297.7	50	2	6	bowsprit/large fore/heavy main/heavy mizzen/large	yes	A hundred guns and a flag at the main. There is nothing above her.	1650-1860	Britain, France, Spain	Fleet flagship	190	173	51	28.5	22	12	3.73	2.32	2150	3500	2	5	3	4	4	Gallery	1.1	3	7	4.5	2.0	Oak	1.0	520	5	9	38	100
+
+
 No	launch	Armed launch	0	100	30	0.58	1.28	0.1	0.21	1	1	1	bowsprit/boat main/boat	yes		1650-1865	Global	Boarding and inshore harassment	32	30	8	2.5	3	1.5	4.0	3.2	6	8	3	1	2	2	1	Transom	0.9	1	1.5	1.0	1.2	Pine	0.85	6	2	5	92	1
 No	shallop	Armed shallop	130	117	25	0.64	1.28	0.18	0.47	1	1	1	bowsprit/boat fore/boat main/boat	yes		1600-1720	North Europe	Coastal and colonial patrol	34	32	10	3.5	4	2	3.4	2.9	15	20	3	1	2	2	1	Transom	0.8	1	2.0	1.25	1.4	Oak	1.0	4	3	6	92	2
 No	yawl	Yawl	60	100	25	0.58	1.3	0.09	0.23	1	1	1	bowsprit/boat main/boat	yes		1650-1865	Global	Ship's boat and dispatch	24	22	7	2.5	2.5	1.5	3.4	2.8	5	7	3	1	2	2	1	Transom	0.8	1	1.25	1.0	1.1	Pine	0.85	3	2	5	93	1

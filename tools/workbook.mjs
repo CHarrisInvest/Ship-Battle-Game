@@ -61,11 +61,19 @@ function readTable(file) {
       (header ? tail : notes).push(line);
       continue;
     }
-    if (!line.trim()) continue;
+    // A BLANK LINE IS A BLANK ROW, and it is kept. It is how a person puts air between the ships
+    // that sail and the ships laid up, and losing it on every round trip made the table harder to
+    // read every time it was edited. Deleting a class is deleting her row, which is what deleting a
+    // row has always meant everywhere else.
+    if (!line.trim()) {
+      if (header) rows.push(null);
+      continue;
+    }
     const cells = line.split("\t").map((c) => c.trim());
     if (!header) header = cells;
     else rows.push(cells);
   }
+  while (rows.length && rows[rows.length - 1] === null) rows.pop(); // trailing air is just the file end
   if (!header) throw new Error(`data/${file} has no header row`);
   return { file, notes, tail, header, rows };
 }
@@ -79,7 +87,7 @@ function writeTable(table) {
   const body = [
     ...table.notes,
     table.header.join("\t"),
-    ...table.rows.map((r) => table.header.map((_, i) => flat(r[i])).join("\t")),
+    ...table.rows.map((r) => (r ? table.header.map((_, i) => flat(r[i])).join("\t") : "")),
     ...table.tail,
     "",
   ].join("\n");
@@ -93,7 +101,7 @@ function writeTable(table) {
 // forty of them.
 function widths(header, rows) {
   return header.map((h, i) => {
-    const longest = rows.reduce((n, r) => Math.max(n, String(r[i] ?? "").length), h.length);
+    const longest = rows.reduce((n, r) => Math.max(n, r ? String(r[i] ?? "").length : 0), h.length);
     return Math.max(6, Math.min(46, longest + 2));
   });
 }
@@ -118,7 +126,8 @@ function readmeSheet(tables) {
     [],
     ["A few things to know before editing:"],
     [],
-    ["  Each row's id is its key. Adding a row adds a ship or a part; deleting a row removes it."],
+    ["  Each row's id is its key. Adding a row adds a ship or a part; deleting the row removes it."],
+    ["  A row left blank is left blank: space between two groups of ships survives coming back."],
     ["  An id is a short camelCase word, unique in its sheet, and it must be a plain word: letters"],
     ["  and digits, no spaces or punctuation."],
     [],
@@ -239,13 +248,13 @@ function write(to) {
     legend.sheet,
     ...tables.map((t) => ({
       name: t.sheet,
-      rows: [t.header, ...t.rows],
+      rows: [t.header, ...t.rows.map((r) => r || [])],
       widths: widths(t.header, t.rows),
     })),
   ];
   writeFileSync(to, writeWorkbook(sheets));
   console.log(`Wrote ${to.replace(root + "/", "")}:`);
-  for (const t of tables) console.log(`  ${t.sheet.padEnd(6)} ${String(t.rows.length).padStart(3)} ${t.what}`);
+  for (const t of tables) console.log(`  ${t.sheet.padEnd(6)} ${String(t.rows.filter(Boolean).length).padStart(3)} ${t.what}`);
   if (legend.missing.length) {
     console.log(`  ${legend.missing.length} column${legend.missing.length === 1 ? " has" : "s have"} no line in the legend: ${legend.missing.join(", ")}.`);
     console.log("  Document it at the head of its table and it lands on the Columns sheet.");
@@ -309,14 +318,14 @@ function sheetToTable(table, grid, problems) {
 
   const idCol = head.indexOf("id");
   const activeCol = head.indexOf("active");
-  const was = new Map(table.rows.map((r) => [r[table.header.indexOf("id")], r]));
+  const was = new Map(table.rows.filter(Boolean).map((r) => [r[table.header.indexOf("id")], r]));
 
   const rows = [];
   const sailing = new Set();
   const retired = new Set();
   grid.slice(1).forEach((cells, i) => {
     const line = i + 2;
-    if (cells.every((c) => !String(c ?? "").trim())) return; // a blank row is a deleted one
+    if (cells.every((c) => !String(c ?? "").trim())) { rows.push(null); return; } // air, kept as it is
     const id = flat(cells[idCol]);
     if (!id) {
       problems.push(`${where} row ${line} has figures in it but no id`);
@@ -387,7 +396,7 @@ async function read(from) {
   console.log(`Read ${from.replace(root + "/", "")}:`);
   for (const t of tables) {
     const before = readTable(t.file); // what was just written, so the count is the count on disk
-    console.log(`  data/${t.file.padEnd(10)} ${String(before.rows.length).padStart(3)} ${t.what}`);
+    console.log(`  data/${t.file.padEnd(10)} ${String(before.rows.filter(Boolean).length).padStart(3)} ${t.what}`);
   }
 
   await starterCheck(tables);
@@ -408,7 +417,7 @@ async function starterCheck(tables) {
   } catch {
     return;
   }
-  const ids = new Map(tables.map((t) => [t.sheet, new Set(t.rows.map((r) => r[t.header.indexOf("id")]))]));
+  const ids = new Map(tables.map((t) => [t.sheet, new Set(t.rows.filter(Boolean).map((r) => r[t.header.indexOf("id")]))]));
   const wanted = [
     ["Hulls", STARTER.hull],
     ...Object.values(STARTER.rig).flatMap((r) => [["Masts", r.mast], ...(r.sails || []).map((s) => ["Sails", s])]),
