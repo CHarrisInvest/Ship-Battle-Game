@@ -24,7 +24,8 @@ import {
   squareLevel,
 } from "../src/shipyard.js";
 import { RIG_STATIONS, RIG_KINDS, RIG_BERTHS, rigBands } from "../src/galleon.js";
-import { hullForm, DEFAULT_FORM } from "../src/hullform.js";
+import { hullForm, DEFAULT_FORM, parseBattery } from "../src/hullform.js";
+import { HULL_REF } from "../src/shipref.js";
 
 // A set, not a list. The same fault reached from forty hulls is one fault about one part, and a
 // bench that printed it forty times would bury the other thirty-nine.
@@ -75,6 +76,55 @@ for (const h of HULL_LIST) {
   const r = rate(found);
   if (!(r.sails > 0)) fault(where, "fully found, she still carries no sail");
   if (r.broadside.count !== h.guns.broadside) fault(where, `fully found she runs out ${r.broadside.count} broadside guns, not the ${h.guns.broadside} she bears`);
+}
+
+/**
+ * HER BATTERY, AS IT COMES OUT DRAWN.
+ *
+ * None of this throws and none of it is visible from the catalogue: a tier whose ports overlap each
+ * other draws as one continuous smear rather than a row, a port sitting in her wales draws as a hole
+ * at the waterline, and a class whose ports do not add up to her guns is the "every gun has a port"
+ * rule quietly broken. All three were true of the fleet before `battery` existed, and every one of
+ * them survived because nothing counted. This counts.
+ */
+const portAudit = [];
+for (const h of HULL_LIST) {
+  const ref = HULL_REF[h.id];
+  const form = hullForm(h.id);
+  if (!ref || form === DEFAULT_FORM) continue;
+  const where = `hull "${h.id}"`;
+  const { ST, ports } = form.menu;
+  const sheerAt = (x) => {
+    let i = 0;
+    while (i < ST.length - 2 && ST[i + 1][0] < x) i++;
+    const t = Math.max(0, Math.min(1, (x - ST[i][0]) / (ST[i + 1][0] - ST[i][0] || 1)));
+    return ST[i][2] + (ST[i + 1][2] - ST[i][2]) * t;
+  };
+
+  const borne = ports.rows.reduce((n, r) => n + r.xs.length, 0);
+  const above = ports.works.reduce((n, r) => n + r.xs.length, 0);
+  const bat = parseBattery(ref);
+  const meant = bat.decks.reduce((a, b) => a + b, 0) + bat.works.reduce((a, b) => a + b, 0);
+  if (borne + above !== meant) {
+    fault(where, `carried ${meant * 2} guns and stands ${(borne + above) * 2} of them: her battery says ${ref.battery} and something in the layout is dropping guns`);
+  }
+  if (borne !== h.guns.broadside - above) {
+    fault(where, `bears ${h.guns.broadside} a side and shows ${borne} gun-deck ports with ${above} on her upper works, so a gun she can buy has nowhere to fire from`);
+  }
+
+  let low = Infinity, tightX = Infinity, tightZ = Infinity;
+  ports.rows.forEach((r, i) => {
+    for (const x of r.xs) low = Math.min(low, sheerAt(x) * r.f - ports.hh);
+    if (r.xs.length > 1) tightX = Math.min(tightX, r.xs[1] - r.xs[0]);
+    // tiers are placed as a fraction of the sheer, so they close up where the side is shallowest
+    if (i) {
+      for (const x of r.xs) tightZ = Math.min(tightZ, (r.f - ports.rows[i - 1].f) * sheerAt(x));
+    }
+  });
+  if (low < 0.45) fault(where, `her lowest port sits ${n2(low)} above the water, which the renderer refuses to draw`);
+  if (tightX < 2 * ports.hw) fault(where, `her ports stand ${n2(tightX)} apart and are ${n2(2 * ports.hw)} wide, so a tier draws as one smear rather than a row of ports`);
+  if (tightZ < 2 * ports.hh) fault(where, `two of her tiers stand ${n2(tightZ)} apart and her ports are ${n2(2 * ports.hh)} deep, so one tier draws through the other`);
+  portAudit.push({ h, ref, ports, borne, above, low, tightX, tightZ });
 }
 
 for (const mount of ["broadside", "bow", "swivel"]) {
@@ -200,6 +250,23 @@ for (const h of HULL_LIST) {
     num(n1(bare.overall), 5), " -> ", num(n1(found.overall), 6),
     "  " + pad(`${rateOf(h).name}, ${gunsBorne(h)}`, 15),
     num(outfitCost(h.id), 8),
+  );
+}
+
+console.log("\nHER BATTERY  (ports a side by tier, lowest first, then what stands on her upper works)");
+console.log("  " + pad("class", 19) + pad("battery", 16) + pad("gun decks", 26) + pad("upper works", 32) + pad("port", 12) + num("spacing", 8) + num("tiers", 7) + num("sill", 6));
+for (const a of portAudit) {
+  const tiers = a.ports.rows.map((r) => `${r.xs.length}`).join(" over ");
+  const above = a.ports.works.map((w) => `${w.xs.length} ${w.deck === "rail" ? "in her waist" : w.deck === "aft" ? "aft" : "forward"}`).join(", ");
+  console.log(
+    "  " + pad(a.h.name, 19),
+    pad(String(a.ref.battery), 16),
+    pad(`${tiers} a side`, 26),
+    pad(above || "none", 32),
+    pad(`${n2(2 * a.ports.hw)} by ${n2(2 * a.ports.hh)}`, 12),
+    num(Number.isFinite(a.tightX) ? n2(a.tightX) : "one", 8),
+    num(Number.isFinite(a.tightZ) ? n2(a.tightZ) : "one", 7),
+    num(n2(a.low), 6),
   );
 }
 

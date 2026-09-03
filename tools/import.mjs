@@ -91,11 +91,46 @@ const REFERENCE = [
   "era", "region", "role", "lod", "lbp", "beam", "draft", "depth", "freeboard", "lb", "bd",
   "burthen", "disp", "bowFine", "tumblehome", "deadrise", "sheer", "castle", "stern", "mastHeight",
   "decks", "wale", "topside", "roomSpace", "species", "timber", "crewMin", "cruise", "topSpeed",
-  "manoeuvre", "histGuns",
+  "manoeuvre", "histGuns", "battery",
 ];
+
+/**
+ * HER ESTABLISHMENT HAS TO ADD UP, because nothing downstream can tell that it does not.
+ *
+ * `battery` is where her guns actually stood: gun decks lowest first, then her upper works after a
+ * plus. `hullform.js` draws her ports off it and never counts them again, so a figure short here is
+ * a class that quietly sails with fewer ports than guns, which is exactly the fault the column was
+ * added to end. The sum against `histGuns` is the check that catches it, and the even split is what
+ * lets half of every deck go down each side.
+ */
+function checkBattery(r) {
+  const where = `hulls.tsv: "${r.id}"`;
+  const guns = number(r, "histGuns", "hulls.tsv");
+  if (number(r, "broadside", "hulls.tsv") * 2 !== guns) {
+    throw new Error(`${where} bears ${r.broadside} a side against ${guns} guns carried. Half her histGuns IS her broadside for every class in the fleet, which is what makes her ports and her guns the same count.`);
+  }
+  const [decks, works] = need(r, "battery", "hulls.tsv").split("+");
+  const term = (t, what) => {
+    const n = Number(t);
+    if (!Number.isFinite(n) || n < 0) throw new Error(`${where} has "${t}" in her battery, which is not a count of guns`);
+    if (n % 2) throw new Error(`${where} puts ${n} guns on ${what}, and a deck is pierced both sides, so it takes an even number`);
+    return n;
+  };
+  const tiers = decks.split("/").map((t, i) => term(t, `gun deck ${i + 1}`));
+  const above = works ? works.split("/").map((t, i) => term(t, i ? "her forecastle" : "her quarterdeck")) : [];
+  if (tiers.some((n) => n === 0)) throw new Error(`${where} has a gun deck with no guns on it`);
+  if (tiers.length > 3) throw new Error(`${where} has ${tiers.length} gun decks and nothing has ever drawn more than three`);
+  if (above.length > 2) throw new Error(`${where} splits her upper works ${above.length} ways: write one figure for a battery running her whole length, or two for her quarterdeck and her forecastle`);
+  const castle = number(r, "castle", "hulls.tsv");
+  if (above.some((n) => n > 0) && castle < 2) throw new Error(`${where} carries guns on her upper works with a castle score of ${castle}, which is an open boat with no quarterdeck to stand them on`);
+  if (above.length > 1 && above[1] > 0 && castle < 3) throw new Error(`${where} carries ${above[1]} guns on a forecastle she has not got: that wants a castle score of 3`);
+  const sum = [...tiers, ...above].reduce((a, b) => a + b, 0);
+  if (sum !== guns) throw new Error(`${where} musters ${sum} guns across her battery and carried ${guns}`);
+}
 
 function referenceRows() {
   return fleet("hulls.tsv").map((r) => {
+    checkBattery(r);
     const fields = REFERENCE.filter((k) => r[k] !== undefined && r[k] !== "").map((k) => {
       const n = Number(r[k]);
       return `    ${k}: ${r[k] !== "" && Number.isFinite(n) ? n : str(r[k])},`;

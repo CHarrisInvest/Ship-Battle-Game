@@ -314,9 +314,49 @@ paid for it.
 draw her whole battery from the reference alone and the ports agree with the guns that fire out of
 them without the catalogue and the reference ever having to be introduced. She used to show one port
 per dozen of her guns to a maximum of seven, which was a way of suggesting a battery on a hull that
-had no room to draw one; she has the room. A first rate's fifty a side sit seventeen to a deck over
-the three tiers `decks` gives her, her lower tiers running the length of her under the castles the
-way a lower deck really did and the top one stopping at the castle breaks.
+had no room to draw one; she has the room.
+
+### A gun deck is not the upper works
+
+Where those guns stood is a second question, and reading `decks` for it was the wrong answer to it.
+`decks` says how many of her decks carried guns and nothing about where on them, so a first rate's
+fifty a side were split evenly over three tiers with the top one clipped to between her castle
+breaks. Three things were wrong with that at once. A rate's number counts her quarterdeck and
+forecastle guns, which never had a lidded port in the ship's side, so a dozen of them were pierced
+through her topside. A frigate has one gun deck and `decks` said two, so she drew as a small ship of
+the line. And the top tier, sixteen ports crammed into 0.58 of her length, came out spaced 2.8 apart
+against a port 5.2 wide: not a row of ports but one continuous smear, which is also the one stretch
+of a two-decker's side that historically had no ports in it at all.
+
+`battery` replaces it, and it is her real establishment written deck by deck: `28/28/30+12/2` is a
+first rate, `28+8/2` a frigate, `30+20` a spar-decked heavy frigate whose upper battery ran the
+length of her, `10` a cutter. Gun decks before the plus, lowest first; her upper works after it,
+quarterdeck then forecastle, or a single figure for a battery that ran right along her. The importer
+checks the figures sum to `histGuns` and that every gun deck takes an even number, because nothing
+downstream can tell that they do not.
+
+The two are then drawn as the unlike fittings they were. A gun deck runs the whole length of her,
+under the castles, in lidded ports of tan trim. Her upper works stand in the open behind a bulwark:
+an opening in the rail with a short thick gun in it, sized off the bulwark it stands behind, which is
+both what a carronade was and the only sort of barrel that still reads at the size a quarterdeck is
+drawn. So a frigate has one battery and a few guns above it, a two-decker has two and an empty waist,
+and a first rate is three tiers and a quarterdeck.
+
+### A port is cut to the side it is pierced in
+
+The authored port is 4.4 deep and 5.2 wide, which was fine on the one hull it was drawn for and
+absurd on the rest: it is more than the whole freeboard of half this fleet, and three tiers of it
+will not stand on any hull in the game. So the tiers are spread over the usable side and the port
+sized to the room left between them and along them, capped at the galleon's own and never above it.
+It lands near enough where a real one did, about two fifths of the way from one port to the next,
+with a clear port's depth of timber between one deck and the next. A first rate comes out with ports
+3.5 by 3.0 at a spacing of 7.9 and her tiers 3.4 apart; a cutter, whose side is 3.2 deep in total,
+gets 2.3 by 1.9 sitting inside it instead of hanging past her rail and into her wales.
+
+That also ends the fault where the renderer's own waterline guard was quietly eating ports: a fifth
+rate drew 6 of her 10 lower ports and a heavy frigate 8 of 13, because a row hung at a fixed fraction
+of the sheer dives at the fine ends. Nothing reaches the guard now. It stays as the net it was, and
+`npm run catalogue` counts what comes out drawn against what she carried.
 
 Two things had to give for that to be free. **Guns are housed until they are wanted**: a big battery
 runs out one gun in three and shows the rest as the port alone, because fifty barrels a side is a
@@ -326,6 +366,12 @@ a ten-sided gun over four segments is seventy faces, nothing on a ship showing f
 thousand on a first rate showing a hundred. Together those put the menu plate back exactly where it
 was: 99.9ms a frame for a fully found first rate against 100.0ms before the change, and 16.8ms
 against 16.7ms for a cutter.
+
+Splitting the battery off `decks` and sizing the port to the side cost nothing either, measured the
+same way on a slower machine: 49.3ms a frame for a fully found first rate against 50.4ms before it,
+and 43.6ms against 41.8ms for a cutter, which is inside the noise in both directions. Her upper
+works add fourteen guns to a first rate and every one of them is run out, and the tiers below shed
+the fourteen ports that were standing in for them.
 
 **The menu plate is slow, and it was slow before this.** A hundred milliseconds a frame is ten frames
 a second for the biggest ship in the game, on a model that is built once and cached: the cost is

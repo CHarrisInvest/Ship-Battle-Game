@@ -95,16 +95,29 @@ are built from. `broadside` in the code is the side guns, not the old title, and
   dead. Do not cap the ball count to fix a drawing problem, and do not shorten the window to fix an
   accuracy one. Both were tried, and so was a strict roll from bow to stern, which fires the same
   guns in the same time and reads as a zip fastener.
-- **Every gun she carried has a port, and the ports are hers.** `histGuns / 2` is her broadside
-  bearing for every class in the fleet, so `hullform.js` draws exactly that many ports a side over
-  the tiers `decks` gives her, and the catalogue and the reference agree without importing each
-  other. Guns run out one port in three on a big battery: fifty barrels a side is a centipede, and
-  the port itself is what says gun deck. Above a dozen ports the barrel is drawn in fewer faces,
-  because the menu plate is sorted per frame and a first rate's model is already the slowest thing
-  in the game.
+- **Every gun she carried has a station, and a gun deck is not the upper works.** `histGuns / 2` is
+  her broadside bearing for every class in the fleet, and `battery` says where those guns stood:
+  gun decks lowest first, then her quarterdeck and forecastle after the plus. The two are unlike
+  fittings and `hullform.js` lays them out as such. A gun deck is a continuous battery pierced
+  through her side, so every tier runs the whole length of her, under the castles the way a lower
+  deck really did; her upper works carried their guns in the open behind a bulwark, with no lidded
+  port, which is what leaves a two-decker's waist bare. Do not read `decks` for this. It says how
+  many decks carried guns and nothing about where, which is how a frigate came to draw two full
+  tiers she never had and a first rate's quarterdeck ended up cut into her side.
+- **A port is cut to the side it is pierced in.** The authored port is 4.4 deep, which is more than
+  the whole freeboard of half this fleet, so `hullform.js` spreads the tiers over the usable side
+  and sizes the port to what is left between and along them, never larger than the galleon's own.
+  Fixed port sizes are what made a first rate's top tier one continuous smear and hung a cutter's
+  ports off her rail into her wales. Guns run out one port in three on a big battery: fifty barrels
+  a side is a centipede, and the port itself is what says gun deck. Above a dozen ports the barrel
+  is drawn in fewer faces, because the menu plate is sorted per frame and a first rate's model is
+  already the slowest thing in the game.
 - **`npm run catalogue` before and after touching the catalogue.** A hull that cannot be rigged or
   carries a station the renderer cannot draw fails silently at runtime; the bench fails loudly. It
-  prints the whole fleet side by side, which is the only way the numbers mean anything.
+  prints the whole fleet side by side, which is the only way the numbers mean anything. It counts
+  her ports as they come out drawn as well: a tier that overlaps itself, a port in her wales, or a
+  class whose ports no longer add up to her guns are all faults, and all three were true of the
+  fleet for as long as nothing counted them.
 - `docs/SHIPYARD.md` is the design note for the shipyard: the model, what is deliberately not built
   yet, and the open questions. Read it before extending any of the above.
 

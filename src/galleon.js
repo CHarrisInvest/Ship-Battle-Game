@@ -528,22 +528,28 @@ function buildShip(rig){
  }
  {
   const surfW=(x,z)=>hullWAtZ(stationAt(x),z);
-  const patch=(px,side,zc,hw,hh,out,col,bias,flat)=>{
-   const NX=4,NZ=3;
+  /* A patch laid on the side of her, sampled so it follows the curve underneath.
+     `at` is what surface it lies on: the hull's own skin for a gunport, and above
+     the sheer the flat outer face of a bulwark, which has no tumblehome in it. */
+  const patch=(px,side,zc,hw,hh,out,col,bias,flat,tag,at)=>{
+   const NX=4,NZ=3, W=at||surfW, T=tag||"hull";
    for(let i=0;i<NX;i++)for(let j=0;j<NZ;j++){
     const xa=px-hw+2*hw*i/NX, xb=px-hw+2*hw*(i+1)/NX;
     const za=zc-hh+2*hh*j/NZ, zb=zc-hh+2*hh*(j+1)/NZ;
-    addFace(F,[[xa,side*(surfW(xa,za)+out),za],[xb,side*(surfW(xb,za)+out),za],
-               [xb,side*(surfW(xb,zb)+out),zb],[xa,side*(surfW(xa,zb)+out),zb]],
-            col,[0,side,0],flat!=null?{tag:"hull",bias,flat}:{tag:"hull",bias});
+    addFace(F,[[xa,side*(W(xa,za)+out),za],[xb,side*(W(xb,za)+out),za],
+               [xb,side*(W(xb,zb)+out),zb],[xa,side*(W(xa,zb)+out),zb]],
+            col,[0,side,0],flat!=null?{tag:T,bias,flat}:{tag:T,bias});
    }
   };
-  // Every port she carried, on the tiers her decks give her: `hullform.js` lays
-  // them out and this draws whatever it hands over. A hull too low in the side
-  // to carry a port at all simply shows none, which is what the guard is for.
-  // Trim, opening and gun all scale with the fittings.
-  const pk=Math.max(0.55,Math.min(1.25,fk));
-  const fine=form.ports.rows.reduce((n,r)=>n+r.xs.length,0)<=12;
+  /* HER GUN DECKS, and then her upper works: `hullform.js` lays both out off her
+     real establishment and this draws what it hands over. The port's own size
+     comes with them, because a port is cut to the side it is pierced in and the
+     authored one is deeper than half this fleet's freeboard; the gun standing out
+     of it scales with it, or a small port wears a gun that was cut for a bigger. */
+  const PW=form.ports.hw, PH=form.ports.hh, gk=form.ports.gun;
+  const works=form.ports.works||[];
+  const fine=form.ports.rows.reduce((n,r)=>n+r.xs.length,0)
+            +works.reduce((n,r)=>n+r.xs.length,0)<=12;
   /* GUNS ARE HOUSED UNTIL THEY ARE WANTED, and on a three-decker that is what
      saves her from looking like a centipede: fifty barrels a side, every one of
      them run out, is a fringe of grey spines rather than a wall of gunports. So
@@ -555,13 +561,12 @@ function buildShip(rig){
   for(const row of form.ports.rows) for(const px of row.xs){
    const runOut=fine||(portN++%3===0);
    const rowF=row.f;
-   /* A port that would sit at or under her waterline is not drawn: a boat too low
-      in the side to carry one shows none rather than a row of holes in her wales.
-      The margin was 0.7 when a ship showed four ports amidships and nothing turned
-      on it; now that every gun she carries has a port, it is what decides whether a
-      cutter has a gun deck at all, and 0.45 is the lowest that keeps a port clear of
-      the water on the lowest hull in the fleet. */
-   const z=stationAt(px).sheer*rowF; if(z-1.95*pk<0.45) continue;
+   /* A port that would sit at or under her waterline is not drawn. Nothing should
+      reach this now: the tiers are solved against the shallowest side under the
+      battery and the port sized to fit between them, so the sill stands clear by
+      construction on every class in the fleet. It stays as the net it always was,
+      because a row of holes in her wales is what a bad figure in the table draws. */
+   const z=stationAt(px).sheer*rowF; if(z-PH<0.45) continue;
    for(const side of[1,-1]){
     /* Gunport: a small square of tan trim, a flat black opening inside it, and a
        cannon standing out of the black. Trim, opening and gun are strongly biased
@@ -569,8 +574,8 @@ function buildShip(rig){
        breaking into slivers where the hull faces sort past them. */
     const i0=F.length;
     const iGun=()=>F.length;
-    patch(px,side,z,2.60,2.20,0.05,P.port,4.0);
-    patch(px,side,z,2.42,2.02,0.11,"#0b0806",4.4,0.09);   // black fills the port to a hairline of trim
+    patch(px,side,z,PW,PH,0.05,P.port,4.0);
+    patch(px,side,z,PW*0.931,PH*0.918,0.11,"#0b0806",4.4,0.09);   // black fills the port to a hairline of trim
     const g0=iGun();
     if(runOut){
     // straight athwartships, so the gun is centred in its port from every heading
@@ -589,10 +594,10 @@ function buildShip(rig){
        five sided barrel in one length and no bore, which at the size a gun is drawn
        is a difference nobody can see and the sort a sort can. A hull at or under
        twelve keeps the authored gun exactly, which is what the galleon shows. */
-    addSpar(F,at(0),at(2.85),0.70,0.50,"#57504a","hull",fine?4:1,fine?10:5,4.6);
-    addPrism(F,at(2.70),at(3.14),0.60,0.54,"#6a635c","hull",fine?10:5,4.7);    // muzzle swell
-    addPrism(F,at(3.12),at(3.32),0.48,0.32,"#6a635c","hull",fine?10:5,4.8);    // rounded off at the mouth
-    if(fine)addPrism(F,at(3.30),at(3.38),0.24,0.22,"#0b0806","hull",10,4.9);   // bore
+    addSpar(F,at(0),at(2.85*gk),0.70*gk,0.50*gk,"#57504a","hull",fine?4:1,fine?10:5,4.6);
+    addPrism(F,at(2.70*gk),at(3.14*gk),0.60*gk,0.54*gk,"#6a635c","hull",fine?10:5,4.7);    // muzzle swell
+    addPrism(F,at(3.12*gk),at(3.32*gk),0.48*gk,0.32*gk,"#6a635c","hull",fine?10:5,4.8);    // rounded off at the mouth
+    if(fine)addPrism(F,at(3.30*gk),at(3.38*gk),0.24*gk,0.22*gk,"#0b0806","hull",10,4.9);   // bore
     }
     /* The flat port faces drop out as this side turns edge-on — they have no
        thickness to show. The gun does: rather than vanish, it falls back behind
@@ -602,6 +607,46 @@ function buildShip(rig){
      F[i].cull=[0,side,0];
      F[i].cullT=0.32;
      if(i>=g0)F[i].biasFar=-3;
+    }
+   }
+  }
+  /* HER UPPER WORKS, WHICH ARE NOT A GUN DECK. A quarterdeck or forecastle gun
+     stood in the open on the deck it was mounted on and fired through a gap in
+     the bulwark: no lid, no trim, no port cut through her side. So it is drawn as
+     what it was — an opening in the rail with a gun standing in it — and the
+     difference from the tan-trimmed squares below is the whole point of drawing
+     it. Fourteen of a first rate's hundred stood up here, and not one of them was
+     ever part of the wall of ports she is remembered for.
+
+     The bulwark is a flat face at her extreme half-beam rather than the hull's
+     own skin, which rolls in under it, so these lie on `railAt` instead.
+
+     The gun is sized off the bulwark it stands behind rather than off the ports
+     below. That is the space it actually occupies, and it comes out short and
+     thick, which is both what a carronade was and the only sort of barrel that
+     still reads at the size a quarterdeck is drawn. */
+  const railAt=(x)=>stationAt(x).w;
+  for(const row of works){
+   const deck=row.deck==="aft"?form.aft:row.deck==="fore"?form.fore:null;
+   if(row.deck!=="rail"&&!deck)continue;
+   const tag=deck?"castle":"hull";
+   const oh=Math.min(PH*0.62,BULWARK*0.30), ow=Math.min(PW*0.66,BULWARK*0.42);
+   const len=0.75*BULWARK, rad=0.19*BULWARK;
+   for(const px of row.xs){
+    const z=(deck?deck.z:stationAt(px).sheer)+BULWARK*0.5;
+    const w=railAt(px);
+    for(const side of[1,-1]){
+     const i0=F.length;
+     patch(px,side,z,ow,oh,0.06,"#0b0806",4.4,0.09,tag,railAt);
+     const g0=F.length;
+     const at=t=>[px,side*(w+t),z];
+     addSpar(F,at(0),at(len*0.86),rad,rad*0.82,"#57504a",tag,fine?4:1,fine?10:5,4.6);
+     addPrism(F,at(len*0.84),at(len),rad*0.86,rad*0.68,"#6a635c",tag,fine?10:5,4.7);
+     for(let i=i0;i<F.length;i++){
+      F[i].cull=[0,side,0];
+      F[i].cullT=0.32;
+      if(i>=g0)F[i].biasFar=-3;
+     }
     }
    }
   }
