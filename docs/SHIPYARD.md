@@ -28,6 +28,8 @@ are cheap to change and are deliberately left rough.
 | `data/hulls.tsv`, `data/masts.tsv`, `data/sails.tsv`, `data/guns.tsv` | The tables a person edits. One row per class, per mast type, per sail and per gun. |
 | `tools/import.mjs` | `npm run import`. Writes those tables into the generated blocks in `shipyard.js`. |
 | `tools/catalogue.mjs` | `npm run catalogue`. Checks the fleet is riggable and drawable, then prints every class side by side for calibration. |
+| `tools/workbook.mjs` | `npm run workbook` and `npm run workbook:read`. The same four tables as one spreadsheet, for editing the fleet in Numbers or Excel and reading it back. |
+| `data/ships.xlsx` | GENERATED, and a convenience rather than a source. The workbook the two commands above write and read. |
 
 ## The model
 
@@ -119,22 +121,32 @@ carries `kind` for its category. Those were one field until the categories arriv
 it, which is worth knowing when reading an old branch.
 
 **Guns** fit by the piece up to the hull's bearing. `broadside` counts guns *a side*, because that is
-how a volley fires, and runs 1 on a ship's boat to 20 on a first rate. Bow guns run 0 to 2. Muskets
+how a volley fires, and runs 1 on a gundalow to 50 on a first rate. Bow guns run 0 to 2. Muskets
 are not bought at all: they come off the crew the hull musters, with swivels adding to the volley.
 
-**A volley is not one ball per gun, past ten.** Ten is as many as can be told apart coming off one
-side and a first rate bears twice that, so a battery larger than that fires in COLUMNS: the guns stack
-up the levels of one column, the column throws one ball, and the ball carries the weight of everything
-in it. A seventy-four's nineteen a side is ten balls with nine of them doubled, which is both what she
-looked like and what a player can count. Total damage is unchanged by any of it, so a ship's strength
-does not move when her battery crosses ten; the same iron arrives in fewer, heavier pieces. `rate()`
-returns `columns` for how many balls and `perBall` for what each carries.
+**One ball per gun, and every gun she has.** A volley was capped at ten balls a side once, with the
+guns beyond that stacked into columns throwing one heavier ball apiece. Ten was as many as could be
+told apart coming off one side, and no ship then bore more than twenty. It is the wrong answer at
+fifty, and it was always an answer to a drawing problem rather than to a gunnery one, so `rate()`
+returns `balls` (her gun count) and `perBall` (one gun's damage) and the fight solved the drawing
+problem where it belonged. See **The rolling broadside** below.
 
 **She cannot work iron she cannot carry.** `fitOut` takes the dearest piece a mount allows and then
-steps the battery down a grade at a time until it fits under her tonnage, so a ship's launch comes out
-with minions, a xebec with carriage guns, and anything from a corvette up with demi-cannon. None of
-that is declared per class: it falls out of `tons`, which is why fine-lined hulls carry lighter iron
-than beamy ones of the same displacement.
+steps the battery down a grade at a time until it fits under her tonnage, so a gundalow comes out with
+three pounders, a light xebec with sixes, a corvette with long nines, a frigate with twenty-fours and
+a first rate with thirty-twos. None of that is declared per class: it falls out of `tons`, which is
+why fine-lined hulls carry lighter iron than beamy ones of the same displacement.
+
+**`tons` is tons of iron**, in the same weights the guns are priced in, and the limit is the column
+itself: a full battery of the gun she was built around, both sides, plus her chasers and her rail. It
+was a dimensionless figure read against eight times itself once, which is a thing to know when reading
+an old table: a column rewritten in real tons made the limit stop binding, and every hull in the fleet
+could bear the heaviest gun in the shop until the multiplier came out.
+
+**And no one piece heavier than her broadside.** The tonnage loop lightens whichever mount carries the
+most, which is always the battery, so a boat could come out legal on total weight with four pounders
+in the ports and a frigate's eighteen on the bow. A chaser is a gun on the same deck as the rest: if
+her scantlings will not stand an eighteen abeam they will not stand one over the stem.
 
 **Size** is deliberately absent from the catalogue, and it arrived where it belonged: with the art.
 `hullform.js` models each class from her reference proportions, and her size in both views, and her
@@ -198,10 +210,10 @@ moves on the day the shipyard opens, and each hull can then be pulled around one
 Bare means one mast, one sail, one bow gun. Fully found means the dearest mast in every socket, the
 dearest sail in every berth, every gun port filled.
 
-**`npm run catalogue` prints this table and there is no copy of it here**, because 38 classes is too
-many to keep in step by hand and a stale figure in a design note is worse than none. The shape of it:
-an armed launch has 100 hull points, 30 hands, one gun a side and rates about 0.6 on speed; a first
-rate has 3,290, 950, twenty a side and rates 0.79 before canvas. Hull runs a factor of 33, and the
+**`npm run catalogue` prints this table and there is no copy of it here**, because a fleet this size is
+too much to keep in step by hand and a stale figure in a design note is worse than none. The shape of
+it: a gundalow has 100 hull points, 30 hands, one gun a side and rates 0.55 on speed; a first
+rate has 2,699, 800, fifty a side and rates 0.79 before canvas. Hull runs a factor of 27, and the
 economy runs with it: coins are earned a point of damage and repairs are charged a point of damage,
 so a bigger fleet pays proportionally more and costs proportionally more to patch, with no scaling
 term anywhere.
@@ -246,6 +258,79 @@ pine launch is pale and yellow, teak runs warm, live oak dark, and canvas, glass
 colours; the same cast tints her hull and spars at sea. The galleon's form is the authored numbers
 under the plain Oak identity cast, so she still builds the exact ship this file always drew, checked
 by pixel diff, and a cutter is finally a small hull under a small rig.
+
+### The volley
+
+Every gun she has throws its own ball, which for a first rate is fifty a side and a hundred in the
+water. Fired together they cannot be told apart: down the length of her they would sit two thirds of
+a pace from each other, and the volley would read as one bar of iron however small the balls were
+drawn. Nothing that can be done to a ball's size fixes that, because a ball small enough to fit is a
+ball too small to see.
+
+**So every gun takes her own moment**, drawn at random inside a window: several ports go off
+together, a few more follow somewhere else along her side, and the whole broadside is away inside
+`VOLLEY_MAX`. What separates one ball from the next is the ground the one before it has already
+made, and what makes it read as a gun crew rather than a mechanism is that the moments are scattered.
+It replaced a strict roll from one end to the other, which fired the same guns in the same time and
+looked like a zip fastener running down her side. The window is `GUN_STAGGER` per gun up to the
+ceiling, so a cutter's five go off in a twentieth of a second and still look simultaneous while a
+first rate's fifty spread over a third of one. `stepVolley` fires each gun as her moment arrives, off
+wherever the ship is by then, so a ship holding her course lays a straight bank of iron and a ship
+under helm walks it across the water.
+
+**A gun fires out of a port in her side**, so its flash and its smoke stand at the rail it fired over
+rather than on her keel, and the flash is drawn in a pass of its own after every puff on the water.
+Those ports are drawn now, all of them: see **Every gun has a port** below.
+Both were wrong first time and both mattered more than they sound: the flash was amidships on her
+centreline, where a gun deck is stores rather than gunports, and it was drawn in the order it was
+made, so a pale yellow flash went under the white bank the next gun down the side put up. Fifty guns
+going off left a bank with nothing in it, which is a ship in a fog rather than a ship firing. The
+puff is small and stands just outside the rail for the same reason: one as wide as she is long
+swallows her hull, her flashes and the first few paces of her shot.
+
+**Her guns are laid as they bear**, and this is what keeps a spread volley from being a worse one.
+She crosses better than a hull length while her side is firing, so a gun fired at the end of
+the roll goes off from a long way ahead of where the first one did, and the whole volley walks off the
+front of what she was pointed at: measured over a one-second roll, she put 38% of her iron into a hull
+she had laid dead at full speed, against 85% before. Real crews answered this by laying each gun as it
+bears, and so does she: the ground made since the order comes off the lay at `LAY_RANGE`. That
+restores it to 88% at every speed and at every width of window, which is why `VOLLEY_MAX` could be
+set from how the volley looks rather than from what it costs her. It is honestly wrong at any range but
+that one, which is what laying a gun for a range you have guessed has always been worth.
+
+**The ball is smaller than it was**: `r` 3.0 to 1.8, drawn at exactly the size it bites rather than
+the seven tenths of it a fat ball could afford. That is the one real cost of the change and it falls
+on the small ships, who gain no extra balls to make it up: a cutter delivers 0.93 of what she used to
+against a hull laid dead. A first rate comes out at 1.03, the extra balls covering the smaller bite.
+
+Measured at 60 frames a second through twenty seconds of eleven first rates firing both sides in
+company, which is the heaviest field free-for-all can put up: about 1,100 balls and 1,100 puffs of
+smoke a volley round. One puff to a gun rather than two, and a bigger, longer-standing one, is what
+paid for it.
+
+### Every gun has a port
+
+`histGuns / 2` is exactly her `broadside` bearing for every class in the fleet, so `hullform.js` can
+draw her whole battery from the reference alone and the ports agree with the guns that fire out of
+them without the catalogue and the reference ever having to be introduced. She used to show one port
+per dozen of her guns to a maximum of seven, which was a way of suggesting a battery on a hull that
+had no room to draw one; she has the room. A first rate's fifty a side sit seventeen to a deck over
+the three tiers `decks` gives her, her lower tiers running the length of her under the castles the
+way a lower deck really did and the top one stopping at the castle breaks.
+
+Two things had to give for that to be free. **Guns are housed until they are wanted**: a big battery
+runs out one gun in three and shows the rest as the port alone, because fifty barrels a side is a
+fringe of grey spines rather than a wall of gunports, and the black square in tan trim is what says
+gun deck at this size anyway. And **a barrel is drawn in fewer faces where there are many of them**:
+a ten-sided gun over four segments is seventy faces, nothing on a ship showing four ports and seven
+thousand on a first rate showing a hundred. Together those put the menu plate back exactly where it
+was: 99.9ms a frame for a fully found first rate against 100.0ms before the change, and 16.8ms
+against 16.7ms for a cutter.
+
+**The menu plate is slow, and it was slow before this.** A hundred milliseconds a frame is ten frames
+a second for the biggest ship in the game, on a model that is built once and cached: the cost is
+transforming, sorting and filling every face, every frame, and a first rate has a great many. It
+wants a look, and it wants one whatever happens to her gunports.
 
 ## What replaced the upgrade rail
 
@@ -314,10 +399,10 @@ round, not her savings.
   still no size figure in the catalogue, which is why none can go stale.
 - No sail designs or cloth patterns. Those hang off ids without touching any of the numbers here.
 - No selling parts back. Easy to add; wanted a decision on whether it refunds in full first.
-- **No hull blurbs, and that is a decision rather than a gap.** The 38 rows carry none, `blurb` is an
-  optional column, and the shops sell a class on her figures instead. 38 invented lines nobody asked
-  for would be worse than none, and the reference module already holds her era, her region and what
-  she was for if a card ever wants prose.
+- ~~**No hull blurbs.**~~ The sixteen classes at sea each carry one now, written with the fleet rather
+  than invented for the rows that had none. `blurb` remains an optional column and the shops still
+  sell a class on her figures; the line is there for a card that wants prose. None of them has been
+  read at 1x yet.
 - **No mortars, and so no vertical fire.** A bomb vessel's real weapon is two mortars that lob over a
   shore, which is a second kind of weapon rather than a row in `data/guns.tsv`: it wants an arc, a
   fall of shot and a mount that is not one of the three she bears. She sails with her 3 guns a side
@@ -364,14 +449,19 @@ Three grades on the rail now: the swivel gun, the bronze swivel and the long swi
 rather than by its old flat `MUSKET_DPS`; the pace is set so a plain ball still measures the 2.4 a
 musket the blend was placed with, and only better iron on the rail moves a ship's strength.
 
-## Tiers, the stock fleet, and what each mode does with them
+## Rates, the stock fleet, and what each mode does with them
 
-Settled. Every mode issues **stock ships**, and matches them to the player by **measured strength**
-rather than by class.
+Every mode issues **stock ships**. Who a captain meets is her **rate**; the order they arrive in is
+**measured strength**. Those are two different questions and the code answers them separately.
 
-**A tier comes off the stat line, not the class.** Using the hull's shelf position would have been
-the obvious move and it is wrong: a fully found cutter genuinely outclasses a bare brig, so a mode
-matching on class would call that an even fight. `measure()` takes what `rate()` already says about a
+**A rate is her ports, counted as the navy counted them:** her broadside, both sides, so a hull
+pierced for fifty a side is a hundred-gun ship and a first rate. Chasers and swivels are no part of
+it, which is why every band edge is a whole number of guns a side. `RATES` holds the eight rungs,
+`gunsBorne(hull)` counts them and `rateOf(hull)` places her. It is read off `guns.broadside` and
+never written down anywhere, so a class cannot be handed a rating her ports do not support.
+
+**Strength is still measured off the stat line**, and it is not the rate: a first rate with half her
+ports empty is a first rate, badly found. `measure()` takes what `rate()` already says about a
 finished ship and returns three components kept deliberately separate, because different modes fight
 on different ones:
 
@@ -384,18 +474,36 @@ on different ones:
 | `ram` | endurance and mobility only, for a mode without |
 
 The blend is geometric, so being hopeless at one thing is not paid for by being splendid at another.
-`TIERS` bands `overall` into five rungs and `tierOf(loadout)` places a finished ship on one.
+It orders the stock ladder, matches the derby, and is the figure the yard prints beside her rating.
+
+The eight rungs, and every one of them occupied by the fleet as it stands:
+
+| Rung | Guns borne | Classes |
+|---|---|---|
+| Unrated light | up to 10 | Gundalow, Bermuda Sloop light, Sloop light, Cutter light |
+| Unrated heavy | 11 to 19 | Baltimore Clipper, Brigantine, Xebec light |
+| 6th rate | 20 to 31 | Corvette, 6th rate |
+| 5th rate | 32 to 49 | Xebec heavy, 5th rate |
+| 4th rate | 50 to 63 | Heavy frigate, 4th rate |
+| 3rd rate | 64 to 89 | 3rd rate |
+| 2nd rate | 90 to 99 | 2nd rate |
+| 1st rate | 100 and up | 1st rate |
+
+The rungs were numbered and nameless before, and the reason was good while a rung was a band of
+blended strength: eight names had to be read against one another to mean anything, where `tier 6`
+sorted itself. A rate is the navy's own word for the same ship and arrives already meaning something,
+and the two unrated rungs below the rated six are where most of a career is spent.
 
 **`STOCK` is the fleet the game issues**, and it is generated rather than written out. Every class
 appears at three standards, plain, well found and fully found, built by `fitOut(hull, quality)`; a row
 may still carry a hand-written `rig` and `guns` where a class wants a fit of her own, and `resolve()`
-handles that one exactly as it handles the player's ship. 38 classes at three fits is 114 opponents,
+handles that one exactly as it handles the player's ship. 16 classes at three fits is 48 opponents,
 which is not a table anybody keeps in step by hand: two hand-written fits per class would drift out of
 step with the parts table every time a price moved, and every entry is a chance to name a sail that no
 longer fits the berth it was written for. The bench checks the hand-written ones for exactly that.
 
-Nothing declares a tier. Every rung is measured, so changing a fit moves the ship up or down the
-ladder on its own and cannot disagree with its own stat line, and `npm run catalogue` prints the whole
+Nothing declares a rate or a rung. A rate comes off her ports and her place in the ladder off her
+stat line, so neither can be written down to disagree with the ship it describes, and `npm run catalogue` prints the whole
 ladder in ascending strength.
 
 The overlaps are the point and they come out of the numbers rather than being placed. A fully found
@@ -403,33 +511,33 @@ cutter outranks a plain brig-sloop. And the two measures genuinely disagree: und
 towers over a xebec, while as ramming stock they are far closer, and a ship's guns are dead weight in
 a match where nobody fires.
 
-**The tier bands have not been moved yet.** They were placed against eleven stock ships when the
-catalogue held five classes, and `overall` now runs from about 43 to 856 rather than 50 to 240, so the
-top band holds most of the fleet. Rebanding waits on the musket curve and the broadside columns, which
-move `measure()`'s inputs: doing it before those would be work thrown away.
+**The bands are gun counts now, so they do not need rebanding as `measure()` moves.** That was the
+standing worry while the rungs were strength bands: `overall` runs from about 49 to 1090 across the
+current fleet, and any change to the musket curve or the volley moved every edge. A rung
+is a count of ports, and ports do not move when a formula does.
 
 ### What each mode is to do with it
 
 - **Arena** climbs the ladder. Open on the weakest rung and work up through the stock fleet, so the
   mode escalates by putting harder ships on the water rather than more of the same one. `ladder()` is
   that list, in ascending strength.
-- **Demolition derby** fields ships of similar stats, matched on `ram` rather than on tier, because
-  tier is banded on `overall` and `overall` counts guns nobody has. `peers(strength, tol, "ram")`.
-- **Free-for-all** fields stock ships of one tier: `stockOfTier(n)`. Equal without being identical,
-  which is what having more than one ship per rung is for.
+- **Demolition derby** fields ships of similar stats, matched on `ram` rather than on rate, because a
+  rate is a count of guns and nobody in that mode has one aboard. `peers(strength, tol, "ram")`.
+- **Free-for-all** fields stock ships of her own rate: `stockOfRate(rung)`. Ships of her own sort of
+  ship at every standard of fitting out, which is equal without being identical.
 - **A ranked free-for-all**, later: win a rung to move up against the next. The ladder and the bands
   are the same ones, so this needs no new model, only a record of the highest rung a captain has won.
 
-All of it is wired. A starting captain in an armed launch meets yawls, shallops and hoys; the same
-captain in a fully found third rate meets first rates, razees and heavy frigates, and neither of those
-is written down anywhere. **She sails her own ship in every mode**, which settles the open question
+All of it is wired. A starting captain in a gundalow meets sloops and cutters at every standard of
+fitting out; the same captain in a third rate meets third rates, plain, well found and fully found.
+Neither field is written down anywhere: one comes off her ports and the other off her stat line. **She sails her own ship in every mode**, which settles the open question
 below: the field is matched to her rather than her being issued a stock hull, because that is what the
 measures were built to make possible and because being beaten in a ship you chose is the point.
 
-## Room for forty classes, and now holding 38
+## Room for forty classes, and now holding 16 at sea
 
-The catalogue is built for a fleet of around 38 classes rather than the five it currently holds, and
-three things had to change shape for that to be true.
+The catalogue is built for a fleet of around 40 classes rather than the five it started with, and
+three things had to change shape for that to be true. It holds 54 rows now, 16 of them at sea.
 
 **One terse row per class.** A hull was seventeen lines of object literal; it is now six lines of the
 figures that differ between ships, expanded by `buildHull` with defaults for everything that does not.
@@ -509,6 +617,13 @@ she no longer sails is the reason instances move between hulls at all, and this 
 The rows say what a part *does* rather than what it is called: a mast lists the sails it will carry, a
 sail what it pulls and what it costs the helm, a gun what it throws and how fast.
 
+**A battery is bought and stripped by the battery.** Fifty ports a side is fifty taps through a
+picker, and fifty rows in the fitted list all saying the same three words. So guns of one sort are
+one row with what she has of them, "take one off" and "take them all off" beside it, and there is a
+"fill her empty ports" row that puts one gun in every one of them, out of what she already owns
+first and then out of her purse until it runs out. Masts and sails stay one slot to a row: a rig is
+a different sort of choice, and every socket on her takes something different.
+
 ### What the shipyard screen will ask
 
 `shortfall(rec, shipId)` answers "what does this ship still need, and how much of it do I already
@@ -542,16 +657,59 @@ bench, which is the next command and the one that says whether the result is a f
 together: a hull's socket sizes mean nothing until masts exist that fit them, and a mast's berths mean
 nothing until sails exist of those categories. The bench will say so in both directions.
 
-### What the 38 needed
+### The same tables as a spreadsheet
 
-They are in. `data/hulls.tsv` now carries one row per class, and the gameplay columns are derived from
-the reference figures beside them: hull points from the timber formula, crew from her battle
+Forty-six columns across thirty-eight classes is a lot to hold in a text editor, and comparing two
+figures eight columns apart is exactly what a spreadsheet is for. So the four tables also travel as
+one workbook:
+
+```
+npm run workbook       writes data/ships.xlsx from the four tables
+                       edit it in Numbers or Excel, export back over the same file
+npm run workbook:read  writes the four tables back from data/ships.xlsx
+npm run import && npm run catalogue
+```
+
+**The TSVs remain the source.** The workbook is a way of editing them and nothing reads it: `import`
+still reads the tables, the tables are what git diffs, and a change that never comes back through
+`workbook:read` never happened. Two sheets ride along in front of the four: a Read me carrying each
+table's comment block, because that is where the columns are documented and a spreadsheet has
+nowhere else to put it, and a Columns sheet that is the legend.
+
+**The legend is parsed, not written.** Every column is already documented at the head of its own
+table as `# name  what it is`, so the Columns sheet reads those definitions rather than keeping a
+second set to disagree with them, and `npm run workbook` reports any column nothing has said
+anything about. Its third column, whether a figure is read by the fight, by the drawing, or by
+nothing yet, comes from asking `hullform.js` which reference fields it actually touches: a list kept
+here would go stale the first time somebody drew a hull from her deadrise. The `(drawn)` marks in
+`hulls.tsv` are checked against that same answer and reported when the two fall out of step.
+
+Reading back is deliberately narrow. It takes the four sheets by name, matches columns by their
+header so they may be reordered, skips blank rows, and keeps a figure spelled the way the table
+spelled it, so a height of `0.60` survives a trip through a program that thinks it is 0.6 and a round
+trip with no edits in it produces no diff. A formula comes back as the value it worked out. Colour,
+comments, extra sheets and extra columns are not read at all.
+
+What it checks is what the importer and the bench cannot say clearly: a missing column, a row with
+figures and no id, two rows sharing one, an id that is not a plain word (ids become object keys, so a
+space in one writes a source file that will not parse). Nothing is written unless every sheet is
+clean. Then it warns if a row `STARTER` names has been deleted, because a first ship that cannot be
+built is a fault nobody meets until a new captain opens the game.
+
+`tools/xlsx.mjs` writes and reads the .xlsx itself, in about three hundred lines over `node:zlib`.
+An .xlsx is a zip of XML and the repository has six packages in it; a workbook opened twice a month
+is not a seventh.
+
+### What the fleet needed
+
+They are in. `data/hulls.tsv` carries one row per class, sailing or laid up, and the gameplay columns
+are derived from the reference figures beside them: hull points from the timber formula, crew from her battle
 complement floored at 25, `speed` from her working speed under sail, `hand` from the handling
 components less the rig and the crew (her sails carry the rig half themselves), `canvas` as
 displacement to the two thirds, and `tons` the same way, moved by how fine she is. Prices came off
-measured strength afterwards. Blurbs are empty for now.
+measured strength afterwards.
 
-The original note, for whoever adds the thirty-ninth: each class needs a name, a price,
+The original note, for whoever adds the next class: she needs a name, a price,
 hull and crew points,
 `speed` and `hand` (her own contribution before canvas, both near 1), `canvas` (how much sail she
 wants, which is what makes a big hull a commitment), `tons` (what she carries before the guns tell on
@@ -671,8 +829,9 @@ with it is as cheap as changing it.
     in, and square canvas on a bowsprit is slung under it on a yard athwart, the way a carrack carried
     hers. The hull's `bowsprit` flag still says whether she has the spar at all, which is what decides
     whether she has the socket to fit anything to.
-12. ~~**Tier names.**~~ **Settled: a tier is a number and has no name.** The five names were doing a job
-    the number does better. `Ship of the line` said less about who a captain would meet than `6` does,
-    and it had to be read against seven other names to mean anything at all, where eight rungs of
-    `tier 6` sort themselves in the reader's head. The yard screen reads "rated 668, which puts her at
-    tier 8", checked at 1x.
+12. ~~**Tier names.**~~ **Reopened and settled the other way: the rungs are rates, and rates have
+    names.** A nameless number was right while a rung was a band of blended strength invented for this
+    game. It is wrong now that a rung is a count of guns borne, because that is the navy's own rating
+    and it already has the names: a captain arrives knowing roughly what a third rate is, which is
+    more than `tier 6` ever told her. The yard screen reads "Cutter light, Unrated light, and she
+    measures 115 as she stands"; the shop card reads "Rated: 6th rate". Both want checking at 1x.

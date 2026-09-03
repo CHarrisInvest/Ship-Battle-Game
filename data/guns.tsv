@@ -9,7 +9,10 @@
 # swivels on her rail firing in the same volley, which is `rate()`'s business.
 #
 # id      short camelCase name, unique.
-# name    what a captain reads.
+# name    what a captain reads. A GUN IS NAMED BY THE WEIGHT OF HER BALL, IN NUMERALS: `32-pounder`,
+#         not `Thirty two pounder`. A captain reads this list to compare ten pieces, and comparing
+#         them is arithmetic she should not have to do in words. It is the game's own rule about
+#         numerals, and a shelf of guns is where the cost of breaking it shows worst.
 # mount   broadside, bow or swivel.
 # price   coins.
 # damage  what one ball takes off a hull.
@@ -22,13 +25,21 @@
 #         closer to where the bow points, and this is the second half of that.
 # blurb   one line a captain reads.
 id	name	mount	price	damage	reload	weight	group	blurb
-minion	Minion	broadside	140	6	1.4	0.6		A light piece for a boat that cannot stand the weight of real iron.
-carriageGun	Carriage gun	broadside	260	9	1.6	1.0		The gun a broadside is made of. Fires fast enough to keep a hull holed.
-culverin	Culverin	broadside	520	12	1.9	1.4		A long barrel of middling weight. What a ship carries when she cannot stand a demi-cannon.
-demiCannon	Demi-cannon	broadside	880	16	2.2	1.9		Heavier iron, slower to serve. One of these does what two carriage guns do, in one blow.
-bowChaser	Bow chaser	bow	240	9	1.1	0.9		Points where the bow points. Aimed high, it brings a rig down.
-longNine	Long nine	bow	810	15	1.35	1.6		A long barrel on the bow. Reaches further than anything else aboard and hits what it reaches.
-longEighteen	Long eighteen	bow	1900	20	1.6	2.4		A frigate's chaser. Iron enough to open a stern at a distance, if she can bear the weight of it.
-swivelGun	Swivel gun	swivel	250	5	0.8	0.35	1.0	Mounted on the rail and served by one hand. Clears a deck rather than holing a hull.
-bronzeSwivel	Bronze swivel	swivel	620	6.5	0.8	0.35	0.8	Cast true, so the ball goes where it was pointed. The volley lands closer to the bow.
-longSwivel	Long swivel	swivel	1150	8	0.8	0.4	0.62	A longer barrel on the same mount. It hits harder and throws truer than anything else on the rail.
+gun3	3-pounder	broadside	55	5.2	1.32	0.35		The lightest iron that is still a gun. A boat can stand it and little else can.
+gun4	4-pounder	broadside	80	6	1.41	0.6		A small piece for a small hull. Two of them do what one real gun does.
+gun6	6-pounder	broadside	130	7.3	1.5	0.85		The gun a working broadside is made of. Quick to serve and quick to reload.
+gun8	8-pounder	broadside	180	8.5	1.57	1.05		A little more iron for the same port. She feels the weight but not badly.
+gun9long	Long 9-pounder	broadside	335	9	1.65	1.3		A long barrel on a light ball. It reaches further than anything of its weight.
+gun12	12-pounder	broadside	295	10.4	1.79	1.7		The upper deck gun of a ship of the line, and the main battery of a small one.
+gun18	18-pounder	broadside	480	12.7	1.94	2.1		A frigate's gun. Enough iron to open a hull at the range she wants to fight.
+gun24	24-pounder	broadside	680	14.7	2.08	2.5		Lower deck weight. Slow to run out, and it tells every time it goes off.
+gun32	32-pounder	broadside	960	17	2.16	2.75		The heaviest gun that goes to sea in numbers. It breaks frames, not planks.
+gun36	36-pounder	broadside	1105	18	2.34	3.25		French weight of metal. One tier of these is most of what she can carry.
+bow6	6-pounder chaser	bow	200	7.7	1.25	0.9		A light chaser that points where the bow points. Cheap, and it is something.
+bow8	8-pounder chaser	bow	290	8.9	1.3	1.1		A chaser with a little more weight behind the ball.
+bow9long	Long 9-pounder chaser	bow	500	9.5	1.35	1.4		A long barrel on the bow. Reaches further than anything else aboard.
+bow12	12-pounder chaser	bow	780	10.9	1.45	1.8		Heavy enough to hurt a hull at the range a chase is fought at.
+bow18	18-pounder chaser	bow	1500	13.3	1.6	2.25		A frigate's chaser. Iron enough to open a stern at a distance.
+swivelGun	Swivel gun	swivel	250	5	0.8	0.15	1.0	Mounted on the rail and served by one hand. Clears a deck rather than holing a hull.
+bronzeSwivel	Bronze swivel	swivel	620	6.5	0.8	0.15	0.8	Cast true, so the ball goes where it was pointed. The volley lands closer to the bow.
+longSwivel	Long swivel	swivel	1150	8	0.8	0.18	0.62	A longer barrel on the same mount. It hits harder and throws truer than anything on the rail.

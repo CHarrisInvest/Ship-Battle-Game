@@ -13,10 +13,14 @@ are built from. `broadside` in the code is the side guns, not the old title, and
 - `src/shipyard.js` is the catalogue and the maths for buying ships and parts. Hulls, masts, sails
   and guns as data, what fits what, and `rate()` turning a set of them into the figures a fight
   reads. It holds no state, touches no storage and imports nothing, and it should stay that way.
-- **A ship's tier is measured, never declared.** `measure()` derives it from the stat line `rate()`
-  gives, so a fully found cutter outranks a bare brig and the two cannot disagree. A hull's `order` is
-  its place on the shop shelf and is a different thing: do not match opponents on it. Nothing in
-  `STOCK` carries a tier of its own for the same reason.
+- **A ship's rate is read off her ports, and her strength off her stat line. Neither is ever
+  declared.** `rateOf(hull)` counts `guns.broadside` both sides and lands her on one of the eight
+  rungs in `RATES`, the way the navy rated a ship: a hull pierced for fifty a side is a hundred-gun
+  ship and a first rate, chasers and swivels excluded. `measure()` derives strength from what `rate()`
+  says about the finished ship, which is a different question: a first rate with half her ports empty
+  is a first rate, badly found. Modes read both, the rate for who she meets and the measure for the
+  order they come in. A hull's `order` is her place on the shop shelf and is a third thing again: do
+  not match opponents on it. Nothing in `STOCK` carries a rate or a rung of its own.
 - `src/shipref.js` is generated beside it and holds what each class *was*: her dimensions, the shape
   of her, her timber, her era and what she was for. `hullform.js` is the one reader, and it is the
   "later" the file was kept for: it turns those proportions into each class's drawn hull. Keep it out
@@ -43,7 +47,15 @@ are built from. `broadside` in the code is the side guns, not the old title, and
 - **The catalogue tables are generated.** `data/hulls.tsv`, `data/masts.tsv`, `data/sails.tsv` and
   `data/guns.tsv` are the source; `npm run import` writes them into the marked blocks in
   `shipyard.js`. Editing those blocks by hand works until the next import throws it away, so edit the
-  table.
+  table. `npm run workbook` writes the four tables out as `data/ships.xlsx` for editing in Numbers or
+  Excel and `npm run workbook:read` reads them back; the workbook is a way of editing the tables and
+  never a second source, so anything that does not come back through it never happened.
+- **`active` says which hulls are at sea, and the table keeps the rest.** A class laid up holds her
+  row with her figures as they stood and sails again the day the column says yes, so the table is the
+  fleet's whole history and the game is the part of it currently afloat. Two rows may therefore share
+  an id, one sailing and one laid up, which is what a class rebuilt to new figures looks like: only
+  the sailing half is ever written into `shipyard.js` or `shipref.js`, and both tools refuse two rows
+  that both sail. Delete a row only to forget a ship ever existed.
 - **A mast type is a shape of rig, not a station.** A mast carrying three square sails is that mast
   wherever it is stepped, so a brig's fore and main are one part bought twice. Only the size rung
   says where it can go. Berths run deck upward, and a fore-and-aft driving sail sharing the lowest
@@ -74,6 +86,22 @@ are built from. `broadside` in the code is the side guns, not the old title, and
   resampled and squeezed into the same air, because three sails already reach the masthead and there
   is nothing above them to extend into. Five is the ceiling and the bench holds the catalogue to it.
   Adding a row to `STATION_GEOM` is not how a sixth would be added.
+- **A broadside is one ball a gun, spread over a moment, and laid as it bears.** Fifty balls leaving
+  in the same instant cannot be told apart at any size they could be drawn, so every gun takes her
+  own moment inside `volleyWindow`: several ports go off together, then a few more elsewhere, and
+  what separates one ball from the next is the ground the one before made. A ship crosses better than
+  a hull length while her side is firing, so every gun still to go takes that ground off its lay:
+  without it a first rate at speed walked two thirds of her iron off the front of a hull she had laid
+  dead. Do not cap the ball count to fix a drawing problem, and do not shorten the window to fix an
+  accuracy one. Both were tried, and so was a strict roll from bow to stern, which fires the same
+  guns in the same time and reads as a zip fastener.
+- **Every gun she carried has a port, and the ports are hers.** `histGuns / 2` is her broadside
+  bearing for every class in the fleet, so `hullform.js` draws exactly that many ports a side over
+  the tiers `decks` gives her, and the catalogue and the reference agree without importing each
+  other. Guns run out one port in three on a big battery: fifty barrels a side is a centipede, and
+  the port itself is what says gun deck. Above a dozen ports the barrel is drawn in fewer faces,
+  because the menu plate is sorted per frame and a first rate's model is already the slowest thing
+  in the game.
 - **`npm run catalogue` before and after touching the catalogue.** A hull that cannot be rigged or
   carries a station the renderer cannot draw fails silently at runtime; the bench fails loudly. It
   prints the whole fleet side by side, which is the only way the numbers mean anything.
@@ -113,6 +141,11 @@ text *is*, not by where it sits:
   rather than instruct.
 - **Sentence case** for anything the player is told or asked: buttons, section headers, stat labels,
   prose. `Rematch`, not `REMATCH`.
+- **A ship's name is whatever the catalogue says it is.** `Bermuda Sloop light` and `Baltimore
+  Clipper` carry their capitals because the fleet was named that way on purpose. A class is a proper
+  noun and the table is where it is spelled: do not sentence-case the `name` column to match the rule
+  above. The eight rungs in `RATES` follow the same principle from the other side, being the navy's
+  own words rather than the game's: `6th rate`, `Unrated heavy`.
 
 Buttons take size over tracking. Wide letterspacing makes every control read as a headline.
 

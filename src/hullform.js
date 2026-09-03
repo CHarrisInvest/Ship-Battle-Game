@@ -110,7 +110,7 @@ const GALLEON_MENU = {
   fore: { x0: 24, x1: 50, z: 20.2 },
   bow: { x0: 42, x1: 60, rake: 8.5 },
   bowsprit: { heel: [50, 0, 22.6], tip: [88, 0, 33.5], r0: 1.3, r1: 0.66 },
-  ports: { xs: [-21, -8, 6, 19], twoRows: false },
+  ports: { rows: [{ f: 0.47, xs: [-21, -8, 6, 19] }] },
   lights: true,
   beak: true,
   geom: GALLEON_GEOM,
@@ -227,15 +227,40 @@ function menuForm(ref) {
   const aft = ref.castle >= 2 ? { x0: -Lh, x1: -0.3 * Lh, z: zMid + ref.castle * 2.83 * k } : null;
   const fore = ref.castle >= 3 ? { x0: 0.4 * Lh, x1: 0.833 * Lh, z: zMid + ref.castle * 1.98 * k } : null;
 
-  // Ports: one per dozen historical guns, spread along the side between the castle breaks, and a
-  // second tier only on a genuine multi-decker. The draw guard in the renderer already skips a port
-  // that would land under the wale on a hull too low to carry one.
-  const nPorts = clamp(Math.round(ref.histGuns / 12), 0, 7);
-  const p0 = aft ? aft.x1 + 0.06 * Lh : -0.72 * Lh;
-  const p1 = fore ? fore.x0 - 0.06 * Lh : 0.55 * Lh;
-  const xs = Array.from({ length: nPorts }, (_, i) => lerp(p0, p1, nPorts > 1 ? i / (nPorts - 1) : 0.5));
+  /**
+   * PORTS: EVERY GUN SHE REALLY CARRIED, half of them a side, on the decks that carried them.
+   *
+   * She used to show one port per dozen of her guns, to a maximum of seven, which was a way of
+   * suggesting a battery on a hull that had no room to draw one. She has the room: her ports go on
+   * the tiers `decks` names, so a first rate's fifty a side sit seventeen to a deck over three of
+   * them rather than seven lonely squares amidships. `histGuns / 2` is exactly her broadside bearing
+   * for every class in the fleet, which is why the ports and the guns that fire out of them agree
+   * without the catalogue and the reference ever having to be introduced.
+   *
+   * Her lower tiers run the length of her, under the castles the way a lower deck really did. The
+   * top tier stops at the castle breaks, because that is where her upper deck stops. The draw guard
+   * in the renderer still skips any port that would land under the wale on a hull too low to carry
+   * one, so a boat with two guns shows two ports or none rather than two holes in her waterline.
+   */
+  const perSide = Math.max(0, Math.round(ref.histGuns / 2));
   const decksTop = String(ref.decks || "1");
-  const twoRows = nPorts >= 4 && (decksTop.startsWith("3") || decksTop === "2-3");
+  const tiers = clamp(Number(decksTop.slice(-1)) || 1, 1, 3);
+  // A one-decked ship carries her guns just under the rail, which is higher up her side than the
+  // middle tier of a three-decker sits: at 0.47 a cutter's ports fell under the renderer's own guard
+  // against a port at the waterline and she showed none at all.
+  const heights = [[0.62], [0.38, 0.7], [0.3, 0.54, 0.78]][tiers - 1];
+  // the lower deck is the long one and carries the most, which is how a rate was made up
+  const share = Array.from({ length: tiers }, (_, i) => Math.floor(perSide / tiers) + (i < perSide % tiers ? 1 : 0));
+  const lowLo = -0.86 * Lh, lowHi = 0.66 * Lh;
+  const topLo = aft ? aft.x1 + 0.06 * Lh : lowLo;
+  const topHi = fore ? fore.x0 - 0.06 * Lh : lowHi;
+  const rows = heights.map((f, i) => {
+    const n = share[i];
+    const top = i === heights.length - 1 && heights.length > 1;
+    const a = top ? topLo : lowLo, b = top ? topHi : lowHi;
+    // evenly along the run, and inset by half a gap so the end ports do not sit on her stem and post
+    return { f, xs: Array.from({ length: n }, (_, j) => lerp(a, b, n > 1 ? (j + 0.5) / n : 0.5)) };
+  });
 
   // The bow rake and the bowsprit hang off the forward stations the same way the galleon's do. An
   // open boat's bowsprit steeves lower: the galleon's angle came with her built-up head, and on a
@@ -281,7 +306,7 @@ function menuForm(ref) {
   const span = Math.max(248, reach * 2.62, highest * 2.55);
 
   return {
-    Lh, ST, bulwark, k, aft, fore, bow, bowsprit, ports: { xs, twoRows }, lights, beak: !!fore, geom, span,
+    Lh, ST, bulwark, k, aft, fore, bow, bowsprit, ports: { rows }, lights, beak: !!fore, geom, span,
     sternRake: sternShape.rake * k,
     timber: timberOf(ref),
   };

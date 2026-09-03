@@ -8,7 +8,9 @@
     "build": "vite build",
     "preview": "vite preview",
     "catalogue": "node tools/catalogue.mjs",
-    "import": "node tools/import.mjs"
+    "import": "node tools/import.mjs",
+    "workbook": "node tools/workbook.mjs",
+    "workbook:read": "node tools/workbook.mjs --read"
   },
   "dependencies": {
     "react": "^18.3.1",

@@ -538,14 +538,30 @@ function buildShip(rig){
             col,[0,side,0],flat!=null?{tag:"hull",bias,flat}:{tag:"hull",bias});
    }
   };
-  // One port per dozen of her historical guns, spread clear of the castle
-  // breaks, and a second tier on a genuine multi-decker. A hull too low in the
-  // side to carry a port at all simply shows none, which is what the guard is
-  // for. Trim, opening and gun all scale with the fittings.
+  // Every port she carried, on the tiers her decks give her: `hullform.js` lays
+  // them out and this draws whatever it hands over. A hull too low in the side
+  // to carry a port at all simply shows none, which is what the guard is for.
+  // Trim, opening and gun all scale with the fittings.
   const pk=Math.max(0.55,Math.min(1.25,fk));
-  const portRows=form.ports.twoRows?[0.40,0.68]:[0.47];
-  for(const px of form.ports.xs) for(const rowF of portRows){
-   const z=stationAt(px).sheer*rowF; if(z-1.95*pk<0.7) continue;
+  const fine=form.ports.rows.reduce((n,r)=>n+r.xs.length,0)<=12;
+  /* GUNS ARE HOUSED UNTIL THEY ARE WANTED, and on a three-decker that is what
+     saves her from looking like a centipede: fifty barrels a side, every one of
+     them run out, is a fringe of grey spines rather than a wall of gunports. So
+     a big battery runs out one gun in three and shows the rest as the port
+     alone, a black square in tan trim, which is what says gun deck at this size
+     anyway. A ship of a dozen ports or fewer runs all of hers out, which is the
+     ship this file was written around. */
+  let portN=0;
+  for(const row of form.ports.rows) for(const px of row.xs){
+   const runOut=fine||(portN++%3===0);
+   const rowF=row.f;
+   /* A port that would sit at or under her waterline is not drawn: a boat too low
+      in the side to carry one shows none rather than a row of holes in her wales.
+      The margin was 0.7 when a ship showed four ports amidships and nothing turned
+      on it; now that every gun she carries has a port, it is what decides whether a
+      cutter has a gun deck at all, and 0.45 is the lowest that keeps a port clear of
+      the water on the lowest hull in the fleet. */
+   const z=stationAt(px).sheer*rowF; if(z-1.95*pk<0.45) continue;
    for(const side of[1,-1]){
     /* Gunport: a small square of tan trim, a flat black opening inside it, and a
        cannon standing out of the black. Trim, opening and gun are strongly biased
@@ -556,6 +572,7 @@ function buildShip(rig){
     patch(px,side,z,2.60,2.20,0.05,P.port,4.0);
     patch(px,side,z,2.42,2.02,0.11,"#0b0806",4.4,0.09);   // black fills the port to a hairline of trim
     const g0=iGun();
+    if(runOut){
     // straight athwartships, so the gun is centred in its port from every heading
     const n=[0,side,0], sp=[px,side*surfW(px,z),z];
     const at=t=>[sp[0],sp[1]+n[1]*t,sp[2]];
@@ -565,10 +582,18 @@ function buildShip(rig){
        read shallow, as though the gun were stuck on the planking. Nothing behind
        the surface is ever seen through a hull that has no hole in it, so the
        length was doing no work. */
-    addSpar(F,at(0),at(2.85),0.70,0.50,"#57504a","hull",4,10,4.6);
-    addPrism(F,at(2.70),at(3.14),0.60,0.54,"#6a635c","hull",10,4.7);    // muzzle swell
-    addPrism(F,at(3.12),at(3.32),0.48,0.32,"#6a635c","hull",10,4.8);    // rounded off at the mouth
-    addPrism(F,at(3.30),at(3.38),0.24,0.22,"#0b0806","hull",10,4.9);    // bore
+    /* A BARREL IS CHEAPER WHERE THERE ARE MANY OF THEM. A ten sided gun over four
+       segments is seventy faces, which is nothing on a ship showing four ports and
+       seven thousand on a first rate showing a hundred: the plate went from ten
+       frames a second to seven on the ports alone. Above a dozen ports she draws a
+       five sided barrel in one length and no bore, which at the size a gun is drawn
+       is a difference nobody can see and the sort a sort can. A hull at or under
+       twelve keeps the authored gun exactly, which is what the galleon shows. */
+    addSpar(F,at(0),at(2.85),0.70,0.50,"#57504a","hull",fine?4:1,fine?10:5,4.6);
+    addPrism(F,at(2.70),at(3.14),0.60,0.54,"#6a635c","hull",fine?10:5,4.7);    // muzzle swell
+    addPrism(F,at(3.12),at(3.32),0.48,0.32,"#6a635c","hull",fine?10:5,4.8);    // rounded off at the mouth
+    if(fine)addPrism(F,at(3.30),at(3.38),0.24,0.22,"#0b0806","hull",10,4.9);   // bore
+    }
     /* The flat port faces drop out as this side turns edge-on — they have no
        thickness to show. The gun does: rather than vanish, it falls back behind
        the hull in the sort, so bow-on and stern-on views keep a barrel sticking

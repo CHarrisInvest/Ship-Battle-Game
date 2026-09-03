@@ -6,8 +6,16 @@
 #
 # THE GAMEPLAY COLUMNS. These are what the fight and the shipyard read.
 #
-# id          a short camelCase name, unique. Becomes the key everything else refers to.
-# name        what a captain reads. Sentence case, no em dashes, no interpuncts.
+# active      yes if she is in the game. Anything else, blank included, lays her up: her row stays
+#             here with her figures as they stood and she comes back the day the column says yes.
+#             So the table is the fleet's whole history and the game is the part of it at sea, and a
+#             class rebuilt keeps her old row beside her new one. That is why two rows may share an
+#             id, as long as only one of them sails.
+# id          a short camelCase name, unique among the ships that sail. Becomes the key everything
+#             else refers to, so renaming one is retiring a ship and commissioning another.
+# name        what a captain reads. No em dashes, no interpuncts. The fleet's own names are written
+#             as the captain who drew up the table wrote them, capitals and all, which is why the
+#             sentence-case rule that governs the rest of the game's copy stops at this column.
 # price       coins to buy the bare hull. 0 for the ship she starts with.
 # hull, crew  maximum health in the same points the bars already use. Hull is the reference's own
 #             timber formula; crew is her battle complement, floored at 25 because a crew bar is a
@@ -18,10 +26,15 @@
 # canvas      how much sail she WANTS to get moving, as displacement to the two thirds. The most
 #             important number here: it is why a half-rigged big ship is genuinely bad, and why the
 #             same suit drives a cutter hard.
-# tons        what she carries before her guns start telling on her handling. Set so a class with the
-#             heaviest iron in every port sits at her limit, and moved by how fine she is: a beamy
-#             hull carries her guns better than a sharp one.
-# broadside   guns A SIDE, mirrored. bow and swivel are totals.
+# tons        the weight of iron she can bear, in the same tons her guns are weighed in: a full
+#             battery of the gun she was built around, both sides, plus her chasers and her rail.
+#             It is a real limit rather than a penalty. The shipyard steps her battery down a grade
+#             at a time until it fits under this, so a raft cannot mount thirty-six pounders, and
+#             what she does carry costs her in handling in proportion to how close to it she is.
+# broadside   guns A SIDE, mirrored, because that is how a volley fires: one gun bought is one gun
+#             each side and two aboard.
+# bow         chasers on her bow. A total rather than a side, because she has only the one bow.
+# swivel      swivels on her rails, and a total as well. They fire in the volley with her muskets.
 # masts       where she can step one, "station/size", space separated, bow aft.
 #             stations: bowsprit fore main mizzen bonaventure
 #             sizes:    boat small medium large heavy
@@ -29,46 +42,120 @@
 # bowsprit    yes or no. Whether she carries the spar at all.
 # blurb       one line a captain reads. May be left empty.
 #
+# A BLANK IN speed, hand, canvas OR tons IS NOT A DERIVATION. Each falls back to 1, which describes
+# a quick, handy, easily driven ship that can carry nothing, and is right for no class above a boat.
+# Fill them in. Every other gameplay column has to be filled as well.
+#
 # THE REFERENCE COLUMNS. Everything from `era` rightward is what the class WAS rather than what she
-# does in a fight: nothing reads it, `npm run import` writes it to src/shipref.js, and it is there
-# for whoever comes to model the hulls. Lengths are feet and weights are tons; bowFine, tumblehome,
-# deadrise, sheer and castle are 1 to 5 judgement scores, 1 for least and 5 for most.
-id	name	price	hull	crew	speed	hand	canvas	tons	broadside	bow	swivel	masts	bowsprit	blurb	era	region	role	lod	lbp	beam	draft	depth	freeboard	lb	bd	burthen	disp	bowFine	tumblehome	deadrise	sheer	castle	stern	mastHeight	decks	wale	topside	roomSpace	species	timber	crewMin	cruise	topSpeed	manoeuvre	histGuns
-launch	Armed launch	0	100	30	0.55	1.28	0.1	0.21	1	1	1	bowsprit/boat main/boat	yes		1650-1865	Global	Boarding and inshore harassment	32	30	8	2.5	3	1.5	4.0	3.2	6	8	3	1	2	2	1	Transom	0.9	1	1.5	1.0	1.2	Pine	0.85	6	2	5	92	1
-shallop	Armed shallop	130	117	25	0.61	1.28	0.18	0.47	1	1	1	bowsprit/boat fore/boat main/boat	yes		1600-1720	North Europe	Coastal and colonial patrol	34	32	10	3.5	4	2	3.4	2.9	15	20	3	1	2	2	1	Transom	0.8	1	2.0	1.25	1.4	Oak	1.0	4	3	6	92	2
-yawl	Yawl	60	100	25	0.55	1.3	0.09	0.23	1	1	1	bowsprit/boat main/boat	yes		1650-1865	Global	Ship's boat and dispatch	24	22	7	2.5	2.5	1.5	3.4	2.8	5	7	3	1	2	2	1	Transom	0.8	1	1.25	1.0	1.1	Pine	0.85	3	2	5	93	1
-smack	Armed smack	340	169	25	0.79	1.3	0.42	1.04	1	1	1	bowsprit/boat main/small	yes		1750-1815	Britain	Tender, revenue and dispatch	52	48	15	8	8	3	3.5	1.9	55	70	3	2	3	2	1	Transom	1.1	1	2.5	1.5	1.6	Oak	1.0	8	5	9	91	4
-hoy	Hoy	130	189	25	0.67	1.2	0.51	1.4	1	0	1	bowsprit/boat main/small	yes		1600-1800	Britain	Coastal supply and guard	58	54	18	7	8	3.5	3.2	2.6	75	95	2	2	2	2	1	Round	0.9	1	2.5	1.5	1.7	Oak	1.0	6	4	7	83	4
-gundalow	Gundalow	280	132	45	0.55	1.09	0.38	0.92	1	1	1	main/small	no		1770-1815	American lakes	Floating gun battery	54	50	15	4	5	2.5	3.6	3.8	45	60	2	1	1	1	1	Scow	0.7	1	2.5	1.5	1.8	Pine	0.85	20	2	4	63	3
-tartane	Tartane	370	178	30	0.73	1.16	0.46	1.17	2	1	1	bowsprit/boat fore/small main/small	yes		1600-1820	Mediterranean	Coastal patrol and corsair	55	50	16	7	7	3	3.4	2.3	60	80	3	2	3	2	1	Transom	1.0	1	2.5	1.5	1.6	Oak	1.0	10	5	8	81	6
-gunboat	Gunboat	510	197	40	0.67	1.22	0.49	1.15	1	1	1	bowsprit/boat main/small	yes		1795-1820	United States	Harbour defence	60	56	16	5	6	3	3.75	3.2	70	90	3	1	2	1	1	Transom	0.9	1	3.0	1.75	1.7	Oak	1.0	20	4	7	84	2
-bermudaSloop	Bermuda sloop	1400	244	75	0.97	1.22	0.66	1.66	3	1	1	bowsprit/small main/medium	yes		1700-1820	Caribbean	Fast dispatch and privateer	70	64	20	10	10	4	3.5	2.0	110	140	4	2	4	3	1	Transom	1.5	1	3.0	2.0	1.7	Cedar	1.0	20	8	12	89	12
-barcaLonga	Barca-longa	340	163	35	0.73	1.16	0.4	1.05	2	1	1	bowsprit/boat fore/small main/small	yes		1650-1800	Spain	Coastal patrol and privateer	50	46	15	6	6	3	3.3	2.5	50	65	3	2	3	2	1	Transom	0.9	1	2.5	1.5	1.6	Oak	1.0	12	5	8	81	6
-cutter	Cutter	2500	361	60	0.97	1.18	1.0	2.82	4	1	1	bowsprit/small main/medium	yes		1760-1830	Britain	Revenue, dispatch and patrol	75	68	24	11	11	4	3.1	2.2	200	260	4	2	4	2	1	Transom	1.4	1	3.5	2.0	1.8	Oak	1.0	30	8	12	87	14
-lugger	Lugger	1950	277	60	0.91	1.18	0.81	2.03	4	1	1	bowsprit/small fore/medium main/medium	yes		1750-1815	The Channel	Privateer and smuggler	78	72	22	10	10	4	3.5	2.2	150	190	4	2	3	2	1	Transom	1.0	1	3.0	1.75	1.7	Oak	1.0	25	7	11	84	14
-ketch	Ketch	2100	415	60	0.79	1.09	1.15	2.87	3	1	1	bowsprit/small main/medium mizzen/small	yes		1650-1810	North Europe	Patrol and raiding	90	82	26	12	12	5	3.5	2.2	250	320	3	3	3	3	2	Round	1.1	1-2	3.5	2.0	1.9	Oak	1.0	30	5	9	78	10
-brigantine	Brigantine	3250	397	100	0.85	1.01	1.1	2.6	4	1	1	bowsprit/small fore/medium main/medium	yes		1690-1850	The Americas	Patrol, escort and privateer	92	84	25	12	12	5	3.7	2.1	230	300	3	3	3	3	2	Transom	1.1	1	3.5	2.0	1.9	Oak	1.0	40	6	10	70	14
-topsailSchooner	Topsail schooner	2200	370	90	0.91	1.14	1.03	2.25	3	1	1	bowsprit/small fore/medium main/medium	yes		1750-1865	The Americas	Fast patrol and dispatch	95	86	24	11	11	4.5	4.0	2.2	210	270	4	2	3	2	1	Transom	1.2	1	3.5	2.0	1.8	Oak	1.0	30	7	11	85	12
-baltimoreClipper	Baltimore clipper	2700	405	100	1.03	1.11	1.1	2.29	3	1	1	bowsprit/small fore/medium main/medium	yes		1795-1850	Chesapeake	Privateer and blockade runner	100	90	24	11	11	4	4.2	2.2	230	300	5	2	4	3	1	Raking transom	1.3	1	3.5	2.0	1.7	Oak	1.0	40	9	13	84	12
-snow	Snow	4300	482	120	0.85	1.01	1.29	3.13	4	1	1	bowsprit/medium fore/large main/large	yes		1690-1815	North Atlantic	Sloop of war and escort	96	88	27	13	13	5	3.6	2.1	300	380	3	3	3	3	2	Transom	1.1	1	4.0	2.25	1.9	Oak	1.0	60	6	10	66	16
-brigSloop	Brig-sloop	6150	574	130	0.85	0.95	1.5	3.99	5	1	1	bowsprit/medium fore/large main/large	yes		1770-1850	Global	Escort and commerce war	100	92	30	13	13	5.5	3.3	2.3	380	480	3	3	3	3	2	Round	1.1	1	4.0	2.5	1.9	Oak	1.0	80	6	11	65	18
-gunBrig	Gun-brig	1650	334	60	0.79	1.07	0.92	2.12	3	2	1	bowsprit/small fore/medium main/medium	yes		1795-1815	Britain	Inshore and convoy work	84	78	22	9	9	4	3.8	2.4	180	230	3	2	3	2	1	Transom	1.0	1	3.5	2.0	1.8	Oak	1.0	40	5	9	71	12
-bombVessel	Bomb vessel	2600	600	110	0.73	1.01	1.5	4.12	3	0	1	bowsprit/medium main/large mizzen/medium	yes		1690-1855	Britain and France	Shore bombardment	92	84	29	13	13	5	3.2	2.2	380	480	2	3	2	2	2	Round	1.0	1	5.0	3.0	1.9	Oak	1.0	60	4	8	68	10
-pinnace	Pinnace	560	187	60	0.79	1.01	0.46	1.0	2	1	1	bowsprit/boat fore/small main/small mizzen/small	yes		1550-1650	England	Scout and light warship	60	54	15	7	7	4	4.0	2.1	60	80	3	3	3	3	3	Square	1.0	1	3.0	1.75	1.8	Oak	1.0	20	5	9	66	8
-xebec	Xebec	14000	532	350	0.91	1.07	1.44	3.08	8	2	4	bowsprit/medium fore/large main/large mizzen/medium	yes		1650-1830	Barbary coast	Corsair and coastal warship	115	104	28	10	11	5	4.1	2.8	350	450	5	1	4	3	2	Overhanging	1.2	1	3.5	2.0	1.8	Oak	1.0	120	7	12	82	32
-fluyt	Armed fluyt	3400	487	70	0.73	0.87	1.33	2.78	4	1	1	bowsprit/medium fore/large main/large mizzen/medium	yes		1600-1720	Dutch Republic	Armed transport and escort	100	92	24	11	12	5	4.2	2.2	300	400	2	5	2	3	3	Pear	1.0	1-2	3.5	2.0	1.9	Oak	1.0	30	4	8	49	16
-barque	Armed barque	4450	563	95	0.79	0.95	1.48	3.51	4	1	1	bowsprit/medium fore/large main/large mizzen/medium	yes		1650-1865	Global	Escort and armed trader	106	98	29	13	13	5.5	3.7	2.2	370	470	3	3	3	3	2	Round	1.1	1	4.0	2.25	1.9	Oak	1.0	40	5	9	63	14
-corvette	Corvette	7950	655	170	0.91	0.95	1.69	3.99	6	1	2	bowsprit/medium fore/large main/large mizzen/medium	yes		1740-1860	Global	Patrol, escort, commerce war	115	106	31	14	14	6	3.7	2.2	450	570	4	3	3	3	2	Round	1.2	1	4.0	2.5	1.9	Oak	1.0	90	7	11	65	22
-carrack	Carrack	20000	976	400	0.67	0.64	2.29	6.68	8	1	4	bowsprit/medium fore/large main/large mizzen/medium bonaventure/small	yes		1450-1570	Iberia	Flagship and armed trader	120	108	40	16	20	12	3.0	2.5	700	900	1	4	2	5	5	Square castle	0.9	2	5.0	3.0	2.0	Oak	1.0	100	3	7	30	30
-sixthRate	6th rate	10500	736	200	0.91	0.89	1.86	4.66	7	2	2	bowsprit/medium fore/large main/large mizzen/medium	yes		1700-1820	Britain	Cruiser, escort and patrol	118	108	34	12	12	6	3.5	2.8	520	660	4	3	3	3	2	Round	1.2	1-2	4.0	2.5	1.9	Oak	1.0	120	7	11	62	28
-raceGalleon	Race-built galleon	18000	729	350	0.85	0.89	1.82	3.8	10	2	4	bowsprit/medium fore/large main/large mizzen/medium	yes		1570-1620	England	Line and cruiser warship	140	126	33	15	16	9	4.2	2.2	500	640	4	3	3	4	3	Square gallery	1.0	2	4.5	2.75	2.0	Oak	1.0	150	6	10	52	40
-galleon	Galleon	26500	976	450	0.73	0.7	2.29	5.89	12	2	5	bowsprit/medium fore/large main/large mizzen/medium bonaventure/small	yes		1550-1650	Spain and Portugal	Warship and treasure escort	130	118	38	17	18	12	3.4	2.2	700	900	3	4	3	4	4	Square gallery	0.95	2	5.0	3.0	2.0	Oak	1.0	180	4	8	43	48
-fifthRate	5th rate	24000	1235	300	0.97	0.83	2.77	6.47	10	2	3	bowsprit/large fore/heavy main/heavy mizzen/large	yes		1740-1840	Global	Cruiser and commerce war	150	138	40	14	14	7	3.75	2.9	950	1200	4	3	3	3	2	Gallery	1.2	2	4.5	2.75	1.9	Oak	1.0	200	8	13	59	38
-clipper	Armed clipper	10500	1609	120	1.15	0.87	3.07	5.38	3	1	1	bowsprit/large fore/heavy main/heavy mizzen/large	yes		1840-1865	China trade	Fast armed trader	200	180	40	21	21	7	5.0	1.9	1100	1400	5	2	4	3	1	Elliptical	1.5	2	4.5	2.75	1.8	Teak	1.12	40	10	16	59	12
-eastIndiaman	East Indiaman	22500	1698	220	0.79	0.7	3.22	7.22	8	2	2	bowsprit/large fore/heavy main/heavy mizzen/large	yes		1690-1830	Britain	Armed trader and convoy	165	152	42	18	18	8	3.9	2.3	1200	1500	3	4	2	3	3	Gallery	1.1	2	5.0	3.0	2.0	Teak	1.12	80	5	9	41	30
-heavyFrigate	Heavy frigate	54000	2230	480	1.03	0.74	3.77	8.24	13	2	5	bowsprit/large fore/heavy main/heavy mizzen/large	yes		1794-1855	United States	Super cruiser and duellist	175	162	44	14	14	7	4.0	3.1	1500	1900	4	3	3	3	2	Gallery	1.3	2	5.5	3.25	1.9	Live oak	1.2	300	8	13.5	55	50
-razee	Razee frigate	43000	1827	480	0.97	0.76	3.7	9.0	11	2	5	bowsprit/large fore/heavy main/heavy mizzen/large	yes		1794-1845	Britain	Heavy cruiser, cut down	170	156	47	20	20	8	3.6	2.4	1450	1850	4	4	3	3	2	Gallery	1.2	2	6.0	3.5	1.9	Oak	1.0	280	8	13	56	44
-fourthRate	4th rate	37500	1379	420	0.85	0.76	3.0	7.29	14	2	5	bowsprit/large fore/heavy main/heavy mizzen/large	yes		1650-1780	Britain	Small liner and flag cruiser	155	142	43	18	18	8	3.6	2.4	1050	1350	3	4	3	4	3	Gallery	1.1	2	5.5	3.25	2.0	Oak	1.0	250	6	10	52	54
-thirdRate	3rd rate	78500	2188	720	0.85	0.7	4.15	9.83	19	2	6	bowsprit/large fore/heavy main/heavy mizzen/large	yes		1750-1860	Global	Backbone of the line	176	168	48	21	21	9	3.7	2.3	1700	2200	3	4	3	4	3	Gallery	1.15	2-3	6.5	4.0	2.0	Oak	1.0	500	6	10	45	74
-secondRate	2nd rate	104000	2834	850	0.79	0.68	4.99	11.5	20	2	6	bowsprit/large fore/heavy main/heavy mizzen/large	yes		1690-1850	Britain	Fleet flagship	195	185	51	22	23	12	3.8	2.3	2200	2900	2	5	3	4	4	Gallery	1.1	3	7.0	4.5	2.0	Oak	1.0	650	5	9	41	98
-firstRate	1st rate	120000	3290	950	0.79	0.62	5.55	12.46	20	2	6	bowsprit/large fore/heavy main/heavy mizzen/large	yes		1650-1860	Britain and France	Fleet flagship	205	195	53	23	24	13	3.9	2.3	2500	3400	2	5	3	4	4	Gallery	1.1	3	7.5	5.0	2.0	Oak	1.0	750	5	9	38	104
+# does in a fight: no fight reads any of it, `npm run import` writes it to src/shipref.js, and
+# `hullform.js` is the one reader. The thirteen marked (drawn) are how she is DRAWN, in the menu
+# model and at sea. The rest are recorded for whoever comes to refine her form and are read by
+# nothing yet, which is not the same as being free to invent: a wrong figure here is a wrong hull
+# the day somebody does read it.
+#
+# Lengths are feet and weights are tons. bowFine, tumblehome, deadrise, sheer and castle are 1 to 5
+# judgement scores, 1 for least and 5 for most.
+#
+# era         the years she was in service, written as a range. Text rather than a number.
+# region      where she was built and sailed.
+# role        what she was for.
+# lod         (drawn) length on deck, feet. With beam, how big she is drawn in both views. Sizes are
+#             compressed around the galleon, so twice the length is not twice the ship on screen.
+# lbp         length between perpendiculars, feet. The measured length, shorter than on deck.
+# beam        (drawn) extreme breadth, feet. Her drawn width, and with her length her collision
+#             ellipse in a fight.
+# draft       how deep she floats, feet.
+# depth       depth of hold, feet: keelson to the deck above it.
+# freeboard   (drawn) height of side above the water amidships, feet. The depth of side in the model.
+# lb          length to beam, as a ratio. High is long and lean, low is short and beamy.
+# bd          beam to depth, as a ratio. High is shallow and beamy, low is deep and narrow.
+# burthen     builder's old measurement tons: what she was rated to carry.
+# disp        displacement, tons: what she actually weighs afloat.
+# bowFine     (drawn) how fine her entry is. 5 is a clipper's bow and 1 a carrack's. It narrows her
+#             bow and pulls her shoulders aft.
+# tumblehome  (drawn) how far her sides roll inward above the waterline. 5 is a fluyt.
+# deadrise    how sharply her bottom rises from the keel. 1 is a flat floor.
+# sheer       (drawn) how much her deck sweeps up towards bow and stern.
+# castle      (drawn) how built up her ends are. 1 is an open boat, 2 raises a quarterdeck, 3 and up
+#             add a forecastle. It is also what a windowed stern needs before it shows any lights.
+# stern       (drawn) the shape of her stern, as one of the named types. Scow, Round, Pear,
+#             Elliptical, Raking transom, Overhanging and Square each have geometry of their own,
+#             and any other name draws a plain transom, which is what Transom and Gallery do. A name
+#             holding "gallery" or "castle" lights her stern windows if her castle is 3 or more.
+# mastHeight  (drawn) how tall her rig stands, as a multiple of the galleon's. Scales her masts in
+#             both views.
+# decks       (drawn) how many of her decks carry guns: 1, 1-2, 2, 2-3 or 3. Text, because a range is
+#             not a number. It is how many tiers her ports are drawn on, the last figure counting, so
+#             a 2-3 is a three-decker and her battery is split three ways up her side.
+# wale        the thickness of her main wale, inches: the heavy belt of timber along her side.
+# topside     the thickness of her topside planking, inches.
+# roomSpace   room and space, feet: from one frame to the next.
+# species     (drawn) what she was built of, which is also her colour: Oak, Live oak, Teak, Cedar or
+#             Pine. Any other name is painted as oak.
+# timber      (drawn) how dense that timber is, oak being 1. Denser timber reads a little darker.
+# crewMin     the fewest hands she could be worked with, as against the battle complement in `crew`.
+# cruise      her everyday speed, knots.
+# topSpeed    the best she was ever driven, knots.
+# manoeuvre   how handy she was, 0 to 100. The reference's own score, and what `hand` came out of.
+# histGuns    (drawn) how many guns she really carried, of every sort. She shows HALF OF THEM as
+#             gunports a side, spread over the tiers `decks` gives her, so a first rate's hundred
+#             guns are fifty ports a side over three decks. That half is exactly her `broadside`
+#             bearing for every class in the fleet, which is how the ports and the guns that fire
+#             out of them agree without the catalogue and the reference ever meeting.
+active	id	name	price	hull	crew	speed	hand	canvas	tons	broadside	bow	swivel	masts	bowsprit	blurb	era	region	role	lod	lbp	beam	draft	depth	freeboard	lb	bd	burthen	disp	bowFine	tumblehome	deadrise	sheer	castle	stern	mastHeight	decks	wale	topside	roomSpace	species	timber	crewMin	cruise	topSpeed	manoeuvre	histGuns
+yes	gundalow	Gundalow	0	100	30	0.55	0.65	0.18	2	1	1	1	main/small	no	A raft with a mast and one gun. She floats, she fires, and she is yours.	1770-1815	American lakes	Floating gun battery	40	37	13	3.5	4	2	3.08	3.25	15	20	2	1	1	1	1	Scow	0.7	1	2	1	2	Pine	1	12	2	4	40	2
+yes	bermudaSloop	Bermuda Sloop light	900	137	30	0.97	1.22	0.28	6.6	3	1	1	bowsprit/small main/medium	yes	One raking mast and a deep heel aft. Nothing this small goes faster.	1700-1820	Caribbean	Fast dispatch and privateer	46	42	16	9.5	8	3	2.88	2.0	30	39	4	2	4	3	1	Transom	1.5	1	2.5	1.5	1.7	Cedar	1.0	10	8	12	87	6
+yes	sloop	Sloop light	1400	149	40	0.91	1.24	0.34	8.1	4	1	1	bowsprit/small main/medium	yes	A single mast on a hull with some beam under it. She answers the helm sweetly.	1680-1820	Caribbean and Atlantic	Patrol, escort and privateer	50	46	18	9	8	3.5	2.78	2.25	40	52	3	2	3	3	1	Transom	1.4	1	2.5	1.5	1.7	Oak	1	12	7	11	88	8
+yes	cutter	Cutter light	2300	167	45	0.94	1.26	0.4	9.7	5	1	1	bowsprit/small main/medium	yes	Broad, deep and stiff, with more sail than a boat her size has any right to.	1760-1830	Britain and the Channel	Revenue, dispatch and patrol	50	46	20	10	8	3.5	2.5	2.5	50	66	3	2	3	2	1	Transom	1.4	1	2.75	1.6	1.7	Oak	1.0	15	7.5	11.5	89	10
+yes	baltimoreClipper	Baltimore Clipper	3200	255	60	1.09	1.16	0.72	16.8	6	1	1	bowsprit/small fore/medium main/medium	yes	Two raked masts on a hull cut like a knife. She outruns ships that outgun her.	1795-1850	Chesapeake	Privateer and blockade runner	80	73	22	10	8	4	3.64	2.75	120	158	5	2	4	3	1	Raking transom	1.3	1	3	1.75	1.7	Oak	1.0	20	9	14.5	86	12
+yes	brigantine	Brigantine	4400	311	70	0.85	0.97	0.92	17.4	7	1	1	bowsprit/small fore/medium main/medium	yes	Square on the fore and fore and aft on the main. She will do most things well enough.	1690-1850	The Americas	Patrol, escort and privateer	82	75	23	11	10	4.5	3.57	2.3	170	228	3	3	3	3	2	Transom	1.1	1	3	1.75	1.8	Oak	1.0	25	6	10	68	14
+yes	xebecLight	Xebec light	6200	277	180	0.97	1.07	0.8	20	9	1	1	bowsprit/small fore/medium main/medium	yes	Long, low and lateen rigged, with a crew that would rather board you than shoot.	1650-1830	Barbary coast	Corsair and coastal warship	85	78	20	8	8	4	4.25	2.5	140	186	5	1	4	3	2	Overhanging	1.2	1	3	1.75	1.75	Oak	1	60	8	12	82	18
+yes	corvette	Corvette	9000	504	130	0.91	0.95	1.46	29.9	10	1	2	bowsprit/medium fore/large main/large mizzen/medium	yes	Three masts and one flush deck of guns. The smallest ship that looks like a warship.	1740-1860	Global	Patrol, escort, commerce war	105	96	28	13.5	12	5	3.75	2.33	330	455	4	3	3	3	2	Round	1.2	1	3.5	2	1.85	Oak	1.0	60	6.5	11	65	20
+yes	sixthRate	6th rate	12500	647	155	0.88	0.89	1.81	45.4	12	2	2	bowsprit/medium fore/large main/large mizzen/medium	yes	Rated at last, and the smallest thing a post captain will admit to commanding.	1700-1820	Europe and Americas	Cruiser, escort and patrol	114	104	32	14	11	5.5	3.56	2.91	450	630	4	3	3	3	2	Round	1.2	1	3.75	2.25	1.9	Oak	1.0	90	6.5	10.5	62	24
+yes	xebecHeavy	Xebec heavy	18000	568	320	0.94	0.99	1.6	44	16	2	3	bowsprit/medium fore/large main/large mizzen/medium	yes	The same corsair hull grown a third mast and a great many more men.	1650-1830	Barbary coast	Corsair and coastal warship	120	110	29	12	11	5	4.14	2.64	380	525	5	1	4	3	2	Overhanging	1.2	1-2	3.5	2	1.8	Oak	1	110	7	12	78	32
+yes	fifthRate	5th rate	25000	1128	260	1	0.83	2.83	96.3	19	2	3	bowsprit/large fore/heavy main/heavy mizzen/large	yes	A whole deck of eighteens and the legs to choose her own fight.	1740-1840	Global	Cruiser and commerce war	146	133	39	16.5	13	6.5	3.74	3	860	1230	4	3	3	3	3	Gallery	1.2	2	4.25	2.5	1.9	Oak	1.0	170	8	13	59	38
+yes	heavyFrigate	Heavy frigate	48000	1721	420	1.03	0.74	3.8	135	25	2	3	bowsprit/large fore/heavy main/heavy mizzen/large	yes	Live oak frames set close enough that round shot comes off her sides.	1794-1855	Global	Super cruiser and duellist	168	153	43	22	13.5	7	3.91	3.19	1350	1920	4	3	3	3	3	Gallery	1.3	2	5.25	3	1.9	Live oak	1	280	8	13.5	55	50
+yes	fourthRate	4th rate	35000	1305	390	0.85	0.76	3.18	142	27	2	4	bowsprit/large fore/heavy main/heavy mizzen/large	yes	Two decks of guns on a hull too slow to run and too light for the line.	1650-1780	Global	Small liner and flag cruiser	150	137	42	20	17.5	7.5	3.57	2.4	980	1470	3	4	3	4	3	Gallery	1.1	2	5.5	3.25	1.95	Oak	1.0	240	6	10	52	54
+yes	thirdRate	3rd rate	58000	1812	500	0.88	0.7	4.13	175	32	2	5	bowsprit/large fore/heavy main/heavy mizzen/large	yes	Sixty four guns, and the smallest ship anyone will put in the line of battle.	1750-1860	Global	Backbone of the line	165	150	45	22	19	8	3.67	2.37	1400	2170	3	4	3	4	3	Gallery	1.15	2	6.25	3.75	1.95	Oak	1.0	320	6	10.5	45	64
+yes	secondRate	2nd rate	80000	2421	700	0.79	0.68	5.12	259.4	45	2	6	bowsprit/large fore/heavy main/heavy mizzen/large	yes	Three decks of iron. She is slow, she is enormous, and nothing wants her attention.	1690-1850	Global	Fleet flagship	180	164	50	26	21	11	3.6	2.38	1900	3000	2	5	3	4	4	Gallery	1.1	3	6.75	4.25	2.0	Oak	1.0	450	5	9	41	90
+yes	firstRate	1st rate	100000	2699	800	0.79	0.62	5.68	297.7	50	2	6	bowsprit/large fore/heavy main/heavy mizzen/large	yes	A hundred guns and a flag at the main. There is nothing above her.	1650-1860	Britain, France, Spain	Fleet flagship	190	173	51	28.5	22	12	3.73	2.32	2150	3500	2	5	3	4	4	Gallery	1.1	3	7	4.5	2.0	Oak	1.0	520	5	9	38	100
+
+
+No	launch	Armed launch	0	100	30	0.58	1.28	0.1	0.21	1	1	1	bowsprit/boat main/boat	yes		1650-1865	Global	Boarding and inshore harassment	32	30	8	2.5	3	1.5	4.0	3.2	6	8	3	1	2	2	1	Transom	0.9	1	1.5	1.0	1.2	Pine	0.85	6	2	5	92	1
+No	shallop	Armed shallop	130	117	25	0.64	1.28	0.18	0.47	1	1	1	bowsprit/boat fore/boat main/boat	yes		1600-1720	North Europe	Coastal and colonial patrol	34	32	10	3.5	4	2	3.4	2.9	15	20	3	1	2	2	1	Transom	0.8	1	2.0	1.25	1.4	Oak	1.0	4	3	6	92	2
+No	yawl	Yawl	60	100	25	0.58	1.3	0.09	0.23	1	1	1	bowsprit/boat main/boat	yes		1650-1865	Global	Ship's boat and dispatch	24	22	7	2.5	2.5	1.5	3.4	2.8	5	7	3	1	2	2	1	Transom	0.8	1	1.25	1.0	1.1	Pine	0.85	3	2	5	93	1
+No	smack	Armed smack	340	169	25	0.79	1.3	0.42	1.04	1	1	1	bowsprit/boat main/small	yes		1750-1815	Britain	Tender, revenue and dispatch	52	48	15	8	8	3	3.5	1.9	55	70	3	2	3	2	1	Transom	1.1	1	2.5	1.5	1.6	Oak	1.0	8	5	9	91	4
+No	hoy	Hoy	130	189	25	0.7	1.2	0.51	1.4	1	0	1	bowsprit/boat main/small	yes		1600-1800	Britain	Coastal supply and guard	58	54	18	7	8	3.5	3.2	2.6	75	95	2	2	2	2	1	Round	0.9	1	2.5	1.5	1.7	Oak	1.0	6	4	7	83	4
+No	gundalow	Gundalow	280	132	45	0.55	1.09	0.38	0.92	1	1	1	main/small	no		1770-1815	American lakes	Floating gun battery	54	50	15	4	5	2.5	3.6	3.8	45	60	2	1	1	1	1	Scow	0.7	1	2.5	1.5	1.8	Pine	0.85	20	2	4	63	3
+No	tartane	Tartane	370	178	30	0.76	1.16	0.46	1.17	2	1	1	bowsprit/boat fore/small main/small	yes		1600-1820	Mediterranean	Coastal patrol and corsair	55	50	16	7	7	3	3.4	2.3	60	80	3	2	3	2	1	Transom	1.0	1	2.5	1.5	1.6	Oak	1.0	10	5	8	81	6
+No	gunboat	Gunboat	510	197	40	0.7	1.22	0.49	1.15	1	1	1	bowsprit/boat main/small	yes		1795-1820	United States	Harbour defence	60	56	16	5	6	3	3.75	3.2	70	90	3	1	2	1	1	Transom	0.9	1	3.0	1.75	1.7	Oak	1.0	20	4	7	84	2
+No	bermudaSloop	Bermuda sloop	1400	244	75	0.97	1.22	0.66	1.66	3	1	1	bowsprit/small main/medium	yes		1700-1820	Caribbean	Fast dispatch and privateer	70	64	20	10	10	4	3.5	2.0	110	140	4	2	4	3	1	Transom	1.5	1	3.0	2.0	1.7	Cedar	1.0	20	8	12	89	12
+No	barcaLonga	Barca-longa	340	163	35	0.76	1.16	0.4	1.05	2	1	1	bowsprit/boat fore/small main/small	yes		1650-1800	Spain	Coastal patrol and privateer	50	46	15	6	6	3	3.3	2.5	50	65	3	2	3	2	1	Transom	0.9	1	2.5	1.5	1.6	Oak	1.0	12	5	8	81	6
+No	cutter	Cutter	2500	361	60	0.97	1.18	1.0	2.82	4	1	1	bowsprit/small main/medium	yes		1760-1830	Britain	Revenue, dispatch and patrol	75	68	24	11	11	4	3.1	2.2	200	260	4	2	4	2	1	Transom	1.4	1	3.5	2.0	1.8	Oak	1.0	30	8	12	87	14
+	lugger	Lugger	1950	277	60	0.91	1.18	0.81	2.03	4	1	1	bowsprit/small fore/medium main/medium	yes		1750-1815	The Channel	Privateer and smuggler	78	72	22	10	10	4	3.5	2.2	150	190	4	2	3	2	1	Transom	1.0	1	3.0	1.75	1.7	Oak	1.0	25	7	11	84	14
+	ketch	Ketch	2100	415	60	0.79	1.09	1.15	2.87	3	1	1	bowsprit/small main/medium mizzen/small	yes		1650-1810	North Europe	Patrol and raiding	90	82	26	12	12	5	3.5	2.2	250	320	3	3	3	3	2	Round	1.1	1-2	3.5	2.0	1.9	Oak	1.0	30	5	9	78	10
+No	brigantine	Brigantine	3250	397	100	0.85	1.01	1.1	2.6	4	1	1	bowsprit/small fore/medium main/medium	yes		1690-1850	The Americas	Patrol, escort and privateer	92	84	25	12	12	5	3.7	2.1	230	300	3	3	3	3	2	Transom	1.1	1	3.5	2.0	1.9	Oak	1.0	40	6	10	70	14
+No	topsailSchooner	Topsail schooner	2200	370	90	0.91	1.14	1.03	2.25	3	1	1	bowsprit/small fore/medium main/medium	yes		1750-1865	The Americas	Fast patrol and dispatch	95	86	24	11	11	4.5	4.0	2.2	210	270	4	2	3	2	1	Transom	1.2	1	3.5	2.0	1.8	Oak	1.0	30	7	11	85	12
+No	baltimoreClipper	Baltimore clipper	2700	405	100	1.03	1.11	1.1	2.29	3	1	1	bowsprit/small fore/medium main/medium	yes		1795-1850	Chesapeake	Privateer and blockade runner	100	90	24	11	11	4	4.2	2.2	230	300	5	2	4	3	1	Raking transom	1.3	1	3.5	2.0	1.7	Oak	1.0	40	9	13	84	12
+	snow	Snow	4300	482	120	0.85	1.01	1.29	3.13	4	1	1	bowsprit/medium fore/large main/large	yes		1690-1815	North Atlantic	Sloop of war and escort	96	88	27	13	13	5	3.6	2.1	300	380	3	3	3	3	2	Transom	1.1	1	4.0	2.25	1.9	Oak	1.0	60	6	10	66	16
+	brigSloop	Brig-sloop	6150	574	130	0.88	0.95	1.5	3.99	5	1	1	bowsprit/medium fore/large main/large	yes		1770-1850	Global	Escort and commerce war	100	92	30	13	13	5.5	3.3	2.3	380	480	3	3	3	3	2	Round	1.1	1	4.0	2.5	1.9	Oak	1.0	80	6	11	65	18
+	gunBrig	Gun-brig	1650	334	60	0.79	1.07	0.92	2.12	3	2	1	bowsprit/small fore/medium main/medium	yes		1795-1815	Britain	Inshore and convoy work	84	78	22	9	9	4	3.8	2.4	180	230	3	2	3	2	1	Transom	1.0	1	3.5	2.0	1.8	Oak	1.0	40	5	9	71	12
+No	bombVessel	Bomb vessel	2600	600	110	0.73	1.01	1.5	4.12	3	0	1	bowsprit/medium main/large mizzen/medium	yes		1690-1855	Britain and France	Shore bombardment	92	84	29	13	13	5	3.2	2.2	380	480	2	3	2	2	2	Round	1.0	1	5.0	3.0	1.9	Oak	1.0	60	4	8	68	10
+No	pinnace	Pinnace	560	187	60	0.79	1.01	0.46	1.0	2	1	1	bowsprit/boat fore/small main/small mizzen/small	yes		1550-1650	England	Scout and light warship	60	54	15	7	7	4	4.0	2.1	60	80	3	3	3	3	3	Square	1.0	1	3.0	1.75	1.8	Oak	1.0	20	5	9	66	8
+No	xebec	Xebec	14000	532	350	0.94	1.07	1.44	3.08	8	2	4	bowsprit/medium fore/large main/large mizzen/medium	yes		1650-1830	Barbary coast	Corsair and coastal warship	115	104	28	10	11	5	4.1	2.8	350	450	5	1	4	3	2	Overhanging	1.2	1	3.5	2.0	1.8	Oak	1.0	120	7	12	82	32
+	fluyt	Armed fluyt	3400	487	70	0.73	0.87	1.33	2.78	4	1	1	bowsprit/medium fore/large main/large mizzen/medium	yes		1600-1720	Dutch Republic	Armed transport and escort	100	92	24	11	12	5	4.2	2.2	300	400	2	5	2	3	3	Pear	1.0	1-2	3.5	2.0	1.9	Oak	1.0	30	4	8	49	16
+	barque	Armed barque	4450	563	95	0.79	0.95	1.48	3.51	4	1	1	bowsprit/medium fore/large main/large mizzen/medium	yes		1650-1865	Global	Escort and armed trader	106	98	29	13	13	5.5	3.7	2.2	370	470	3	3	3	3	2	Round	1.1	1	4.0	2.25	1.9	Oak	1.0	40	5	9	63	14
+No	corvette	Corvette	7950	655	170	0.91	0.95	1.69	3.99	6	1	2	bowsprit/medium fore/large main/large mizzen/medium	yes		1740-1860	Global	Patrol, escort, commerce war	115	106	31	14	14	6	3.7	2.2	450	570	4	3	3	3	2	Round	1.2	1	4.0	2.5	1.9	Oak	1.0	90	7	11	65	22
+	carrack	Carrack	20000	976	400	0.67	0.64	2.29	6.68	8	1	4	bowsprit/medium fore/large main/large mizzen/medium bonaventure/small	yes		1450-1570	Iberia	Flagship and armed trader	120	108	40	16	20	12	3.0	2.5	700	900	1	4	2	5	5	Square castle	0.9	2	5.0	3.0	2.0	Oak	1.0	100	3	7	30	30
+No	sixthRate	6th rate	10500	736	200	0.91	0.89	1.86	4.66	7	2	2	bowsprit/medium fore/large main/large mizzen/medium	yes		1700-1820	Britain	Cruiser, escort and patrol	118	108	34	12	12	6	3.5	2.8	520	660	4	3	3	3	2	Round	1.2	1-2	4.0	2.5	1.9	Oak	1.0	120	7	11	62	28
+	raceGalleon	Race-built galleon	18000	729	350	0.85	0.89	1.82	3.8	10	2	4	bowsprit/medium fore/large main/large mizzen/medium	yes		1570-1620	England	Line and cruiser warship	140	126	33	15	16	9	4.2	2.2	500	640	4	3	3	4	3	Square gallery	1.0	2	4.5	2.75	2.0	Oak	1.0	150	6	10	52	40
+	galleon	Galleon	26500	976	450	0.73	0.7	2.29	5.89	12	2	5	bowsprit/medium fore/large main/large mizzen/medium bonaventure/small	yes		1550-1650	Spain and Portugal	Warship and treasure escort	130	118	38	17	18	12	3.4	2.2	700	900	3	4	3	4	4	Square gallery	0.95	2	5.0	3.0	2.0	Oak	1.0	180	4	8	43	48
+No	fifthRate	5th rate	24000	1235	300	1	0.83	2.77	6.47	10	2	3	bowsprit/large fore/heavy main/heavy mizzen/large	yes		1740-1840	Global	Cruiser and commerce war	150	138	40	14	14	7	3.75	2.9	950	1200	4	3	3	3	2	Gallery	1.2	2	4.5	2.75	1.9	Oak	1.0	200	8	13	59	38
+	clipper	Armed clipper	10500	1609	120	1.15	0.87	3.07	5.38	3	1	1	bowsprit/large fore/heavy main/heavy mizzen/large	yes		1840-1865	China trade	Fast armed trader	200	180	40	21	21	7	5.0	1.9	1100	1400	5	2	4	3	1	Elliptical	1.5	2	4.5	2.75	1.8	Teak	1.12	40	10	16	59	12
+	eastIndiaman	East Indiaman	22500	1698	220	0.79	0.7	3.22	7.22	8	2	2	bowsprit/large fore/heavy main/heavy mizzen/large	yes		1690-1830	Britain	Armed trader and convoy	165	152	42	18	18	8	3.9	2.3	1200	1500	3	4	2	3	3	Gallery	1.1	2	5.0	3.0	2.0	Teak	1.12	80	5	9	41	30
+No	heavyFrigate	Heavy frigate	54000	2230	480	1.03	0.74	3.77	8.24	13	2	5	bowsprit/large fore/heavy main/heavy mizzen/large	yes		1794-1855	United States	Super cruiser and duellist	175	162	44	14	14	7	4.0	3.1	1500	1900	4	3	3	3	2	Gallery	1.3	2	5.5	3.25	1.9	Live oak	1.2	300	8	13.5	55	50
+	razee	Razee frigate	43000	1827	480	1	0.76	3.7	9.0	11	2	5	bowsprit/large fore/heavy main/heavy mizzen/large	yes		1794-1845	Britain	Heavy cruiser, cut down	170	156	47	20	20	8	3.6	2.4	1450	1850	4	4	3	3	2	Gallery	1.2	2	6.0	3.5	1.9	Oak	1.0	280	8	13	56	44
+No	fourthRate	4th rate	37500	1379	420	0.85	0.76	3.0	7.29	14	2	5	bowsprit/large fore/heavy main/heavy mizzen/large	yes		1650-1780	Britain	Small liner and flag cruiser	155	142	43	18	18	8	3.6	2.4	1050	1350	3	4	3	4	3	Gallery	1.1	2	5.5	3.25	2.0	Oak	1.0	250	6	10	52	54
+No	thirdRate	3rd rate	78500	2188	720	0.85	0.7	4.15	9.83	19	2	6	bowsprit/large fore/heavy main/heavy mizzen/large	yes		1750-1860	Global	Backbone of the line	176	168	48	21	21	9	3.7	2.3	1700	2200	3	4	3	4	3	Gallery	1.15	2-3	6.5	4.0	2.0	Oak	1.0	500	6	10	45	74
+No	secondRate	2nd rate	104000	2834	850	0.79	0.68	4.99	11.5	20	2	6	bowsprit/large fore/heavy main/heavy mizzen/large	yes		1690-1850	Britain	Fleet flagship	195	185	51	22	23	12	3.8	2.3	2200	2900	2	5	3	4	4	Gallery	1.1	3	7.0	4.5	2.0	Oak	1.0	650	5	9	41	98
+No	firstRate	1st rate	120000	3290	950	0.79	0.62	5.55	12.46	20	2	6	bowsprit/large fore/heavy main/heavy mizzen/large	yes		1650-1860	Britain and France	Fleet flagship	205	195	53	23	24	13	3.9	2.3	2500	3400	2	5	3	4	4	Gallery	1.1	3	7.5	5.0	2.0	Oak	1.0	750	5	9	38	104

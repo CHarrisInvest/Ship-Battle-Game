@@ -136,200 +136,107 @@ export const kindOf = (id) => SAIL_KINDS[id] || null;
 /* generated:hulls -- edit data/hulls.tsv and run `npm run import` */
 const FLEET = [
   {
-    id: "launch", name: "Armed launch", price: 0,
-    hull: 100, crew: 30, speed: 0.55, hand: 1.28, canvas: 0.1, tons: 0.21,
-    guns: [1, 1, 1], masts: ["bowsprit/boat", "main/boat"],
-  },
-  {
-    id: "shallop", name: "Armed shallop", price: 130,
-    hull: 117, crew: 25, speed: 0.61, hand: 1.28, canvas: 0.18, tons: 0.47,
-    guns: [1, 1, 1], masts: ["bowsprit/boat", "fore/boat", "main/boat"],
-  },
-  {
-    id: "yawl", name: "Yawl", price: 60,
-    hull: 100, crew: 25, speed: 0.55, hand: 1.3, canvas: 0.09, tons: 0.23,
-    guns: [1, 1, 1], masts: ["bowsprit/boat", "main/boat"],
-  },
-  {
-    id: "smack", name: "Armed smack", price: 340,
-    hull: 169, crew: 25, speed: 0.79, hand: 1.3, canvas: 0.42, tons: 1.04,
-    guns: [1, 1, 1], masts: ["bowsprit/boat", "main/small"],
-  },
-  {
-    id: "hoy", name: "Hoy", price: 130,
-    hull: 189, crew: 25, speed: 0.67, hand: 1.2, canvas: 0.51, tons: 1.4,
-    guns: [1, 0, 1], masts: ["bowsprit/boat", "main/small"],
-  },
-  {
-    id: "gundalow", name: "Gundalow", price: 280,
-    hull: 132, crew: 45, speed: 0.55, hand: 1.09, canvas: 0.38, tons: 0.92,
+    id: "gundalow", name: "Gundalow", price: 0,
+    blurb: "A raft with a mast and one gun. She floats, she fires, and she is yours.",
+    hull: 100, crew: 30, speed: 0.55, hand: 0.65, canvas: 0.18, tons: 2,
     guns: [1, 1, 1], masts: ["main/small"], bowsprit: false,
   },
   {
-    id: "tartane", name: "Tartane", price: 370,
-    hull: 178, crew: 30, speed: 0.73, hand: 1.16, canvas: 0.46, tons: 1.17,
-    guns: [2, 1, 1], masts: ["bowsprit/boat", "fore/small", "main/small"],
-  },
-  {
-    id: "gunboat", name: "Gunboat", price: 510,
-    hull: 197, crew: 40, speed: 0.67, hand: 1.22, canvas: 0.49, tons: 1.15,
-    guns: [1, 1, 1], masts: ["bowsprit/boat", "main/small"],
-  },
-  {
-    id: "bermudaSloop", name: "Bermuda sloop", price: 1400,
-    hull: 244, crew: 75, speed: 0.97, hand: 1.22, canvas: 0.66, tons: 1.66,
+    id: "bermudaSloop", name: "Bermuda Sloop light", price: 900,
+    blurb: "One raking mast and a deep heel aft. Nothing this small goes faster.",
+    hull: 137, crew: 30, speed: 0.97, hand: 1.22, canvas: 0.28, tons: 6.6,
     guns: [3, 1, 1], masts: ["bowsprit/small", "main/medium"],
   },
   {
-    id: "barcaLonga", name: "Barca-longa", price: 340,
-    hull: 163, crew: 35, speed: 0.73, hand: 1.16, canvas: 0.4, tons: 1.05,
-    guns: [2, 1, 1], masts: ["bowsprit/boat", "fore/small", "main/small"],
-  },
-  {
-    id: "cutter", name: "Cutter", price: 2500,
-    hull: 361, crew: 60, speed: 0.97, hand: 1.18, canvas: 1, tons: 2.82,
+    id: "sloop", name: "Sloop light", price: 1400,
+    blurb: "A single mast on a hull with some beam under it. She answers the helm sweetly.",
+    hull: 149, crew: 40, speed: 0.91, hand: 1.24, canvas: 0.34, tons: 8.1,
     guns: [4, 1, 1], masts: ["bowsprit/small", "main/medium"],
   },
   {
-    id: "lugger", name: "Lugger", price: 1950,
-    hull: 277, crew: 60, speed: 0.91, hand: 1.18, canvas: 0.81, tons: 2.03,
-    guns: [4, 1, 1], masts: ["bowsprit/small", "fore/medium", "main/medium"],
+    id: "cutter", name: "Cutter light", price: 2300,
+    blurb: "Broad, deep and stiff, with more sail than a boat her size has any right to.",
+    hull: 167, crew: 45, speed: 0.94, hand: 1.26, canvas: 0.4, tons: 9.7,
+    guns: [5, 1, 1], masts: ["bowsprit/small", "main/medium"],
   },
   {
-    id: "ketch", name: "Ketch", price: 2100,
-    hull: 415, crew: 60, speed: 0.79, hand: 1.09, canvas: 1.15, tons: 2.87,
-    guns: [3, 1, 1], masts: ["bowsprit/small", "main/medium", "mizzen/small"],
+    id: "baltimoreClipper", name: "Baltimore Clipper", price: 3200,
+    blurb: "Two raked masts on a hull cut like a knife. She outruns ships that outgun her.",
+    hull: 255, crew: 60, speed: 1.09, hand: 1.16, canvas: 0.72, tons: 16.8,
+    guns: [6, 1, 1], masts: ["bowsprit/small", "fore/medium", "main/medium"],
   },
   {
-    id: "brigantine", name: "Brigantine", price: 3250,
-    hull: 397, crew: 100, speed: 0.85, hand: 1.01, canvas: 1.1, tons: 2.6,
-    guns: [4, 1, 1], masts: ["bowsprit/small", "fore/medium", "main/medium"],
+    id: "brigantine", name: "Brigantine", price: 4400,
+    blurb: "Square on the fore and fore and aft on the main. She will do most things well enough.",
+    hull: 311, crew: 70, speed: 0.85, hand: 0.97, canvas: 0.92, tons: 17.4,
+    guns: [7, 1, 1], masts: ["bowsprit/small", "fore/medium", "main/medium"],
   },
   {
-    id: "topsailSchooner", name: "Topsail schooner", price: 2200,
-    hull: 370, crew: 90, speed: 0.91, hand: 1.14, canvas: 1.03, tons: 2.25,
-    guns: [3, 1, 1], masts: ["bowsprit/small", "fore/medium", "main/medium"],
+    id: "xebecLight", name: "Xebec light", price: 6200,
+    blurb: "Long, low and lateen rigged, with a crew that would rather board you than shoot.",
+    hull: 277, crew: 180, speed: 0.97, hand: 1.07, canvas: 0.8, tons: 20,
+    guns: [9, 1, 1], masts: ["bowsprit/small", "fore/medium", "main/medium"],
   },
   {
-    id: "baltimoreClipper", name: "Baltimore clipper", price: 2700,
-    hull: 405, crew: 100, speed: 1.03, hand: 1.11, canvas: 1.1, tons: 2.29,
-    guns: [3, 1, 1], masts: ["bowsprit/small", "fore/medium", "main/medium"],
+    id: "corvette", name: "Corvette", price: 9000,
+    blurb: "Three masts and one flush deck of guns. The smallest ship that looks like a warship.",
+    hull: 504, crew: 130, speed: 0.91, hand: 0.95, canvas: 1.46, tons: 29.9,
+    guns: [10, 1, 2], masts: ["bowsprit/medium", "fore/large", "main/large", "mizzen/medium"],
   },
   {
-    id: "snow", name: "Snow", price: 4300,
-    hull: 482, crew: 120, speed: 0.85, hand: 1.01, canvas: 1.29, tons: 3.13,
-    guns: [4, 1, 1], masts: ["bowsprit/medium", "fore/large", "main/large"],
+    id: "sixthRate", name: "6th rate", price: 12500,
+    blurb: "Rated at last, and the smallest thing a post captain will admit to commanding.",
+    hull: 647, crew: 155, speed: 0.88, hand: 0.89, canvas: 1.81, tons: 45.4,
+    guns: [12, 2, 2], masts: ["bowsprit/medium", "fore/large", "main/large", "mizzen/medium"],
   },
   {
-    id: "brigSloop", name: "Brig-sloop", price: 6150,
-    hull: 574, crew: 130, speed: 0.85, hand: 0.95, canvas: 1.5, tons: 3.99,
-    guns: [5, 1, 1], masts: ["bowsprit/medium", "fore/large", "main/large"],
+    id: "xebecHeavy", name: "Xebec heavy", price: 18000,
+    blurb: "The same corsair hull grown a third mast and a great many more men.",
+    hull: 568, crew: 320, speed: 0.94, hand: 0.99, canvas: 1.6, tons: 44,
+    guns: [16, 2, 3], masts: ["bowsprit/medium", "fore/large", "main/large", "mizzen/medium"],
   },
   {
-    id: "gunBrig", name: "Gun-brig", price: 1650,
-    hull: 334, crew: 60, speed: 0.79, hand: 1.07, canvas: 0.92, tons: 2.12,
-    guns: [3, 2, 1], masts: ["bowsprit/small", "fore/medium", "main/medium"],
+    id: "fifthRate", name: "5th rate", price: 25000,
+    blurb: "A whole deck of eighteens and the legs to choose her own fight.",
+    hull: 1128, crew: 260, speed: 1, hand: 0.83, canvas: 2.83, tons: 96.3,
+    guns: [19, 2, 3], masts: ["bowsprit/large", "fore/heavy", "main/heavy", "mizzen/large"],
   },
   {
-    id: "bombVessel", name: "Bomb vessel", price: 2600,
-    hull: 600, crew: 110, speed: 0.73, hand: 1.01, canvas: 1.5, tons: 4.12,
-    guns: [3, 0, 1], masts: ["bowsprit/medium", "main/large", "mizzen/medium"],
+    id: "heavyFrigate", name: "Heavy frigate", price: 48000,
+    blurb: "Live oak frames set close enough that round shot comes off her sides.",
+    hull: 1721, crew: 420, speed: 1.03, hand: 0.74, canvas: 3.8, tons: 135,
+    guns: [25, 2, 3], masts: ["bowsprit/large", "fore/heavy", "main/heavy", "mizzen/large"],
   },
   {
-    id: "pinnace", name: "Pinnace", price: 560,
-    hull: 187, crew: 60, speed: 0.79, hand: 1.01, canvas: 0.46, tons: 1,
-    guns: [2, 1, 1], masts: ["bowsprit/boat", "fore/small", "main/small", "mizzen/small"],
+    id: "fourthRate", name: "4th rate", price: 35000,
+    blurb: "Two decks of guns on a hull too slow to run and too light for the line.",
+    hull: 1305, crew: 390, speed: 0.85, hand: 0.76, canvas: 3.18, tons: 142,
+    guns: [27, 2, 4], masts: ["bowsprit/large", "fore/heavy", "main/heavy", "mizzen/large"],
   },
   {
-    id: "xebec", name: "Xebec", price: 14000,
-    hull: 532, crew: 350, speed: 0.91, hand: 1.07, canvas: 1.44, tons: 3.08,
-    guns: [8, 2, 4], masts: ["bowsprit/medium", "fore/large", "main/large", "mizzen/medium"],
+    id: "thirdRate", name: "3rd rate", price: 58000,
+    blurb: "Sixty four guns, and the smallest ship anyone will put in the line of battle.",
+    hull: 1812, crew: 500, speed: 0.88, hand: 0.7, canvas: 4.13, tons: 175,
+    guns: [32, 2, 5], masts: ["bowsprit/large", "fore/heavy", "main/heavy", "mizzen/large"],
   },
   {
-    id: "fluyt", name: "Armed fluyt", price: 3400,
-    hull: 487, crew: 70, speed: 0.73, hand: 0.87, canvas: 1.33, tons: 2.78,
-    guns: [4, 1, 1], masts: ["bowsprit/medium", "fore/large", "main/large", "mizzen/medium"],
+    id: "secondRate", name: "2nd rate", price: 80000,
+    blurb: "Three decks of iron. She is slow, she is enormous, and nothing wants her attention.",
+    hull: 2421, crew: 700, speed: 0.79, hand: 0.68, canvas: 5.12, tons: 259.4,
+    guns: [45, 2, 6], masts: ["bowsprit/large", "fore/heavy", "main/heavy", "mizzen/large"],
   },
   {
-    id: "barque", name: "Armed barque", price: 4450,
-    hull: 563, crew: 95, speed: 0.79, hand: 0.95, canvas: 1.48, tons: 3.51,
-    guns: [4, 1, 1], masts: ["bowsprit/medium", "fore/large", "main/large", "mizzen/medium"],
-  },
-  {
-    id: "corvette", name: "Corvette", price: 7950,
-    hull: 655, crew: 170, speed: 0.91, hand: 0.95, canvas: 1.69, tons: 3.99,
-    guns: [6, 1, 2], masts: ["bowsprit/medium", "fore/large", "main/large", "mizzen/medium"],
-  },
-  {
-    id: "carrack", name: "Carrack", price: 20000,
-    hull: 976, crew: 400, speed: 0.67, hand: 0.64, canvas: 2.29, tons: 6.68,
-    guns: [8, 1, 4], masts: ["bowsprit/medium", "fore/large", "main/large", "mizzen/medium", "bonaventure/small"],
-  },
-  {
-    id: "sixthRate", name: "6th rate", price: 10500,
-    hull: 736, crew: 200, speed: 0.91, hand: 0.89, canvas: 1.86, tons: 4.66,
-    guns: [7, 2, 2], masts: ["bowsprit/medium", "fore/large", "main/large", "mizzen/medium"],
-  },
-  {
-    id: "raceGalleon", name: "Race-built galleon", price: 18000,
-    hull: 729, crew: 350, speed: 0.85, hand: 0.89, canvas: 1.82, tons: 3.8,
-    guns: [10, 2, 4], masts: ["bowsprit/medium", "fore/large", "main/large", "mizzen/medium"],
-  },
-  {
-    id: "galleon", name: "Galleon", price: 26500,
-    hull: 976, crew: 450, speed: 0.73, hand: 0.7, canvas: 2.29, tons: 5.89,
-    guns: [12, 2, 5], masts: ["bowsprit/medium", "fore/large", "main/large", "mizzen/medium", "bonaventure/small"],
-  },
-  {
-    id: "fifthRate", name: "5th rate", price: 24000,
-    hull: 1235, crew: 300, speed: 0.97, hand: 0.83, canvas: 2.77, tons: 6.47,
-    guns: [10, 2, 3], masts: ["bowsprit/large", "fore/heavy", "main/heavy", "mizzen/large"],
-  },
-  {
-    id: "clipper", name: "Armed clipper", price: 10500,
-    hull: 1609, crew: 120, speed: 1.15, hand: 0.87, canvas: 3.07, tons: 5.38,
-    guns: [3, 1, 1], masts: ["bowsprit/large", "fore/heavy", "main/heavy", "mizzen/large"],
-  },
-  {
-    id: "eastIndiaman", name: "East Indiaman", price: 22500,
-    hull: 1698, crew: 220, speed: 0.79, hand: 0.7, canvas: 3.22, tons: 7.22,
-    guns: [8, 2, 2], masts: ["bowsprit/large", "fore/heavy", "main/heavy", "mizzen/large"],
-  },
-  {
-    id: "heavyFrigate", name: "Heavy frigate", price: 54000,
-    hull: 2230, crew: 480, speed: 1.03, hand: 0.74, canvas: 3.77, tons: 8.24,
-    guns: [13, 2, 5], masts: ["bowsprit/large", "fore/heavy", "main/heavy", "mizzen/large"],
-  },
-  {
-    id: "razee", name: "Razee frigate", price: 43000,
-    hull: 1827, crew: 480, speed: 0.97, hand: 0.76, canvas: 3.7, tons: 9,
-    guns: [11, 2, 5], masts: ["bowsprit/large", "fore/heavy", "main/heavy", "mizzen/large"],
-  },
-  {
-    id: "fourthRate", name: "4th rate", price: 37500,
-    hull: 1379, crew: 420, speed: 0.85, hand: 0.76, canvas: 3, tons: 7.29,
-    guns: [14, 2, 5], masts: ["bowsprit/large", "fore/heavy", "main/heavy", "mizzen/large"],
-  },
-  {
-    id: "thirdRate", name: "3rd rate", price: 78500,
-    hull: 2188, crew: 720, speed: 0.85, hand: 0.7, canvas: 4.15, tons: 9.83,
-    guns: [19, 2, 6], masts: ["bowsprit/large", "fore/heavy", "main/heavy", "mizzen/large"],
-  },
-  {
-    id: "secondRate", name: "2nd rate", price: 104000,
-    hull: 2834, crew: 850, speed: 0.79, hand: 0.68, canvas: 4.99, tons: 11.5,
-    guns: [20, 2, 6], masts: ["bowsprit/large", "fore/heavy", "main/heavy", "mizzen/large"],
-  },
-  {
-    id: "firstRate", name: "1st rate", price: 120000,
-    hull: 3290, crew: 950, speed: 0.79, hand: 0.62, canvas: 5.55, tons: 12.46,
-    guns: [20, 2, 6], masts: ["bowsprit/large", "fore/heavy", "main/heavy", "mizzen/large"],
+    id: "firstRate", name: "1st rate", price: 100000,
+    blurb: "A hundred guns and a flag at the main. There is nothing above her.",
+    hull: 2699, crew: 800, speed: 0.79, hand: 0.62, canvas: 5.68, tons: 297.7,
+    guns: [50, 2, 6], masts: ["bowsprit/large", "fore/heavy", "main/heavy", "mizzen/large"],
   },
 ];
 /* end:hulls */
 
-// `tons` is what she can carry before the guns start telling on her handling. Every row gets these
-// unless it says otherwise, so a class only states what is true of it in particular.
+// `tons` is the weight of iron she can bear, in the tons the guns are weighed in. Every row gets
+// these unless it says otherwise, so a class only states what is true of it in particular. A tonnage
+// of 1 is a boat that can mount almost nothing, which is the right way for a missing figure to fail.
 const HULL_DEFAULTS = { bowsprit: true, tons: 1, canvas: 1, speed: 1, hand: 1 };
 
 function buildHull(row, index) {
@@ -1048,82 +955,170 @@ export const SAIL_LIST = Object.values(SAILS);
  */
 /* generated:guns -- edit data/guns.tsv and run `npm run import` */
 export const GUNS = {
-  minion: {
-    id: "minion",
+  gun3: {
+    id: "gun3",
     part: "gun",
-    name: "Minion",
-    price: 140,
-    blurb: "A light piece for a boat that cannot stand the weight of real iron.",
+    name: "3-pounder",
+    price: 55,
+    blurb: "The lightest iron that is still a gun. A boat can stand it and little else can.",
+    mount: "broadside",
+    damage: 5.2,
+    reload: 1.32,
+    weight: 0.35,
+  },
+  gun4: {
+    id: "gun4",
+    part: "gun",
+    name: "4-pounder",
+    price: 80,
+    blurb: "A small piece for a small hull. Two of them do what one real gun does.",
     mount: "broadside",
     damage: 6,
-    reload: 1.4,
+    reload: 1.41,
     weight: 0.6,
   },
-  carriageGun: {
-    id: "carriageGun",
+  gun6: {
+    id: "gun6",
     part: "gun",
-    name: "Carriage gun",
-    price: 260,
-    blurb: "The gun a broadside is made of. Fires fast enough to keep a hull holed.",
+    name: "6-pounder",
+    price: 130,
+    blurb: "The gun a working broadside is made of. Quick to serve and quick to reload.",
+    mount: "broadside",
+    damage: 7.3,
+    reload: 1.5,
+    weight: 0.85,
+  },
+  gun8: {
+    id: "gun8",
+    part: "gun",
+    name: "8-pounder",
+    price: 180,
+    blurb: "A little more iron for the same port. She feels the weight but not badly.",
+    mount: "broadside",
+    damage: 8.5,
+    reload: 1.57,
+    weight: 1.05,
+  },
+  gun9long: {
+    id: "gun9long",
+    part: "gun",
+    name: "Long 9-pounder",
+    price: 335,
+    blurb: "A long barrel on a light ball. It reaches further than anything of its weight.",
     mount: "broadside",
     damage: 9,
-    reload: 1.6,
-    weight: 1,
+    reload: 1.65,
+    weight: 1.3,
   },
-  culverin: {
-    id: "culverin",
+  gun12: {
+    id: "gun12",
     part: "gun",
-    name: "Culverin",
-    price: 520,
-    blurb: "A long barrel of middling weight. What a ship carries when she cannot stand a demi-cannon.",
+    name: "12-pounder",
+    price: 295,
+    blurb: "The upper deck gun of a ship of the line, and the main battery of a small one.",
     mount: "broadside",
-    damage: 12,
-    reload: 1.9,
-    weight: 1.4,
+    damage: 10.4,
+    reload: 1.79,
+    weight: 1.7,
   },
-  demiCannon: {
-    id: "demiCannon",
+  gun18: {
+    id: "gun18",
     part: "gun",
-    name: "Demi-cannon",
-    price: 880,
-    blurb: "Heavier iron, slower to serve. One of these does what two carriage guns do, in one blow.",
+    name: "18-pounder",
+    price: 480,
+    blurb: "A frigate's gun. Enough iron to open a hull at the range she wants to fight.",
     mount: "broadside",
-    damage: 16,
-    reload: 2.2,
-    weight: 1.9,
+    damage: 12.7,
+    reload: 1.94,
+    weight: 2.1,
   },
-  bowChaser: {
-    id: "bowChaser",
+  gun24: {
+    id: "gun24",
     part: "gun",
-    name: "Bow chaser",
-    price: 240,
-    blurb: "Points where the bow points. Aimed high, it brings a rig down.",
+    name: "24-pounder",
+    price: 680,
+    blurb: "Lower deck weight. Slow to run out, and it tells every time it goes off.",
+    mount: "broadside",
+    damage: 14.7,
+    reload: 2.08,
+    weight: 2.5,
+  },
+  gun32: {
+    id: "gun32",
+    part: "gun",
+    name: "32-pounder",
+    price: 960,
+    blurb: "The heaviest gun that goes to sea in numbers. It breaks frames, not planks.",
+    mount: "broadside",
+    damage: 17,
+    reload: 2.16,
+    weight: 2.75,
+  },
+  gun36: {
+    id: "gun36",
+    part: "gun",
+    name: "36-pounder",
+    price: 1105,
+    blurb: "French weight of metal. One tier of these is most of what she can carry.",
+    mount: "broadside",
+    damage: 18,
+    reload: 2.34,
+    weight: 3.25,
+  },
+  bow6: {
+    id: "bow6",
+    part: "gun",
+    name: "6-pounder chaser",
+    price: 200,
+    blurb: "A light chaser that points where the bow points. Cheap, and it is something.",
     mount: "bow",
-    damage: 9,
-    reload: 1.1,
+    damage: 7.7,
+    reload: 1.25,
     weight: 0.9,
   },
-  longNine: {
-    id: "longNine",
+  bow8: {
+    id: "bow8",
     part: "gun",
-    name: "Long nine",
-    price: 810,
-    blurb: "A long barrel on the bow. Reaches further than anything else aboard and hits what it reaches.",
+    name: "8-pounder chaser",
+    price: 290,
+    blurb: "A chaser with a little more weight behind the ball.",
     mount: "bow",
-    damage: 15,
-    reload: 1.35,
-    weight: 1.6,
+    damage: 8.9,
+    reload: 1.3,
+    weight: 1.1,
   },
-  longEighteen: {
-    id: "longEighteen",
+  bow9long: {
+    id: "bow9long",
     part: "gun",
-    name: "Long eighteen",
-    price: 1900,
-    blurb: "A frigate's chaser. Iron enough to open a stern at a distance, if she can bear the weight of it.",
+    name: "Long 9-pounder chaser",
+    price: 500,
+    blurb: "A long barrel on the bow. Reaches further than anything else aboard.",
     mount: "bow",
-    damage: 20,
+    damage: 9.5,
+    reload: 1.35,
+    weight: 1.4,
+  },
+  bow12: {
+    id: "bow12",
+    part: "gun",
+    name: "12-pounder chaser",
+    price: 780,
+    blurb: "Heavy enough to hurt a hull at the range a chase is fought at.",
+    mount: "bow",
+    damage: 10.9,
+    reload: 1.45,
+    weight: 1.8,
+  },
+  bow18: {
+    id: "bow18",
+    part: "gun",
+    name: "18-pounder chaser",
+    price: 1500,
+    blurb: "A frigate's chaser. Iron enough to open a stern at a distance.",
+    mount: "bow",
+    damage: 13.3,
     reload: 1.6,
-    weight: 2.4,
+    weight: 2.25,
   },
   swivelGun: {
     id: "swivelGun",
@@ -1134,7 +1129,7 @@ export const GUNS = {
     mount: "swivel",
     damage: 5,
     reload: 0.8,
-    weight: 0.35,
+    weight: 0.15,
     group: 1,
   },
   bronzeSwivel: {
@@ -1146,7 +1141,7 @@ export const GUNS = {
     mount: "swivel",
     damage: 6.5,
     reload: 0.8,
-    weight: 0.35,
+    weight: 0.15,
     group: 0.8,
   },
   longSwivel: {
@@ -1154,11 +1149,11 @@ export const GUNS = {
     part: "gun",
     name: "Long swivel",
     price: 1150,
-    blurb: "A longer barrel on the same mount. It hits harder and throws truer than anything else on the rail.",
+    blurb: "A longer barrel on the same mount. It hits harder and throws truer than anything on the rail.",
     mount: "swivel",
     damage: 8,
     reload: 0.8,
-    weight: 0.4,
+    weight: 0.18,
     group: 0.62,
   },
 };
@@ -1350,14 +1345,6 @@ const CREW_PER_FIRST = 12;
  */
 const MUSKET_CAP = 14;
 
-/**
- * The most balls one side can throw in a volley, however many guns are behind them.
- *
- * A battery larger than this fires in columns of stacked guns, one ball to a column, and the ball
- * carries what the whole column weighs. See `volley()` in `rate()`.
- */
-const BROADSIDE_COLUMNS = 10;
-
 // Her rig's share of her hull, in health-bar points. 0.55 is the ratio the fight was tuned around
 // when every ship at sea was 100 hull and 55 mast, kept so that adopting the catalogue moves what a
 // ship IS without moving what dismasting one is worth.
@@ -1444,7 +1431,7 @@ export function rate(loadout) {
     swivel: loadout.guns.swivel.filter(Boolean),
   };
   const weight = sum(guns.broadside, (g) => g.weight * 2) + sum(guns.bow, (g) => g.weight) + sum(guns.swivel, (g) => g.weight);
-  const load = Math.min(1, weight / (hull.tons * 8));
+  const load = Math.min(1, weight / hull.tons);
 
   const pull = drive / (drive + hull.canvas);
   const speed = hull.speed * (BARE + UNDER_SAIL * pull);
@@ -1471,29 +1458,26 @@ export function rate(loadout) {
   const musketSpread = (MUSKET_ARC * (handBalls + sum(firing, (g) => g.group ?? 1))) / muskets;
 
   /**
-   * A VOLLEY IS NOT ONE BALL PER GUN, past a point.
+   * ONE BALL PER GUN, and every gun she has.
    *
-   * Ten is as many as can be told apart coming off one side, and a first rate bears twice that. So a
-   * battery bigger than the ports the eye can follow fires in COLUMNS: the guns stack up the levels
-   * of one column, the column throws one ball, and that ball carries the weight of everything in it.
-   * A seventy-four's nineteen a side is ten balls with nine of them doubled, which is both what the
-   * ship looked like and what a player can read at a glance.
+   * A volley used to be capped at ten balls a side, with the guns beyond that stacked into columns
+   * throwing one heavier ball apiece: ten was as many as could be told apart coming off one side,
+   * and no ship then bore more than twenty. It is the wrong answer now that a first rate bears
+   * fifty, and it was always an answer to a drawing problem rather than to a gunnery one. The fight
+   * solved the drawing problem properly instead, by firing her guns in sequence down her side, so
+   * what separates one ball from the next is the moment it left rather than the room beside it.
    *
-   * Total damage is unchanged by any of this, so a ship's strength does not move when her battery
-   * crosses ten: the same iron arrives in fewer, heavier pieces. What changes is how it lands, and
-   * that belongs to the fight, which reads `columns` for how many balls to throw and `perBall` for
-   * what each one carries.
+   * So `balls` is her gun count and `perBall` is one gun's damage. Total damage is what it always
+   * was: the same iron, in as many pieces as there are guns to throw it.
    */
   const volley = (list) => {
     const count = list.length;
     const damage = sum(list, (g) => g.damage);
-    const columns = Math.min(BROADSIDE_COLUMNS, count);
     return {
       count,
       damage,
-      columns,
-      levels: columns ? Math.ceil(count / columns) : 0,
-      perBall: columns ? damage / columns : 0,
+      balls: count,
+      perBall: count ? damage / count : 0,
       // a mixed battery reloads at the pace of its slowest piece, which is what serving it really means
       reload: count ? Math.max(...list.map((g) => g.reload)) : 0,
     };
@@ -1641,15 +1625,20 @@ export function fitOut(hullId, quality = 1) {
     chosen[mount] = { pieces, piece, n: Math.max(floor, Math.round(q * cap)) };
   }
 
-  /* SHE CANNOT WORK IRON SHE CANNOT CARRY. A ship's launch with demi-cannons a side is not a
-     well-found launch, she is a launch with her gunwales under water, and taking the dearest piece a
+  /* SHE CANNOT WORK IRON SHE CANNOT CARRY. A gundalow with thirty-six pounders a side is not a
+     well-found gundalow, she is a raft with her gunwales under water, and taking the dearest piece a
      mount allows was giving every boat in the fleet the heaviest gun in the shop. Her tonnage already
      says what she can stand, so the battery steps down a grade at a time until it fits under it.
      Fine-lined hulls come out carrying lighter iron than beamy ones of the same size, which is what
-     `tons` was derived to mean. */
+     `tons` was derived to mean.
+
+     `tons` IS TONS OF IRON, in the same weights the guns are priced in, so the limit is the column
+     itself and nothing is multiplied by anything. It used to be a dimensionless figure read against
+     eight times itself, which meant a table written in real tons quietly stopped binding: every hull
+     in the fleet could bear the heaviest gun in the shop and this loop never ran. */
   const carried = () =>
     mounts.reduce((t, m) => t + (chosen[m] ? chosen[m].piece.weight * chosen[m].n * (m === "broadside" ? 2 : 1) : 0), 0);
-  const limit = lo.hull.tons * 8;
+  const limit = lo.hull.tons;
   for (let guard = 0; guard < 24 && carried() > limit; guard++) {
     // lighten whichever mount is carrying the most, so a heavy broadside gives way before a chaser
     let worst = null;
@@ -1663,6 +1652,22 @@ export function fitOut(hullId, quality = 1) {
     }
     if (!worst) break; // she is over her tonnage with the lightest iron in the shop, and that is her problem
     chosen[worst.mount].piece = worst.next;
+  }
+
+  /* AND NO ONE PIECE HEAVIER THAN HER BROADSIDE. The tonnage loop above lightens whichever mount is
+     carrying the most, which is always the battery, because a broadside is counted twice and there
+     are twenty of it. So a boat could come out under her tonnage with four pounders in the ports and
+     a frigate's eighteen on the bow: her total weight was legal and the single gun on it was not.
+     A chaser is a gun on the same deck as the rest, and if her scantlings will not stand an eighteen
+     abeam they will not stand one over the stem either. Cap it at the piece she carries a side and
+     let her keep the lightest in the shop when nothing is light enough. */
+  const abeam = chosen.broadside && chosen.broadside.piece;
+  if (abeam && chosen.bow) {
+    const c = chosen.bow;
+    if (c.piece.weight > abeam.weight) {
+      const fits = c.pieces.filter((g) => g.weight <= abeam.weight).sort((a, b) => b.weight - a.weight)[0];
+      c.piece = fits || c.pieces.slice().sort((a, b) => a.weight - b.weight)[0];
+    }
   }
 
   for (const mount of mounts) {
@@ -1788,43 +1793,49 @@ export function measure(r) {
 }
 
 /**
- * Bands over `overall`. A tier is a rung, not a class: two different hulls fitted to the same
- * strength are the same tier and belong in the same fight.
+ * HER RATE: the eight rungs, and what a captain is told she is sailing.
  *
- * `from` is the bottom of the band. The last one has no top, so a ship fitted beyond anything in the
- * catalogue still lands somewhere rather than falling off the end.
+ * A rate is her main battery counted the way the navy counted it: the guns she bears, both sides
+ * together, so a hull pierced for fifty a side is a hundred-gun ship and a first rate. Chasers and
+ * swivels are no part of it, which is both how a rating was reckoned and why the edges fall where
+ * they do: every one of them is a whole number of guns a side.
  *
- * A TIER IS A NUMBER AND HAS NO NAME. Five of them were named once, and the names were doing a job
- * the number does better: `Ship of the line` said less about who a captain would meet than `6` does,
- * and it had to be read against seven other names to mean anything. Eight rungs of `Tier 6` sort
- * themselves in the reader's head, which is the whole of what the label is for.
+ * IT IS MEASURED FROM HER PORTS AND NEVER DECLARED. No row anywhere carries a rate of its own; it
+ * comes off `guns.broadside`, so a class cannot be handed a rating her ports do not support, and
+ * widening a hull's bearing moves her rate with it. What a rate is NOT is her strength. A first rate
+ * with half her ports empty is a first rate, badly found, and `measure()` is what says she will lose:
+ * the two answer different questions and both are read, the rate for who she meets and the measure
+ * for the order they come in.
  *
- * THE EDGES ARE GEOMETRIC, evenly spaced in ratio from the weakest stock ship to the strongest rather
- * than in plain steps. `measure()` blends its parts geometrically, so a fixed multiple of strength is
- * what "one rung" ought to mean at both ends of a fleet that runs a factor of fifteen: 75 to 105 is
- * the same step up as 405 to 565. Occupancy thins toward the top on purpose, because only a handful
- * of classes reach it and a band nobody occupies is better than a boundary placed to fill one.
+ * The rungs were numbered and nameless once, and the reason was good: eight names had to be read
+ * against one another to mean anything, where `tier 6` sorted itself. That held while a rung was a
+ * band of blended strength and stood for nothing outside the game. A rate is the navy's own word for
+ * the same ship, a captain arrives already knowing roughly what a third rate is, and the two unrated
+ * rungs below the rated six are where most of a career is actually spent.
  */
-export const TIERS = [
-  { tier: 1, from: 0 },
-  { tier: 2, from: 75 },
-  { tier: 3, from: 105 },
-  { tier: 4, from: 150 },
-  { tier: 5, from: 205 },
-  { tier: 6, from: 290 },
-  { tier: 7, from: 405 },
-  { tier: 8, from: 565 },
+export const RATES = [
+  { rung: 1, name: "Unrated light", from: 0 },
+  { rung: 2, name: "Unrated heavy", from: 11 },
+  { rung: 3, name: "6th rate", from: 20 },
+  { rung: 4, name: "5th rate", from: 32 },
+  { rung: 5, name: "4th rate", from: 50 },
+  { rung: 6, name: "3rd rate", from: 64 },
+  { rung: 7, name: "2nd rate", from: 90 },
+  { rung: 8, name: "1st rate", from: 100 },
 ];
 
-/** The band a strength figure falls in. */
-export function tierAt(overall) {
-  let found = TIERS[0];
-  for (const t of TIERS) if (overall >= t.from) found = t;
+/** The guns she bears, counted as a rating counts them: her broadside, both sides. */
+export const gunsBorne = (hull) => hull.guns.broadside * 2;
+
+/** The rung a gun count falls on. The top rung has no ceiling, so nothing falls off the end. */
+export function rateAt(guns) {
+  let found = RATES[0];
+  for (const r of RATES) if (guns >= r.from) found = r;
   return found;
 }
 
-/** The band a finished ship falls in, straight from her loadout. */
-export const tierOf = (loadout) => tierAt(measure(rate(loadout)).overall);
+/** What a hull is rated, straight off her ports. */
+export const rateOf = (hull) => rateAt(gunsBorne(hull));
 
 /* ---------------------------------------------------------------------------------------------- */
 /* The stock fleet                                                                                 */
@@ -1839,8 +1850,9 @@ export const tierOf = (loadout) => tierAt(measure(rate(loadout)).overall);
  * the classes overlap: a full sloop is a harder ship than a plain brig, and a mode that matches on
  * strength rather than on class will put them against each other.
  *
- * Nothing here says what tier a ship is. That is measured, so a fit changed in this table moves the
- * ship up or down the ladder on its own and cannot disagree with its own stat line.
+ * Nothing here says what rate a ship is. It is read off the ports of the hull she is built on, so a
+ * fit changed in this table moves her strength without ever moving her rating, which is exactly the
+ * difference between how well found she is and what she was built to be.
  */
 /**
  * The fleet is generated rather than written out, at three standards apiece.
@@ -1854,8 +1866,8 @@ export const tierOf = (loadout) => tierAt(measure(rate(loadout)).overall);
  * `resolve()` handles it exactly as it handles the player's ship. The bench checks those name parts
  * that actually fit.
  *
- * Nothing here declares a tier: every rung is measured, so changing a fit moves the ship up or down
- * the ladder on its own and cannot disagree with its own stat line.
+ * Nothing here declares a rate: it comes off her hull's ports, and her place in the ladder comes off
+ * her stat line, so neither can be written down here to disagree with the ship it describes.
  */
 const STANDARDS = [
   { key: "plain", label: "plain", quality: 0.35 },
@@ -1893,7 +1905,7 @@ export function stockStats(id) {
     const loadout = stockLoadout(s);
     const rating = rate(loadout);
     const m = measure(rating);
-    sized.set(id, { ...s, loadout, rating, measure: m, tier: tierAt(m.overall).tier });
+    sized.set(id, { ...s, loadout, rating, measure: m, rate: rateOf(loadout.hull) });
   }
   return sized.get(id);
 }
@@ -1909,8 +1921,8 @@ export function ladder() {
   return rungs;
 }
 
-/** Every stock ship in one tier. A field of these is what free-for-all wants: equal, and not identical. */
-export const stockOfTier = (tier) => ladder().filter((s) => s.tier === tier);
+/** Every stock ship of one rate. A field of these is what free-for-all wants: equal, and not identical. */
+export const stockOfRate = (rung) => ladder().filter((s) => s.rate.rung === rung);
 
 /**
  * Stock ships within `tolerance` of a given strength, by whichever measure the mode fights on.
@@ -1928,20 +1940,21 @@ export function peers(strength, tolerance = 0.12, key = "overall") {
 /* ---------------------------------------------------------------------------------------------- */
 
 /**
- * What a captain has on her first day: an armed launch, a sprit mast with one sail bent on, a light
- * gun each side, a chaser on the bow and one swivel on the rail.
+ * What a captain has on her first day: a gundalow, a sprit mast with one sail bent on, the lightest
+ * gun in the shop each side and a chaser on the bow.
  *
- * That is her broadside FULL. A launch bears one gun a side and she has it, so a captain can fight
+ * That is her broadside FULL. A gundalow bears one gun a side and she has it, so a captain can fight
  * the moment the game opens rather than working out why nothing happens when she fires abeam. What
- * she cannot do is fight anything much: every gap in this ship is a gap the shipyard fills, and the
- * bowsprit she carries has no spar on it at all.
+ * she cannot do is fight anything much: every gap in this ship is a gap the shipyard fills, and her
+ * rail is bare, because a swivel is the first thing worth buying and a first purchase a captain makes
+ * herself teaches the shop better than one she was given.
  *
  * Returned as ids rather than objects, because this is what `hold.js` writes into a fresh record.
  */
 export const STARTER = {
-  hull: "launch",
+  hull: "gundalow",
   rig: { main: { mast: "spritMast", sails: ["gaffMain"] } },
-  guns: { broadside: ["minion"], bow: ["bowChaser"], swivel: ["swivelGun"] },
+  guns: { broadside: ["gun3"], bow: ["bow6"], swivel: [] },
 };
 
 /* ---------------------------------------------------------------------------------------------- */

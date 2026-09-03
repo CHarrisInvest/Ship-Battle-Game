@@ -41,6 +41,25 @@ function readTable(file) {
   });
 }
 
+/**
+ * THE FLEET THAT SAILS, which is not the whole table.
+ *
+ * `active` says whether a class is in the game. A class laid up keeps her row, with her figures as
+ * they stood, and comes back when the column is flipped: the table is the fleet's whole history and
+ * the game is the part of it currently at sea. Anything that is not a plain yes is laid up, so a
+ * blank column reads as "no" rather than as "you decide".
+ *
+ * Two rows may therefore share an id, one sailing and one laid up, which is what happens when a class
+ * is rebuilt: the new figures go in a new row and the old ones are kept beside them rather than
+ * overwritten. Only the sailing half of the table is ever written out, so nothing downstream sees a
+ * duplicate id, and `npm run workbook:read` refuses two rows that both sail.
+ *
+ * A table with no `active` column at all sails entire, which is how the mast, sail and gun tables
+ * work and what the hull table did before the column existed.
+ */
+const atSea = (r) => r.active === undefined || /^(y|yes|true|1)$/i.test(r.active);
+const fleet = (file) => readTable(file).filter(atSea);
+
 const str = (v) => JSON.stringify(v);
 const need = (row, col, file) => {
   if (!row[col]) throw new Error(`${file}: "${row.id || "?"}" has no ${col}`);
@@ -76,7 +95,7 @@ const REFERENCE = [
 ];
 
 function referenceRows() {
-  return readTable("hulls.tsv").map((r) => {
+  return fleet("hulls.tsv").map((r) => {
     const fields = REFERENCE.filter((k) => r[k] !== undefined && r[k] !== "").map((k) => {
       const n = Number(r[k]);
       return `    ${k}: ${r[k] !== "" && Number.isFinite(n) ? n : str(r[k])},`;
@@ -88,7 +107,7 @@ function referenceRows() {
 function hullRows() {
   const file = "hulls.tsv";
   const seen = new Set();
-  return readTable(file).map((r) => {
+  return fleet(file).map((r) => {
     const id = need(r, "id", file);
     if (seen.has(id)) throw new Error(`${file}: two classes share the id "${id}"`);
     seen.add(id);
@@ -120,7 +139,7 @@ function hullRows() {
 function mastRows() {
   const file = "masts.tsv";
   const seen = new Set();
-  return readTable(file).map((r) => {
+  return fleet(file).map((r) => {
     const id = need(r, "id", file);
     if (seen.has(id)) throw new Error(`${file}: two masts share the id "${id}"`);
     seen.add(id);
@@ -147,7 +166,7 @@ function mastRows() {
 function sailRows() {
   const file = "sails.tsv";
   const seen = new Set();
-  return readTable(file).map((r) => {
+  return fleet(file).map((r) => {
     const id = need(r, "id", file);
     if (seen.has(id)) throw new Error(`${file}: two sails share the id "${id}"`);
     seen.add(id);
@@ -173,7 +192,7 @@ function sailRows() {
 function gunRows() {
   const file = "guns.tsv";
   const seen = new Set();
-  return readTable(file).map((r) => {
+  return fleet(file).map((r) => {
     const id = need(r, "id", file);
     if (seen.has(id)) throw new Error(`${file}: two guns share the id "${id}"`);
     seen.add(id);
