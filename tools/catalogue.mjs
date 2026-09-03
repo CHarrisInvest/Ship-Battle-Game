@@ -24,7 +24,7 @@ import {
   squareLevel,
 } from "../src/shipyard.js";
 import { RIG_STATIONS, RIG_KINDS, RIG_BERTHS, rigBands } from "../src/galleon.js";
-import { hullForm, DEFAULT_FORM, parseBattery } from "../src/hullform.js";
+import { hullForm, DEFAULT_FORM, parseBattery, portZ } from "../src/hullform.js";
 import { HULL_REF } from "../src/shipref.js";
 
 // A set, not a list. The same fault reached from forty hulls is one fault about one part, and a
@@ -112,16 +112,33 @@ for (const h of HULL_LIST) {
     fault(where, `bears ${h.guns.broadside} a side and shows ${borne} gun-deck ports with ${above} on her upper works, so a gun she can buy has nowhere to fire from`);
   }
 
-  let low = Infinity, tightX = Infinity, tightZ = Infinity;
+  let low = Infinity, tightX = Infinity, tightZ = Infinity, sag = 0;
   ports.rows.forEach((r, i) => {
-    for (const x of r.xs) low = Math.min(low, sheerAt(x) * r.f - r.hh);
+    let near = Infinity, far = -Infinity;
+    for (const x of r.xs) {
+      const s = sheerAt(x);
+      low = Math.min(low, portZ(r, s) - r.hh);
+      // how far this port's head sits under the deck it belongs to: on a row hung parallel to the
+      // sheer it is the same figure at every station, and a row that varies is a row that sags away
+      // from its own deck line toward her ends
+      near = Math.min(near, s - portZ(r, s) - r.hh);
+      far = Math.max(far, s - portZ(r, s) - r.hh);
+    }
+    sag = Math.max(sag, far - near);
     if (r.xs.length > 1) tightX = Math.min(tightX, r.xs[1] - r.xs[0] - 2 * r.hw);
-    // tiers are placed as a fraction of the sheer, so they close up where the side is shallowest
     if (i) {
       const p = ports.rows[i - 1];
-      for (const x of r.xs) tightZ = Math.min(tightZ, (r.f - p.f) * sheerAt(x) - r.hh - p.hh);
+      for (const x of r.xs) {
+        const s = sheerAt(x);
+        tightZ = Math.min(tightZ, portZ(r, s) - portZ(p, s) - r.hh - p.hh);
+      }
     }
   });
+  // A tier is cut for one deck and follows it. Half a port's depth of wander is more than the sweep
+  // of a real deck against her rail, and it is what a row hung at a fraction of the sheer produced.
+  if (sag > (ports.rows[0] ? ports.rows[0].hh : 0)) {
+    fault(where, `a tier of her ports wanders ${n2(sag)} against her sheer over the run, so it sags away from the deck it is cut for`);
+  }
   if (low < 0.45) fault(where, `her lowest port sits ${n2(low)} above the water, which the renderer refuses to draw`);
   if (tightX < 0) fault(where, `her ports overlap their neighbours along a deck by ${n2(-tightX)}, so a tier draws as one smear rather than a row of ports`);
   if (tightZ < 0) fault(where, `two of her tiers overlap by ${n2(-tightZ)}, so one tier draws through the other`);
@@ -130,7 +147,7 @@ for (const h of HULL_LIST) {
   // whole battery sitting on her rail.
   if (ref.castle < 2 && ports.rows.length) fault(where, "is an open boat and drawn with ports cut in her side");
   if (ref.castle >= 2 && !ports.rows.length) fault(where, "has a built-up deck and no gun deck pierced under it");
-  portAudit.push({ h, ref, ports, borne, above, low, tightX, tightZ });
+  portAudit.push({ h, ref, ports, borne, above, low, tightX, tightZ, sag });
 }
 
 for (const mount of ["broadside", "bow", "swivel"]) {
@@ -260,7 +277,7 @@ for (const h of HULL_LIST) {
 }
 
 console.log("\nHER BATTERY  (ports a side by tier, lowest first, then the guns standing on her decks)");
-console.log("  " + pad("class", 19) + pad("battery", 16) + pad("pierced for", 20) + pad("on her decks", 30) + pad("port, lowest tier", 19) + num("clear", 7) + num("tiers", 7) + num("sill", 6));
+console.log("  " + pad("class", 19) + pad("battery", 16) + pad("pierced for", 20) + pad("on her decks", 30) + pad("port, lowest tier", 19) + num("clear", 7) + num("tiers", 7) + num("sill", 6) + num("sag", 6));
 for (const a of portAudit) {
   const low = a.ports.rows[0];
   const tiers = a.ports.rows.length ? a.ports.rows.map((r) => `${r.xs.length}`).join(" over ") + " a side" : "nothing";
@@ -275,6 +292,7 @@ for (const a of portAudit) {
     num(Number.isFinite(a.tightX) ? n2(a.tightX) : "one", 7),
     num(Number.isFinite(a.tightZ) ? n2(a.tightZ) : "one", 7),
     num(Number.isFinite(a.low) ? n2(a.low) : "none", 6),
+    num(n2(a.sag), 6),
   );
 }
 

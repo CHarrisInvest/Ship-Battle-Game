@@ -242,6 +242,17 @@ export function parseBattery(ref) {
 }
 
 /**
+ * WHERE ONE TIER'S PORTS SIT, given the sheer at the station they are cut in.
+ *
+ * A derived class carries `drop`, which is how far under her sheer the tier hangs and is constant
+ * the length of her, so her ports follow the deck they belong to. The galleon carries `f`, a
+ * fraction of the sheer, because that is the literal number this game has always drawn her at and
+ * she is the anchor everything else is checked against. Both live here rather than in the renderer
+ * so the bench cannot come to a different answer than the plate.
+ */
+export const portZ = (row, sheer) => (row.drop != null ? sheer - row.drop : sheer * row.f);
+
+/**
  * WHERE EVERY GUN SHE CARRIED ACTUALLY STOOD, which is two unlike fittings and not one.
  *
  * A GUN DECK is a continuous battery pierced through her side, so every tier runs the whole length
@@ -314,8 +325,9 @@ function portsOf(ref, { Lh, ST, aft, fore }) {
     return { rows: [], works };
   }
 
-  // The shallowest side under the battery is what every tier has to fit inside: her sheer sweeps up
-  // toward the ends, so the ports have more room there than the figure this solves against.
+  // The shallowest side under the battery is what every tier has to fit inside. Her sheer sweeps up
+  // toward the ends and the ports go up with it, so this is the whole of the constraint: clear
+  // amidships is clear everywhere.
   let side = Infinity;
   for (let i = 0; i <= 12; i++) side = Math.min(side, sheerAt(lerp(lo, hi, i / 12)));
 
@@ -348,13 +360,24 @@ function portsOf(ref, { Lh, ST, aft, fore }) {
   hw *= fit;
   hh *= fit;
 
-  // Hung from the rail downward, because that is where a deck is: her upper deck's ports sit just
-  // under her sheer and each deck below stands off the one above it.
+  /* HUNG FROM THE RAIL DOWNWARD, AND PARALLEL TO IT. `drop` is how far under her sheer a tier's
+     ports sit, and it is the same figure the whole length of her, so every deck's ports follow the
+     sweep of the deck they are cut for: the upper deck just under her sheer and each deck below
+     standing off the one above it.
+   *
+   * It used to be a fraction of the sheer at each port, which is not the same thing at all. Her
+   * sheer sweeps up at the ends, so a row at 0.83 of it rose only 83% as fast as the deck above it
+   * and a row at 0.21 only 21% as fast: the rows sagged away from the deck line toward bow and
+   * stern. A first rate's lower battery went from 7.1 under her sheer amidships to 13.7 at the ends,
+   * two and a half times the depth of the port itself, and even a flush-decked corvette's single row
+   * finished a whole port's depth further below her rail at the ends than amidships. A real gun
+   * deck's sheer runs near enough parallel to the rail's.
+   */
   const rows = [];
-  let z = side - PORT.head - hh * size[tiers - 1];
+  let drop = PORT.head + hh * size[tiers - 1];
   for (let i = tiers - 1; i >= 0; i--) {
-    rows[i] = { f: z / side, xs: run(lo, hi, bat.decks[i]), hw: hw * size[i], hh: hh * size[i], gun: (hh * size[i]) / PORT.hh };
-    if (i) z -= PORT.pad * (hh * size[i] + hh * size[i - 1]);
+    rows[i] = { drop, xs: run(lo, hi, bat.decks[i]), hw: hw * size[i], hh: hh * size[i], gun: (hh * size[i]) / PORT.hh };
+    if (i) drop += PORT.pad * (hh * size[i] + hh * size[i - 1]);
   }
   return { rows, works };
 }

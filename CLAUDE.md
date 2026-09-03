@@ -116,6 +116,12 @@ are built from. `broadside` in the code is the side guns, not the old title, and
   her heaviest guns, and the whole battery shrinks by one factor only if her side cannot carry it.
   Nothing exceeds the galleon's authored port. Fixed port sizes are what made a first rate's top
   tier one continuous smear.
+- **A tier is cut for one deck, so it hangs PARALLEL to her sheer.** `drop` is how far under the
+  sheer a row sits and it is the same figure the whole length of her, which `portZ()` is the one
+  reader of. A fraction of the sheer is not the same thing and is what this was: a row at 0.21 of it
+  rose a fifth as fast as the deck above it, so a first rate's lower battery went from 7.1 under her
+  sheer amidships to 13.7 at her ends. The galleon keeps her authored fraction, because she is the
+  anchor and her ports are literal numbers; everything derived from a row takes a drop.
 - **An open port means a gun is aboard, and an empty port is shut.** `rigSpec` carries her fitted
   broadside and she arms from the lowest deck up, the way a ship was armed, so a first rate with
   three guns shows three open ports on her lower deck and lids down everywhere else. Her ports are

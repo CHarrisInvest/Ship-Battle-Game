@@ -10,7 +10,7 @@
  * the box at every bearing, so the ship never wanders as it turns.
  */
 
-import { hullForm, DEFAULT_FORM, GALLEON_GEOM, tintTimber } from "./hullform.js";
+import { hullForm, DEFAULT_FORM, GALLEON_GEOM, portZ, tintTimber } from "./hullform.js";
 
 const ISO_X=0.866, ISO_Y=0.5, VIEW=[1,1,1];
 const LIGHT=(()=>{const v=[-0.42,0.46,0.78],l=Math.hypot(...v);return v.map(c=>c/l)})();
@@ -587,13 +587,14 @@ function buildShip(rig){
    const open=n<armed;
    const runOut=open&&runsOut(n);
    const PW=row.hw, PH=row.hh, gk=row.gun;
-   const rowF=row.f;
    /* A port that would sit at or under her waterline is not drawn. Nothing should
-      reach this now: the tiers are solved against the shallowest side under the
-      battery and the port sized to fit between them, so the sill stands clear by
-      construction on every class in the fleet. It stays as the net it always was,
-      because a row of holes in her wales is what a bad figure in the table draws. */
-   const z=stationAt(px).sheer*rowF; if(z-PH<0.45) continue;
+      reach this now: a tier hangs a constant drop under her sheer and the drops are
+      solved against the shallowest side under the battery, so the sill stands clear
+      amidships by construction and stands clearer still at the ends, where the
+      sheer sweeps up and carries the ports with it. It stays as the net it always
+      was, because a row of holes in her wales is what a bad figure in the table
+      draws. */
+   const z=portZ(row,stationAt(px).sheer); if(z-PH<0.45) continue;
    for(const side of[1,-1]){
     /* Gunport: a small square of tan trim, and inside it either a flat black
        opening with a cannon standing out of it or the closed lid of an empty

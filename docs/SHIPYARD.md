@@ -369,10 +369,39 @@ the game actually draws will allow. A first rate comes out with lower-deck ports
 1.1 of timber between tiers and her lowest sill 1.4 above the water; that sill is 31% of the way up
 her side, against about 28% on Victory.
 
-That also ends the fault where the renderer's own waterline guard was quietly eating ports: a fifth
-rate drew 6 of her 10 lower ports and a heavy frigate 8 of 13, because a row hung at a fixed fraction
-of the sheer dives at the fine ends. Nothing reaches the guard now. It stays as the net it was, and
-`npm run catalogue` counts what comes out drawn against what she carried.
+### A tier is cut for one deck, so it hangs parallel to her sheer
+
+`drop` is how far under the sheer a row of ports sits, and it is the same figure at every station
+along her, so each deck's ports follow the sweep of the deck they belong to. `portZ()` is the one
+reader, which is why the bench and the plate cannot come to different answers about where a port is.
+The galleon keeps a fraction of the sheer instead, because her four ports are literal numbers this
+game has always drawn and she is the anchor the rest are checked against.
+
+A fraction of the sheer is not the same thing at all, and it is what every derived class had. Her
+sheer sweeps up at the ends, so a row at 0.83 of it rose only 83% as fast as the deck above it and a
+row at 0.21 only 21% as fast: the rows sagged away from their own deck lines toward bow and stern.
+Measured as how far each port's head sat under the sheer, amidships against at the ends:
+
+| class | tier | drop under the sheer | port depth |
+| --- | --- | --- | --- |
+| 1st rate | lower | 7.11 to 13.67 | 2.67 |
+| 1st rate | middle | 3.52 to 7.16 | 2.32 |
+| 1st rate | upper | 0.41 to 1.52 | 2.02 |
+| 3rd rate | lower | 3.89 to 9.49 | 2.60 |
+| 5th rate | gun deck | 0.41 to 1.98 | 2.53 |
+| Corvette | gun deck | 0.42 to 2.01 | 2.47 |
+
+A first rate's lower battery dived two and a half times the depth of the port itself over her run,
+and even a flush-decked corvette's single row finished a whole port's depth further below her rail at
+her ends than amidships. A real gun deck's sheer runs near enough parallel to the rail's. Every one
+of those figures is now flat, and the bench measures the wander and fails a tier that moves more than
+half a port's depth against the sheer: put the fraction back and it reports eleven classes.
+
+It also settles the waterline guard, which was quietly eating ports back when a fifth rate drew 6 of
+her 10 lower ports and a heavy frigate 8 of 13. A row at a fraction of the sheer dives at the fine
+ends, toward the water; a row at a constant drop rises with the sheer, away from it. So clear
+amidships is now clear everywhere, which is the whole of what the solve has to prove. The guard stays
+as the net it was, and `npm run catalogue` counts what comes out drawn against what she carried.
 
 ### A boat is not pierced at all
 
@@ -416,8 +445,8 @@ was: 99.9ms a frame for a fully found first rate against 100.0ms before the chan
 against 16.7ms for a cutter.
 
 All of the above cost nothing either, measured the same way on a slower machine: a fully found first
-rate runs 48.7 to 49.5ms a frame against 50.4ms before any of it, and a cutter 43.0 against 41.8,
-which is inside the noise in both directions. Her upper works add fourteen guns to a first rate and
+rate runs 48.7 to 51.4ms a frame against 50.4ms before any of it, and a cutter 43.0 to 43.8 against
+41.8, which is inside the noise in both directions. Her upper works add fourteen guns to a first rate and
 every one of them is run out; the tiers below shed the fourteen ports that were standing in for them;
 a shut lid costs exactly what the open port it replaces did; and the five boats stopped drawing ports
 altogether.
