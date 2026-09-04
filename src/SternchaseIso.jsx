@@ -3463,12 +3463,11 @@ function RankBadge({ rank, total }) {
  * however much is spent has to say so on itself: without it the last fifth reads as a repair that
  * failed rather than as a repair nobody sells.
  *
- * It is two hairlines rather than one, for the same reason the round shot is two masses. The mark
- * lands on two grounds and no single colour holds both: a light line scores 1.53 on the gold fill and
- * a dark one is invisible on the bar's own black. So it is a dark pixel beside a light one, and
- * whichever ground it falls on, one of the two is holding it. Which matters most swaps with her
- * damage: the light half carries it below the cap, where the mark is the target she is buying
- * towards, and the dark half carries it above, where the gold has run over the top.
+ * One hairline, and it is the light one because of which ground matters. It lands on two: the bar's
+ * own black below the cap, where she is holed and the mark is the figure she is buying towards, and
+ * the gold fill above it, where she is already past a carpenter's reach and the mark is only telling
+ * her where the reach ended. A pale line owns the first outright and carries the second at 1.9, so it
+ * is set near full ink rather than half, which is what that second ground costs.
  */
 function HealthPanel({ ph, phMax }) {
   const rows = [["HULL", ph.hull, phMax.hull, C.hull, HULL_PATCH_CAP], ["MAST", ph.mast, phMax.mast, C.mast, 0], ["CREW", ph.crew, phMax.crew, C.crew, 0]];
@@ -3479,7 +3478,7 @@ function HealthPanel({ ph, phMax }) {
           <span style={{ fontSize: 9, color: "rgba(238,244,242,0.6)", width: 30 }}>{label}</span>
           <div style={{ position: "relative", flex: 1, height: 6, background: "rgba(0,0,0,0.35)", borderRadius: 3, overflow: "hidden" }}>
             <div style={{ height: "100%", width: `${Math.max(0, (val / max) * 100)}%`, background: col, transition: "width 0.15s" }} />
-            {cap > 0 && <div style={{ position: "absolute", top: 0, bottom: 0, left: `calc(${cap * 100}% - 1px)`, width: 2, background: "linear-gradient(90deg, rgba(0,0,0,0.6) 50%, rgba(238,244,242,0.7) 50%)" }} />}
+            {cap > 0 && <div style={{ position: "absolute", top: 0, bottom: 0, left: `${cap * 100}%`, width: 1, background: "rgba(238,244,242,0.85)" }} />}
           </div>
         </div>
       ))}
