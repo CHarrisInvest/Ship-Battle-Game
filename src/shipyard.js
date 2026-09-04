@@ -1531,7 +1531,7 @@ export function loadoutValue(loadout) {
 }
 
 /**
- * What it costs to step a new mast at sea: a tenth of what her whole rigging is worth.
+ * What it costs to step a new mast at sea: seven coins in every hundred her rigging is worth.
  *
  * There is no base and no per-point charge. A mast is stepped or it is not, so the price is flat
  * whether she lost the whole thing or sprung it, and what sets it is the rig she is carrying rather
@@ -1539,10 +1539,15 @@ export function loadoutValue(loadout) {
  * pays to put it back; one sailing a free pole and a single topsail pays almost nothing, which is
  * right, because that is nearly all a new rig would cost her anyway.
  *
+ * It was a tenth while the work put her rig back whole. What she buys at sea is a jury rig, a spare
+ * spar and what the sail locker holds, and it leaves her a tenth short of the ship she sailed, so the
+ * price came down with it: a little over two thirds of the old figure for nine tenths of a rig. She
+ * is paying the boatswain rather than the yard.
+ *
  * It lives here rather than in the fight because it is a fact about the catalogue: it is derived from
  * shop prices, and it moves the moment a price does.
  */
-export const RIG_REBUILD_SHARE = 0.10;
+export const RIG_REBUILD_SHARE = 0.07;
 export const mastRebuildCost = (loadout) => Math.ceil(RIG_REBUILD_SHARE * riggingValue(loadout));
 
 /* ---------------------------------------------------------------------------------------------- */

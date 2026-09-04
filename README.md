@@ -276,14 +276,18 @@ Pointer/touch driven, so it works the same with a mouse or on a phone:
   because a carpenter at sea plugs shot holes and fishes a cracked timber while new planking and paid
   seams are a slipway's work, so the last fifth is unbuyable rather than dear and a hairline on the
   hull bar marks where the work ends.
-  **MAST** is flat and puts the rig back whole, because a mast is stepped or it is not: no half a
-  mast, no half price, no part payment. What sets the price is the rig she carries rather than the
-  damage she took, at `RIG_REBUILD_SHARE` of what her whole rigging is worth. Since speed and helm
-  both read how much of her rig is standing, a rebuilt mast hands back full sail at once.
+  **MAST** is flat and it is a jury rig, because a mast is stepped or it is not: no half a mast, no
+  half price, no part payment. What sets the price is the rig she carries rather than the damage she
+  took, at `RIG_REBUILD_SHARE` of what her whole rigging is worth, which runs from 23 coins for a
+  plain gundalow to 1,977 for a fully found third rate. What goes up is a spare spar and whatever
+  canvas the locker holds, so it stops at nine tenths, and since speed and helm both read how much of
+  her rig is standing that is 95% of her way and 92% of her helm: not the ship she was, but sailing
+  again, with the same hairline on the mast bar saying where the work ends.
   **CREW cannot be repaired at all** — hands lost are lost, so the crew bar is a clock that runs one
-  way for the length of a round. A button with nothing to do says which reason it is: `Sound` where
-  nothing needs mending, `Yard work` where the hull is patched as far as a carpenter goes; one she
-  cannot yet afford shows the price muted, so there is a figure to save towards. Absent in a mode with
+  way for the length of a round, and it carries no mark because it has no repair to mark. A button
+  with nothing to do says which reason it is: `Sound` where nothing needs mending, `Yard work` where
+  she is mended as far as a carpenter goes; one she cannot yet afford shows the price muted, so there
+  is a figure to save towards. Absent in a mode with
   nothing to buy, which is the derby: there, nothing is repaired or rebuilt at all and the stick is
   the only control on the screen.
 

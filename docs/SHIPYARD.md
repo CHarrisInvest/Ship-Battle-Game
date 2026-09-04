@@ -526,18 +526,24 @@ cannot cover the bill buys as much of it as her purse reaches rather than being 
 goes dead for two different reasons and says which: `Sound` where she has taken nothing worth mending,
 `Yard work` where what is left of the damage is past a carpenter.
 
-**Mast** is flat and puts the rig back whole. A mast is stepped or it is not: no half a mast, so no
-half price and no part payment, and the charge is the same whether she lost the whole thing or sprung
-it. What sets it is the rig she carries rather than the damage she took, at `RIG_REBUILD_SHARE` of
-what her whole rigging is worth. That figure lives in `shipyard.js` rather than in the fight, because
-it is derived from shop prices and moves the moment one of them does: `mastRebuildCost(loadout)`. It
-runs from 12 coins for the starter's free pole and one topsail to 911 for a fully found frigate, which
-is the intended shape. Because `speedCap` and `turnCap` both read how much of her rig is standing, a
-rebuilt mast hands her back full sail in the same instant, and that is what makes it worth the money:
-losing a mast is the one hit that takes a ship out of a fight while leaving her afloat.
+**Mast** is flat and it is a jury rig. A mast is stepped or it is not: no half a mast, so no half
+price and no part payment, and the charge is the same whether she lost the whole thing or sprung it.
+What sets it is the rig she carries rather than the damage she took, at `RIG_REBUILD_SHARE` of what
+her whole rigging is worth. That figure lives in `shipyard.js` rather than in the fight, because it is
+derived from shop prices and moves the moment one of them does: `mastRebuildCost(loadout)`.
 
-Every hull in a fight brings her own rig now, so the bill is hers: about 34 coins for the starter's
-sprit mast and one sail, and 2,600 for a fully rigged third rate.
+It stops at `MAST_JURY_CAP`, nine tenths, because what goes up at sea is a spare spar swayed up with
+whatever the sail locker holds and not the suit she sailed with. Since `speedCap` and `turnCap` both
+read how much of her rig is standing, that is 95% of her way and 92% of her helm: not the ship she
+was, but sailing again, and that is what makes it worth the money. Losing a mast is the one hit that
+takes a ship out of a fight while leaving her afloat, and the jury rig is the difference between
+limping and drifting.
+
+The price came down with the promise. It was a tenth of her rigging while the work put her back
+whole, and it is 7% now, a little over two thirds of the old figure for nine tenths of a rig: she is
+paying the boatswain rather than the yard. Every hull in a fight brings her own rig, so the bill is
+hers: 24 coins for the starter's sprit mast and one sail, 23 for a plain gundalow, and 1,977 for a
+fully found third rate.
 
 **Crew cannot be bought back at all.** Hands lost over the rail are lost, so the crew bar is a clock
 that only runs one way for the length of a round. It is why musket fire and a spell in the weather are
