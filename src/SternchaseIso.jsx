@@ -825,13 +825,18 @@ const shotHitsCircle = (cx, cy, r, x0, y0, x1, y1) => {
  * purse reaches rather than being refused, which matters most in the round where she is down to her
  * last coins and still taking fire.
  *
- * MAST is flat, and it puts the rig back whole. A mast is stepped or it is not: there is no half a
- * mast, so there is no half price and no part payment, and the charge is the same whether she lost
- * the whole thing or sprung it. What sets the price is the rig she carries rather than the damage she
- * took, at `RIG_REBUILD_SHARE` of what her whole rigging is worth, which is the shipyard's figure and
- * not the fight's. Because speed and helm both read how much of her rig is standing, a rebuilt mast
- * hands her back full sail at once, and that is what makes it worth the money: losing a mast is the
- * one hit that takes a ship out of a fight while leaving her afloat.
+ * MAST is flat, and it is a jury rig. A mast is stepped or it is not: there is no half a mast, so
+ * there is no half price and no part payment, and the charge is the same whether she lost the whole
+ * thing or sprung it. What sets the price is the rig she carries rather than the damage she took, at
+ * `RIG_REBUILD_SHARE` of what her whole rigging is worth, which is the shipyard's figure and not the
+ * fight's.
+ *
+ * What goes up is a spare spar swayed up with what the sail locker holds, not the suit she sailed
+ * with, so it stops at `MAST_JURY_CAP` the way the hull stops at its own. Because speed and helm both
+ * read how much of her rig is standing, that is nineteen twentieths of her way and a little over nine
+ * tenths of her helm: not the ship she was, but sailing again, and that is what makes it worth the
+ * money. Losing a mast is the one hit that takes a ship out of a fight while leaving her afloat, and
+ * a jury rig is the difference between limping and drifting.
  *
  * CREW cannot be bought back at all. Hands lost over the rail are lost, and no coin brings them
  * back, so the crew bar is a clock that only runs one way for the length of a round. It is why
@@ -855,6 +860,19 @@ const HULL_PATCH_CAP = 0.8;
 const patchCap = (s) => s.maxHull * HULL_PATCH_CAP;
 
 /**
+ * How much of her rig a jury mast is worth, and the reason the mast button no longer promises whole.
+ *
+ * A spare spar fished and swayed up carries sail again, but it is not the mast that came out of her
+ * and the canvas on it is whatever the locker held. She is nine tenths of a ship, which `speedCap`
+ * and `turnCap` read as nineteen twentieths of her way and a little over nine tenths of her helm.
+ * `RIG_REBUILD_SHARE` is priced for that rather than for a proper rebuild, so a captain is not paying
+ * the yard's figure for the sailmaker's shortcut.
+ */
+const MAST_JURY_CAP = 0.9;
+/** The most rig a purse can reach on this ship. The last tenth is stepped in a yard, not at sea. */
+const juryCap = (s) => s.maxMast * MAST_JURY_CAP;
+
+/**
  * What a new mast costs at sea: a share of the rig she is actually carrying.
  *
  * Every ship afloat brings her own loadout now, so a captain who has spent thousands getting a
@@ -869,7 +887,7 @@ const mastRebuild = (s) => mastRebuildCost(s.loadout || STOCK_LOADOUT);
 
 const REPAIRS = [
   { key: "hull", label: "HULL", sub: "planks and pitch, back to 80%", color: C.hull, whole: "Sound" },
-  { key: "mast", label: "MAST", sub: "a new mast, and full sail again", color: C.mast, whole: "Sound" },
+  { key: "mast", label: "MAST", sub: "new mast at sea, 90% strength", color: C.mast, whole: "Sound" },
 ];
 
 /**
@@ -880,8 +898,8 @@ const REPAIRS = [
  * `afford` is what her purse actually reaches. For the hull that can be part of the bill; for the
  * mast it is the whole price or nothing, because half a mast is not a thing.
  *
- * The hull is quoted against `patchCap`, not against her full bar, so a captain is never charged for
- * work the carpenter cannot do. `label` is why a dead hull button is dead, and the two reasons are
+ * Both are quoted against their cap rather than against her full bar, so a captain is never charged
+ * for work that cannot be done at sea. `label` is why a dead button is dead, and the two reasons are
  * different news: she has taken nothing worth mending, or what is left of the damage needs a yard.
  */
 function repairQuote(s, sys) {
@@ -898,9 +916,16 @@ function repairQuote(s, sys) {
     };
   }
   const cost = mastRebuild(s);
-  const points = s.maxMast - s.mast;
+  const points = Math.max(0, juryCap(s) - s.mast);
   const whole = points <= 0.001;
-  return { points, cost, afford: Math.floor(s.coins) >= cost ? cost : 0, whole, part: false };
+  return {
+    points,
+    cost,
+    afford: Math.floor(s.coins) >= cost ? cost : 0,
+    whole,
+    label: s.mast >= s.maxMast - 0.001 ? "Sound" : "Yard work",
+    part: false,
+  };
 }
 
 /**
@@ -1057,8 +1082,9 @@ const canFire = (s, wk) => (wk === "musket" ? s.rating.muskets > 0 : s.rating[wk
  *
  * The hull takes as much of the bill as she can pay and rises by that share of the work, and the work
  * on offer ends at `patchCap`: a full bill bought outright leaves her at four fifths and no further.
- * The mast is all or nothing and comes back whole, which hands her back full sail in the same
- * instant, because `speedCap` and `turnCap` both read how much of her rig is standing.
+ * The mast is all or nothing and goes to `juryCap` in one step, which hands her back nearly all her
+ * sail in the same instant, because `speedCap` and `turnCap` both read how much of her rig is
+ * standing.
  *
  * `repaired` is banked apart from `coins` because the two answer different questions at the end of a
  * round: what she has left, and what she spent staying afloat. Only the second comes off her
@@ -1070,9 +1096,11 @@ function repair(s, sys) {
   if (sys === "hull") {
     s.hull = Math.min(patchCap(s), s.hull + q.points * (q.afford / q.cost));
   } else {
-    s.mast = s.maxMast;
+    s.mast = juryCap(s);
     // A rig re-stepped is a rig again. Without this a mast shot away stayed away however much canvas
-    // she bent on, and the one repair worth buying most was the one that did nothing.
+    // she bent on, and the one repair worth buying most was the one that did nothing. A jury mast is
+    // still a mast, so it clears the flag as a proper one did: what she is short is the last tenth of
+    // her rig, not her rig.
     s.mastDown = false;
   }
   s.coins -= q.afford;
@@ -3457,21 +3485,24 @@ function RankBadge({ rank, total }) {
 }
 
 /**
- * The three bars, and one mark on one of them.
+ * The three bars, and a mark on the two that can be bought back.
  *
- * The hull bar carries a mark where the carpenter's work stops, because a bar that will not fill
- * however much is spent has to say so on itself: without it the last fifth reads as a repair that
- * failed rather than as a repair nobody sells.
+ * Hull and mast each carry a hairline where the work stops, because a bar that will not fill however
+ * much is spent has to say so on itself: without it the last of it reads as a repair that failed
+ * rather than as a repair nobody sells. Crew has no mark because it has no repair at all, and a mark
+ * on that bar would promise one.
  *
- * It is two hairlines rather than one, for the same reason the round shot is two masses. The mark
- * lands on two grounds and no single colour holds both: a light line scores 1.53 on the gold fill and
- * a dark one is invisible on the bar's own black. So it is a dark pixel beside a light one, and
- * whichever ground it falls on, one of the two is holding it. Which matters most swaps with her
- * damage: the light half carries it below the cap, where the mark is the target she is buying
- * towards, and the dark half carries it above, where the gold has run over the top.
+ * One hairline, and it is the light one because of which ground matters. It lands on two: the bar's
+ * own black below the cap, where she is damaged and the mark is the figure she is buying towards, and
+ * the fill above it, where she is already past what a carpenter can reach and the mark is only
+ * telling her where the reach ended. A pale line owns the first outright on both bars, and it is that
+ * ground the mark is really for. It is full ink rather than a translucent one because the second
+ * ground is what costs it: 2.20 on the hull's gold and 1.66 on the mast's pale blue, against 1.96 and
+ * 1.48 at the 85% alpha it started on. The pale blue is the quietest the mark ever gets, and it is
+ * quietest in the one state where the button has already said "Yard work" in words.
  */
 function HealthPanel({ ph, phMax }) {
-  const rows = [["HULL", ph.hull, phMax.hull, C.hull, HULL_PATCH_CAP], ["MAST", ph.mast, phMax.mast, C.mast, 0], ["CREW", ph.crew, phMax.crew, C.crew, 0]];
+  const rows = [["HULL", ph.hull, phMax.hull, C.hull, HULL_PATCH_CAP], ["MAST", ph.mast, phMax.mast, C.mast, MAST_JURY_CAP], ["CREW", ph.crew, phMax.crew, C.crew, 0]];
   return (
     <div style={{ background: C.panel, border: `1px solid ${C.hair}`, borderRadius: 10, padding: "7px 9px" }}>
       {rows.map(([label, val, max, col, cap]) => (
@@ -3479,7 +3510,7 @@ function HealthPanel({ ph, phMax }) {
           <span style={{ fontSize: 9, color: "rgba(238,244,242,0.6)", width: 30 }}>{label}</span>
           <div style={{ position: "relative", flex: 1, height: 6, background: "rgba(0,0,0,0.35)", borderRadius: 3, overflow: "hidden" }}>
             <div style={{ height: "100%", width: `${Math.max(0, (val / max) * 100)}%`, background: col, transition: "width 0.15s" }} />
-            {cap > 0 && <div style={{ position: "absolute", top: 0, bottom: 0, left: `calc(${cap * 100}% - 1px)`, width: 2, background: "linear-gradient(90deg, rgba(0,0,0,0.6) 50%, rgba(238,244,242,0.7) 50%)" }} />}
+            {cap > 0 && <div style={{ position: "absolute", top: 0, bottom: 0, left: `${cap * 100}%`, width: 1, background: C.ink }} />}
           </div>
         </div>
       ))}
