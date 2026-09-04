@@ -44,6 +44,7 @@ export const HULL_REF = {
     topSpeed: 4,
     manoeuvre: 40,
     histGuns: 2,
+    battery: 2,
   },
   bermudaSloop: {
     era: "1700-1820",
@@ -77,6 +78,7 @@ export const HULL_REF = {
     topSpeed: 12,
     manoeuvre: 87,
     histGuns: 6,
+    battery: 6,
   },
   sloop: {
     era: "1680-1820",
@@ -110,6 +112,7 @@ export const HULL_REF = {
     topSpeed: 11,
     manoeuvre: 88,
     histGuns: 8,
+    battery: 8,
   },
   cutter: {
     era: "1760-1830",
@@ -143,6 +146,7 @@ export const HULL_REF = {
     topSpeed: 11.5,
     manoeuvre: 89,
     histGuns: 10,
+    battery: 10,
   },
   baltimoreClipper: {
     era: "1795-1850",
@@ -176,6 +180,7 @@ export const HULL_REF = {
     topSpeed: 14.5,
     manoeuvre: 86,
     histGuns: 12,
+    battery: 12,
   },
   brigantine: {
     era: "1690-1850",
@@ -209,6 +214,7 @@ export const HULL_REF = {
     topSpeed: 10,
     manoeuvre: 68,
     histGuns: 14,
+    battery: 14,
   },
   xebecLight: {
     era: "1650-1830",
@@ -242,6 +248,7 @@ export const HULL_REF = {
     topSpeed: 12,
     manoeuvre: 82,
     histGuns: 18,
+    battery: 18,
   },
   corvette: {
     era: "1740-1860",
@@ -275,6 +282,7 @@ export const HULL_REF = {
     topSpeed: 11,
     manoeuvre: 65,
     histGuns: 20,
+    battery: 20,
   },
   sixthRate: {
     era: "1700-1820",
@@ -308,6 +316,7 @@ export const HULL_REF = {
     topSpeed: 10.5,
     manoeuvre: 62,
     histGuns: 24,
+    battery: "22+2/0",
   },
   xebecHeavy: {
     era: "1650-1830",
@@ -330,7 +339,7 @@ export const HULL_REF = {
     castle: 2,
     stern: "Overhanging",
     mastHeight: 1.2,
-    decks: "1-2",
+    decks: 1,
     wale: 3.5,
     topside: 2,
     roomSpace: 1.8,
@@ -341,6 +350,7 @@ export const HULL_REF = {
     topSpeed: 12,
     manoeuvre: 78,
     histGuns: 32,
+    battery: 32,
   },
   fifthRate: {
     era: "1740-1840",
@@ -374,6 +384,7 @@ export const HULL_REF = {
     topSpeed: 13,
     manoeuvre: 59,
     histGuns: 38,
+    battery: "28+8/2",
   },
   heavyFrigate: {
     era: "1794-1855",
@@ -407,6 +418,7 @@ export const HULL_REF = {
     topSpeed: 13.5,
     manoeuvre: 55,
     histGuns: 50,
+    battery: "30+20",
   },
   fourthRate: {
     era: "1650-1780",
@@ -440,6 +452,7 @@ export const HULL_REF = {
     topSpeed: 10,
     manoeuvre: 52,
     histGuns: 54,
+    battery: "24/22+6/2",
   },
   thirdRate: {
     era: "1750-1860",
@@ -473,6 +486,7 @@ export const HULL_REF = {
     topSpeed: 10.5,
     manoeuvre: 45,
     histGuns: 64,
+    battery: "26/26+10/2",
   },
   secondRate: {
     era: "1690-1850",
@@ -506,6 +520,7 @@ export const HULL_REF = {
     topSpeed: 9,
     manoeuvre: 41,
     histGuns: 90,
+    battery: "26/26/26+10/2",
   },
   firstRate: {
     era: "1650-1860",
@@ -539,6 +554,7 @@ export const HULL_REF = {
     topSpeed: 9,
     manoeuvre: 38,
     histGuns: 100,
+    battery: "28/28/30+12/2",
   },
 };
 
