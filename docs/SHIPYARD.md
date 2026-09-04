@@ -502,19 +502,29 @@ which is a better comparison than levels ever were.
 **Repairs** take the rail's place, in the modes that have a purse, and the two buttons are priced on
 opposite principles because they are opposite jobs.
 
-**Hull** is a coin a point, and by nothing else. No base, no rate, no share of anything, and no
-ceiling short of whole. What she pays is exactly what the damage she is undoing was worth to the ship
-that dealt it, which puts both halves of a round's economy in the same currency and lets a captain
-read her own hull bar as a price.
+**Hull** is a coin a point, and by nothing else. No base, no rate and no share of anything. What she
+pays is exactly what the damage she is undoing was worth to the ship that dealt it, which puts both
+halves of a round's economy in the same currency and lets a captain read her own hull bar as a price.
+
+It stops at four fifths of her, `HULL_PATCH_CAP`. A carpenter at sea works out of the hold: he plugs
+shot holes, fishes a cracked timber and pumps her out, and sound planking and freshly paid seams are a
+slipway's work. So the last fifth is not dearer, it is unbuyable, and a ship that has been in a fight
+carries it until the voyage ends. That is the difference between the hull and the rig, which is why
+the mast beside it does go back to whole: a mast is a spar to be swayed up, and a hull is the ship
+herself. Damage above the cap is never quoted and the hull is never clamped anywhere else, so a
+captain who has taken nothing is never pulled down to it, and the hull bar carries a hairline at the
+cap so a bar that will not fill says why on itself.
 
 Because the bill is her damage and nothing else, it scales with the class she is sailing without a
-scaling term anywhere in it. A hull with 250 points to lose can run up a bill of 250; a cutter with 90
-can never be charged more than 90. That property holds for whatever the fleet turns out to be, so
+scaling term anywhere in it. A hull with 250 points to lose can run up a bill of 200, four fifths of
+her; a cutter with 90 can never be charged more than 72. That property holds for whatever the fleet turns out to be, so
 classes carrying far more than a hundred points need nothing added for their repairs to cost more. It
 is not yet visible in play, because every ship in a fight still carries the same stock hull.
 
 A ship barely scratched pays almost nothing, so there is no wrong moment to repair, and a captain who
-cannot cover the bill buys as much of it as her purse reaches rather than being refused.
+cannot cover the bill buys as much of it as her purse reaches rather than being refused. The button
+goes dead for two different reasons and says which: `Sound` where she has taken nothing worth mending,
+`Yard work` where what is left of the damage is past a carpenter.
 
 **Mast** is flat and puts the rig back whole. A mast is stepped or it is not: no half a mast, so no
 half price and no part payment, and the charge is the same whether she lost the whole thing or sprung

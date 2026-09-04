@@ -268,17 +268,21 @@ Pointer/touch driven, so it works the same with a mouse or on a phone:
 - **SIDE / FRONT / MUSKET** (bottom right) — hold to fire; each has its own cooldown, range, and
   damages a different system. Absent in a mode that carries no guns.
 - **Repair rail** (top) — two buttons, priced on opposite principles because they are opposite jobs.
-  **HULL** is a coin a point and nothing else: no base, no rate, no ceiling short of whole. A coin buys
+  **HULL** is a coin a point and nothing else: no base, no rate, no share of anything. A coin buys
   back exactly the damage a coin of gunnery earned, so a light patch is cheap and a purse short of the
   whole bill buys the part it reaches (`27 of 91`). Because the bill is her damage and nothing else it
   scales with her class without a scaling term anywhere: a hull with 250 points to lose can run up a
-  bill of 250, and a cutter with 90 can never be charged more than 90.
+  bill of 200, and a cutter with 90 can never be charged more than 72. It stops at four fifths of her,
+  because a carpenter at sea plugs shot holes and fishes a cracked timber while new planking and paid
+  seams are a slipway's work, so the last fifth is unbuyable rather than dear and a hairline on the
+  hull bar marks where the work ends.
   **MAST** is flat and puts the rig back whole, because a mast is stepped or it is not: no half a
   mast, no half price, no part payment. What sets the price is the rig she carries rather than the
   damage she took, at `RIG_REBUILD_SHARE` of what her whole rigging is worth. Since speed and helm
   both read how much of her rig is standing, a rebuilt mast hands back full sail at once.
   **CREW cannot be repaired at all** — hands lost are lost, so the crew bar is a clock that runs one
-  way for the length of a round. A button with nothing to do reads `At the mark` or `Sound`; one she
+  way for the length of a round. A button with nothing to do says which reason it is: `Sound` where
+  nothing needs mending, `Yard work` where the hull is patched as far as a carpenter goes; one she
   cannot yet afford shows the price muted, so there is a figure to save towards. Absent in a mode with
   nothing to buy, which is the derby: there, nothing is repaired or rebuilt at all and the stick is
   the only control on the screen.
