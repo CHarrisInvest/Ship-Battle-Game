@@ -215,13 +215,14 @@ sea is still the same hull. `docs/SHIPYARD.md` is the design note; the short ver
   Guns fit by the piece up to the
   hull's bearing; `broadside` counts guns **a side**, mirrored, because that is how a volley fires, and
   runs 2 on the cutter to 10 on the galleon. Muskets come off the crew rather than being bought.
-- Parts are catalogue *types*, and a captain owns *instances*. An instance is in one slot or in none,
-  which is what lets rigging and guns move between ships and stops one suit of sails rigging three at
-  once. Anything no ship references is loose in the hold, and loose is the inventory.
+- Parts are catalogue *types*, and a captain owns *instances*. An instance is in one slot of a ship or
+  in none of hers, so fifty ports still want fifty guns bought; but nothing she owns is exclusive to
+  one hull, so the guns and canvas aboard the frigate are the same ones her sloop is found with. Only
+  one ship goes to sea at a time, and what she owns, every ship she owns can carry.
 - The yard lives in the same `localStorage` record as the coins, so a purchase moves both in one
   write. A record from before it existed folds forward and is granted a first ship. `shortfall()`
-  answers what a ship still needs and how much of it the captain already owns, so a spare mast off
-  another hull costs nothing to step.
+  answers what a ship still needs and how much of it the captain already owns, so a mast off another
+  hull costs nothing to step and does not come out of that hull to do it.
 - `src/galleon.js` draws a rig rather than *the* rig. `drawGalleon(ctx, w, h, deg, spec)` builds
   whatever is stepped and bent on; called without a spec it builds the galleon it always drew.
 - **The menu ship is a control.** Her plate carries the class she is and `Tap to edit`, and opens the

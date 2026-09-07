@@ -3,7 +3,7 @@ import { drawGalleon } from "./galleon.js";
 import { hullForm, tintTimber } from "./hullform.js";
 import {
   getHold, bankVoyage, resetHold, subscribeHold, modeRecord, shipLoadout, shortfall,
-  buyShip, buyPart, fitMast, fitSail, fitStud, fitGun, unfitGun, setActiveShip, loosePartIds, ownedShips, partOf,
+  buyShip, buyPart, fitMast, fitSail, fitStud, fitGun, unfitGun, setActiveShip, spareParts, ownedShips, partOf,
 } from "./hold.js";
 import {
   STARTER, kindOf, mastRebuildCost, measure, rate, rateOf, resolve, rigSpec,
@@ -4072,14 +4072,15 @@ function YardScreen({ hold, onBack, onCommission, onOutfit }) {
         ))}
       </Slab>
 
-      {/* What she is short, and what of it is already lying in the hold. The cheapest legal fill is a
-          floor, not a recommendation: a pole mast is free and fits any socket. */}
+      {/* What she is short, and what of it the captain already owns, loose or aboard another of her
+          ships. The cheapest legal fill is a floor, not a recommendation: a pole mast is free and
+          fits any socket. */}
       <Slab title={want.gaps.length ? `She wants ${want.gaps.length} more ${want.gaps.length === 1 ? "part" : "parts"}` : "Fully found"}>
         {want.gaps.length ? (
           <>
             <TallyRow label="Cheapest way to fill her out" value={<Coins n={want.cost} />} />
             <TallyRow
-              label="Of those, already in the hold"
+              label="Of those, already yours"
               value={want.gaps.filter((g) => g.owned.length).length}
               rule="hair"
             />
@@ -4413,12 +4414,16 @@ function OutfitterScreen({ hold, onBack }) {
   const [picking, setPicking] = useState(null);
   const shipId = hold.yard.active;
   const loadout = useMemo(() => shipLoadout(hold), [hold]);
+  const fleetSize = Object.keys(hold.yard.ships).length;
 
-  // What she owns and has not fitted, counted by type, so the picker can offer "one in the hold"
-  // ahead of "one in the shop" and a captain never buys a second of something she already has.
-  const loose = useMemo(() => {
+  // Everything she owns that THIS ship is not already carrying, counted by type, so the picker can
+  // offer one she owns ahead of one in the shop and a captain never buys a second of something she
+  // has. Guns and canvas standing in her other hulls are in here: only one ship goes to sea, so a
+  // part being aboard the frigate is no reason the sloop cannot be found with it too. What is left
+  // out is this ship's own, which is what keeps ten guns from filling eleven ports.
+  const spare = useMemo(() => {
     const byType = new Map();
-    for (const pid of loosePartIds(hold)) {
+    for (const pid of spareParts(hold, shipId)) {
       const type = partOf(hold, pid);
       if (!type) continue;
       const list = byType.get(type.id) || [];
@@ -4426,11 +4431,11 @@ function OutfitterScreen({ hold, onBack }) {
       byType.set(type.id, list);
     }
     return byType;
-  }, [hold]);
+  }, [hold, shipId]);
 
   const close = () => setPicking(null);
   const fitFrom = (typeId, fit) => {
-    const held = loose.get(typeId);
+    const held = spare.get(typeId);
     if (held && held.length) return fit(held[0]);
     const bought = buyPart(typeId);
     if (bought) fit(bought.part);
@@ -4446,7 +4451,7 @@ function OutfitterScreen({ hold, onBack }) {
    * run out rather than refusing the lot.
    */
   const fitMany = (typeId, n, fit) => {
-    const held = (loose.get(typeId) || []).slice();
+    const held = (spare.get(typeId) || []).slice();
     for (let i = 0; i < n; i++) {
       const pid = held.shift();
       if (pid) {
@@ -4465,6 +4470,14 @@ function OutfitterScreen({ hold, onBack }) {
       <div style={{ fontSize: 12, color: "rgba(238,244,242,0.7)", margin: "6px 0 0" }}>
         Fitting out your {loadout.hull.name.toLowerCase()}.
       </div>
+      {/* Said only to a captain with a second hull, because it is only true of one. A part standing
+          in another of her ships reads "already yours" in the pickers below and costs nothing here,
+          and she is owed the reason why before she taps it. */}
+      {fleetSize > 1 && (
+        <div style={{ fontSize: 11, color: "rgba(238,244,242,0.5)", margin: "4px 0 0", lineHeight: 1.5 }}>
+          Whatever you own can be fitted here, and what your other ships carry stays aboard them.
+        </div>
+      )}
       <PurseLine hold={hold} />
 
       <Segmented
@@ -4540,7 +4553,7 @@ function OutfitterScreen({ hold, onBack }) {
                       : picking.what === "stud" ? "Take it in"
                       : "Take the sail off"
                   }
-                  loose={loose}
+                  spare={spare}
                   coins={hold.coins}
                   onRemove={() => {
                     if (picking.what === "mast") fitMast(shipId, socket.id, null);
@@ -4618,7 +4631,7 @@ function OutfitterScreen({ hold, onBack }) {
                     <Picker
                       title={picking.fill ? "One gun in every empty port" : "Guns for this mount"}
                       options={gunsForMount(mount)}
-                      loose={loose}
+                      spare={spare}
                       coins={hold.coins}
                       onPick={(type) => {
                         const fit = (pid) => fitGun(shipId, mount, pid);
@@ -4691,12 +4704,12 @@ function FitRow({ label, value, empty, indent, onClick }) {
 /**
  * What could go in a slot, in one list: what she already owns first, then what the shop sells.
  *
- * A part in the hold is free to fit and a part in the shop is not, and that is the whole difference,
- * so they are one list with different right-hand ends rather than two lists a captain has to compare.
- * Spare rigging off a ship she no longer sails is the reason instances move at all, and this is where
- * that pays off.
+ * A part she owns is free to fit and a part in the shop is not, and that is the whole difference, so
+ * they are one list with different right-hand ends rather than two lists a captain has to compare.
+ * What she owns counts the rigging and guns standing in her other hulls as well as what is lying
+ * loose, because being aboard one ship has never been a reason a part cannot be fitted to another.
  */
-function Picker({ title, options, fitted, removeLabel, loose, coins, onPick, onRemove, onClose }) {
+function Picker({ title, options, fitted, removeLabel, spare, coins, onPick, onRemove, onClose }) {
   return (
     <div style={{ borderTop: `1px solid ${C.hair}`, marginTop: 6, paddingTop: 6 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, paddingBottom: 2 }}>
@@ -4709,7 +4722,7 @@ function Picker({ title, options, fitted, removeLabel, loose, coins, onPick, onR
         </div>
       )}
       {options.map((type) => {
-        const held = (loose.get(type.id) || []).length;
+        const held = (spare.get(type.id) || []).length;
         const afford = held > 0 || coins >= type.price;
         return (
           <button
@@ -4729,7 +4742,9 @@ function Picker({ title, options, fitted, removeLabel, loose, coins, onPick, onR
               </span>
             </span>
             <span style={{ fontSize: 11, color: held ? C.grass : afford ? C.gold : "rgba(238,244,242,0.4)", whiteSpace: "nowrap" }}>
-              {held ? `${held} in the hold` : type.price === 0 ? "free" : <Coins n={type.price} />}
+              {/* "Already yours" rather than "in the hold": one of these may be standing in another
+                  of her hulls this minute, and it is hers to fit here all the same. */}
+              {held ? `${held} already yours` : type.price === 0 ? "free" : <Coins n={type.price} />}
             </span>
           </button>
         );

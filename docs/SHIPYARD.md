@@ -154,23 +154,32 @@ collision ellipse in the fight, come out of that model. There is still nothing i
 balance pass to multiply, which is the point.
 
 Parts are catalogue **types**; a captain owns **instances**. `hold.js` keeps a flat table of every
-spar, sail and gun owned, and a ship record says which instance sits in which slot. An instance is in
-one slot or in none, never two, so fitting is a move: that is what lets rigging and guns travel
-between hulls, and what stops one good suit of sails rigging three ships at once. Anything no ship
-references is loose, and loose is the inventory.
+spar, sail and gun owned, and a ship record says which instance sits in which slot.
+
+**Exclusivity is per ship and only per ship.** An instance is in one slot of one ship or in none of
+that ship's slots, so a hull pierced for fifty a side still wants fifty guns bought to fill her; what
+it is not is exclusive across the fleet, so the fifty bought for the first rate are the fifty her
+sloop runs out too, and a mast standing in one hull can be stepped in every other hull she owns.
+Fitting is therefore a move within a ship and a copy between them. This is deliberate and it replaced
+the opposite rule, which held one instance to one slot in the whole yard: only ever one ship goes to
+sea, so nothing was being kept honest by it, and what it actually charged a captain was stripping a
+hull by hand every time she changed which one she sailed, or buying a second suit of everything.
+`spareParts(rec, shipId)` — everything owned that this ship is not already carrying — is the
+inventory, and it is asked of a ship rather than of the yard for that reason.
 
 ## What the brief asked for, and where it landed
 
 - **Buy hulls and components with the coins from any mode.** `hold.js` already banked coins from every
   mode into one record. The yard is a field of that record, and every writer spends through the same
   ledger, so `coins` and `spent` still reconstruct what was earned.
-- **An inventory of interchangeable components.** `loosePartIds()`, and fitting as a move.
+- **An inventory of interchangeable components.** `spareParts()`, and fitting as a move within a hull.
 - **Start with one ship, ready to fight.** `STARTER` in `shipyard.js`: an armed launch, a sprit mast
   with one sail bent on, a light gun each side, a chaser on the bow and one swivel. Her broadside is
   FULL at one gun a side, which is all a launch bears, so a captain can fight from the moment the game
   opens. What she cannot do is fight anything much, and every gap in her is a gap the shipyard fills:
   the bowsprit she carries has no spar on it at all.
-- **Rigging and guns move ship to ship.** Falls out of instances.
+- **Rigging and guns move ship to ship.** Falls out of instances, and they no longer have to leave one
+  hull to reach another: what a captain owns, every ship she owns can be found with.
 - **A mast only ever carries the sails it was built for.** `berths`, fixed on the mast type.
 - **Various sail types.** Six categories, `LSQ` `SSQ` `TRI` `GAF` `LUG` `STU`, one on each berth and
   one on each sail, compared as a single key. The head of a tall mast takes a small square sail
@@ -778,10 +787,12 @@ Masts, sails and guns for the ship she is sailing, with a toggle at the head rat
 because filling out a new hull means moving between them a dozen times.
 
 Every slot is a row that opens on what could go in it, and **what she already owns is in the same list
-as what the shop sells**, told apart by their right-hand ends: a part in the hold reads "1 in the
-hold" in green and costs nothing, a part in the shop reads its price. That is the whole difference
-between them, so they are one list rather than two a captain has to compare. Spare rigging off a ship
-she no longer sails is the reason instances move between hulls at all, and this is where it shows.
+as what the shop sells**, told apart by their right-hand ends: a part she owns reads "1 already
+yours" in green and costs nothing, a part in the shop reads its price. That is the whole difference
+between them, so they are one list rather than two a captain has to compare. What she owns counts the
+rigging and guns standing in her other hulls, not only what is lying loose, and the label says
+"already yours" rather than "in the hold" because one of them may be aloft on another ship this
+minute and is hers to fit here regardless.
 
 The rows say what a part *does* rather than what it is called: a mast lists the sails it will carry, a
 sail what it pulls and what it costs the helm, a gun what it throws and how fast.
@@ -797,9 +808,9 @@ a different sort of choice, and every socket on her takes something different.
 
 `shortfall(rec, shipId)` answers "what does this ship still need, and how much of it do I already
 own". Buying a hull gets you a hull; what makes it a ship is a mast in every socket, a sail in every
-berth, and guns run out to what she bears. Each gap says which loose parts would go straight in and
-what the cheapest catalogue part would cost, so a spare topmast off another ship costs nothing to
-step. Berths on a mast not yet stepped are not counted, since quoting for sails on a mast she has not
+berth, and guns run out to what she bears. Each gap says which of her spares would go straight in and
+what the cheapest catalogue part would cost, so a topmast she owns costs nothing to step whether it
+is lying loose or standing in another of her hulls. Berths on a mast not yet stepped are not counted, since quoting for sails on a mast she has not
 chosen prices a rig she may not build.
 
 The total is the cheapest *legal* fill, not a good rig: a pole mast is free and fits any socket, so a

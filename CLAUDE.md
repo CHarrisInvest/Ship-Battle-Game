@@ -40,6 +40,14 @@ are built from. `broadside` in the code is the side guns, not the old title, and
   130-foot hull; she carries the forty-six a great galleon of her size really did.
 - `src/hold.js` persists coins, lifetime stats and the yard to localStorage. Nothing else is saved;
   worlds and islands are generated fresh every match.
+- **A part is exclusive to a slot, not to a ship.** One instance is in one slot of one hull or in
+  none of hers, so a ship pierced for fifty a side still wants fifty guns bought to fill her. Across
+  the fleet nothing is exclusive: a mast standing in the frigate steps in the sloop as well, and the
+  frigate keeps hers. Only one ship ever goes to sea, so the old rule, which held one instance to one
+  slot in the whole yard, bought nothing but the tedium of stripping a hull by hand before rigging
+  the next one. `pull()` therefore works on one ship rather than the yard, and `spareParts(rec,
+  shipId)` — everything owned that this ship is not already carrying — is the inventory the outfitter
+  offers. Do not reintroduce a fleet-wide claim on a part.
 - `src/achievements.js` is the achievement list, and **an achievement is a question asked of the hold,
   never a stored flag**: a `count(hold)` and a `goal`. So one added tomorrow credits what a captain
   did last week, and it can only ask what the hold actually keeps. Wanting one the record cannot
