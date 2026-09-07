@@ -3312,11 +3312,16 @@ export default function App() {
   const rules = modeOf(mode);
 
   return (
+    // `manipulation` rather than `none`, and the difference matters: this div is the ancestor of every
+    // shop and menu screen, and a `none` up the chain can stop the one under a finger from scrolling.
+    // The sea takes `none` instead, on the canvas, which is where it belongs.
     <div
-      style={{ position: "relative", width: "100%", height: "100dvh", overflow: "hidden", background: C.water, userSelect: "none", WebkitUserSelect: "none", touchAction: "none", fontFamily: UI }}
+      style={{ position: "relative", width: "100%", height: "100dvh", overflow: "hidden", background: C.water, userSelect: "none", WebkitUserSelect: "none", touchAction: "manipulation", fontFamily: UI }}
       onContextMenu={(e) => e.preventDefault()}
     >
-      <canvas ref={canvasRef} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", display: "block" }} />
+      {/* The play surface swallows the lot: no pan, no pinch, no double-tap zoom. A finger on the sea
+          is steering or it is nothing, and a gesture landing here mid-fight is never what was meant. */}
+      <canvas ref={canvasRef} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", display: "block", touchAction: "none" }} />
 
       {phase === "playing" && (
         <>
@@ -3601,6 +3606,10 @@ function Shell({ children }) {
   return (
     // `margin:auto` rather than `align-items:center` so a tall menu on a short
     // screen scrolls from the top instead of having its head clipped off.
+    //
+    // It takes no touch-action of its own on purpose. The `manipulation` every element gets in
+    // `index.css` is what this screen wants: it scrolls under a finger, a reader who wants the small
+    // print bigger can still pinch it, and a double tap on a shop row is two taps rather than a zoom.
     <div style={{ position: "absolute", inset: 0, display: "flex", overflowY: "auto", padding: 24, background: "rgba(8,38,37,0.80)", backdropFilter: "blur(4px)" }}>
       <div style={{ margin: "auto", maxWidth: 360, textAlign: "center" }}>{children}</div>
     </div>

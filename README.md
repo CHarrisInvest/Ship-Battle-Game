@@ -298,6 +298,18 @@ Pointer/touch driven, so it works the same with a mouse or on a phone:
 - **Virtual joystick** (bottom left) — steer and throttle.
 - **SIDE / FRONT / MUSKET** (bottom right) — hold to fire; each has its own cooldown, range, and
   damages a different system. Absent in a mode that carries no guns.
+
+**A double tap is a tap twice.** Fire, patch, fire again is ordinary play, and a phone reads two taps
+inside a few hundred milliseconds as "zoom in on whatever is under the finger". `user-scalable=no` in
+the viewport meta does not stop it: iOS Safari has ignored that since iOS 10, on the grounds that a
+page should never be able to stop a reader zooming in. What every browser does honour is
+`touch-action`, so `index.css` sets `manipulation` on every element — the value has to be on the
+element under the finger, and a label inside a button inside a card is what actually gets hit.
+Panning and pinch still work, so nothing a reader chooses to do is taken away; only the double-tap
+gesture stops being a zoom. The canvas, the joystick and the fire buttons set the stronger `none`
+inline, since a stray pan or pinch on the play surface mid-fight is worse still. The one thing that
+must not carry `none` is an ancestor of a shop or menu screen: a `none` up the chain can stop the
+screen under a finger from scrolling at all.
 - **Repair rail** (top) — two buttons, priced on opposite principles because they are opposite jobs.
   **HULL** is a coin a point and nothing else: no base, no rate, no share of anything. A coin buys
   back exactly the damage a coin of gunnery earned, so a light patch is cheap and a purse short of the

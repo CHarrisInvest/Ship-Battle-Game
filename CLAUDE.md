@@ -221,6 +221,14 @@ Buttons take size over tracking. Wide letterspacing makes every control read as 
   would make the player learn two marks for one idea.
 - **Border radius comes from a small set:** 3 for hairline bar fills, 10 for cards and buttons, 20
   for full-round pills. Do not invent a new one per component.
+- **A double tap is a tap twice, and every element says so itself.** This is a game played with the
+  thumbs, so two taps inside a few hundred milliseconds are ordinary play rather than a gesture.
+  `index.css` sets `touch-action: manipulation` on `*`, because the element the browser reads is the
+  one under the finger and a label inside a button inside a card is what gets hit. It has to be
+  `touch-action`: `user-scalable=no` is ignored by iOS Safari on purpose and is not a fix. The canvas,
+  the joystick and the fire buttons override it with `none` inline, which is the play surface and
+  belongs there. Nothing that is an ancestor of a shop or menu screen may carry `none`: a `none` up
+  the chain can stop the screen under a finger from scrolling.
 - **Check a new colour against every ground it lands on.** HUD colours sit on the enemy bar's
   50%-black backing, on the player panel, on button grounds, and against open water. The mast bar
   was a teal that scored 1.41 against the sea and vanished into it; the obvious fix, a navy, scored
