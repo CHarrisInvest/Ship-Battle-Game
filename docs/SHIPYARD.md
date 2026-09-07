@@ -977,7 +977,8 @@ with it is as cheap as changing it.
    a jibboom cannot be somebody's main mast.
 6. **Should the derby have repairs?** It has none today, because "only one hand needed" is that mode's
    whole promise and a rail is a second thing to think about. But trading coins for crew after a spell
-   in the storm is a genuinely good decision, and the derby is the mode that pays by the second.
+   in the storm is a genuinely good decision, and it is one a free-for-all captain can already make:
+   both modes pay by the second now, and the free-for-all has both the carpenter and the weather.
 7. ~~**The crew divisor.**~~ **Settled, and it is not a divisor.** Crew runs from a dozen hands to nine
    hundred and fifty, a range of eighty, and one musket a head or anything near it ends with a
    three-decker throwing a volley nobody can count. So the count goes as the SQUARE ROOT of the crew:
