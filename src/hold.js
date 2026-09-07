@@ -22,10 +22,16 @@
  *
  * What the yard keeps is *instances*, not types. `parts` is a flat table of every spar, sail and gun
  * a captain owns, each with its own id and a catalogue type; `ships` records which instance is in
- * which slot. That is what makes rigging and guns portable between hulls, and it is the reason
- * fitting is a move rather than a copy: an instance is in one slot or in none, never in two, so a
- * captain can carry one good suit of sails between three ships but cannot sail all three at once.
- * Anything no ship references is loose in the hold, which is the inventory.
+ * which slot.
+ *
+ * **A part she owns can be fitted to every ship she owns, and being aboard one is never what keeps
+ * it off another.** Exclusivity is per ship and only per ship: one instance is in one slot of one
+ * ship or in none of them, so a first rate still wants fifty guns to fill fifty ports, but the fifty
+ * she bought for the first rate are the same fifty her sloop runs out. Only one ship ever goes to
+ * sea, so nothing is in two places at once that matters; what the old rule bought was the tedium of
+ * stripping a hull by hand before rigging the next one. Fitting is therefore a move within a ship
+ * and a copy between them, and `spareParts(rec, shipId)` — everything owned that this ship is not
+ * already carrying — is the inventory the outfitter draws on.
  */
 
 import {
@@ -120,8 +126,10 @@ function sanitize(raw) {
  * because a record can outlive the catalogue that wrote it: a part type that has gone, a mast that no
  * longer fits the socket it was in, a gun port the hull no longer has. Anything that fails a check
  * comes out of its slot rather than out of the record, so a captain keeps the part and can put it
- * somewhere legal. A part fitted in two places at once — which nothing here can produce, but a
- * half-written record can — stays in the first slot found and comes loose from the second.
+ * somewhere legal. The same part aboard two ships is not a fault and is left alone: that is what
+ * owning a suit of rigging means here. The same part in two slots of ONE ship is, which nothing can
+ * produce but a half-written record can, so it stays in the first slot found and comes loose from
+ * the second. `used` is therefore emptied between ships and never across them.
  *
  * A record with no ships in it at all is a record from before the yard existed. It gets a first ship,
  * which is also what a brand new captain gets: the two paths are the same one on purpose, so the
@@ -152,6 +160,7 @@ function sanitizeYard(raw) {
     const hull = HULLS[s.hull];
     if (!hull) continue; // a class that no longer exists takes its slots with it; the parts stay loose
     const ship = { hull: hull.id, rig: {}, guns: { broadside: [], bow: [], swivel: [] } };
+    used.clear(); // one slot to a part on THIS ship; her sister may carry the same one
 
     for (const socket of hull.sockets) {
       const slot = { mast: null, sails: [], studs: [] };
@@ -441,18 +450,30 @@ export function ownedShips(rec) {
   return Object.entries(rec.yard.ships).map(([id, ship]) => ({ id, ...ship }));
 }
 
-/** Parts no ship is using. This is the inventory: what she can move onto whatever she is sailing. */
-export function loosePartIds(rec) {
+/** Every part id one ship is carrying: her masts, her sails, her studdingsails and her guns. */
+function fittedOn(ship) {
   const fitted = new Set();
-  for (const ship of Object.values(rec.yard.ships)) {
-    for (const slot of Object.values(ship.rig)) {
-      if (slot.mast) fitted.add(slot.mast);
-      for (const s of slot.sails) if (s) fitted.add(s);
-      for (const st of slot.studs || []) if (st) fitted.add(st);
-    }
-    for (const mount of ["broadside", "bow", "swivel"]) for (const g of ship.guns[mount]) fitted.add(g);
+  if (!ship) return fitted;
+  for (const slot of Object.values(ship.rig)) {
+    if (slot.mast) fitted.add(slot.mast);
+    for (const s of slot.sails) if (s) fitted.add(s);
+    for (const st of slot.studs || []) if (st) fitted.add(st);
   }
-  return Object.keys(rec.yard.parts).filter((id) => !fitted.has(id));
+  for (const mount of ["broadside", "bow", "swivel"]) for (const g of ship.guns[mount]) fitted.add(g);
+  return fitted;
+}
+
+/**
+ * What one ship can be fitted with out of the hold, which is everything owned that she is not
+ * already carrying. This is the inventory, and it is asked per ship rather than of the yard at
+ * large: a gun run out on the frigate is still a gun the sloop can run out, because only one of
+ * them is ever at sea. What it excludes is the ship's own parts, so a battery of ten cannot be
+ * fitted eleven times into ten ports.
+ */
+export function spareParts(rec, shipId) {
+  const id = shipId || rec.yard.active;
+  const hers = fittedOn(rec.yard.ships[id]);
+  return Object.keys(rec.yard.parts).filter((pid) => !hers.has(pid));
 }
 
 /**
@@ -474,11 +495,12 @@ export function shipLoadout(rec, shipId) {
  *
  * Buying a hull gets you a hull. What turns it into a ship is a mast in every socket, a sail in every
  * berth of every mast, and guns run out to what she bears, and a captain part of the way through that
- * needs to be told two different things: what is missing, and whether it is already lying in the hold
- * off some other ship. A spare topmast she owns costs nothing to step, and the answer to "what does
- * this frigate need" is a different number depending on what is in her inventory.
+ * needs to be told two different things: what is missing, and whether she already owns something for
+ * it. A topmast she owns costs nothing to step whether it is lying in the hold or standing in another
+ * hull, and the answer to "what does this frigate need" is a different number depending on what is in
+ * her inventory.
  *
- * Each gap comes back with `owned`, the loose parts that would go straight in, and `buy`, the cheapest
+ * Each gap comes back with `owned`, the spare parts that would go straight in, and `buy`, the cheapest
  * catalogue part that would fill it. `cost` is what the gap costs *her*: nothing when she owns
  * something that fits, the price of the cheapest part when she does not.
  *
@@ -496,11 +518,11 @@ export function shortfall(rec, shipId) {
   const ship = rec.yard.ships[id];
   if (!ship) return { gaps: [], cost: 0 };
   const hull = HULLS[ship.hull];
-  const loose = loosePartIds(rec).map((pid) => ({ pid, type: PARTS[rec.yard.parts[pid].type] }));
-  const claimed = new Set(); // a spare fills one gap, not every gap it happens to fit
+  const spare = spareParts(rec, id).map((pid) => ({ pid, type: PARTS[rec.yard.parts[pid].type] }));
+  const claimed = new Set(); // a spare fills one gap of hers, not every gap it happens to fit
 
   const gap = (g, fits, options) => {
-    const owned = loose.filter((p) => !claimed.has(p.pid) && fits(p.type)).map((p) => p.pid);
+    const owned = spare.filter((p) => !claimed.has(p.pid) && fits(p.type)).map((p) => p.pid);
     if (owned.length) claimed.add(owned[0]);
     const buy = options.slice().sort((a, b) => a.price - b.price)[0] || null;
     return { ...g, owned, buy, cost: owned.length ? 0 : buy ? buy.price : 0 };
@@ -534,25 +556,28 @@ export function shortfall(rec, shipId) {
 }
 
 /**
- * Pull a part out of whatever slot on whatever ship holds it. Fitting is a move, never a copy.
+ * Pull a part out of whatever slot of ONE ship holds it. Within a hull, fitting is still a move.
  *
- * Taking a mast takes its berths with it, so the sails that were in them are emptied out of the slot
- * and become loose. Leaving their ids behind in a slot with no mast would have counted them as
- * fitted and lost them out of the inventory: still owned, on no mast, and invisible.
+ * It is one ship rather than the whole yard on purpose, and it is the whole of what makes a part
+ * fittable to every ship she owns: stepping the frigate's maintopmast in the sloop no longer takes
+ * it out of the frigate. What it still cannot do is stand twice in the same hull, so a part moves
+ * from the slot it was in to the slot it is going to.
+ *
+ * Taking a mast takes its berths with it, so the sails that were in them are emptied out of the slot.
+ * Leaving their ids behind in a slot with no mast would have counted them as fitted and lost them out
+ * of her inventory: still owned, on no mast, and invisible.
  */
-function pull(yard, partId) {
-  if (!partId) return;
-  for (const ship of Object.values(yard.ships)) {
-    for (const [socketId, slot] of Object.entries(ship.rig)) {
-      if (slot.mast === partId) { ship.rig[socketId] = { mast: null, sails: [], studs: [] }; continue; }
-      slot.sails = slot.sails.map((s) => (s === partId ? null : s));
-      // a studdingsail comes loose with its own id, and also the moment the sail it booms out from
-      // leaves the berth: it hangs off that sail, not off the mast
-      slot.studs = (slot.studs || []).map((st, i) => (st === partId || !slot.sails[i] ? null : st));
-    }
-    for (const mount of ["broadside", "bow", "swivel"]) {
-      ship.guns[mount] = ship.guns[mount].filter((g) => g !== partId);
-    }
+function pull(ship, partId) {
+  if (!ship || !partId) return;
+  for (const [socketId, slot] of Object.entries(ship.rig)) {
+    if (slot.mast === partId) { ship.rig[socketId] = { mast: null, sails: [], studs: [] }; continue; }
+    slot.sails = slot.sails.map((s) => (s === partId ? null : s));
+    // a studdingsail comes loose with its own id, and also the moment the sail it booms out from
+    // leaves the berth: it hangs off that sail, not off the mast
+    slot.studs = (slot.studs || []).map((st, i) => (st === partId || !slot.sails[i] ? null : st));
+  }
+  for (const mount of ["broadside", "bow", "swivel"]) {
+    ship.guns[mount] = ship.guns[mount].filter((g) => g !== partId);
   }
 }
 
@@ -608,7 +633,7 @@ export function fitMast(shipId, socketId, partId) {
   if (partId) {
     const mast = partOf(rec, partId);
     if (!mast || !mastFitsSocket(mast, socket)) return null;
-    pull(yard, partId);
+    pull(yard.ships[shipId], partId);
     yard.ships[shipId].rig[socketId] = { mast: partId, sails: mast.berths.map(() => null), studs: mast.berths.map(() => null) };
   } else {
     yard.ships[shipId].rig[socketId] = { mast: null, sails: [], studs: [] };
@@ -629,7 +654,7 @@ export function fitSail(shipId, socketId, berth, partId) {
   if (partId) {
     const sail = partOf(rec, partId);
     if (!sailFitsBerth(sail, want)) return null;
-    pull(yard, partId);
+    pull(yard.ships[shipId], partId);
   }
   const slot2 = yard.ships[shipId].rig[socketId];
   while (slot2.sails.length < mast.berths.length) slot2.sails.push(null);
@@ -662,7 +687,7 @@ export function fitStud(shipId, socketId, berth, partId) {
   if (partId) {
     const stud = partOf(rec, partId);
     if (!studFitsSail(stud, mast, berth, host)) return null;
-    pull(yard, partId);
+    pull(yard.ships[shipId], partId);
   }
   const slot2 = yard.ships[shipId].rig[socketId];
   slot2.studs = slot2.studs || [];
@@ -671,26 +696,34 @@ export function fitStud(shipId, socketId, berth, partId) {
   return commitYard(rec, yard);
 }
 
-/** Run a gun out at one of the hull's mounts. She refuses a gun she has no port for. */
+/**
+ * Run a gun out at one of the hull's mounts. She refuses a gun she has no port for.
+ *
+ * The count is taken after the gun has been pulled off HER rather than before, so a gun already
+ * aboard shifting from one mount to another is a move rather than a refusal on a full ship. A gun
+ * standing at another captain's own frigate is not counted at all: it is hers, and this hull's ports
+ * are the only limit on how many of them stand here.
+ */
 export function fitGun(shipId, mount, partId) {
   const rec = current();
   const ship = rec.yard.ships[shipId];
   const hull = ship && HULLS[ship.hull];
   const gun = partOf(rec, partId);
   if (!hull || !gun || gun.mount !== mount) return null;
-  if (ship.guns[mount].length >= hull.guns[mount]) return null;
   const yard = cloneYard(rec.yard);
-  pull(yard, partId);
-  yard.ships[shipId].guns[mount].push(partId);
+  const her = yard.ships[shipId];
+  pull(her, partId);
+  if (her.guns[mount].length >= hull.guns[mount]) return null;
+  her.guns[mount].push(partId);
   return commitYard(rec, yard);
 }
 
-/** Take one gun back off her rail and into the hold. */
+/** Take one gun back off her rail. She keeps it: it is off this ship, not out of the hold. */
 export function unfitGun(shipId, partId) {
   const rec = current();
   if (!rec.yard.ships[shipId] || !rec.yard.parts[partId]) return null;
   const yard = cloneYard(rec.yard);
-  pull(yard, partId);
+  pull(yard.ships[shipId], partId);
   return commitYard(rec, yard);
 }
 

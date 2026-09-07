@@ -9,9 +9,33 @@ body,
   overflow: hidden;
 }
 
+/*
+ * A DOUBLE TAP IS A TAP TWICE, NEVER A ZOOM, AND EVERY ELEMENT HAS TO SAY SO ITSELF.
+ *
+ * This is a game played with the thumbs: fire, patch, fire again. Two of those taps landing inside a
+ * few hundred milliseconds of each other is ordinary play, and on a phone the browser reads it as
+ * "zoom in on whatever is under the finger" unless it is told not to.
+ *
+ * `user-scalable=no` in the viewport meta is not the answer. iOS Safari has ignored it deliberately
+ * since iOS 10, on the grounds that a page should never be able to stop a reader zooming in, and it
+ * is right about that. What it does honour is `touch-action`, and `manipulation` is exactly the value
+ * this wants: panning and pinch to zoom still work, so nothing a reader chooses to do is taken away,
+ * and only the double-tap gesture stops being a zoom.
+ *
+ * It goes on everything rather than on the buttons, because the element the browser reads is the
+ * element under the finger: a span of a label inside a button inside a card is what gets hit, and any
+ * one of those left at `auto` is a tap that zooms. The three surfaces that want the stronger `none`
+ * -- the canvas, the joystick, and the fire buttons, where a stray pan or pinch mid-fight is worse
+ * still -- set it inline and override this. `body` deliberately does NOT set `none` any more: it is
+ * an ancestor of every shop and menu screen, and a `none` up the chain can stop the screen under it
+ * from scrolling at all.
+ */
+* {
+  touch-action: manipulation;
+}
+
 body {
   -webkit-user-select: none;
   user-select: none;
-  touch-action: none;
-  overscroll-behavior: none;
+  overscroll-behavior: none; /* and no pull to refresh in the middle of a round */
 }

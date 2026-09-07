@@ -40,6 +40,14 @@ are built from. `broadside` in the code is the side guns, not the old title, and
   130-foot hull; she carries the forty-six a great galleon of her size really did.
 - `src/hold.js` persists coins, lifetime stats and the yard to localStorage. Nothing else is saved;
   worlds and islands are generated fresh every match.
+- **A part is exclusive to a slot, not to a ship.** One instance is in one slot of one hull or in
+  none of hers, so a ship pierced for fifty a side still wants fifty guns bought to fill her. Across
+  the fleet nothing is exclusive: a mast standing in the frigate steps in the sloop as well, and the
+  frigate keeps hers. Only one ship ever goes to sea, so the old rule, which held one instance to one
+  slot in the whole yard, bought nothing but the tedium of stripping a hull by hand before rigging
+  the next one. `pull()` therefore works on one ship rather than the yard, and `spareParts(rec,
+  shipId)` — everything owned that this ship is not already carrying — is the inventory the outfitter
+  offers. Do not reintroduce a fleet-wide claim on a part.
 - `src/achievements.js` is the achievement list, and **an achievement is a question asked of the hold,
   never a stored flag**: a `count(hold)` and a `goal`. So one added tomorrow credits what a captain
   did last week, and it can only ask what the hold actually keeps. Wanting one the record cannot
@@ -213,6 +221,14 @@ Buttons take size over tracking. Wide letterspacing makes every control read as 
   would make the player learn two marks for one idea.
 - **Border radius comes from a small set:** 3 for hairline bar fills, 10 for cards and buttons, 20
   for full-round pills. Do not invent a new one per component.
+- **A double tap is a tap twice, and every element says so itself.** This is a game played with the
+  thumbs, so two taps inside a few hundred milliseconds are ordinary play rather than a gesture.
+  `index.css` sets `touch-action: manipulation` on `*`, because the element the browser reads is the
+  one under the finger and a label inside a button inside a card is what gets hit. It has to be
+  `touch-action`: `user-scalable=no` is ignored by iOS Safari on purpose and is not a fix. The canvas,
+  the joystick and the fire buttons override it with `none` inline, which is the play surface and
+  belongs there. Nothing that is an ancestor of a shop or menu screen may carry `none`: a `none` up
+  the chain can stop the screen under a finger from scrolling.
 - **Check a new colour against every ground it lands on.** HUD colours sit on the enemy bar's
   50%-black backing, on the player panel, on button grounds, and against open water. The mast bar
   was a teal that scored 1.41 against the sea and vanished into it; the obvious fix, a navy, scored

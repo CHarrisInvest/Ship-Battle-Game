@@ -3,7 +3,7 @@ import { drawGalleon } from "./galleon.js";
 import { hullForm, tintTimber } from "./hullform.js";
 import {
   getHold, bankVoyage, resetHold, subscribeHold, modeRecord, shipLoadout, shortfall,
-  buyShip, buyPart, fitMast, fitSail, fitStud, fitGun, unfitGun, setActiveShip, loosePartIds, ownedShips, partOf,
+  buyShip, buyPart, fitMast, fitSail, fitStud, fitGun, unfitGun, setActiveShip, spareParts, ownedShips, partOf,
 } from "./hold.js";
 import {
   STARTER, kindOf, mastRebuildCost, measure, rate, rateOf, resolve, rigSpec,
@@ -39,6 +39,8 @@ const TILT = 0.6; // vertical squash -> high-angle / isometric feel
 const ZUP = Math.sqrt(1 - TILT * TILT); // how world-height maps to screen-up
 const FFA_AI = 10;
 const ISLAND_COUNT = 4;
+const MIDDLE_CLEAR = 320; // no island closer than this to the middle, in any mode
+const RING_CLEAR = 130; // ...and none within this of a closing ring's working size
 const OPENING_WINDOW = 30; // seconds the ffa AI weights range over reputation when picking prey
 
 // ARENA: the swarm grows instead of the ships. Reinforcements sail in from the map edge.
@@ -53,24 +55,39 @@ const arenaReinforcements = (n) => ARENA_RAMP[n - 1] ?? 2;
 
 // DERBY: ten bows, no guns, nothing to buy, and a squall closing on the middle of the sea. Without
 // cannon nobody's mast can be brought down, so every hull holds the same top speed all match and a
-// runner could never be caught — the ring is what makes the fight happen. It opens wider than the
-// map's own corners, so the grace period really is open water, and closes onto the middle, which the
-// island generator always leaves clear. Outside it the crew works the deck in a gale: survivable for
-// a dash across the weather, ruinous for anyone who tries to live out there.
+// runner could never be caught — the ring is what makes the fight happen.
 const DERBY_AI = 9; // rivals, so ten captains start
-const STORM_GRACE = 18; // seconds of open water before the ring starts to close
-const STORM_CLOSE = 95; // and how long it takes to close all the way
+
+/**
+ * THE WEATHER: a ring closing on the middle of the sea, and why the two modes that carry one want
+ * different rings.
+ *
+ * A ring opens wider than the map's own corners, so the grace period really is open water, and closes
+ * onto the middle, which the island generator leaves clear to whatever size that mode's ring works at.
+ * Outside it the crew works the deck in a gale: survivable for a dash across the weather, ruinous for
+ * anyone who tries to live out there.
+ *
+ * ...and then, if the last of them are still circling one another, the eye itself shuts. A working
+ * ring is not enough on its own: a ram needs closing speed to count for anything, and two ships penned
+ * in a pool a hundred paces across can mill about forever without ever getting the run at each other
+ * that would settle it — measured at better than two minutes of it. Weather asks nobody for a run-up,
+ * so the ring goes to nothing instead, and the last hull afloat is the one with crew enough to outlast
+ * the sea. However cagey the sailing, a round has an end.
+ *
+ * **The shape of it belongs to the mode, because what the ring has to leave room for is not the same
+ * thing in both.** The derby is settled at the length of a bowsprit and its ring is the size of the
+ * fight it is forcing. A free-for-all is settled by gunfire, and a broadside carries better than two
+ * hundred: pen that fight into the derby's ring and every ship inside it lies under every other
+ * ship's guns from the moment it closes, which is not a fight either, only a bonfire. So the
+ * free-for-all works at a wider ring, and takes longer to get there, because ten captains with guns
+ * thin themselves out long before the weather is what settles anything.
+ */
 const STORM_R0 = 1400; // opening radius — just past the far corners of the map, so closing bites at once
-const STORM_R1 = 190; // working radius: room for two ships to work, not to hide
-// ...and then, if the last of them are still circling one another, the eye itself shuts. A small ring
-// is not enough on its own: a ram needs closing speed to count for anything, and two ships penned in a
-// pool a hundred paces across can mill about forever without ever getting the run at each other that
-// would settle it — measured at better than two minutes of it. Weather asks nobody for a run-up, so
-// the ring goes to nothing instead, and the last hull afloat is the one with crew enough to outlast
-// the sea. However cagey the sailing, a round has an end.
-const STORM_HOLD = 20; // seconds the ring sits at its working size first
-const STORM_SQUEEZE = 35; // and how long the eye takes to shut completely
-const STORM_R2 = 0;
+const STORM_R2 = 0; // ...and the eye shuts to nothing
+// The four times add up to how long a round runs when nobody settles it sooner, which is the figure
+// each mode's `fullRound` purse sits a shade above: 168 seconds in the derby, 200 in the free-for-all.
+const DERBY_WEATHER = { grace: 18, close: 95, ring: 190, hold: 20, squeeze: 35 };
+const FFA_WEATHER = { grace: 40, close: 100, ring: 300, hold: 25, squeeze: 35 };
 const STORM_DPS_MIN = 3.5; // crew lost a second the moment she is caught out
 const STORM_DPS_MAX = 17; // ...and once she has been out there STORM_RAMP seconds
 const STORM_RAMP = 12; // how long the weather takes to work up to its worst
@@ -102,10 +119,11 @@ const SHEER_LOOK = 190; // hulls this close are what she counts as the heap she 
 const SHEER_TIME = 2.4; // how long she holds the break before working back in
 const SHEER_THROTTLE = 0.7; // and she takes some way off to get the bow across
 
-const stormRadius = (t) => {
-  const closed = STORM_GRACE + STORM_CLOSE;
-  if (t <= closed) return STORM_R0 + (STORM_R1 - STORM_R0) * clamp((t - STORM_GRACE) / STORM_CLOSE, 0, 1);
-  return STORM_R1 + (STORM_R2 - STORM_R1) * clamp((t - closed - STORM_HOLD) / STORM_SQUEEZE, 0, 1);
+/** Where the ring stands at `t` seconds, for one mode's weather. */
+const stormRadius = (t, w) => {
+  const closed = w.grace + w.close;
+  if (t <= closed) return STORM_R0 + (w.ring - STORM_R0) * clamp((t - w.grace) / w.close, 0, 1);
+  return w.ring + (STORM_R2 - w.ring) * clamp((t - closed - w.hold) / w.squeeze, 0, 1);
 };
 
 // The sea is three tones of one hue, laid down by depth: open water everywhere, the shallows banked
@@ -951,7 +969,7 @@ const MODES = {
     lastAfloatWins: false,
     reinforcements: true, // a sinking brings fresh hunters in from the horizon
     flees: false, // a beaten captain runs rather than fights on
-    storm: false, // a closing ring of foul weather
+    storm: null, // the shape of her closing ring of foul weather, or nothing for open sea
     timeCoins: 0, // coins a second afloat, on top of what her guns and bow earn
     fullRound: 0, // ...and the span a winner is paid for whatever the clock said
     winBonus: 0,
@@ -961,7 +979,7 @@ const MODES = {
     title: "FREE-FOR-ALL",
     short: "free-for-all",
     color: C.mast,
-    desc: "Last afloat wins. 10 rival captains, every one of them matched to the ship you sail, hunting for weak prey and turning on whoever pulls ahead. Spend what you take on repairs, or keep it.",
+    desc: "Last afloat wins. 10 rival captains, every one of them matched to the ship you sail, hunting for weak prey and turning on whoever pulls ahead. Spend what you take on repairs, or keep it. Time afloat is paid by the second, and later in the round a storm closes on the middle of the sea and takes the crew of any ship left outside it.",
     unsailed: "You have not taken on the ten.",
     rivals: FFA_AI,
     guns: true,
@@ -971,9 +989,19 @@ const MODES = {
     lastAfloatWins: true,
     reinforcements: false,
     flees: true,
-    storm: false,
-    timeCoins: 0, // she is paid for what she sinks, not for the time it takes
-    fullRound: 0,
+    // Weather came late to this mode and it came for the same reason it came to the derby: three
+    // wounded captains keeping their distance is not a fight, and a hull that runs at a third of her
+    // health can run for a very long time on a sea two thousand paces across. Her ring is wider and
+    // slower than the derby's, so the gunnery half of the round happens in open water and only the
+    // end of it is fought where the weather says.
+    storm: FFA_WEATHER,
+    // Staying afloat is paid by the second here as it is in the derby, and a winner is paid for a
+    // whole round however early she ended it. It is the other half of the ring: time at sea is worth
+    // something now, so a captain who would rather sit out the round has a reason to, and the
+    // weather is what makes sure she cannot. A round left alone runs the whole of FFA_WEATHER, 200
+    // seconds as it is tuned, and the winner's purse is a shade above that.
+    timeCoins: 1,
+    fullRound: 205,
     // ...and a purse for outlasting ten rivals. Smaller than the derby's, because a free-for-all
     // captain has been paid all round for the fighting that got her there and a derby captain has
     // not: there are no guns in that mode, so the win is most of what it pays.
@@ -984,7 +1012,7 @@ const MODES = {
     title: "DEMOLITION DERBY",
     short: "derby",
     color: C.crew,
-    desc: "Only one hand needed. Last afloat wins. 10 captains in ships a match for yours, no guns, nothing to buy. Sink rivals by ramming. Drive your bow into her beam, and turn to face anyone charging yours. A storm closes in and takes the crew of any ship caught.",
+    desc: "Only one hand needed. Last afloat wins. 10 captains in ships a match for yours, no guns, nothing to buy. Sink rivals by ramming. Drive your bow into her beam, and turn to face anyone charging yours. Time afloat is paid by the second, and a storm closes in and takes the crew of any ship caught.",
     unsailed: "Untried. Nothing in there but iron and weather.",
     rivals: DERBY_AI,
     guns: false,
@@ -994,13 +1022,13 @@ const MODES = {
     lastAfloatWins: true,
     reinforcements: false,
     flees: false, // there is nowhere to run to, and the weather is coming anyway
-    storm: true,
+    storm: DERBY_WEATHER,
     // Staying afloat is most of the work here, so it is paid by the second — and a winner is paid for
     // a whole round however early she ended it. Settling the thing in forty seconds is worth the same
     // purse as outlasting the weather for the full span, which is to say it is worth far more an hour:
     // the time she saves is hers to spend on the next one. A round left alone runs
-    // STORM_GRACE + STORM_CLOSE + STORM_HOLD + STORM_SQUEEZE, 168 seconds as the weather is tuned;
-    // the winner's is a set purse a shade above that, so a win comes to 250 whatever else she took.
+    // the whole of DERBY_WEATHER, 168 seconds as it is tuned; the winner's is a set purse a shade
+    // above that, so a win comes to 250 whatever else she took.
     timeCoins: 1,
     fullRound: 175,
     winBonus: 75,
@@ -1159,7 +1187,10 @@ export default function App() {
     }
     setPh({ hull: p.hull, mast: p.mast, crew: p.crew });
     setPhMax({ hull: p.maxHull, mast: p.maxMast, crew: p.maxCrew });
-    if (g.rules.storm) setStorm({ closes: Math.max(0, STORM_GRACE - g.time), out: g.playerOut, closing: g.stormR > STORM_R1 });
+    if (g.rules.storm) {
+      const w = g.rules.storm;
+      setStorm({ closes: Math.max(0, w.grace - g.time), out: g.playerOut, closing: g.stormR > w.ring });
+    }
   }, []);
   syncRef.current = syncHUD;
 
@@ -1277,15 +1308,21 @@ export default function App() {
       return v - Math.floor(v);
     }
 
+    // The middle of the sea is left open, and a mode with weather has it left open out to the whole
+    // of its working ring: the end of such a round is fought in there, and a headland in the eye of
+    // the storm would be a place to hide from the one thing that stops anyone hiding. `MIDDLE_CLEAR`
+    // is what the derby's ring already asked for, kept as the floor so a mode without weather drops
+    // its fleet into the same open water it always did.
     function genIslands(g) {
       const isl = [];
+      const clear = Math.max(MIDDLE_CLEAR, (g.rules.storm ? g.rules.storm.ring : 0) + RING_CLEAR);
       let tries = 0;
       while (isl.length < ISLAND_COUNT && tries < 400) {
         tries++;
         const r = 58 + Math.random() * 66;
         const x = r + 90 + Math.random() * (WORLD - 2 * (r + 90));
         const y = r + 90 + Math.random() * (WORLD - 2 * (r + 90));
-        if (Math.hypot(x - WORLD / 2, y - WORLD / 2) < 320) continue;
+        if (Math.hypot(x - WORLD / 2, y - WORLD / 2) < clear) continue;
         if (isl.some((o) => Math.hypot(x - o.x, y - o.y) < r + o.r + 170)) continue;
         const n = 12;
         const verts = [];
@@ -1479,7 +1516,7 @@ export default function App() {
         patches: p.patches || 0,
         repaired, // ...and what she handed straight back to the carpenter, all of it her own money
         rams: p.rams || 0,
-        timePay, winPay,
+        timePay, winPay, paidInFull,
         total,
         // What the hold will actually see. A voyage that spent everything it took on staying afloat
         // banks nothing, and never less than nothing: a round cannot cost a captain her savings.
@@ -1831,6 +1868,35 @@ export default function App() {
       return away + (Math.random() - 0.5) * 0.7;
     }
 
+    /**
+     * The weather bends whatever a captain meant to do, whichever mode she is sailing in.
+     *
+     * Well inside the ring it asks nothing; nearer the rail it leans on her course; once she is
+     * actually out in it her own exposure decides how hard, so a shove into the weather is something
+     * she rides out and a pinning is something she fights her way out of — or does not.
+     *
+     * Both AIs go through here, and they have to. A gun captain runs from a wound rather than from
+     * the ring, and a rival who has driven her to a third of her health is behind her, so the course
+     * she picks to save herself is the course that takes her out of the ring: without this she sails
+     * out of the round having beaten nobody. It is a lean, not a fence, so shouldering a wounded ship
+     * out into the weather and holding her there is still a way of finishing her.
+     */
+    function weatherCourse(s, desired, throttle) {
+      const g = gameRef.current;
+      if (!g.rules.storm) return { desired, throttle };
+      const dc = Math.hypot(s.x - WORLD / 2, s.y - WORLD / 2);
+      const out = dc > g.stormR;
+      const lean = out
+        ? clamp(0.55 + 0.45 * (s.exposure / STORM_RAMP), 0, 1)
+        : STORM_PULL * clamp((dc / Math.max(1, g.stormR) - STORM_HOME) / (1 - STORM_HOME), 0, 1);
+      if (lean <= 0.01) return { desired, throttle };
+      const toMid = Math.atan2(WORLD / 2 - s.y, WORLD / 2 - s.x);
+      return {
+        desired: desired + norm(toMid - desired) * lean, // swing part of the way onto the course home
+        throttle: out ? Math.max(throttle, 0.9) : throttle,
+      };
+    }
+
     function stepRamAI(s, dt) {
       const g = gameRef.current;
       s.ramCd = Math.max(0, s.ramCd - dt);
@@ -1895,20 +1961,7 @@ export default function App() {
         desired = ramIntercept(s, tgt);
       }
 
-      // Now the weather bends whatever she meant to do. Well inside the ring it asks nothing; nearer
-      // the rail it leans on her course; once she is actually out in it her own exposure decides how
-      // hard, so a shove into the weather is something she rides out and a pinning is something she
-      // fights her way out of — or does not.
-      const dc = Math.hypot(s.x - WORLD / 2, s.y - WORLD / 2);
-      const out = dc > g.stormR;
-      const lean = out
-        ? clamp(0.55 + 0.45 * (s.exposure / STORM_RAMP), 0, 1)
-        : STORM_PULL * clamp((dc / Math.max(1, g.stormR) - STORM_HOME) / (1 - STORM_HOME), 0, 1);
-      if (lean > 0.01) {
-        const toMid = Math.atan2(WORLD / 2 - s.y, WORLD / 2 - s.x);
-        desired += norm(toMid - desired) * lean; // swing part of the way onto the course home
-        if (out) throttle = Math.max(throttle, 0.9);
-      }
+      ({ desired, throttle } = weatherCourse(s, desired, throttle));
 
       // A hull carrying way will not come round. Ease off to swing the bow across, then pile it on —
       // which is what makes an AI charge something a captain can watch coming and step aside from.
@@ -1937,7 +1990,8 @@ export default function App() {
       if (!tgt) {
         s.wanderT -= dt;
         if (s.wanderT <= 0) { s.wander += (Math.random() - 0.5) * 1.2; s.wanderT = 1.5 + Math.random(); }
-        moveShip(s, dt, avoidIslands(s, nearWall ? Math.atan2(WORLD / 2 - s.y, WORLD / 2 - s.x) : s.wander), 0.4);
+        const idle = weatherCourse(s, nearWall ? Math.atan2(WORLD / 2 - s.y, WORLD / 2 - s.x) : s.wander, 0.4);
+        moveShip(s, dt, avoidIslands(s, idle.desired), idle.throttle);
         return;
       }
 
@@ -1954,7 +2008,11 @@ export default function App() {
       if (fleeing) {
         let away = Math.atan2(s.y - tgt.y, s.x - tgt.x);
         if (nearWall) away = Math.atan2(WORLD / 2 - s.y, WORLD / 2 - s.x);
-        moveShip(s, dt, avoidIslands(s, away), 0.95);
+        // ...and the weather has a say in where "away" is. A wounded captain running from the ship
+        // that wounded her is exactly who sails out of the ring and dies of the sea, so the run home
+        // is bent back the same way everyone else's course is.
+        const run = weatherCourse(s, away, 0.95);
+        moveShip(s, dt, avoidIslands(s, run.desired), run.throttle);
         return;
       }
 
@@ -1970,6 +2028,7 @@ export default function App() {
         desired = toT; throttle = 1; // opportunistic ram when already bow-on and close
       } else if (dist > 225) { desired = toT; throttle = 0.9; }
       else { const sign = bearing >= 0 ? 1 : -1; desired = toT - (sign * Math.PI) / 2; throttle = 0.5; }
+      ({ desired, throttle } = weatherCourse(s, desired, throttle));
       moveShip(s, dt, avoidIslands(s, desired), throttle);
 
       if (g.rules.guns) for (const wk of ["broadside", "bow", "musket"]) {
@@ -2079,8 +2138,9 @@ export default function App() {
     // it works — a dash across the weather costs a few hands, living out there costs the ship.
     function stepStorm(dt) {
       const g = gameRef.current;
-      if (!g.rules.storm) return;
-      g.stormR = stormRadius(g.time);
+      const w = g.rules.storm;
+      if (!w) return;
+      g.stormR = stormRadius(g.time, w);
       const cx = WORLD / 2, cy = WORLD / 2;
       // walked backwards because a ship the weather finishes is spliced out from under us
       for (let i = g.ships.length - 1; i >= 0; i--) {
@@ -2099,7 +2159,7 @@ export default function App() {
         if (s.crew <= 0 && s.alive) { s._deathBar = "storm"; killShip(s, null); }
       }
       // the countdown ticks in whole seconds, and going in or out of the weather is worth a redraw
-      const tick = Math.max(0, Math.ceil(STORM_GRACE - g.time));
+      const tick = Math.max(0, Math.ceil(w.grace - g.time));
       const playerOut = g.player.alive && Math.hypot(g.player.x - cx, g.player.y - cy) > g.stormR;
       if (tick !== g.stormTick || playerOut !== g.playerOut) {
         g.stormTick = tick;
@@ -2588,7 +2648,7 @@ export default function App() {
       };
       ring(6, "rgba(0,0,0,0.35)", [], 0);
       // it pulses harder once it is actually closing in
-      const closing = g.time > STORM_GRACE ? 1 : 0.45;
+      const closing = g.time > g.rules.storm.grace ? 1 : 0.45;
       ring(2.4, `rgba(209,91,91,${0.45 + 0.35 * closing * (0.5 + 0.5 * Math.sin(clock * 3))})`, [16, 12], -clock * 26);
     }
 
@@ -3252,11 +3312,16 @@ export default function App() {
   const rules = modeOf(mode);
 
   return (
+    // `manipulation` rather than `none`, and the difference matters: this div is the ancestor of every
+    // shop and menu screen, and a `none` up the chain can stop the one under a finger from scrolling.
+    // The sea takes `none` instead, on the canvas, which is where it belongs.
     <div
-      style={{ position: "relative", width: "100%", height: "100dvh", overflow: "hidden", background: C.water, userSelect: "none", WebkitUserSelect: "none", touchAction: "none", fontFamily: UI }}
+      style={{ position: "relative", width: "100%", height: "100dvh", overflow: "hidden", background: C.water, userSelect: "none", WebkitUserSelect: "none", touchAction: "manipulation", fontFamily: UI }}
       onContextMenu={(e) => e.preventDefault()}
     >
-      <canvas ref={canvasRef} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", display: "block" }} />
+      {/* The play surface swallows the lot: no pan, no pinch, no double-tap zoom. A finger on the sea
+          is steering or it is nothing, and a gesture landing here mid-fight is never what was meant. */}
+      <canvas ref={canvasRef} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", display: "block", touchAction: "none" }} />
 
       {phase === "playing" && (
         <>
@@ -3541,6 +3606,10 @@ function Shell({ children }) {
   return (
     // `margin:auto` rather than `align-items:center` so a tall menu on a short
     // screen scrolls from the top instead of having its head clipped off.
+    //
+    // It takes no touch-action of its own on purpose. The `manipulation` every element gets in
+    // `index.css` is what this screen wants: it scrolls under a finger, a reader who wants the small
+    // print bigger can still pinch it, and a double tap on a shop row is two taps rather than a zoom.
     <div style={{ position: "absolute", inset: 0, display: "flex", overflowY: "auto", padding: 24, background: "rgba(8,38,37,0.80)", backdropFilter: "blur(4px)" }}>
       <div style={{ margin: "auto", maxWidth: 360, textAlign: "center" }}>{children}</div>
     </div>
@@ -4072,14 +4141,15 @@ function YardScreen({ hold, onBack, onCommission, onOutfit }) {
         ))}
       </Slab>
 
-      {/* What she is short, and what of it is already lying in the hold. The cheapest legal fill is a
-          floor, not a recommendation: a pole mast is free and fits any socket. */}
+      {/* What she is short, and what of it the captain already owns, loose or aboard another of her
+          ships. The cheapest legal fill is a floor, not a recommendation: a pole mast is free and
+          fits any socket. */}
       <Slab title={want.gaps.length ? `She wants ${want.gaps.length} more ${want.gaps.length === 1 ? "part" : "parts"}` : "Fully found"}>
         {want.gaps.length ? (
           <>
             <TallyRow label="Cheapest way to fill her out" value={<Coins n={want.cost} />} />
             <TallyRow
-              label="Of those, already in the hold"
+              label="Of those, already yours"
               value={want.gaps.filter((g) => g.owned.length).length}
               rule="hair"
             />
@@ -4413,12 +4483,16 @@ function OutfitterScreen({ hold, onBack }) {
   const [picking, setPicking] = useState(null);
   const shipId = hold.yard.active;
   const loadout = useMemo(() => shipLoadout(hold), [hold]);
+  const fleetSize = Object.keys(hold.yard.ships).length;
 
-  // What she owns and has not fitted, counted by type, so the picker can offer "one in the hold"
-  // ahead of "one in the shop" and a captain never buys a second of something she already has.
-  const loose = useMemo(() => {
+  // Everything she owns that THIS ship is not already carrying, counted by type, so the picker can
+  // offer one she owns ahead of one in the shop and a captain never buys a second of something she
+  // has. Guns and canvas standing in her other hulls are in here: only one ship goes to sea, so a
+  // part being aboard the frigate is no reason the sloop cannot be found with it too. What is left
+  // out is this ship's own, which is what keeps ten guns from filling eleven ports.
+  const spare = useMemo(() => {
     const byType = new Map();
-    for (const pid of loosePartIds(hold)) {
+    for (const pid of spareParts(hold, shipId)) {
       const type = partOf(hold, pid);
       if (!type) continue;
       const list = byType.get(type.id) || [];
@@ -4426,11 +4500,11 @@ function OutfitterScreen({ hold, onBack }) {
       byType.set(type.id, list);
     }
     return byType;
-  }, [hold]);
+  }, [hold, shipId]);
 
   const close = () => setPicking(null);
   const fitFrom = (typeId, fit) => {
-    const held = loose.get(typeId);
+    const held = spare.get(typeId);
     if (held && held.length) return fit(held[0]);
     const bought = buyPart(typeId);
     if (bought) fit(bought.part);
@@ -4446,7 +4520,7 @@ function OutfitterScreen({ hold, onBack }) {
    * run out rather than refusing the lot.
    */
   const fitMany = (typeId, n, fit) => {
-    const held = (loose.get(typeId) || []).slice();
+    const held = (spare.get(typeId) || []).slice();
     for (let i = 0; i < n; i++) {
       const pid = held.shift();
       if (pid) {
@@ -4465,6 +4539,14 @@ function OutfitterScreen({ hold, onBack }) {
       <div style={{ fontSize: 12, color: "rgba(238,244,242,0.7)", margin: "6px 0 0" }}>
         Fitting out your {loadout.hull.name.toLowerCase()}.
       </div>
+      {/* Said only to a captain with a second hull, because it is only true of one. A part standing
+          in another of her ships reads "already yours" in the pickers below and costs nothing here,
+          and she is owed the reason why before she taps it. */}
+      {fleetSize > 1 && (
+        <div style={{ fontSize: 11, color: "rgba(238,244,242,0.5)", margin: "4px 0 0", lineHeight: 1.5 }}>
+          Whatever you own can be fitted here, and what your other ships carry stays aboard them.
+        </div>
+      )}
       <PurseLine hold={hold} />
 
       <Segmented
@@ -4540,7 +4622,7 @@ function OutfitterScreen({ hold, onBack }) {
                       : picking.what === "stud" ? "Take it in"
                       : "Take the sail off"
                   }
-                  loose={loose}
+                  spare={spare}
                   coins={hold.coins}
                   onRemove={() => {
                     if (picking.what === "mast") fitMast(shipId, socket.id, null);
@@ -4618,7 +4700,7 @@ function OutfitterScreen({ hold, onBack }) {
                     <Picker
                       title={picking.fill ? "One gun in every empty port" : "Guns for this mount"}
                       options={gunsForMount(mount)}
-                      loose={loose}
+                      spare={spare}
                       coins={hold.coins}
                       onPick={(type) => {
                         const fit = (pid) => fitGun(shipId, mount, pid);
@@ -4691,12 +4773,12 @@ function FitRow({ label, value, empty, indent, onClick }) {
 /**
  * What could go in a slot, in one list: what she already owns first, then what the shop sells.
  *
- * A part in the hold is free to fit and a part in the shop is not, and that is the whole difference,
- * so they are one list with different right-hand ends rather than two lists a captain has to compare.
- * Spare rigging off a ship she no longer sails is the reason instances move at all, and this is where
- * that pays off.
+ * A part she owns is free to fit and a part in the shop is not, and that is the whole difference, so
+ * they are one list with different right-hand ends rather than two lists a captain has to compare.
+ * What she owns counts the rigging and guns standing in her other hulls as well as what is lying
+ * loose, because being aboard one ship has never been a reason a part cannot be fitted to another.
  */
-function Picker({ title, options, fitted, removeLabel, loose, coins, onPick, onRemove, onClose }) {
+function Picker({ title, options, fitted, removeLabel, spare, coins, onPick, onRemove, onClose }) {
   return (
     <div style={{ borderTop: `1px solid ${C.hair}`, marginTop: 6, paddingTop: 6 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, paddingBottom: 2 }}>
@@ -4709,7 +4791,7 @@ function Picker({ title, options, fitted, removeLabel, loose, coins, onPick, onR
         </div>
       )}
       {options.map((type) => {
-        const held = (loose.get(type.id) || []).length;
+        const held = (spare.get(type.id) || []).length;
         const afford = held > 0 || coins >= type.price;
         return (
           <button
@@ -4729,7 +4811,9 @@ function Picker({ title, options, fitted, removeLabel, loose, coins, onPick, onR
               </span>
             </span>
             <span style={{ fontSize: 11, color: held ? C.grass : afford ? C.gold : "rgba(238,244,242,0.4)", whiteSpace: "nowrap" }}>
-              {held ? `${held} in the hold` : type.price === 0 ? "free" : <Coins n={type.price} />}
+              {/* "Already yours" rather than "in the hold": one of these may be standing in another
+                  of her hulls this minute, and it is hers to fit here all the same. */}
+              {held ? `${held} already yours` : type.price === 0 ? "free" : <Coins n={type.price} />}
             </span>
           </button>
         );
@@ -4944,7 +5028,12 @@ function EndOverlay({ title, titleColor, result, stats, mode, place, hold, banke
   // keeps, and a captain should be able to read straight down the column and see where the money
   // went. It is drawn in the same red as a sunk ship, and it is only shown when there is one.
   const payRows = [["From fighting", `+${fmtCoins(stats.coins)}`, null]];
-  if (rules.timeCoins > 0) payRows.push(["For time at sea", `+${fmtCoins(stats.timePay)}`, null]);
+  // A winner is paid for a whole round however early she ended it, and the row has to say so: a
+  // captain who read "For time at sea" beside a clock showing 1:12 and a purse of 205 would be
+  // owed an explanation the screen was not giving her.
+  if (rules.timeCoins > 0) {
+    payRows.push([stats.paidInFull ? "For a full round at sea" : "For time at sea", `+${fmtCoins(stats.timePay)}`, null]);
+  }
   if (stats.winPay > 0) payRows.push(["For winning", `+${fmtCoins(stats.winPay)}`, null]);
   if (stats.repaired > 0) payRows.push(["Paid to the carpenter", `-${fmtCoins(stats.repaired)}`, C.crew]);
   return (

@@ -48,9 +48,11 @@ serves from the domain root instead — Netlify, Vercel, a plain static host —
   where they stay. The AI hunts whoever is weakest and gangs up on a runaway leader. For the first
   `OPENING_WINDOW` seconds it simply takes the nearest hull, since nobody has a reputation yet. It
   also fires on ships it is not hunting when one drifts into a weapon's arc, with a per-captain pause
-  afterwards so the sea isn't wall-to-wall powder smoke. Outlasting the field pays a `winBonus` of 25
-  on top of what her guns took, which is smaller than the derby's because a free-for-all captain has
-  been paid all round for the fighting that got her there.
+  afterwards so the sea isn't wall-to-wall powder smoke. A squall closes here too, later and wider
+  than the derby's, because a wounded captain runs at a third of her health and a runner has two
+  thousand paces of sea to do it in. Time afloat is paid by the second, and outlasting the field pays
+  a `winBonus` of 25 on top of it and on top of what her guns took, which is smaller than the derby's
+  because a free-for-all captain has been paid all round for the fighting that got her there.
 
 AI ships reload on exactly the same cooldowns as the player in every mode that has guns; their only
 handicap is a touch of spread on every shot.
@@ -61,21 +63,39 @@ hostile to every other, or only the player's), `ranked`, `lastAfloatWins`, `rein
 simulation, the HUD, the menu cards, and the end screen all read those rules, so a new mode is a new
 row rather than a dozen scattered checks that have to be taught about it.
 
-### The derby
+### The weather
 
-Without cannon nothing can bring a mast down, so every hull holds the same top speed for the whole
-match and a fleeing captain could never be run down. The squall is what makes the fight happen. It
-opens at `STORM_R0` — just past the far corners of the map, so closing bites at once rather than
-spending its first seconds on empty water — holds for `STORM_GRACE`, and takes `STORM_CLOSE` seconds
-to shrink to `STORM_R1`, which leaves room for two ships to work but nowhere to hide. It closes on the
-middle of the map, which the island generator always leaves clear.
+Two modes carry a closing ring, and the shape of it is a field on the mode row rather than a set of
+globals, because what the ring has to leave room for is not the same thing in both. A shape is five
+numbers — `grace`, `close`, `ring`, `hold`, `squeeze` — and the four times add up to how long a round
+runs when nobody settles it sooner. `DERBY_WEATHER` is 18, 95, 190, 20, 35, which comes to 168
+seconds; `FFA_WEATHER` is 40, 100, 300, 25, 35, which comes to 200.
 
-Then, after `STORM_HOLD`, the eye itself shuts over `STORM_SQUEEZE` seconds until there is no fair
-water left at all. A small ring is not enough to settle a round on its own: a ram needs closing speed
-to count for anything, and two ships penned in a pool a hundred paces across can mill about
-indefinitely without ever getting the run at each other that would end it — left alone, better than
-two minutes of it. Weather asks nobody for a run-up, so the last hull afloat is whoever has crew
-enough to outlast the sea.
+It opens at `STORM_R0` — just past the far corners of the map, so closing bites at once rather than
+spending its first seconds on empty water — holds there for `grace`, and takes `close` seconds to
+shrink to `ring`, the working size. It closes on the middle of the map, which the island generator
+leaves clear out to that mode's whole working ring plus `RING_CLEAR`: a headland in the eye of the
+storm would be somewhere to hide from the one thing that stops anyone hiding.
+
+Then, after `hold`, the eye itself shuts over `squeeze` seconds until there is no fair water left at
+all. A working ring is not enough to settle a round on its own: a ram needs closing speed to count for
+anything, and two ships penned in a pool a hundred paces across can mill about indefinitely without
+ever getting the run at each other that would end it — left alone, better than two minutes of it.
+Weather asks nobody for a run-up, so the last hull afloat is whoever has crew enough to outlast the
+sea.
+
+**The derby** is settled at the length of a bowsprit, and its ring is the size of the fight it is
+forcing. Without cannon nothing can bring a mast down, so every hull holds the same top speed for the
+whole match and a fleeing captain could never be run down: the squall is what makes the fight happen
+at all, which is why it starts closing after 18 seconds.
+
+**The free-for-all** is settled by gunfire, and a broadside carries better than two hundred paces. Pen
+that fight into the derby's ring and every ship inside it lies under every other ship's guns from the
+moment it closes, which is not a fight either, only a bonfire. So its ring works at 300 and takes
+longer to get there: ten captains with guns thin themselves out long before the weather is what
+settles anything, and the gunnery half of a round happens in open water. What the ring is there for is
+the end of one — three wounded captains keeping their distance, or a hull running at a third of her
+health across two thousand paces of sea.
 
 The weather works on the crew, exposed on deck, rather than on the hull, and it is not an attack: no
 captain is paid for it and it does not run through the damage path a ram does. Its bite starts at
@@ -90,6 +110,11 @@ a shove into the rain is something she rides out and a pinning is something she 
 back from. It is a preference rather than an override on purpose — being fenced off the edge would
 make her impossible to shoulder out there, and driving a rival into the weather and holding her in it
 is a way to win a fight without ever holing her.
+
+Both AIs steer through the same `weatherCourse()`, and the gunners have to: a free-for-all captain
+runs from a wound rather than from the ring, and the rival who wounded her is behind her, so the
+course that saves her from the guns is the course that sails her out of the round. The lean is
+applied to the run home as well as to the chase.
 
 Ram-only captains reason differently from gunners. They want a rival's beam, because that is where a
 hull is staved in; they turn to meet a charge bow to bow, because that makes the blow a glance the
@@ -118,19 +143,24 @@ A chase she is not winning after `STALL_PATIENCE` seconds gets the same treatmen
 direction — she takes the way off her and comes round inside instead of following a wake she can never
 catch, since a slow hull turns far inside a fast one.
 
-#### What the derby pays
+#### What time at sea pays
 
-Staying afloat is most of the work, so it is paid by the second (`timeCoins`) on top of what a
-captain's bow earns her. Win, and she is paid for a whole round — `fullRound` — however early she
-settled it, plus `winBonus` for being the last hull afloat: 175 and 75, so a win comes to 250 before a
-single ram is counted. Left alone a round actually runs `STORM_GRACE + STORM_CLOSE + STORM_HOLD +
-STORM_SQUEEZE`, 168 seconds as the weather is tuned, so the winner's is a set purse a shade above the
-clock rather than a figure that tracks it — retune the storm and this wants looking at.
+Both modes with weather pay for it by the second (`timeCoins`), on top of what a captain's guns and
+bow earn her. Win, and she is paid for a whole round — `fullRound` — however early she settled it,
+plus `winBonus` for being the last hull afloat. The derby pays 175 and 75, so a win comes to 250
+before a single ram is counted; the free-for-all pays 205 and 25, which is a smaller bounty on top of
+a larger one, since her guns have been earning all round.
+
+`fullRound` is a set purse a shade above the full span of that mode's weather — 168 seconds in the
+derby, 200 in the free-for-all — rather than a figure that tracks the clock, so retuning a ring wants
+this looked at with it.
 
 Settling it in forty seconds therefore pays the same purse as outlasting the weather for the full
 span, which is to say it pays far better an hour: the time she saves is hers to spend on the next
 round. The end screen lists the parts — what she fought for, what her time afloat was worth, and the
-winner's bounty — so the tally adds up to what actually reaches the hold.
+winner's bounty — so the tally adds up to what actually reaches the hold. The time row says "For a
+full round at sea" when she is being paid for one, because a captain reading "For time at sea" beside
+a clock showing 1:12 and a purse of 205 is owed the explanation.
 
 ## The hold
 
@@ -215,13 +245,14 @@ sea is still the same hull. `docs/SHIPYARD.md` is the design note; the short ver
   Guns fit by the piece up to the
   hull's bearing; `broadside` counts guns **a side**, mirrored, because that is how a volley fires, and
   runs 2 on the cutter to 10 on the galleon. Muskets come off the crew rather than being bought.
-- Parts are catalogue *types*, and a captain owns *instances*. An instance is in one slot or in none,
-  which is what lets rigging and guns move between ships and stops one suit of sails rigging three at
-  once. Anything no ship references is loose in the hold, and loose is the inventory.
+- Parts are catalogue *types*, and a captain owns *instances*. An instance is in one slot of a ship or
+  in none of hers, so fifty ports still want fifty guns bought; but nothing she owns is exclusive to
+  one hull, so the guns and canvas aboard the frigate are the same ones her sloop is found with. Only
+  one ship goes to sea at a time, and what she owns, every ship she owns can carry.
 - The yard lives in the same `localStorage` record as the coins, so a purchase moves both in one
   write. A record from before it existed folds forward and is granted a first ship. `shortfall()`
-  answers what a ship still needs and how much of it the captain already owns, so a spare mast off
-  another hull costs nothing to step.
+  answers what a ship still needs and how much of it the captain already owns, so a mast off another
+  hull costs nothing to step and does not come out of that hull to do it.
 - `src/galleon.js` draws a rig rather than *the* rig. `drawGalleon(ctx, w, h, deg, spec)` builds
   whatever is stepped and bent on; called without a spec it builds the galleon it always drew.
 - **The menu ship is a control.** Her plate carries the class she is and `Tap to edit`, and opens the
@@ -267,6 +298,18 @@ Pointer/touch driven, so it works the same with a mouse or on a phone:
 - **Virtual joystick** (bottom left) — steer and throttle.
 - **SIDE / FRONT / MUSKET** (bottom right) — hold to fire; each has its own cooldown, range, and
   damages a different system. Absent in a mode that carries no guns.
+
+**A double tap is a tap twice.** Fire, patch, fire again is ordinary play, and a phone reads two taps
+inside a few hundred milliseconds as "zoom in on whatever is under the finger". `user-scalable=no` in
+the viewport meta does not stop it: iOS Safari has ignored that since iOS 10, on the grounds that a
+page should never be able to stop a reader zooming in. What every browser does honour is
+`touch-action`, so `index.css` sets `manipulation` on every element — the value has to be on the
+element under the finger, and a label inside a button inside a card is what actually gets hit.
+Panning and pinch still work, so nothing a reader chooses to do is taken away; only the double-tap
+gesture stops being a zoom. The canvas, the joystick and the fire buttons set the stronger `none`
+inline, since a stray pan or pinch on the play surface mid-fight is worse still. The one thing that
+must not carry `none` is an ancestor of a shop or menu screen: a `none` up the chain can stop the
+screen under a finger from scrolling at all.
 - **Repair rail** (top) — two buttons, priced on opposite principles because they are opposite jobs.
   **HULL** is a coin a point and nothing else: no base, no rate, no share of anything. A coin buys
   back exactly the damage a coin of gunnery earned, so a light patch is cheap and a purse short of the
@@ -435,5 +478,6 @@ long the second ship of a wave holds off). `OPENING_WINDOW`
 sets how long free-for-all captains fight whoever is nearest before they start picking their prey.
 `HOLD_SHARE` in `src/hold.js` is the one knob on the economy that outlives a round.
 
-The derby has its own block: `DERBY_AI` (rivals, so ten captains start) and the `STORM_*` constants
-described above.
+The derby has its own block: `DERBY_AI` (rivals, so ten captains start). The weather's bite and the
+AI's answer to it are the `STORM_*` constants described above, shared by every mode that has one; the
+shape of each ring is `DERBY_WEATHER` and `FFA_WEATHER`, read off the mode row.
