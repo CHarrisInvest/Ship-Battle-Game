@@ -1778,7 +1778,9 @@ export default function App() {
     const ARCS = {
       broadside: (d, ab) => d < 220 && Math.abs(ab - Math.PI / 2) < 0.4,
       bow: (d, ab) => d < 360 && ab < 0.28,
-      musket: (d, ab) => d < 130 && ab < 0.45,
+      // half the volley's arc plus a little, so an AI captain looses when a hull is somewhere in her
+      // fire rather than when it is merely off the bow
+      musket: (d, ab) => d < 130 && ab < 0.3,
     };
     function linedUp(s, weapon, primary) {
       const g = gameRef.current;

@@ -622,6 +622,13 @@ pull the volley in and the hands keep it from ever closing to a point. When the 
 hands give way and every swivel still fires, because a mounted gun does not queue for elbow room —
 which is also what keeps a bought part from doing nothing, the trap the half-musket fell into.
 
+`MUSKET_ARC` itself is 0.5 now rather than the 0.8 the table above records, about 14 degrees a side:
+the old figure threw a volley wide enough that a hull dead off the bow took only the middle of it,
+and the fan read as a shotgun rather than as a rail of men laying at one ship. The AI's arc gate for
+the weapon came in with it, since a captain who looses at anything within 26 degrees of her bow is
+firing past her own scatter. Nothing in `measure()` moves: strength reads the count and one ball's
+damage, never the spread.
+
 Three grades on the rail now: the swivel gun, the bronze swivel and the long swivel, told apart by
 `damage` and `group`. `measure()` multiplies the count by `musketDamage` at `MUSKET_VOLLEYS` a second
 rather than by its old flat `MUSKET_DPS`; the pace is set so a plain ball still measures the 2.4 a
