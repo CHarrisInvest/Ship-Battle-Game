@@ -1385,7 +1385,7 @@ const MAST_SHARE = 0.55;
  */
 const SWIVEL_MUSKETS = 1;
 const MUSKET_BALL = 3.2; // what one hand's musket takes off a crew, the flat the fight was tuned on
-const MUSKET_ARC = 0.8; // the arc a musket volley scatters over, in radians, about 23 degrees a side
+const MUSKET_ARC = 0.5; // the arc a musket volley scatters over, in radians, about 14 degrees a side
 
 const sum = (xs, f) => xs.reduce((a, x) => a + f(x), 0);
 
