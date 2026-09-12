@@ -36,11 +36,27 @@
 
 import {
   HULLS, PARTS, STARTER, gunsForMount, mastFitsSocket, mastsForSocket, resolve, sailFitsBerth,
-  sailsForBerth, socketOf, studFitsSail,
+  sailsForBerth, socketOf, studFitsSail, gunTons, gunFits, TONS_SLACK,
 } from "./shipyard.js";
 
 const KEY = "sternchase.hold";
 const VERSION = 2;
+
+/**
+ * The longest name a captain can give a ship. Long enough for "Royal Sovereign" with room over, short
+ * enough that the plate on the menu never has to wrap it under her turning hull.
+ */
+export const NAME_LIMIT = 24;
+
+/**
+ * A name as the record keeps it: trimmed, one space between words, cut to the limit, and an empty
+ * string for anything that is not a string or has nothing in it. An empty name means "not named", and
+ * `shipName` reads it as her class, so a ship a captain has not named reads exactly as she always did.
+ */
+export function cleanName(raw) {
+  if (typeof raw !== "string") return "";
+  return raw.replace(/\s+/g, " ").trim().slice(0, NAME_LIMIT).trim();
+}
 
 // Share of a voyage's earnings that reaches the hold. At 1 every coin you earn at sea is also logged
 // ashore — spending at sea costs you nothing here, so upgrading mid-round is never a tax on progress.
@@ -159,7 +175,7 @@ function sanitizeYard(raw) {
     if (!s || typeof s !== "object") continue;
     const hull = HULLS[s.hull];
     if (!hull) continue; // a class that no longer exists takes its slots with it; the parts stay loose
-    const ship = { hull: hull.id, rig: {}, guns: { broadside: [], bow: [], swivel: [] } };
+    const ship = { hull: hull.id, name: cleanName(s.name), rig: {}, guns: { broadside: [], bow: [], swivel: [] } };
     used.clear(); // one slot to a part on THIS ship; her sister may carry the same one
 
     for (const socket of hull.sockets) {
@@ -192,12 +208,20 @@ function sanitizeYard(raw) {
       });
     }
 
+    // Her tonnage is checked here as well as at the rail, so a record written before the cap held
+    // comes up under it: the guns past it come loose into the hold, last fitted first, rather than
+    // sailing over a limit the outfitter now refuses.
+    let iron = 0;
     for (const mount of ["broadside", "bow", "swivel"]) {
       const want = ((s.guns && s.guns[mount]) || []).slice(0, hull.guns[mount]);
       for (const stored of want) {
         const gunId = take(stored, "gun");
         if (!gunId) continue;
-        if (PARTS[yard.parts[gunId].type].mount !== mount) { used.delete(gunId); continue; }
+        const type = PARTS[yard.parts[gunId].type];
+        if (type.mount !== mount) { used.delete(gunId); continue; }
+        const tons = gunTons(type);
+        if (iron + tons > hull.tons + TONS_SLACK) { used.delete(gunId); continue; }
+        iron += tons;
         ship.guns[mount].push(gunId);
       }
     }
@@ -227,7 +251,7 @@ function mintPart(yard, typeId) {
 function grantStarter(yard) {
   const hull = HULLS[STARTER.hull];
   const id = nextId(yard, "s");
-  const ship = { hull: hull.id, rig: {}, guns: { broadside: [], bow: [], swivel: [] } };
+  const ship = { hull: hull.id, name: "", rig: {}, guns: { broadside: [], bow: [], swivel: [] } };
   for (const socket of hull.sockets) {
     const want = STARTER.rig[socket.id];
     const slot = { mast: null, sails: [], studs: [] };
@@ -417,6 +441,7 @@ export function resetHold() {
 
 const cloneShip = (s) => ({
   hull: s.hull,
+  name: s.name || "",
   rig: Object.fromEntries(Object.entries(s.rig).map(([k, v]) => [k, { mast: v.mast, sails: v.sails.slice(), studs: (v.studs || []).slice() }])),
   guns: { broadside: s.guns.broadside.slice(), bow: s.guns.bow.slice(), swivel: s.guns.swivel.slice() },
 });
@@ -448,6 +473,31 @@ export function partOf(rec, partId) {
 /** Every ship a captain owns, as `{ id, ...record }`, oldest first. */
 export function ownedShips(rec) {
   return Object.entries(rec.yard.ships).map(([id, ship]) => ({ id, ...ship }));
+}
+
+/**
+ * What a ship is called: the name her captain gave her, or her class until she has one. Pass no id
+ * for the ship she sails. Every screen that prints a ship's name reads it from here, so a ship is
+ * called one thing everywhere.
+ */
+export function shipName(rec, shipId) {
+  const id = shipId || rec.yard.active;
+  const ship = rec.yard.ships[id];
+  if (!ship) return "";
+  if (ship.name) return ship.name;
+  return HULLS[ship.hull] ? HULLS[ship.hull].name : ship.hull;
+}
+
+/** Every gun she carries, in tons, off her record in `yard`. What `hull.tons` is a cap on. */
+function ironOf(yard, ship) {
+  let tons = 0;
+  for (const mount of ["broadside", "bow", "swivel"]) {
+    for (const pid of ship.guns[mount]) {
+      const p = yard.parts[pid];
+      if (p && PARTS[p.type]) tons += gunTons(PARTS[p.type]);
+    }
+  }
+  return tons;
 }
 
 /** Every part id one ship is carrying: her masts, her sails, her studdingsails and her guns. */
@@ -545,10 +595,21 @@ export function shortfall(rec, shipId) {
     });
   }
 
+  // Her ports are counted under her tonnage, port by port, with the iron of every fill so far on
+  // her books: a gun she owns that would put her over is not an answer to this gap, and a port
+  // nothing in the shop is light enough for is not a gap at all. She cannot carry it, so she does
+  // not want it, and the count above the outfitter says how many she can actually take.
+  let iron = ironOf(rec.yard, ship);
   for (const mount of ["broadside", "bow", "swivel"]) {
     const short = hull.guns[mount] - ship.guns[mount].length;
     for (let i = 0; i < short; i++) {
-      gaps.push(gap({ part: "gun", mount }, (t) => t.part === "gun" && t.mount === mount, gunsForMount(mount)));
+      const room = hull.tons - iron;
+      const fits = (t) => t.part === "gun" && t.mount === mount && gunTons(t) <= room + TONS_SLACK;
+      const options = gunsForMount(mount).filter(fits);
+      if (!options.length) break;
+      const g = gap({ part: "gun", mount }, fits, options);
+      iron += gunTons(g.owned.length ? PARTS[rec.yard.parts[g.owned[0]].type] : g.buy);
+      gaps.push(g);
     }
   }
 
@@ -590,11 +651,168 @@ export function buyShip(hullId) {
   const id = nextId(yard, "s");
   yard.ships[id] = {
     hull: hull.id,
+    name: "",
     rig: Object.fromEntries(hull.sockets.map((s) => [s.id, { mast: null, sails: [], studs: [] }])),
     guns: { broadside: [], bow: [], swivel: [] },
   };
   const next = commitYard(rec, yard, hull.price);
   return next ? { hold: next, ship: id } : null;
+}
+
+/**
+ * Name a ship, or pass an empty string to take the name off her and let her go by her class again.
+ * The name is cleaned the way the record keeps it, so what comes back from storage is what was set.
+ */
+export function nameShip(shipId, name) {
+  const rec = current();
+  if (!rec.yard.ships[shipId]) return null;
+  const yard = cloneYard(rec.yard);
+  yard.ships[shipId].name = cleanName(name);
+  return commitYard(rec, yard);
+}
+
+/**
+ * What "fit what you own" would do to one ship, worked out on a copy and not written anywhere: the
+ * yard it would leave, and how many parts went aboard. The yard screen asks this to know whether to
+ * offer the button and what to say on it, and `fitOwned` asks it and then keeps the answer.
+ *
+ * Her rig goes first, through `shortfall()`'s gaps, asked again after each pass because a mast just
+ * stepped opens berths that were not gaps until it stood. Then her guns, port by port out of the
+ * guns she owns, best gun first while her tonnage bears it and any lighter one that still fits after
+ * that. The guns are not taken from the gaps because a gap names one spare and the first spare that
+ * fits a port may be one she cannot bear; the ports want the first that fits her.
+ */
+export function ownedFill(rec, shipId) {
+  const ship = rec.yard.ships[shipId];
+  if (!ship) return { yard: null, fitted: 0 };
+  const yard = cloneYard(rec.yard);
+  const her = yard.ships[shipId];
+  const hull = HULLS[her.hull];
+  let fitted = 0;
+  // Bounded rather than open, because every pass that fits nothing ends it and a pass that fits
+  // something has fewer gaps left than the last; the rig is at most a handful of masts deep.
+  for (let pass = 0; pass < 8; pass++) {
+    const { gaps } = shortfall({ ...rec, yard }, shipId);
+    let did = 0;
+    for (const g of gaps) {
+      if (g.part === "gun" || !g.owned.length) continue;
+      const pid = g.owned[0];
+      const type = PARTS[yard.parts[pid].type];
+      pull(her, pid);
+      if (g.part === "mast") her.rig[g.socket] = { mast: pid, sails: type.berths.map(() => null), studs: type.berths.map(() => null) };
+      else her.rig[g.socket].sails[g.berth] = pid;
+      did++;
+    }
+    fitted += did;
+    if (!did) break;
+  }
+  const spareGuns = spareParts({ ...rec, yard }, shipId)
+    .map((pid) => ({ pid, type: PARTS[yard.parts[pid].type] }))
+    .filter((p) => p.type.part === "gun")
+    .sort((a, b) => b.type.damage - a.type.damage);
+  const used = new Set();
+  for (const mount of ["broadside", "bow", "swivel"]) {
+    while (her.guns[mount].length < hull.guns[mount]) {
+      const iron = ironOf(yard, her);
+      const pick = spareGuns.find((p) => !used.has(p.pid) && p.type.mount === mount && gunFits(p.type, iron, hull.tons));
+      if (!pick) break;
+      used.add(pick.pid);
+      her.guns[mount].push(pick.pid);
+      fitted++;
+    }
+  }
+  return { yard, fitted };
+}
+
+/**
+ * How far what she already owns would go towards a hull she has not bought.
+ *
+ * The hull shop's question is "what would this class cost me", and the honest answer depends on the
+ * hold: a captain with a spare suit of square rig and twenty guns is most of the way to a frigate
+ * already. So a bare ship of the class is stood up on a copy of the yard, `ownedFill` is run against
+ * it exactly as the yard's button would run it, and what comes back is what she would have aboard
+ * before spending a coin, and what the rest would cost at the cheapest.
+ *
+ * Berths are counted on the masts that fitted, because berths on a mast she does not own are not a
+ * figure anyone can act on; the cost line carries the rest.
+ */
+export function readiness(rec, hullId) {
+  const hull = HULLS[hullId];
+  if (!hull) return null;
+  const yard = cloneYard(rec.yard);
+  const id = "trial";
+  yard.ships[id] = {
+    hull: hull.id,
+    name: "",
+    rig: Object.fromEntries(hull.sockets.map((s) => [s.id, { mast: null, sails: [], studs: [] }])),
+    guns: { broadside: [], bow: [], swivel: [] },
+  };
+  const trial = { ...rec, yard };
+  const filled = ownedFill(trial, id);
+  const after = { ...rec, yard: filled.yard };
+  const her = filled.yard.ships[id];
+  let masts = 0, berths = 0, sails = 0;
+  for (const socket of hull.sockets) {
+    const slot = her.rig[socket.id];
+    if (!slot.mast) continue;
+    masts++;
+    const type = PARTS[filled.yard.parts[slot.mast].type];
+    berths += type.berths.length;
+    sails += slot.sails.filter(Boolean).length;
+  }
+  const guns = her.guns.broadside.length + her.guns.bow.length + her.guns.swivel.length;
+  const ports = hull.guns.broadside + hull.guns.bow + hull.guns.swivel;
+  return {
+    masts, sockets: hull.sockets.length,
+    sails, berths,
+    guns, ports,
+    fitted: filled.fitted,
+    cost: shortfall(after, id).cost,
+  };
+}
+
+/**
+ * What a part sold back is worth, as a share of what it cost. Full, because the shipyard is where a
+ * captain tries things: a gun bought, run out, felt at sea and taken off again should not have cost
+ * her the trying. Set below 1 if the meta economy ever needs a part to be a commitment.
+ */
+export const REFUND_SHARE = 1;
+
+/** What selling one part of this type puts back in the hold. */
+export const refundOf = (type) => Math.round(type.price * REFUND_SHARE);
+
+/**
+ * Sell one part back to the yard. It comes off whichever of her ships carry it, because a part is
+ * one instance wherever it stands, and the refund goes into the hold. `spent` comes down by the
+ * same amount so the ledger still reconstructs what she earned.
+ */
+export function sellPart(partId) {
+  const rec = current();
+  const type = partOf(rec, partId);
+  if (!type) return null;
+  const yard = cloneYard(rec.yard);
+  for (const ship of Object.values(yard.ships)) pull(ship, partId);
+  delete yard.parts[partId];
+  const refund = refundOf(type);
+  return commit({ ...rec, coins: rec.coins + refund, spent: Math.max(0, rec.spent - refund), yard });
+}
+
+/**
+ * Fit everything she owns that fits, into every empty slot of one ship, in one act and for nothing.
+ *
+ * Buying a hull gets a hull, and a captain with a spare suit of masts and sails and a battery in the
+ * hold should not have to walk through every socket to put them aboard. Nothing is bought: what she
+ * owns goes aboard, what she does not stays a gap for the outfitter, and a gun goes aboard only if
+ * her tonnage bears it. See `ownedFill` for the order.
+ *
+ * Returns the new hold with how many parts went aboard, or `null` if nothing she owns fitted.
+ */
+export function fitOwned(shipId) {
+  const rec = current();
+  const { yard, fitted } = ownedFill(rec, shipId);
+  if (!fitted) return null;
+  const next = commitYard(rec, yard);
+  return next ? { hold: next, fitted } : null;
 }
 
 /** Buy one part. It lands loose in the hold; fitting it is a separate, free act. */
@@ -714,6 +932,9 @@ export function fitGun(shipId, mount, partId) {
   const her = yard.ships[shipId];
   pull(her, partId);
   if (her.guns[mount].length >= hull.guns[mount]) return null;
+  // Her tonnage is a hard limit, and it is checked after the pull for the same reason the port count
+  // is: a gun already aboard her weighs what it weighs once, wherever it stands.
+  if (!gunFits(gun, ironOf(yard, her), hull.tons)) return null;
   her.guns[mount].push(partId);
   return commitYard(rec, yard);
 }

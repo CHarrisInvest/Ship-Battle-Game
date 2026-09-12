@@ -1399,6 +1399,27 @@ const BARE = 0.30;
 const UNDER_SAIL = 0.92; // added to BARE as drive runs away, so a well-rigged hull rates a little over 1
 const HAND_PER_POINT = 0.16; // how much a point of sail handling moves her turn rate
 const LOAD_BITE = 0.22; // handling lost when she is loaded to her tonnage in guns
+
+/**
+ * WHAT A GUN WEIGHS ON HER BOOKS. A broadside gun is bought once and mounted both sides, so it counts
+ * twice against her tonnage; a chaser and a swivel stand once and count once. This is the one place
+ * the doubling is written, and `rate()`, the hold's tonnage check and every screen that prints a
+ * gun's weight read it from here rather than each keeping a copy of the rule.
+ */
+export const gunTons = (gun) => gun.weight * (gun.mount === "broadside" ? 2 : 1);
+
+/** Every gun she carries, in tons. The figure her `tons` is a cap on. */
+export const ironAboard = (guns) =>
+  sum(guns.broadside.filter(Boolean), gunTons) + sum(guns.bow.filter(Boolean), gunTons) + sum(guns.swivel.filter(Boolean), gunTons);
+
+/**
+ * Slack on a tonnage check. Weights are decimals and a battery that adds up to exactly her figure
+ * is legal, so the comparison allows a rounding error and no more.
+ */
+export const TONS_SLACK = 1e-6;
+
+/** True if this gun can go aboard with `iron` tons already carried on a hull that bears `tons`. */
+export const gunFits = (gun, iron, tons) => iron + gunTons(gun) <= tons + TONS_SLACK;
 /**
  * SMALL ARMS COME OFF THE CREW, AND NOT IN PROPORTION TO THEM.
  *
@@ -1508,7 +1529,7 @@ export function rate(loadout) {
     bow: loadout.guns.bow.filter(Boolean),
     swivel: loadout.guns.swivel.filter(Boolean),
   };
-  const weight = sum(guns.broadside, (g) => g.weight * 2) + sum(guns.bow, (g) => g.weight) + sum(guns.swivel, (g) => g.weight);
+  const weight = ironAboard(guns);
   const load = Math.min(1, weight / hull.tons);
 
   const pull = drive / (drive + hull.canvas);
@@ -1629,6 +1650,32 @@ export function berthEffect(loadout, socketId, berthIndex, sail, stud) {
   const was = rate(loadout);
   const now = rate(changed);
   return { speed: now.speed - was.speed, turn: now.turn - was.turn };
+}
+
+/**
+ * What running one more gun out at a mount would do to her: the ship as she stands against the ship
+ * with this gun aboard. `damage` is what the mount's volley gains and `side` is what it would throw
+ * in all, both in the same points the fight takes off a hull; `turn` is the handling the iron costs
+ * her. The same shape as `berthEffect`, and for the same reason: a gun's figure on the shelf is what
+ * it does to THIS ship, and a 12-pounder is a different purchase on a cutter and a first rate.
+ */
+export function gunEffect(loadout, mount, gun) {
+  const changed = { ...loadout, guns: { ...loadout.guns, [mount]: [...loadout.guns[mount], gun] } };
+  const was = rate(loadout);
+  const now = rate(changed);
+  return { damage: now[mount].damage - was[mount].damage, side: now[mount].damage, turn: now.turn - was.turn };
+}
+
+/**
+ * The least it costs to bend canvas on every berth of a mast: the cheapest sail that fits each. A
+ * mast is a purchase that opens more purchases, and the shelf should say so before the tap rather
+ * than after it.
+ */
+export function cheapestCanvas(mast) {
+  return sum(mast.berths, (b) => {
+    const fits = sailsForBerth(b).slice().sort((x, y) => x.price - y.price)[0];
+    return fits ? fits.price : 0;
+  });
 }
 
 /** What her rigging is worth: every mast and every sail aboard, at what they cost to buy. */

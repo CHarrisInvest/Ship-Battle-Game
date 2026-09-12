@@ -626,7 +626,11 @@ round, not her savings.
   reference row, menu and sea alike, and her size and collision ellipse come with the model. There is
   still no size figure in the catalogue, which is why none can go stale.
 - No sail designs or cloth patterns. Those hang off ids without touching any of the numbers here.
-- No selling parts back. Easy to add; wanted a decision on whether it refunds in full first.
+- ~~No selling parts back.~~ Built, and it refunds in full: `REFUND_SHARE` in `hold.js` is 1, because
+  the shipyard is where a captain tries things and a gun bought, felt at sea and taken off again
+  should not have cost her the trying. It is one constant to lower if a part ever needs to be a
+  commitment. Selling is from the outfitter's Spares tab, which lists everything she owns that this
+  ship is not carrying, loose or standing in a sister ship, and says which before the tap.
 - ~~**No hull blurbs.**~~ The sixteen classes at sea each carry one now, written with the fleet rather
   than invented for the rows that had none. `blurb` remains an optional column and the shops still
   sell a class on her figures; the line is there for a card that wants prose. None of them has been
@@ -811,9 +815,66 @@ by socket with every berth named and every empty one marked bare, how many guns 
 against how many she has, and what `shortfall()` says she still wants. Empty sockets and bare berths
 are listed rather than skipped, because the gaps are the point of the screen.
 
-Buying and fitting are through the two doors under it, and they are two rather than one because they
-are different decisions: a hull is a rare purchase a captain saves for, a rig is a dozen small ones,
-and one screen would bury the second in the first.
+Buying a hull is through the one door under it. Fitting is through the rows themselves: tapping a
+socket, a berth or a mount opens the outfitter on that thing, with its picker already up where there
+is only one thing the tap can mean, an empty socket or an empty port. There was a second door reading
+"Rigging Outfitter" and it sent a captain the long way round to the same screen through a tab and a
+scroll. The hull shop stays a door because a hull is a rare purchase a captain saves for, and a rig
+is a dozen small ones made from the thing being changed.
+
+**The yard looks at any ship she owns.** A strip at its head, and at the outfitter's, turns it to any
+hull in her fleet, and the plate on the menu has arrows that do the same. Looking and sailing are two
+different acts: the ship she sails says so under the strip, and any other offers "Sail her". Before
+this the only way to change ship was a list at the foot of the hull shop, under sixteen rows of
+classes she was not buying.
+
+**She has a name.** The record carries one, empty until given, and `shipName` reads it or her class.
+It is set from the yard, "Name her" beside her class until she has one and "Rename her" after, and
+it is what the plate on the menu sets in the display face with her class in ordinary text under it.
+The plate never says the same words twice: an unnamed ship goes by her class, so only her rate goes
+under it, and a class named for her rate is said once.
+
+**Her iron is on every screen that talks about guns.** "Iron aboard, 44.2 of 45.4 tons" with a bar,
+on the plate, in the yard's gun slab and at the head of the outfitter's guns, with the rule in one
+line under it: a broadside gun counts twice, a chaser and a swivel once, and she refuses a gun she
+cannot bear. The cap was there all along and appeared nowhere, which made it a rule nobody could
+plan around, and it was soft, costing handling and nothing else. It is hard now, at the rail and on
+load, and the gun picker greys a gun she cannot bear the way it greys one she cannot afford, with
+"adds 1.7 tons, more than she can bear" on its line.
+
+**Fit what you own** puts every spare she owns into an empty slot it fits, in one tap and for
+nothing: masts first, then the sails their berths open, then guns under her tonnage, best gun first.
+It is worked out on a copy before it is offered, so the button says how many parts it will fit and
+is not shown when the answer is none.
+
+**The figures explain themselves, behind a tap.** "What the figures mean" under the sailing slab
+opens one line per figure saying what the fight does with it: hull is what side guns take off, mast
+is what chasers bring down and what her speed falls with, crew is what muskets clear. Folded by
+default, because a captain who knows them should not scroll past eight lines every visit.
+
+**Every part on the shelf says what it does to this ship.** Sails did already. A gun's row now reads
+"her side from 108 to 113 damage, stiffens the helm by 0.02, every 1.32s, adds 0.7 tons, 5.7 left",
+from `gunEffect`, which is `berthEffect`'s shape for a gun. A mast's row adds what the cheapest
+canvas on all its berths would come to, from `cheapestCanvas`, because a mast is a purchase that
+opens purchases. And both shops pin one line to the top of the screen, under the title and above
+the tabs, that stays put as the screen scrolls: the purse on the hull shop, and on the outfitter the
+purse with "As she stands: 3.0 knots, handling 0.72, side 108 damage, iron 39.0 of 45.4 tons", so
+what a tap just did is read where the tap was made. The menu and the yard pin nothing; the yard is
+the reading screen and no tap on it moves a figure.
+
+Selling a spare that is standing in a sister ship takes a second tap. The row names her and says
+the sale takes the part off her, with "Sell it" and "Keep it" beside it, because a captain selling
+"a spare 12-pounder" is not expecting to strip her frigate. A loose part sells on the first tap.
+
+**The hull shop says how far what she owns already goes.** An open row reads "From what you own:
+masts for 2 of 4 sockets, sails for 0 of 3 berths on them, guns for 5 of 13 ports. The rest at the
+cheapest: 2,510", from `readiness`, which stands a bare ship of the class up on a copy of the yard
+and runs "fit what you own" against her. It also says what she bears in guns and which shapes of
+rig her sockets take, "her bowsprit takes headsails, fore and main take square rig, mizzen takes
+spanker rig", so a captain with a spare suit of square rig learns it will not step in a xebec
+before paying for the xebec. Her fleet sits above the shelf now rather than under it, and
+commissioning a hull lands on the yard for the new ship, where the shortfall is, rather than back on
+the shelf.
 
 ### The Boat Commission
 
