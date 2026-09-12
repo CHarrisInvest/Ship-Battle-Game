@@ -4075,7 +4075,6 @@ function YardScreen({ hold, shipId, onView, onBack, onCommission, onOutfit }) {
   const loadout = useMemo(() => shipLoadout(hold, id), [hold, id]);
   const rig = useMemo(() => rigSpec(loadout), [loadout]);
   const stats = useMemo(() => rate(loadout), [loadout]);
-  const strength = useMemo(() => measure(stats), [stats]);
   const want = useMemo(() => shortfall(hold, id), [hold, id]);
   const rated = rateOf(loadout.hull);
   // How many of her spares would go aboard if she asked, worked out the way the button does it, so
@@ -4101,7 +4100,7 @@ function YardScreen({ hold, shipId, onView, onBack, onCommission, onOutfit }) {
             and it reads "1st rate, 1st rate". Six of the sixteen are named that way today and the
             fleet is still being written: a line that drops one of them when they happen to match
             would hide the rating on exactly the ships whose names are about to stop matching. */}
-        {loadout.hull.name}, {rated.name}, and she measures {Math.round(strength.overall)} as she stands.
+        {loadout.hull.name}, {rated.name}
       </div>
       <MenuGalleon rig={rig} />
 
@@ -4200,10 +4199,13 @@ function YardScreen({ hold, shipId, onView, onBack, onCommission, onOutfit }) {
         <IronRow weight={stats.weight} tons={loadout.hull.tons} />
         {/* Green once a mount is full, and the ordinary gold otherwise. Colouring a short mount by its
             system read as an alarm: no swivels is not a fault, it is a purchase she has not made. */}
+        {/* Every gun row opens the guns tab as a whole rather than one mount's picker: the tonnage
+            and the three mounts are read together, and a picker sprung open under one of them
+            landed a captain in the middle of a screen she had not seen the top of. */}
         {guns.map(([mount, label, has, bears]) => (
           <DoorRow
             key={mount}
-            onClick={() => onOutfit({ view: "guns", mount })}
+            onClick={() => onOutfit({ view: "guns" })}
             label={<span style={{ fontSize: 11, color: "rgba(238,244,242,0.6)", letterSpacing: 0.5 }}>{label}</span>}
             value={
               <span style={{ fontSize: 13, fontWeight: 700, color: bears > 0 && has >= bears ? C.grass : C.gold }}>
@@ -4788,8 +4790,7 @@ function OutfitterScreen({ hold, shipId: asked, onView, start, onBack }) {
   // the screen opens on the thing she was looking at with its picker already up where one is wanted.
   const [view, setView] = useState((start && start.view) || "rigging");
   const [picking, setPicking] = useState(() => {
-    if (!start) return null;
-    if (start.view === "guns") return start.mount ? { what: "gun", mount: start.mount } : null;
+    if (!start || start.view === "guns") return null; // the guns tab opens whole, no picker up
     return start.what ? { what: start.what, socket: start.socket, berth: start.berth } : null;
   });
   const shipId = hold.yard.ships[asked] ? asked : hold.yard.active;
