@@ -20,8 +20,8 @@ import {
   HULLS, HULL_LIST, STATIONS, SAIL_KINDS, KIND_LIST, MAST_LIST, SAIL_LIST, GUN_LIST,
   mastsForSocket, sailsForBerth, berthsOf, gunsForMount,
   rate, measure, statBand, fitOut, minimumLoadout, maximumLoadout, loadoutValue, outfitCost,
-  RATES, rateOf, gunsBorne, ladder, stockOfRate, resolve, STARTER, STOCK, riggingValue, mastRebuildCost,
-  squareLevel,
+  RATES, rateOf, gunsBorne, ladder, stockOfRate, resolve, STARTER, STOCK, STANDARDS, riggingValue, mastRebuildCost,
+  squareLevel, RIG_FAMILIES, mastFitsSocket, KNOTS_PER_RATING, knots,
 } from "../src/shipyard.js";
 import { RIG_STATIONS, RIG_KINDS, RIG_BERTHS, rigBands } from "../src/galleon.js";
 import { hullForm, DEFAULT_FORM, GALLEON_REF, parseBattery, portZ } from "../src/hullform.js";
@@ -63,6 +63,26 @@ for (const h of HULL_LIST) {
       fault(at, `the renderer cannot draw a mast at "${s.station}" (it knows ${RIG_STATIONS.join(", ")}), so this mast would be missing from the menu ship`);
     }
     if (!mastsForSocket(s).length) fault(at, `size "${s.size}" fits no mast in the catalogue`);
+    // A class that sails has to say what shape of rig each socket takes, or size alone lets a lug
+    // mast step in a first rate. Every family she names has to be one the catalogue knows and has
+    // to be carried by some mast that fits the socket, or the name is decoration.
+    if (!s.rigs.length) fault(at, "names no rig family, so any mast of its size steps here. Write station/size/family in hulls.tsv");
+    for (const f of s.rigs) {
+      if (!RIG_FAMILIES[f]) {
+        fault(at, `takes "${f}", which is not a rig family (${Object.keys(RIG_FAMILIES).join(", ")})`);
+      } else if (!MAST_LIST.some((m) => m.family === f && mastFitsSocket(m, s))) {
+        fault(at, `takes ${RIG_FAMILIES[f].name} and no mast of that family fits a ${s.size} socket`);
+      }
+    }
+  }
+
+  // and rigged at every standard the stock fleet is issued at, not only fully found: a family that
+  // leaves a socket bare at "plain" is a stock ship sailing with a mast missing
+  for (const st of STANDARDS) {
+    const lo = fitOut(h.id, st.quality);
+    for (const s of h.sockets) {
+      if (!lo.rig[s.id].mast) fault(`${where} socket "${s.id}"`, `steps nothing when she is fitted out ${st.label}`);
+    }
   }
 
   // every class draws on a hull modelled from her own reference row; one without a row falls back
@@ -195,6 +215,23 @@ for (const s of STOCK) {
 for (const st of STATIONS) {
   if (!RIG_STATIONS.includes(st)) fault("stations", `"${st}" is declared but the renderer cannot draw it`);
 }
+/* The first ship is hand-written the same way, and she is the one every captain sails on day one.
+   A rig family on her hull's socket that leaves out the mast STARTER names would unstep it the
+   moment the game loads, silently, and the workbook only checks that her rows still exist. */
+{
+  const first = resolve(STARTER);
+  for (const socket of first.hull.sockets) {
+    const named = STARTER.rig[socket.id];
+    if (!named) continue;
+    if (!first.rig[socket.id].mast) {
+      fault("the first ship", `"${named.mast}" no longer fits her ${socket.station} socket, so a new captain starts with no mast`);
+      continue;
+    }
+    (named.sails || []).forEach((sailId, i) => {
+      if (sailId && !first.rig[socket.id].sails[i]) fault("the first ship", `"${sailId}" no longer fits berth ${i} of "${named.mast}"`);
+    });
+  }
+}
 
 // Every sail up a mast has to land somewhere of its own. The bands are generated
 // from the authored profile now rather than clamped to the last one, and a
@@ -305,19 +342,55 @@ for (const a of portAudit) {
   );
 }
 
-console.log("\nSTAT BANDS  (fully found is the second figure; handling runs backwards on purpose)");
-console.log("  " + pad("class", 19) + pad("speed", 14) + pad("turn", 14) + num("hull", 4) + num("crew", 5) + num("broadside", 11) + num("muskets", 9));
+console.log("\nHER RIG  (the families each socket takes, bow aft)");
+for (const h of HULL_LIST) {
+  const rig = h.sockets.map((s) => `${s.station} ${s.rigs.map((f) => (RIG_FAMILIES[f] ? RIG_FAMILIES[f].name : f)).join(" or ")}`).join(", ");
+  console.log("  " + pad(h.name, 19) + " " + rig);
+}
+
+console.log("\nSTAT BANDS  (fully found is the second figure; handling runs backwards on purpose; speed is the rating, then knots)");
+console.log("  " + pad("class", 19) + pad("speed", 14) + pad("knots", 15) + pad("turn", 14) + num("hull", 4) + num("crew", 5) + num("broadside", 11) + num("muskets", 9));
 for (const h of HULL_LIST) {
   const b = statBand(h.id);
   const span = (k, f = n2) => `${f(b[k].bare)} to ${f(b[k].found)}`;
   console.log(
     "  " + pad(h.name, 19),
     pad(span("speed"), 14),
+    pad(`${n1(knots(b.speed.bare))} to ${n1(knots(b.speed.found))}`, 15),
     pad(span("turn"), 14),
     num(b.hull.found, 4), num(b.crew.found, 5),
     num(`${b.broadside.low} to ${b.broadside.high}`, 11),
     num(`${b.muskets.low} to ${b.muskets.high}`, 9),
   );
+}
+
+/* KNOTS ARE FITTED, NOT DECLARED. One constant turns the speed rating into knots for printing, and
+   the reference rows say what each class really made: `topSpeed` is the best she was ever driven,
+   which is her fully found, and `cruise` her everyday pace, which is nearer a well found ship. The
+   constant is fitted by least squares against the fully found fleet and the residual per class is
+   printed, so a hull that lands a knot or two off her own figure is a row to look at rather than a
+   guess. The constant in `shipyard.js` is set by hand from what this prints. */
+{
+  const rows = HULL_LIST.map((h) => {
+    const ref = HULL_REF[h.id] || {};
+    const full = rate(maximumLoadout(h.id)).speed;
+    const found = rate(fitOut(h.id, STANDARDS[1].quality)).speed;
+    return { h, full, found, top: ref.topSpeed, cruise: ref.cruise };
+  }).filter((r) => Number.isFinite(r.top));
+  const fit = rows.reduce((a, r) => a + r.top * r.full, 0) / rows.reduce((a, r) => a + r.full * r.full, 0);
+  console.log(`\nKNOTS  (${n2(fit)} a point of rating fits the fleet's top speeds; shipyard.js uses ${n2(KNOTS_PER_RATING)})`);
+  console.log("  " + pad("class", 19) + num("full", 6) + num("ref top", 9) + num("off by", 8) + num("well found", 12) + num("ref cruise", 12) + num("off by", 8));
+  for (const r of rows) {
+    const off = (a, b) => (Number.isFinite(b) ? (a - b >= 0 ? "+" : "") + n1(a - b) : "");
+    console.log(
+      "  " + pad(r.h.name, 19),
+      num(n1(knots(r.full)), 6), num(n1(r.top), 9), num(off(knots(r.full), r.top), 8),
+      num(n1(knots(r.found)), 12), num(Number.isFinite(r.cruise) ? n1(r.cruise) : "", 12), num(off(knots(r.found), r.cruise), 8),
+    );
+  }
+  if (Math.abs(fit - KNOTS_PER_RATING) > 0.3) {
+    console.log(`  note: the fitted constant has moved ${n2(Math.abs(fit - KNOTS_PER_RATING))} from the one in shipyard.js; set KNOTS_PER_RATING to ${n2(fit)}`);
+  }
 }
 
 console.log("\nFITTED OUT  (the same hull at rising quality, which is what a stock opponent is built from)");

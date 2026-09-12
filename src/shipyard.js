@@ -68,6 +68,44 @@ export const STATIONS = ["bowsprit", "fore", "main", "mizzen", "bonaventure"];
 export const SPAR_STATIONS = new Set(["bowsprit"]);
 
 /**
+ * THE RIG FAMILIES: the shapes of rig a mast can be, and the vocabulary a hull uses to say which
+ * of them she takes at each socket.
+ *
+ * A mast type is a shape of rig rather than a station, and that still holds: a topmast is a topmast
+ * wherever she is stepped. What a hull adds is which shapes she takes at all. A frigate's fore is
+ * square rig and nothing else, her mizzen carries a spanker under her square canvas, a xebec is
+ * lateen from stem to stern, and a lugger is a lugger. Size alone could not say any of that, because
+ * a lug mast is small and small fits everything, which is how a "plain" frigate came to sail under
+ * lug topmasts on her fore and main. So a socket names the families it takes and `mastFitsSocket`
+ * matches the family first, the way it already matches spar against mast, before the size rung is
+ * consulted. A socket that names none takes any mast of its size, which is how a laid-up row stands
+ * until somebody rigs her, and the bench asks every class that sails to say.
+ *
+ * `name` is what a captain reads when the outfitter tells her what a socket takes.
+ */
+export const RIG_FAMILIES = {
+  square: { id: "square", name: "square rig" },
+  spanker: { id: "spanker", name: "spanker rig" },
+  schooner: { id: "schooner", name: "schooner rig" },
+  gaff: { id: "gaff", name: "gaff rig" },
+  bermuda: { id: "bermuda", name: "Bermuda rig" },
+  lateen: { id: "lateen", name: "lateen rig" },
+  lug: { id: "lug", name: "lug rig" },
+  boat: { id: "boat", name: "boat rig" },
+  headsails: { id: "headsails", name: "headsails" },
+  spritsail: { id: "spritsail", name: "spritsail" },
+};
+export const familyOf = (id) => RIG_FAMILIES[id] || null;
+
+/**
+ * The families whose yards carried studdingsail booms. A studdingsail booms out beyond a square sail
+ * on a yard rigged for it, and only a ship's square-rigged masts and a topsail schooner's fore ever
+ * were: a lateen yard, a gaff and a boat's single pole have nothing to boom one out from, whatever
+ * square canvas happens to be bent on them.
+ */
+export const STUDDING_FAMILIES = new Set(["square", "schooner"]);
+
+/**
  * THE SAIL CATEGORIES, and the only thing that decides whether a sail goes in a berth.
  *
  * A berth names one of these and a sail belongs to one, and that is the whole of the fitting rule.
@@ -139,97 +177,97 @@ const FLEET = [
     id: "gundalow", name: "Gundalow", price: 0,
     blurb: "A raft with a mast and one gun. She floats, she fires, and she is yours.",
     hull: 100, crew: 30, speed: 0.55, hand: 0.65, canvas: 0.18, tons: 2,
-    guns: [1, 1, 1], masts: ["main/small"], bowsprit: false,
+    guns: [1, 1, 1], masts: ["main/small/boat+lug+lateen"], bowsprit: false,
   },
   {
     id: "bermudaSloop", name: "Bermuda Sloop light", price: 900,
     blurb: "One raking mast and a deep heel aft. Nothing this small goes faster.",
     hull: 137, crew: 30, speed: 0.97, hand: 1.22, canvas: 0.28, tons: 6.6,
-    guns: [3, 1, 1], masts: ["bowsprit/small", "main/medium"],
+    guns: [3, 1, 1], masts: ["bowsprit/small/headsails", "main/medium/bermuda"],
   },
   {
     id: "sloop", name: "Sloop light", price: 1400,
     blurb: "A single mast on a hull with some beam under it. She answers the helm sweetly.",
     hull: 149, crew: 40, speed: 0.91, hand: 1.24, canvas: 0.34, tons: 8.1,
-    guns: [4, 1, 1], masts: ["bowsprit/small", "main/medium"],
+    guns: [4, 1, 1], masts: ["bowsprit/small/headsails", "main/medium/gaff+spanker"],
   },
   {
     id: "cutter", name: "Cutter light", price: 2300,
     blurb: "Broad, deep and stiff, with more sail than a boat her size has any right to.",
     hull: 167, crew: 45, speed: 0.94, hand: 1.26, canvas: 0.4, tons: 9.7,
-    guns: [5, 1, 1], masts: ["bowsprit/small", "main/medium"],
+    guns: [5, 1, 1], masts: ["bowsprit/small/headsails", "main/medium/gaff+spanker"],
   },
   {
     id: "baltimoreClipper", name: "Baltimore Clipper", price: 3200,
     blurb: "Two raked masts on a hull cut like a knife. She outruns ships that outgun her.",
     hull: 255, crew: 60, speed: 1.09, hand: 1.16, canvas: 0.72, tons: 16.8,
-    guns: [6, 1, 1], masts: ["bowsprit/small", "fore/medium", "main/medium"],
+    guns: [6, 1, 1], masts: ["bowsprit/small/headsails", "fore/medium/schooner+gaff", "main/medium/schooner+gaff"],
   },
   {
     id: "brigantine", name: "Brigantine", price: 4400,
     blurb: "Square on the fore and fore and aft on the main. She will do most things well enough.",
     hull: 311, crew: 70, speed: 0.85, hand: 0.97, canvas: 0.92, tons: 17.4,
-    guns: [7, 1, 1], masts: ["bowsprit/small", "fore/medium", "main/medium"],
+    guns: [7, 1, 1], masts: ["bowsprit/small/headsails", "fore/medium/square", "main/medium/gaff+schooner+spanker"],
   },
   {
     id: "xebecLight", name: "Xebec light", price: 6200,
     blurb: "Long, low and lateen rigged, with a crew that would rather board you than shoot.",
     hull: 277, crew: 180, speed: 0.97, hand: 1.07, canvas: 0.8, tons: 20,
-    guns: [9, 1, 1], masts: ["bowsprit/small", "fore/medium", "main/medium"],
+    guns: [9, 1, 1], masts: ["bowsprit/small/headsails", "fore/medium/lateen", "main/medium/lateen"],
   },
   {
     id: "corvette", name: "Corvette", price: 9000,
     blurb: "Three masts and one flush deck of guns. The smallest ship that looks like a warship.",
     hull: 504, crew: 130, speed: 0.91, hand: 0.95, canvas: 1.46, tons: 29.9,
-    guns: [10, 1, 2], masts: ["bowsprit/medium", "fore/large", "main/large", "mizzen/medium"],
+    guns: [10, 1, 2], masts: ["bowsprit/medium/headsails", "fore/large/square", "main/large/square", "mizzen/medium/spanker"],
   },
   {
     id: "sixthRate", name: "6th rate", price: 12500,
     blurb: "Rated at last, and the smallest thing a post captain will admit to commanding.",
     hull: 647, crew: 155, speed: 0.88, hand: 0.89, canvas: 1.81, tons: 45.4,
-    guns: [12, 2, 2], masts: ["bowsprit/medium", "fore/large", "main/large", "mizzen/medium"],
+    guns: [12, 2, 2], masts: ["bowsprit/medium/headsails", "fore/large/square", "main/large/square", "mizzen/medium/spanker"],
   },
   {
     id: "xebecHeavy", name: "Xebec heavy", price: 18000,
     blurb: "The same corsair hull grown a third mast and a great many more men.",
     hull: 568, crew: 320, speed: 0.94, hand: 0.99, canvas: 1.6, tons: 44,
-    guns: [16, 2, 3], masts: ["bowsprit/medium", "fore/large", "main/large", "mizzen/medium"],
+    guns: [16, 2, 3], masts: ["bowsprit/medium/headsails", "fore/large/lateen", "main/large/lateen", "mizzen/medium/lateen"],
   },
   {
     id: "fifthRate", name: "5th rate", price: 25000,
     blurb: "A whole deck of eighteens and the legs to choose her own fight.",
     hull: 1128, crew: 260, speed: 1, hand: 0.83, canvas: 2.83, tons: 96.3,
-    guns: [19, 2, 3], masts: ["bowsprit/large", "fore/heavy", "main/heavy", "mizzen/large"],
+    guns: [19, 2, 3], masts: ["bowsprit/large/headsails", "fore/heavy/square", "main/heavy/square", "mizzen/large/spanker"],
   },
   {
     id: "heavyFrigate", name: "Heavy frigate", price: 48000,
     blurb: "Live oak frames set close enough that round shot comes off her sides.",
     hull: 1721, crew: 420, speed: 1.03, hand: 0.74, canvas: 3.8, tons: 135,
-    guns: [25, 2, 3], masts: ["bowsprit/large", "fore/heavy", "main/heavy", "mizzen/large"],
+    guns: [25, 2, 3], masts: ["bowsprit/large/headsails", "fore/heavy/square", "main/heavy/square", "mizzen/large/spanker"],
   },
   {
     id: "fourthRate", name: "4th rate", price: 35000,
     blurb: "Two decks of guns on a hull too slow to run and too light for the line.",
     hull: 1305, crew: 390, speed: 0.85, hand: 0.76, canvas: 3.18, tons: 142,
-    guns: [27, 2, 4], masts: ["bowsprit/large", "fore/heavy", "main/heavy", "mizzen/large"],
+    guns: [27, 2, 4], masts: ["bowsprit/large/headsails", "fore/heavy/square", "main/heavy/square", "mizzen/large/spanker+lateen"],
   },
   {
     id: "thirdRate", name: "3rd rate", price: 58000,
     blurb: "Sixty four guns, and the smallest ship anyone will put in the line of battle.",
     hull: 1812, crew: 500, speed: 0.88, hand: 0.7, canvas: 4.13, tons: 175,
-    guns: [32, 2, 5], masts: ["bowsprit/large", "fore/heavy", "main/heavy", "mizzen/large"],
+    guns: [32, 2, 5], masts: ["bowsprit/large/headsails", "fore/heavy/square", "main/heavy/square", "mizzen/large/spanker"],
   },
   {
     id: "secondRate", name: "2nd rate", price: 80000,
     blurb: "Three decks of iron. She is slow, she is enormous, and nothing wants her attention.",
     hull: 2421, crew: 700, speed: 0.79, hand: 0.68, canvas: 5.12, tons: 259.4,
-    guns: [45, 2, 6], masts: ["bowsprit/large", "fore/heavy", "main/heavy", "mizzen/large"],
+    guns: [45, 2, 6], masts: ["bowsprit/large/headsails", "fore/heavy/square", "main/heavy/square", "mizzen/large/spanker"],
   },
   {
     id: "firstRate", name: "1st rate", price: 100000,
     blurb: "A hundred guns and a flag at the main. There is nothing above her.",
     hull: 2699, crew: 800, speed: 0.79, hand: 0.62, canvas: 5.68, tons: 297.7,
-    guns: [50, 2, 6], masts: ["bowsprit/large", "fore/heavy", "main/heavy", "mizzen/large"],
+    guns: [50, 2, 6], masts: ["bowsprit/large/headsails", "fore/heavy/square", "main/heavy/square", "mizzen/large/spanker"],
   },
 ];
 /* end:hulls */
@@ -257,10 +295,12 @@ function buildHull(row, index) {
     bowsprit: r.bowsprit,
     guns: { broadside, bow, swivel },
     sockets: (r.masts || []).map((m) => {
-      const [station, size] = m.split("/");
+      const [station, size, families] = m.split("/");
       // the bowsprit takes a spar and every other station takes a mast, which is a fact about the
-      // place rather than something a row has to say twice
-      return { id: station, station, size, spar: SPAR_STATIONS.has(station) };
+      // place rather than something a row has to say twice. `rigs` is the families the socket
+      // takes, and an empty list is a socket that has not said, which takes anything of its size.
+      const rigs = families ? families.split("+").filter(Boolean) : [];
+      return { id: station, station, size, spar: SPAR_STATIONS.has(station), rigs };
     }),
   };
 }
@@ -292,8 +332,9 @@ export const MASTS = {
     part: "mast",
     name: "Pole mast",
     price: 0,
-    blurb: "A single spar and a single square sail. Everything starts here.",
+    blurb: "A single spar and a single square sail. The plainest rig a boat can carry.",
     size: "boat",
+    family: "boat",
     height: 0.6,
     berths: [{ kind: "LSQ" }],
   },
@@ -304,6 +345,7 @@ export const MASTS = {
     price: 80,
     blurb: "A sprit across one four sided sail. What a boat carries, and what one hand can manage.",
     size: "boat",
+    family: "boat",
     height: 0.56,
     berths: [{ kind: "GAF" }],
   },
@@ -314,6 +356,7 @@ export const MASTS = {
     price: 110,
     blurb: "A short mast for one lugsail. Cheap, quick, and the whole rig of a fishing boat.",
     size: "boat",
+    family: "lug",
     height: 0.58,
     berths: [{ kind: "LUG" }],
   },
@@ -324,6 +367,7 @@ export const MASTS = {
     price: 260,
     blurb: "A long raking yard and one triangular sail. The Mediterranean answer to everything.",
     size: "small",
+    family: "lateen",
     height: 0.76,
     berths: [{ kind: "LAT" }],
   },
@@ -334,6 +378,7 @@ export const MASTS = {
     price: 340,
     blurb: "Tall and bare, cut for one big triangular sail. Points closer to the wind than square canvas.",
     size: "small",
+    family: "bermuda",
     height: 0.86,
     berths: [{ kind: "LAT" }],
   },
@@ -344,6 +389,7 @@ export const MASTS = {
     price: 290,
     blurb: "A gaff mainsail and a topsail in the space above it. The working rig of a smack.",
     size: "small",
+    family: "gaff",
     height: 0.72,
     berths: [{ kind: "GAF" }, { kind: "GAF" }],
   },
@@ -354,6 +400,7 @@ export const MASTS = {
     price: 320,
     blurb: "A standing lug with a second small one over it, for a lugger that means to outrun somebody.",
     size: "small",
+    family: "lug",
     height: 0.74,
     berths: [{ kind: "LUG" }, { kind: "LUG" }],
   },
@@ -364,6 +411,7 @@ export const MASTS = {
     price: 420,
     blurb: "One heavy square sail on a stout pole. The plain way to move a big hull.",
     size: "medium",
+    family: "square",
     height: 0.68,
     berths: [{ kind: "LSQ" }],
   },
@@ -374,6 +422,7 @@ export const MASTS = {
     price: 760,
     blurb: "A long raking yard for the after station, with room for a small square sail above it.",
     size: "medium",
+    family: "lateen",
     height: 0.78,
     berths: [{ kind: "LAT" }, { kind: "SSQ" }],
   },
@@ -384,6 +433,7 @@ export const MASTS = {
     price: 980,
     blurb: "A lower mast with a second spar fidded above it: a course below, a topsail over.",
     size: "medium",
+    family: "square",
     height: 0.86,
     berths: [{ kind: "LSQ" }, { kind: "LSQ" }],
   },
@@ -394,6 +444,7 @@ export const MASTS = {
     price: 1050,
     blurb: "A gaff sail low and a square topsail over it. Weatherly, and quick in stays.",
     size: "medium",
+    family: "schooner",
     height: 0.84,
     berths: [{ kind: "GAF" }, { kind: "LSQ" }],
   },
@@ -404,6 +455,7 @@ export const MASTS = {
     price: 1420,
     blurb: "A fore-and-aft driver at the deck with square canvas over it. What a cutter carries, and what a ship steers on aft.",
     size: "medium",
+    family: "spanker",
     height: 0.9,
     berths: [{ kind: "GAF" }, { kind: "LSQ" }, { kind: "SSQ" }],
   },
@@ -414,6 +466,7 @@ export const MASTS = {
     price: 2100,
     blurb: "Three spars, and the highest sail is a small one. Every hand aboard is up there in a blow.",
     size: "large",
+    family: "square",
     height: 0.94,
     berths: [{ kind: "LSQ" }, { kind: "LSQ" }, { kind: "SSQ" }],
   },
@@ -424,6 +477,7 @@ export const MASTS = {
     price: 2900,
     blurb: "A driver below and three square sails over it, the last a royal. A frigate's mizzen.",
     size: "large",
+    family: "spanker",
     height: 0.96,
     berths: [{ kind: "GAF" }, { kind: "LSQ" }, { kind: "SSQ" }, { kind: "SSQ" }],
   },
@@ -434,6 +488,7 @@ export const MASTS = {
     price: 3400,
     blurb: "Spanker, course, topsail and topgallant. The after mast of anything that fights in a line.",
     size: "large",
+    family: "spanker",
     height: 0.97,
     berths: [{ kind: "GAF" }, { kind: "LSQ" }, { kind: "LSQ" }, { kind: "SSQ" }],
   },
@@ -444,6 +499,7 @@ export const MASTS = {
     price: 3600,
     blurb: "Four yards crossed and a royal above the topgallant. A press of canvas for a ship that can carry it.",
     size: "large",
+    family: "square",
     height: 0.98,
     berths: [{ kind: "LSQ" }, { kind: "LSQ" }, { kind: "SSQ" }, { kind: "SSQ" }],
   },
@@ -454,6 +510,7 @@ export const MASTS = {
     price: 5400,
     blurb: "Five yards, the last of them a handkerchief in the clouds. Only the tallest hulls can step one.",
     size: "heavy",
+    family: "square",
     height: 1,
     berths: [{ kind: "LSQ" }, { kind: "LSQ" }, { kind: "SSQ" }, { kind: "SSQ" }, { kind: "SSQ" }],
   },
@@ -464,6 +521,7 @@ export const MASTS = {
     price: 5800,
     blurb: "Everything a mast can carry, with a spanker under it. There is nothing above this one.",
     size: "heavy",
+    family: "spanker",
     height: 1,
     berths: [{ kind: "GAF" }, { kind: "LSQ" }, { kind: "LSQ" }, { kind: "SSQ" }, { kind: "SSQ" }],
   },
@@ -474,6 +532,7 @@ export const MASTS = {
     price: 140,
     blurb: "The spar over her stem with one staysail hanked to it. Enough to balance her helm.",
     size: "boat",
+    family: "headsails",
     spar: true,
     height: 0.55,
     berths: [{ kind: "TRI" }],
@@ -485,6 +544,7 @@ export const MASTS = {
     price: 520,
     blurb: "Run out beyond the bowsprit, for a jib outside the staysail.",
     size: "small",
+    family: "headsails",
     spar: true,
     height: 0.8,
     berths: [{ kind: "TRI" }, { kind: "TRI" }],
@@ -496,6 +556,7 @@ export const MASTS = {
     price: 1250,
     blurb: "The whole head of her: staysail, jib, and a flying jib at the boom end.",
     size: "medium",
+    family: "headsails",
     spar: true,
     height: 1,
     berths: [{ kind: "TRI" }, { kind: "TRI" }, { kind: "TRI" }],
@@ -507,6 +568,7 @@ export const MASTS = {
     price: 380,
     blurb: "A yard slung under the bowsprit, the way a carrack carried hers.",
     size: "small",
+    family: "spritsail",
     spar: true,
     height: 0.7,
     berths: [{ kind: "SSQ" }],
@@ -518,6 +580,7 @@ export const MASTS = {
     price: 900,
     blurb: "A spritsail and a sprit-topsail above it. Old fashioned, and it pulls her head round.",
     size: "medium",
+    family: "spritsail",
     spar: true,
     height: 0.95,
     berths: [{ kind: "SSQ" }, { kind: "SSQ" }],
@@ -1180,10 +1243,17 @@ export const socketOf = (hull, socketId) => hull.sockets.find((s) => s.id === so
  * everything: the same phantom the sail categories were built to stop, one level up. A spar and a
  * mast are different sorts of thing, so they are matched as such and the size rung is only consulted
  * once they agree.
+ *
+ * And the socket says which shapes of rig she takes. The same phantom again, one level further:
+ * a lug mast is small and small fits a first rate's fore, so without this every rated ship in the
+ * fleet could be rigged as a lugger and her "plain" stock fit actually was. `rigs` on the socket is
+ * the list of families it takes, matched against the mast's own `family` before size is consulted.
+ * A socket that names none takes any mast of its size.
  */
 export function mastFitsSocket(mast, socket) {
   if (!mast || !socket || mast.part !== "mast") return false;
   if (!!mast.spar !== !!socket.spar) return false;
+  if (socket.rigs && socket.rigs.length && !socket.rigs.includes(mast.family)) return false;
   return sizeRank(mast.size) <= sizeRank(socket.size);
 }
 
@@ -1220,16 +1290,24 @@ export function squareLevel(mast, berthIndex) {
   return level;
 }
 
-/** Whether this studdingsail booms out from the sail in that berth: a stud of the berth's own level, on a square sail actually set. */
+/** Whether a mast's yards are rigged to boom a studdingsail out at all. See `STUDDING_FAMILIES`. */
+export const mastTakesStuds = (mast) => !!mast && STUDDING_FAMILIES.has(mast.family);
+
+/**
+ * Whether this studdingsail booms out from the sail in that berth: a stud of the berth's own level,
+ * on a square sail actually set, on a mast whose yards carry the booms for one.
+ */
 export function studFitsSail(stud, mast, berthIndex, sail) {
   if (!stud || stud.part !== "sail" || stud.kind !== "STU") return false;
   if (!sail || (sail.kind !== "LSQ" && sail.kind !== "SSQ")) return false;
+  if (!mastTakesStuds(mast)) return false;
   const level = squareLevel(mast, berthIndex);
   return level != null && stud.level === level;
 }
 
 /** Studdingsails in the catalogue that would boom out from this berth's sail, cheapest first. */
 export function studsForBerth(mast, berthIndex) {
+  if (!mastTakesStuds(mast)) return [];
   const level = squareLevel(mast, berthIndex);
   if (level == null) return [];
   return SAIL_LIST.filter((s) => s.kind === "STU" && s.level === level).sort((a, b) => a.price - b.price);
@@ -1506,6 +1584,51 @@ export function rate(loadout) {
     musketDamage,
     musketSpread,
   };
+}
+
+/**
+ * KNOTS ARE A LABEL ON THE SPEED RATING, and never anything the fight reads.
+ *
+ * `rate().speed` is a multiplier around 1 and the fight multiplies `BASE_SPEED` by it, on a sea
+ * where a first rate crosses two hull lengths a second: nothing in the game runs at a real ship's
+ * pace and a literal conversion would say so. What a captain wants from "top speed" is a figure she
+ * can hold against something, and a knot is that figure. So one constant turns the rating into
+ * knots for printing, fitted so that a fully found ship comes out near the `topSpeed` her reference
+ * row records: the bench fits it against the fleet and prints how far each class lands from her own
+ * figure. Nothing about how a ship moves changes when this number does, and `measure()` never sees
+ * it.
+ */
+export const KNOTS_PER_RATING = 11.4;
+export const knots = (speedRating) => speedRating * KNOTS_PER_RATING;
+
+/**
+ * What one sail is worth ABOARD THIS SHIP, which is the only place the question has an answer.
+ *
+ * A sail's `drive` is a share of a course, and that is a fact about the sail. What it does to the
+ * ship is not: drive runs into a saturating curve against the hull's own appetite for canvas, the
+ * berth it sits in fades it by `canvasFalloff`, and a studdingsail is a share of whatever it booms
+ * out from. So the same topsail moves a cutter more than a galleon, and the fifth sail up a mast
+ * less than the first. The honest figure is the difference between rating her with the sail and
+ * rating her without, and this is that: the ship as she stands against the ship with one berth
+ * changed, as a change in the speed and turn ratings. Pass what would be in the berth; `null` for
+ * either clears it, and a stud with no sail under it is nothing.
+ *
+ * Two readings come off it. The outfitter asks "what does fitting this here add" and passes the
+ * candidate, so an empty berth shows the whole gain, a filled one the gain of the swap, and the sail
+ * already there shows nothing. The yard asks "what is this sail giving her" and passes `null`, then
+ * reads the answer the other way up.
+ */
+export function berthEffect(loadout, socketId, berthIndex, sail, stud) {
+  const entry = loadout.rig[socketId];
+  if (!entry || !entry.mast) return { speed: 0, turn: 0 };
+  const sails = sailsOn(entry);
+  const studs = studsOn(entry);
+  sails[berthIndex] = sail || null;
+  studs[berthIndex] = sail && stud ? stud : null;
+  const changed = { ...loadout, rig: { ...loadout.rig, [socketId]: { ...entry, sails, studs } } };
+  const was = rate(loadout);
+  const now = rate(changed);
+  return { speed: now.speed - was.speed, turn: now.turn - was.turn };
 }
 
 /** What her rigging is worth: every mast and every sail aboard, at what they cost to buy. */
@@ -1874,7 +1997,7 @@ export const rateOf = (hull) => rateAt(gunsBorne(hull));
  * Nothing here declares a rate: it comes off her hull's ports, and her place in the ladder comes off
  * her stat line, so neither can be written down here to disagree with the ship it describes.
  */
-const STANDARDS = [
+export const STANDARDS = [
   { key: "plain", label: "plain", quality: 0.35 },
   { key: "found", label: "well found", quality: 0.7 },
   { key: "full", label: "fully found", quality: 1 },
