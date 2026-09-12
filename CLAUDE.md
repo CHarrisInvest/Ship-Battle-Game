@@ -58,7 +58,12 @@ are built from. `broadside` in the code is the side guns, not the old title, and
   its own act rather than a side effect of looking. Tapping a socket, a berth or a mount in the yard
   opens the outfitter on that thing, with its picker up where one is wanted, so `OutfitterScreen`
   takes a `start` and the yard screens take a `shipId`. `ownedFill` is "fit what you own" worked out
-  on a copy, so the button can say how many parts it will fit before it is tapped.
+  on a copy, so the button can say how many parts it will fit before it is tapped, and `readiness`
+  is the same run against a hull she has not bought, for the shelf.
+- **A part sells back in full.** `REFUND_SHARE` in `hold.js` is 1 and `sellPart` is the one door:
+  the part comes off every ship carrying it and the refund comes off `spent`, so the ledger still
+  reconstructs what she earned. Lower the constant if a part ever needs to be a commitment; do not
+  add a second price.
 - **A part is exclusive to a slot, not to a ship.** One instance is in one slot of one hull or in
   none of hers, so a ship pierced for fifty a side still wants fifty guns bought to fill her. Across
   the fleet nothing is exclusive: a mast standing in the frigate steps in the sloop as well, and the

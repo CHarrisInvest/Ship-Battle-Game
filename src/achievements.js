@@ -36,6 +36,14 @@ export const ACHIEVEMENTS = [
     goal: 1,
     count: (h) => h.lifetime.sunk,
   },
+  {
+    id: "christened",
+    name: "Christened",
+    blurb: "Give a ship a name of her own, in the yard.",
+    goal: 1,
+    // asked of the yard rather than the tallies: a named ship is one whose record carries a name
+    count: (h) => Object.values(h.yard.ships).filter((s) => s.name).length,
+  },
 ];
 
 export const achievementOf = (id) => ACHIEVEMENTS.find((a) => a.id === id) || null;

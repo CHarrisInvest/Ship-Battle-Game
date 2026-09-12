@@ -725,6 +725,79 @@ export function ownedFill(rec, shipId) {
 }
 
 /**
+ * How far what she already owns would go towards a hull she has not bought.
+ *
+ * The hull shop's question is "what would this class cost me", and the honest answer depends on the
+ * hold: a captain with a spare suit of square rig and twenty guns is most of the way to a frigate
+ * already. So a bare ship of the class is stood up on a copy of the yard, `ownedFill` is run against
+ * it exactly as the yard's button would run it, and what comes back is what she would have aboard
+ * before spending a coin, and what the rest would cost at the cheapest.
+ *
+ * Berths are counted on the masts that fitted, because berths on a mast she does not own are not a
+ * figure anyone can act on; the cost line carries the rest.
+ */
+export function readiness(rec, hullId) {
+  const hull = HULLS[hullId];
+  if (!hull) return null;
+  const yard = cloneYard(rec.yard);
+  const id = "trial";
+  yard.ships[id] = {
+    hull: hull.id,
+    name: "",
+    rig: Object.fromEntries(hull.sockets.map((s) => [s.id, { mast: null, sails: [], studs: [] }])),
+    guns: { broadside: [], bow: [], swivel: [] },
+  };
+  const trial = { ...rec, yard };
+  const filled = ownedFill(trial, id);
+  const after = { ...rec, yard: filled.yard };
+  const her = filled.yard.ships[id];
+  let masts = 0, berths = 0, sails = 0;
+  for (const socket of hull.sockets) {
+    const slot = her.rig[socket.id];
+    if (!slot.mast) continue;
+    masts++;
+    const type = PARTS[filled.yard.parts[slot.mast].type];
+    berths += type.berths.length;
+    sails += slot.sails.filter(Boolean).length;
+  }
+  const guns = her.guns.broadside.length + her.guns.bow.length + her.guns.swivel.length;
+  const ports = hull.guns.broadside + hull.guns.bow + hull.guns.swivel;
+  return {
+    masts, sockets: hull.sockets.length,
+    sails, berths,
+    guns, ports,
+    fitted: filled.fitted,
+    cost: shortfall(after, id).cost,
+  };
+}
+
+/**
+ * What a part sold back is worth, as a share of what it cost. Full, because the shipyard is where a
+ * captain tries things: a gun bought, run out, felt at sea and taken off again should not have cost
+ * her the trying. Set below 1 if the meta economy ever needs a part to be a commitment.
+ */
+export const REFUND_SHARE = 1;
+
+/** What selling one part of this type puts back in the hold. */
+export const refundOf = (type) => Math.round(type.price * REFUND_SHARE);
+
+/**
+ * Sell one part back to the yard. It comes off whichever of her ships carry it, because a part is
+ * one instance wherever it stands, and the refund goes into the hold. `spent` comes down by the
+ * same amount so the ledger still reconstructs what she earned.
+ */
+export function sellPart(partId) {
+  const rec = current();
+  const type = partOf(rec, partId);
+  if (!type) return null;
+  const yard = cloneYard(rec.yard);
+  for (const ship of Object.values(yard.ships)) pull(ship, partId);
+  delete yard.parts[partId];
+  const refund = refundOf(type);
+  return commit({ ...rec, coins: rec.coins + refund, spent: Math.max(0, rec.spent - refund), yard });
+}
+
+/**
  * Fit everything she owns that fits, into every empty slot of one ship, in one act and for nothing.
  *
  * Buying a hull gets a hull, and a captain with a spare suit of masts and sails and a battery in the

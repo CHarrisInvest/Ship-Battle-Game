@@ -1652,6 +1652,32 @@ export function berthEffect(loadout, socketId, berthIndex, sail, stud) {
   return { speed: now.speed - was.speed, turn: now.turn - was.turn };
 }
 
+/**
+ * What running one more gun out at a mount would do to her: the ship as she stands against the ship
+ * with this gun aboard. `damage` is what the mount's volley gains and `side` is what it would throw
+ * in all, both in the same points the fight takes off a hull; `turn` is the handling the iron costs
+ * her. The same shape as `berthEffect`, and for the same reason: a gun's figure on the shelf is what
+ * it does to THIS ship, and a 12-pounder is a different purchase on a cutter and a first rate.
+ */
+export function gunEffect(loadout, mount, gun) {
+  const changed = { ...loadout, guns: { ...loadout.guns, [mount]: [...loadout.guns[mount], gun] } };
+  const was = rate(loadout);
+  const now = rate(changed);
+  return { damage: now[mount].damage - was[mount].damage, side: now[mount].damage, turn: now.turn - was.turn };
+}
+
+/**
+ * The least it costs to bend canvas on every berth of a mast: the cheapest sail that fits each. A
+ * mast is a purchase that opens more purchases, and the shelf should say so before the tap rather
+ * than after it.
+ */
+export function cheapestCanvas(mast) {
+  return sum(mast.berths, (b) => {
+    const fits = sailsForBerth(b).slice().sort((x, y) => x.price - y.price)[0];
+    return fits ? fits.price : 0;
+  });
+}
+
 /** What her rigging is worth: every mast and every sail aboard, at what they cost to buy. */
 export function riggingValue(loadout) {
   let total = 0;

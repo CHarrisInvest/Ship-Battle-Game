@@ -4,14 +4,14 @@ import { hullForm, tintTimber } from "./hullform.js";
 import {
   getHold, bankVoyage, resetHold, subscribeHold, modeRecord, shipLoadout, shortfall,
   buyShip, buyPart, fitMast, fitSail, fitStud, fitGun, unfitGun, setActiveShip, spareParts, ownedShips, partOf,
-  shipName, nameShip, fitOwned, ownedFill, NAME_LIMIT,
+  shipName, nameShip, fitOwned, ownedFill, NAME_LIMIT, readiness, sellPart, refundOf,
 } from "./hold.js";
 import {
   STARTER, kindOf, mastRebuildCost, measure, rate, rateOf, resolve, rigSpec,
   ladder, peers, stockOfRate,
   HULLS, HULL_LIST, PARTS, statBand, maximumLoadout, outfitCost,
   mastsForSocket, sailsForBerth, studsForBerth, gunsForMount,
-  knots, berthEffect, familyOf, gunTons, gunFits,
+  knots, berthEffect, familyOf, gunTons, gunFits, gunEffect, cheapestCanvas,
 } from "./shipyard.js";
 import { roll, tally } from "./achievements.js";
 
@@ -3416,6 +3416,7 @@ export default function App() {
         <StartOverlay
           onStart={(m) => startRef.current(m)}
           onEdit={(id) => { setYardShip(id || null); setPhase("yard"); }}
+          onOutfit={(id) => { setYardShip(id || null); setOutfitStart(null); setPhase("outfitter"); }}
           onRecords={() => setPhase("records")}
           hold={hold}
           onScuttle={() => { setYardShip(null); resetHold(); }}
@@ -3432,7 +3433,7 @@ export default function App() {
         />
       )}
       {phase === "commission" && (
-        <CommissionScreen hold={hold} onBack={() => setPhase("yard")} onBought={(id) => setYardShip(id)} />
+        <CommissionScreen hold={hold} onBack={() => setPhase("yard")} onBought={(id) => { setYardShip(id); setPhase("yard"); }} />
       )}
       {phase === "outfitter" && (
         <OutfitterScreen hold={hold} shipId={yardShip} onView={setYardShip} start={outfitStart} onBack={() => setPhase("yard")} />
@@ -4125,6 +4126,7 @@ function YardScreen({ hold, shipId, onView, onBack, onCommission, onOutfit }) {
             />
           </>
         )}
+        <Glossary />
       </Slab>
 
       {/* Every row here is a door. Tapping a socket opens the outfitter on that socket, tapping a
@@ -4252,6 +4254,45 @@ function YardScreen({ hold, shipId, onView, onBack, onCommission, onOutfit }) {
       </div>
       <StartButton onClick={onBack} label="Back to the sea" />
     </Shell>
+  );
+}
+
+/**
+ * What each figure on the sailing slab is, in one line apiece, behind a tap.
+ *
+ * Players said they could not tell what an upgrade did, and half of that was not knowing what the
+ * figures it moved were for. The lines are what the FIGHT does with each number, because that is the
+ * question: a hull figure is what side guns take off, a mast figure is what a chaser brings down and
+ * what her speed falls with. Folded away by default, since a captain who knows them should not
+ * scroll past eight lines of them every visit.
+ */
+const GLOSSARY = [
+  ["Top speed", "What she makes with all her canvas drawing. The fight reads the rating; knots are the label on it."],
+  ["Handling", "How quickly she comes round. Iron aboard stiffens it, and fore-and-aft canvas helps it."],
+  ["Hull", "What side guns and rams take off. At nothing she sinks."],
+  ["Mast", "What bow chasers bring down. As it falls she slows towards half speed and answers the helm less; at nothing her masts are gone."],
+  ["Crew", "What muskets and swivels clear. At nothing she is taken."],
+  ["Muskets in a volley", "Balls in her small-arms volley, from her hands and every swivel on the rail."],
+  ["Damage a ball", "What one broadside gun takes off a hull."],
+  ["Her whole side is away in", "How long her broadside takes to roll down her side, bow to stern."],
+];
+
+function Glossary() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ paddingTop: 8 }}>
+      <TinyButton label={open ? "Hide what the figures mean" : "What the figures mean"} onClick={() => setOpen(!open)} />
+      {open && (
+        <div style={{ marginTop: 6 }}>
+          {GLOSSARY.map(([term, line]) => (
+            <div key={term} style={{ fontSize: 10, lineHeight: 1.5, padding: "4px 0", borderTop: "1px solid rgba(160,224,210,0.14)" }}>
+              <span style={{ color: "rgba(238,244,242,0.8)" }}>{term}. </span>
+              <span style={{ color: "rgba(238,244,242,0.5)" }}>{line}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -4532,6 +4573,9 @@ function CommissionScreen({ hold, onBack, onBought }) {
   const groups = useMemo(() => shelve(how), [how]);
   const fleet = ownedShips(hold);
   const owned = new Set(fleet.map((s) => s.hull));
+  // How far what she owns goes towards each class, worked out once per hold rather than per row,
+  // because every open row asks and the answer only moves when the hold does.
+  const ready = useMemo(() => Object.fromEntries(HULL_LIST.map((h) => [h.id, readiness(hold, h.id)])), [hold]);
 
   const commission = (hullId) => {
     const bought = buyShip(hullId);
@@ -4549,25 +4593,8 @@ function CommissionScreen({ hold, onBack, onBought }) {
       <div style={{ fontFamily: DISPLAY, fontSize: 30, color: C.gold, letterSpacing: 1 }}>BOAT COMMISSION</div>
       <PurseLine hold={hold} />
 
-      <Segmented options={SHELVING} value={how} onChange={setHow} />
-
-      {groups.map((g) => (
-        <Slab key={g.title || "all"} title={g.title || `${g.ships.length} classes, cheapest first`}>
-          {g.ships.map((s, i) => (
-            <HullRow
-              key={s.hull.id}
-              shelf={s}
-              first={i === 0}
-              owned={owned.has(s.hull.id)}
-              coins={hold.coins}
-              open={open === s.hull.id}
-              onToggle={() => setOpen(open === s.hull.id ? null : s.hull.id)}
-              onBuy={() => commission(s.hull.id)}
-            />
-          ))}
-        </Slab>
-      ))}
-
+      {/* Her fleet above the shelf rather than under it, where it sat below sixteen rows of classes
+          she was not buying. Small, because it is a list to check against the shelf, not the shelf. */}
       <Slab title={`Your ships (${fleet.length})`}>
         {fleet.map((ship, i) => {
           const active = hold.yard.active === ship.id;
@@ -4590,10 +4617,53 @@ function CommissionScreen({ hold, onBack, onBought }) {
         })}
       </Slab>
 
+      <Segmented options={SHELVING} value={how} onChange={setHow} />
+
+      {groups.map((g) => (
+        <Slab key={g.title || "all"} title={g.title || `${g.ships.length} classes, cheapest first`}>
+          {g.ships.map((s, i) => (
+            <HullRow
+              key={s.hull.id}
+              shelf={s}
+              first={i === 0}
+              owned={owned.has(s.hull.id)}
+              ready={ready[s.hull.id]}
+              coins={hold.coins}
+              open={open === s.hull.id}
+              onToggle={() => setOpen(open === s.hull.id ? null : s.hull.id)}
+              onBuy={() => commission(s.hull.id)}
+            />
+          ))}
+        </Slab>
+      ))}
+
       <StartButton onClick={onBack} label="Back to the yard" />
       <div style={{ height: 8 }} />
     </Shell>
   );
+}
+
+/**
+ * Which shapes of rig a hull takes, station by station, as one sentence: "Bowsprit takes headsails,
+ * fore and main take square, mizzen takes spanker." Stations that take the same shapes are said
+ * together, because "fore takes square, main takes square" is the same fact twice.
+ */
+function socketsLine(hull) {
+  const runs = [];
+  for (const socket of hull.sockets) {
+    const shapes = socket.rigs.length ? socket.rigs.map((f) => familyOf(f)?.name || f).join(" or ") : "any rig of her size";
+    const last = runs[runs.length - 1];
+    if (last && last.shapes === shapes) last.stations.push(socket.station);
+    else runs.push({ shapes, stations: [socket.station] });
+  }
+  const say = (r) => {
+    const list = r.stations.length > 1
+      ? `${r.stations.slice(0, -1).join(", ")} and ${r.stations[r.stations.length - 1]}`
+      : r.stations[0];
+    return `${list} ${r.stations.length > 1 ? "take" : "takes"} ${r.shapes}`;
+  };
+  const line = runs.map(say).join(", ");
+  return `Her ${line}.`;
 }
 
 /** The purse, on its own line under a shop's title, because every price below is read against it. */
@@ -4612,7 +4682,7 @@ function PurseLine({ hold }) {
  * whole stat line, both ends of it, and the button. An accordion rather than a screen of its own
  * because a captain comparing two classes should not have to leave the list to do it.
  */
-function HullRow({ shelf, first, owned, coins, open, onToggle, onBuy }) {
+function HullRow({ shelf, first, owned, ready, coins, open, onToggle, onBuy }) {
   const { hull, band } = shelf;
   const afford = coins >= hull.price;
   /* Handling is the one stat that runs BACKWARDS: fully found, under a press of canvas with every
@@ -4661,7 +4731,33 @@ function HullRow({ shelf, first, owned, coins, open, onToggle, onBuy }) {
           <TallyRow label="Muskets in a volley" value={range("muskets")} rule="hair" />
           <TallyRow label="Damage a ball, fully found" value={shelf.found.broadside.perBall.toFixed(1)} rule="hair" />
           <TallyRow label="Rated" value={shelf.rated.name} rule="group" />
+          {/* What she bears in iron is on the shelf because it is the figure that decides whether a
+              cheap hull with many ports can arm them: a class pierced for 12 a side that bears 45
+              tons carries 36-pounders in 6 of them and nothing in the rest. */}
+          <TallyRow label="Bears in guns" value={`${fmtTons(hull.tons)} tons`} rule="hair" />
           <TallyRow label="Rigging and guns to fill her out" value={<Coins n={shelf.outfit} />} rule="hair" />
+          {/* Which shapes of rig her sockets take, on the shelf rather than in the mast picker after
+              she is bought, so a captain with a spare suit of square rig can see it will not step in
+              a xebec before paying for the xebec. */}
+          <div style={{ fontSize: 10, color: "rgba(238,244,242,0.55)", lineHeight: 1.6, marginTop: 8 }}>
+            {socketsLine(hull)}
+          </div>
+          {/* How far what she already owns goes, worked out the way "fit what you own" would do it
+              on the day she buys her: a captain shopping for a hull is really shopping for a ship,
+              and the difference between the two is what is in her hold. */}
+          {ready && (
+            <div style={{ fontSize: 10, color: "rgba(238,244,242,0.55)", lineHeight: 1.6, marginTop: 4 }}>
+              {ready.fitted > 0 ? (
+                <>
+                  From what you own: masts for {ready.masts} of {plural(ready.sockets, "socket")}, sails for {ready.sails} of{" "}
+                  {plural(ready.berths, "berth")} on them, guns for {ready.guns} of {plural(ready.ports, "port")}.
+                  {" "}The rest at the cheapest: <Coins n={ready.cost} />.
+                </>
+              ) : (
+                <>Nothing you own fits her yet. Rigging and guns at the cheapest: <Coins n={ready.cost} />.</>
+              )}
+            </div>
+          )}
           <div style={{ marginTop: 10 }}>
             <WideButton
               label={hull.price === 0 ? "Commission her" : <span>Commission her for <Coins n={hull.price} /></span>}
@@ -4779,7 +4875,7 @@ function OutfitterScreen({ hold, shipId: asked, onView, start, onBack }) {
       <PurseLine hold={hold} />
 
       <Segmented
-        options={[{ key: "rigging", label: "Masts and sails" }, { key: "guns", label: "Guns" }]}
+        options={[{ key: "rigging", label: "Masts and sails" }, { key: "guns", label: "Guns" }, { key: "spares", label: "Spares" }]}
         value={view}
         onChange={(v) => { setView(v); close(); }}
       />
@@ -4861,6 +4957,9 @@ function OutfitterScreen({ hold, shipId: asked, onView, start, onBack }) {
                         ? (type) => berthEffect(loadout, socket.id, picking.berth, entry.sails[picking.berth], type)
                         : null
                   }
+                  // a mast opens berths, and berths are purchases: its line says what the
+                  // cheapest canvas on all of them would come to
+                  line={picking.what === "mast" ? mastLine : undefined}
                   removeLabel={
                     picking.what === "mast"
                       ? socket.spar ? "Unrig the spar" : "Take the mast down"
@@ -4958,12 +5057,9 @@ function OutfitterScreen({ hold, shipId: asked, onView, start, onBack }) {
                       // a gun she cannot bear is in the list and not a button, the same as one she
                       // cannot afford, and its line says which of the two it is
                       fits={(type) => gunFits(type, stats.weight, loadout.hull.tons)}
-                      line={(type) => {
-                        const t = gunTons(type);
-                        const after = room - t;
-                        return `${type.damage} damage every ${type.reload.toFixed(2)}s, adds ${fmtTons(t)} tons` +
-                          (after >= -1e-6 ? `, ${fmtTons(Math.max(0, after))} left` : ", more than she can bear");
-                      }}
+                      // what THIS gun does to THIS ship: her volley from this mount before and
+                      // after, what the iron costs her helm, and what it weighs against her room
+                      line={(type) => gunLine(loadout, mount, type, room)}
                       onPick={(type) => {
                         const fit = (pid) => fitGun(shipId, mount, pid);
                         if (picking.fill) fitMany(type.id, bears - fitted.length, fit);
@@ -4979,9 +5075,106 @@ function OutfitterScreen({ hold, shipId: asked, onView, start, onBack }) {
           );
         })}
 
+      {view === "spares" && <SparesView hold={hold} shipId={shipId} />}
+
       <StartButton onClick={onBack} label="Back to the yard" />
       <div style={{ height: 8 }} />
+      {/* Her figures as she stands, pinned to the foot of the screen, so what a tap just did is
+          read without scrolling back up to the yard. One line, so it covers as little as a line. */}
+      <div
+        style={{
+          position: "sticky", bottom: 0, marginTop: 4, padding: "7px 10px",
+          background: "rgba(8,38,37,0.96)", border: `1px solid ${C.hair}`, borderRadius: 10,
+          fontSize: 10, lineHeight: 1.5, color: "rgba(238,244,242,0.8)",
+        }}
+      >
+        As she stands: {fmtKnots(stats.speed)}, handling {stats.turn.toFixed(2)}, side {Math.round(stats.broadside.damage)} damage, iron {fmtTons(stats.weight)} of {fmtTons(loadout.hull.tons)} tons.
+      </div>
     </Shell>
+  );
+}
+
+/**
+ * What one gun would do to her, for its row in the picker: the mount's volley before and after, what
+ * the iron takes off her helm, and what it weighs against the room she has. "Before and after"
+ * because a gun's own damage figure is not what a captain feels; her side going from 84 to 90 is.
+ */
+function gunLine(loadout, mount, type, room) {
+  const e = gunEffect(loadout, mount, type);
+  const what = mount === "broadside" ? "her side" : mount === "bow" ? "her chasers" : "her swivels";
+  const volley = `${what} from ${Math.round(e.side - e.damage)} to ${Math.round(e.side)} damage`;
+  const helm = e.turn < -0.005 ? `, stiffens the helm by ${Math.abs(e.turn).toFixed(2)}` : "";
+  const t = gunTons(type);
+  const after = room - t;
+  const tons = after >= -1e-6 ? `adds ${fmtTons(t)} tons, ${fmtTons(Math.max(0, after))} left` : `adds ${fmtTons(t)} tons, more than she can bear`;
+  return `${volley}${helm}, every ${type.reload.toFixed(2)}s, ${tons}`;
+}
+
+/** A mast's row: the sails it carries, and what the cheapest canvas on all of them comes to. */
+function mastLine(type) {
+  const canvas = cheapestCanvas(type);
+  return `${partLine(type)}${canvas > 0 ? `, about ${fmtCoins(canvas)} coins to fill at the cheapest` : ""}`;
+}
+
+/**
+ * THE SPARES: everything she owns that this ship is not carrying, and the way to sell it back.
+ *
+ * A yard where fifty guns can be bought and none sold strands a battery the moment a captain
+ * changes hull, so parts sell back here, in full (see `REFUND_SHARE`). The list is what the outfitter
+ * offers as "already yours", grouped by type with what is loose and what is standing in her other
+ * ships, because selling one of the latter takes it off that ship and the row has to say so before
+ * the tap. Loose ones go first.
+ */
+function SparesView({ hold, shipId }) {
+  // where every part of hers that is not on THIS ship stands: loose, or aboard which other ship
+  const aboard = new Map();
+  for (const [sid, ship] of Object.entries(hold.yard.ships)) {
+    if (sid === shipId) continue;
+    for (const slot of Object.values(ship.rig)) {
+      if (slot.mast) aboard.set(slot.mast, sid);
+      for (const s of slot.sails) if (s) aboard.set(s, sid);
+      for (const st of slot.studs || []) if (st) aboard.set(st, sid);
+    }
+    for (const mount of ["broadside", "bow", "swivel"]) for (const g of ship.guns[mount]) aboard.set(g, sid);
+  }
+  const rows = new Map();
+  for (const pid of spareParts(hold, shipId)) {
+    const type = partOf(hold, pid);
+    if (!type) continue;
+    const row = rows.get(type.id) || { type, loose: [], standing: [] };
+    (aboard.has(pid) ? row.standing : row.loose).push(pid);
+    rows.set(type.id, row);
+  }
+  const list = [...rows.values()].sort((a, b) => a.type.part.localeCompare(b.type.part) || a.type.price - b.type.price);
+
+  return (
+    <Slab title="Spares" sub="Sold parts refund in full">
+      <div style={{ fontSize: 10, color: "rgba(238,244,242,0.45)", lineHeight: 1.6, paddingBottom: 2 }}>
+        Everything you own that this ship is not carrying. A part standing in another of your ships is
+        listed with her, and selling it takes it off her.
+      </div>
+      {list.length === 0 && (
+        <div style={{ fontSize: 11, color: "rgba(238,244,242,0.5)", padding: "6px 0" }}>Nothing spare. Everything you own is aboard this ship.</div>
+      )}
+      {list.map(({ type, loose, standing }) => {
+        const where = standing.map((pid) => shipName(hold, aboard.get(pid)));
+        const said = [
+          loose.length ? `${loose.length} loose` : null,
+          standing.length ? `${standing.length} aboard ${[...new Set(where)].join(" and ")}` : null,
+        ].filter(Boolean).join(", ");
+        // a loose one goes before one standing in a sister ship, so nothing is stripped that need not be
+        const next = loose[0] || standing[0];
+        return (
+          <div key={type.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "7px 0", borderTop: "1px solid rgba(160,224,210,0.14)" }}>
+            <span>
+              <span style={{ display: "block", fontSize: 11, color: C.ink }}>{type.name}</span>
+              <span style={{ display: "block", fontSize: 9, color: "rgba(238,244,242,0.45)", marginTop: 2 }}>{said}</span>
+            </span>
+            <TinyButton label={<span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>Sell one for <Coins n={refundOf(type)} /></span>} onClick={() => sellPart(next)} />
+          </div>
+        );
+      })}
+    </Slab>
   );
 }
 
@@ -5239,7 +5432,7 @@ const Coins = ({ n }) => (
  * The whole plate is one button. A frame you have to hit the middle of is a frame that feels broken
  * on a phone, and the ship inside it is a canvas with transparent corners.
  */
-function ShipPlate({ hold, onEdit }) {
+function ShipPlate({ hold, onEdit, onOutfit }) {
   const [lit, setLit] = useState(false);
   const fleet = ownedShips(hold);
   // The plate turns any of her ships, not only the one she sails. It starts on that one, and comes
@@ -5277,12 +5470,16 @@ function ShipPlate({ hold, onEdit }) {
               return `${loadout.hull.name}, ${rated}`;
             })()}
           </div>
-          <div style={{ marginTop: 8 }}>
+          {/* Two ways off the plate besides the ship herself: sail this one, and go straight to
+              her rigging. "Outfit her" is here because the outfitter is where most visits to the
+              yard end up, and the yard is a scroll away from it. */}
+          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, marginTop: 8 }}>
             {sailing ? (
               <span style={{ fontSize: 10, color: "rgba(238,244,242,0.5)" }}>The ship you sail</span>
             ) : (
               <TinyButton label="Sail her" onClick={() => setActiveShip(id)} />
             )}
+            <TinyButton label="Outfit her" onClick={() => onOutfit(id)} />
           </div>
         </div>
         <QuickStats stats={stats} tons={loadout.hull.tons} />
@@ -5368,7 +5565,7 @@ function ArrowButton({ back, label, onClick }) {
 // would let a captain think a gun fits when it does not.
 const fmtTons = (t) => t.toFixed(1);
 
-function StartOverlay({ onStart, onEdit, onRecords, hold, onScuttle }) {
+function StartOverlay({ onStart, onEdit, onOutfit, onRecords, hold, onScuttle }) {
   return (
     <Shell>
       {/* The name is a lockup of two lines, and the first one carries it. STERNCHASE is the word a
@@ -5379,7 +5576,7 @@ function StartOverlay({ onStart, onEdit, onRecords, hold, onScuttle }) {
           It gives size back on a narrow screen rather than being set small everywhere. */}
       <div style={{ fontFamily: DISPLAY, fontSize: "clamp(34px, 12vw, 44px)", color: C.gold, letterSpacing: 2, lineHeight: 1.05 }}>STERNCHASE</div>
       <div style={{ fontFamily: DISPLAY, fontSize: 15, color: "rgba(232,200,119,0.62)", letterSpacing: 3, marginTop: 4 }}>HELM &amp; HULL</div>
-      <ShipPlate hold={hold} onEdit={onEdit} />
+      <ShipPlate hold={hold} onEdit={onEdit} onOutfit={onOutfit} />
       <HoldPanel hold={hold} onRecords={onRecords} />
       {/* No prompt over the modes. Three named cards under the game's own title are visibly the
           choice, and a line telling you to choose is the kind of thing only a template asks for. */}

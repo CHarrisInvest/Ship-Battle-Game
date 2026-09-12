@@ -626,7 +626,11 @@ round, not her savings.
   reference row, menu and sea alike, and her size and collision ellipse come with the model. There is
   still no size figure in the catalogue, which is why none can go stale.
 - No sail designs or cloth patterns. Those hang off ids without touching any of the numbers here.
-- No selling parts back. Easy to add; wanted a decision on whether it refunds in full first.
+- ~~No selling parts back.~~ Built, and it refunds in full: `REFUND_SHARE` in `hold.js` is 1, because
+  the shipyard is where a captain tries things and a gun bought, felt at sea and taken off again
+  should not have cost her the trying. It is one constant to lower if a part ever needs to be a
+  commitment. Selling is from the outfitter's Spares tab, which lists everything she owns that this
+  ship is not carrying, loose or standing in a sister ship, and says which before the tap.
 - ~~**No hull blurbs.**~~ The sixteen classes at sea each carry one now, written with the fleet rather
   than invented for the rows that had none. `blurb` remains an optional column and the shops still
   sell a class on her figures; the line is there for a card that wants prose. None of them has been
@@ -842,6 +846,29 @@ load, and the gun picker greys a gun she cannot bear the way it greys one she ca
 nothing: masts first, then the sails their berths open, then guns under her tonnage, best gun first.
 It is worked out on a copy before it is offered, so the button says how many parts it will fit and
 is not shown when the answer is none.
+
+**The figures explain themselves, behind a tap.** "What the figures mean" under the sailing slab
+opens one line per figure saying what the fight does with it: hull is what side guns take off, mast
+is what chasers bring down and what her speed falls with, crew is what muskets clear. Folded by
+default, because a captain who knows them should not scroll past eight lines every visit.
+
+**Every part on the shelf says what it does to this ship.** Sails did already. A gun's row now reads
+"her side from 108 to 113 damage, stiffens the helm by 0.02, every 1.32s, adds 0.7 tons, 5.7 left",
+from `gunEffect`, which is `berthEffect`'s shape for a gun. A mast's row adds what the cheapest
+canvas on all its berths would come to, from `cheapestCanvas`, because a mast is a purchase that
+opens purchases. And the outfitter pins one line to the foot of the screen, "As she stands: 3.0
+knots, handling 0.72, side 108 damage, iron 39.0 of 45.4 tons", so what a tap just did is read
+without scrolling back to the yard.
+
+**The hull shop says how far what she owns already goes.** An open row reads "From what you own:
+masts for 2 of 4 sockets, sails for 0 of 3 berths on them, guns for 5 of 13 ports. The rest at the
+cheapest: 2,510", from `readiness`, which stands a bare ship of the class up on a copy of the yard
+and runs "fit what you own" against her. It also says what she bears in guns and which shapes of
+rig her sockets take, "her bowsprit takes headsails, fore and main take square rig, mizzen takes
+spanker rig", so a captain with a spare suit of square rig learns it will not step in a xebec
+before paying for the xebec. Her fleet sits above the shelf now rather than under it, and
+commissioning a hull lands on the yard for the new ship, where the shortfall is, rather than back on
+the shelf.
 
 ### The Boat Commission
 
