@@ -4106,7 +4106,7 @@ function YardScreen({ hold, shipId, onView, onBack, onCommission, onOutfit }) {
 
       <Slab title="How she sails">
         <TallyRow label="Top speed" value={fmtKnots(stats.speed)} />
-        <TallyRow label="Handling" value={`${handlingScore(stats.turn)} of 100`} rule="hair" />
+        <TallyRow label="Handling" value={`${handlingScore(stats.turn).toFixed(1)} of 100`} rule="hair" />
         <TallyRow label="Hull" value={stats.hull} rule="hair" />
         <TallyRow label="Mast" value={stats.mast} rule="hair" />
         <TallyRow label="Crew" value={stats.crew} rule="hair" />
@@ -4740,7 +4740,7 @@ function HullRow({ shelf, first, owned, ready, coins, open, onToggle, onBuy }) {
           <TallyRow label="Hull" value={range("hull")} />
           <TallyRow label="Crew" value={range("crew")} rule="hair" />
           <TallyRow label="Top speed" value={`${knots(band.speed.bare).toFixed(1)} to ${knots(band.speed.found).toFixed(1)} knots`} rule="hair" />
-          <TallyRow label="Handling, of 100" value={range("turn", 0, handlingScore)} rule="hair" />
+          <TallyRow label="Handling, of 100" value={range("turn", 1, handlingScore)} rule="hair" />
           <TallyRow label="Broadside guns, a side" value={range("broadside")} rule="hair" />
           <TallyRow label="Bow chasers" value={range("bow")} rule="hair" />
           <TallyRow label="Swivel guns" value={range("swivel")} rule="hair" />
@@ -4893,11 +4893,11 @@ function OutfitterScreen({ hold, shipId: asked, onView, start, onBack }) {
           unit or its ceiling under it, because a sentence of figures is read once and a row of
           tiles is glanced at every tap. */}
       <Pinned>
-        <Stat label="Hold" value={<span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}><CoinIcon size={11} />{fmtCoins(hold.coins)}</span>} unit="coins" />
+        <Stat label="" value={fmtCoins(hold.coins)} unit={<span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}><CoinIcon size={9} />coins</span>} />
         <Stat label="Speed" value={knots(stats.speed).toFixed(1)} unit="knots" />
-        <Stat label="Handling" value={handlingScore(stats.turn)} unit="/ 100" />
-        <Stat label="Damage" value={stats.broadside.perBall.toFixed(1)} unit={`${stats.broadside.count} / side`} />
-        <Stat label="Carrying" value={fmtTons(stats.weight)} unit={`/ ${fmtTons(loadout.hull.tons)} tons`} />
+        <Stat label="Handling" value={handlingScore(stats.turn).toFixed(1)} unit="/100" />
+        <Stat label="Damage" value={stats.broadside.perBall.toFixed(1)} unit={`${stats.broadside.count}/side`} />
+        <Stat label="Carrying" value={fmtTons(stats.weight)} unit={`/${fmtTons(loadout.hull.tons)} tons`} />
       </Pinned>
 
       <Segmented
@@ -5140,7 +5140,9 @@ function Stat({ label, value, unit }) {
     // sized to its own content rather than to an equal share of the strip, because the purse is
     // three times the width of the speed and equal shares put the two on top of each other at 320px
     <div style={{ flex: "0 1 auto", textAlign: "center", lineHeight: 1.2, minWidth: 0 }}>
-      <div style={{ fontSize: 8, color: "rgba(238,244,242,0.55)", whiteSpace: "nowrap" }}>{label}</div>
+      {/* a non-breaking space holds the row when a tile has no name, so its number lines up with
+          the others' */}
+      <div style={{ fontSize: 8, color: "rgba(238,244,242,0.55)", whiteSpace: "nowrap" }}>{label || " "}</div>
       <div style={{ fontSize: 13, fontWeight: 700, color: C.gold, margin: "1px 0", whiteSpace: "nowrap" }}>{value}</div>
       <div style={{ fontSize: 8, color: "rgba(238,244,242,0.55)", whiteSpace: "nowrap" }}>{unit}</div>
     </div>

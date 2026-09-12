@@ -1414,7 +1414,8 @@ const LOAD_BITE = 0.22; // handling lost when she is loaded to her tonnage in gu
  * by 3" lines, so the shelf and the strip speak the same scale.
  */
 export const HANDLING_TOP = 1.56;
-export const handlingScore = (turn) => Math.min(100, Math.max(0, Math.round((100 * turn) / HANDLING_TOP)));
+// unrounded, so a screen can print it to one place where a tenth is worth reading; capped at 100
+export const handlingScore = (turn) => Math.min(100, Math.max(0, (100 * turn) / HANDLING_TOP));
 export const handlingPoints = (delta) => (100 * delta) / HANDLING_TOP;
 
 /**

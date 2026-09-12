@@ -379,10 +379,10 @@ for (const h of HULL_LIST) {
     const b = statBand(h.id);
     const best = bestHandling(h.id);
     top = Math.max(top, best);
-    console.log("  " + pad(h.name, 19) + num(handlingScore(b.turn.bare), 6) + num(handlingScore(b.turn.found), 7) + num(handlingScore(best), 6) + num(n2(best), 11));
-    if (handlingScore(best) > 98) fault("handling", `${h.name} can be rigged to ${handlingScore(best)} of 100; raise HANDLING_TOP in shipyard.js above ${n2(best / 0.91)}`);
+    console.log("  " + pad(h.name, 19) + num(n1(handlingScore(b.turn.bare)), 6) + num(n1(handlingScore(b.turn.found)), 7) + num(n1(handlingScore(best)), 6) + num(n2(best), 11));
+    if (handlingScore(best) > 98) fault("handling", `${h.name} can be rigged to ${n1(handlingScore(best))} of 100; raise HANDLING_TOP in shipyard.js above ${n2(best / 0.91)}`);
   }
-  if (handlingScore(top) < 85) console.log(`  note: the best rig in the fleet scores ${handlingScore(top)}; HANDLING_TOP could come down to ${n2(top / 0.91)}`);
+  if (handlingScore(top) < 85) console.log(`  note: the best rig in the fleet scores ${n1(handlingScore(top))}; HANDLING_TOP could come down to ${n2(top / 0.91)}`);
 }
 
 /* KNOTS ARE FITTED, NOT DECLARED. One constant turns the speed rating into knots for printing, and
