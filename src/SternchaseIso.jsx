@@ -11,7 +11,7 @@ import {
   ladder, peers, stockOfRate,
   HULLS, HULL_LIST, PARTS, statBand, maximumLoadout, outfitCost,
   mastsForSocket, sailsForBerth, studsForBerth, gunsForMount,
-  knots, berthEffect, familyOf, gunTons, gunFits, gunEffect, cheapestCanvas,
+  knots, berthEffect, familyOf, gunTons, gunFits, gunEffect, cheapestCanvas, handlingScore, handlingPoints,
 } from "./shipyard.js";
 import { roll, tally } from "./achievements.js";
 
@@ -4106,7 +4106,7 @@ function YardScreen({ hold, shipId, onView, onBack, onCommission, onOutfit }) {
 
       <Slab title="How she sails">
         <TallyRow label="Top speed" value={fmtKnots(stats.speed)} />
-        <TallyRow label="Handling" value={stats.turn.toFixed(2)} rule="hair" />
+        <TallyRow label="Handling" value={`${handlingScore(stats.turn)} of 100`} rule="hair" />
         <TallyRow label="Hull" value={stats.hull} rule="hair" />
         <TallyRow label="Mast" value={stats.mast} rule="hair" />
         <TallyRow label="Crew" value={stats.crew} rule="hair" />
@@ -4270,7 +4270,7 @@ function YardScreen({ hold, shipId, onView, onBack, onCommission, onOutfit }) {
  */
 const GLOSSARY = [
   ["Top speed", "What she makes with all her canvas drawing. The fight reads the rating; knots are the label on it."],
-  ["Handling", "How quickly she comes round. Iron aboard stiffens it, and fore-and-aft canvas helps it."],
+  ["Handling", "How quickly she comes round, scored out of 100. Iron aboard stiffens it, and fore-and-aft canvas helps it."],
   ["Hull", "What side guns and rams take off. At nothing she sinks."],
   ["Mast", "What bow chasers bring down. As it falls she slows towards half speed and answers the helm less; at nothing her masts are gone."],
   ["Crew", "What muskets and swivels clear. At nothing she is taken."],
@@ -4704,9 +4704,9 @@ function HullRow({ shelf, first, owned, ready, coins, open, onToggle, onBuy }) {
   /* Handling is the one stat that runs BACKWARDS: fully found, under a press of canvas with every
      port filled, she is stiffer on the helm than she was bare. Printed as a plain range that reads
      as a mistake, so a falling stat says which way it goes. */
-  const range = (key, dp = 0) => {
+  const range = (key, dp = 0, map = (v) => v) => {
     const b = band[key];
-    const f = (v) => (dp ? v.toFixed(dp) : Math.round(v));
+    const f = (v) => (dp ? map(v).toFixed(dp) : Math.round(map(v)));
     if (b.low === b.high) return `${f(b.low)}`;
     return `${f(b.bare)} ${b.rises ? "to" : "down to"} ${f(b.found)}`;
   };
@@ -4740,7 +4740,7 @@ function HullRow({ shelf, first, owned, ready, coins, open, onToggle, onBuy }) {
           <TallyRow label="Hull" value={range("hull")} />
           <TallyRow label="Crew" value={range("crew")} rule="hair" />
           <TallyRow label="Top speed" value={`${knots(band.speed.bare).toFixed(1)} to ${knots(band.speed.found).toFixed(1)} knots`} rule="hair" />
-          <TallyRow label="Handling" value={range("turn", 2)} rule="hair" />
+          <TallyRow label="Handling, of 100" value={range("turn", 0, handlingScore)} rule="hair" />
           <TallyRow label="Broadside guns, a side" value={range("broadside")} rule="hair" />
           <TallyRow label="Bow chasers" value={range("bow")} rule="hair" />
           <TallyRow label="Swivel guns" value={range("swivel")} rule="hair" />
@@ -4887,16 +4887,17 @@ function OutfitterScreen({ hold, shipId: asked, onView, start, onBack }) {
           Whatever you own can be fitted here, and what your other ships carry stays aboard them.
         </div>
       )}
-      <PurseLine hold={hold} />
-      {/* Pinned above the tabs and everything under them: her figures as she stands, so what a tap
-          just did is read where the tap was made rather than by scrolling back to the yard. Four
-          numbers and nothing else, each with its name over it and its unit under it, because a
-          sentence of figures is read once and a row of tiles is glanced at every tap. */}
+      {/* Pinned above the tabs and everything under them: her purse and her figures as she stands,
+          so what a tap just did, and what is left to spend, are read where the tap was made rather
+          than by scrolling back. Five tiles and nothing else, each with its name over it and its
+          unit or its ceiling under it, because a sentence of figures is read once and a row of
+          tiles is glanced at every tap. */}
       <Pinned>
+        <Stat label="Hold" value={<span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}><CoinIcon size={11} />{fmtCoins(hold.coins)}</span>} unit="coins" />
         <Stat label="Speed" value={knots(stats.speed).toFixed(1)} unit="knots" />
-        <Stat label="Handling" value={stats.turn.toFixed(2)} unit="turn rate" />
-        <Stat label="Side" value={Math.round(stats.broadside.damage)} unit="damage" />
-        <Stat label="Weight" value={`${fmtTons(stats.weight)}/${fmtTons(loadout.hull.tons)}`} unit="tons" />
+        <Stat label="Handling" value={handlingScore(stats.turn)} unit="/ 100" />
+        <Stat label="Damage" value={stats.broadside.perBall.toFixed(1)} unit={`${stats.broadside.count} / side`} />
+        <Stat label="Carrying" value={fmtTons(stats.weight)} unit={`/ ${fmtTons(loadout.hull.tons)} tons`} />
       </Pinned>
 
       <Segmented
@@ -5120,8 +5121,8 @@ function Pinned({ children }) {
   return (
     <div
       style={{
-        position: "sticky", top: 0, zIndex: 2, margin: "10px 0 0", padding: "6px 6px 7px",
-        display: "flex", justifyContent: "space-around", alignItems: "flex-start", gap: 4,
+        position: "sticky", top: 0, zIndex: 2, margin: "10px 0 0", padding: "6px 4px 7px",
+        display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 2,
         background: "rgba(8,38,37,0.96)", border: `1px solid ${C.hair}`, borderRadius: 10,
       }}
     >
@@ -5136,10 +5137,12 @@ function Pinned({ children }) {
  */
 function Stat({ label, value, unit }) {
   return (
-    <div style={{ textAlign: "center", lineHeight: 1.2, minWidth: 0 }}>
-      <div style={{ fontSize: 9, color: "rgba(238,244,242,0.55)" }}>{label}</div>
-      <div style={{ fontSize: 15, fontWeight: 700, color: C.gold, margin: "1px 0", whiteSpace: "nowrap" }}>{value}</div>
-      <div style={{ fontSize: 9, color: "rgba(238,244,242,0.55)" }}>{unit}</div>
+    // sized to its own content rather than to an equal share of the strip, because the purse is
+    // three times the width of the speed and equal shares put the two on top of each other at 320px
+    <div style={{ flex: "0 1 auto", textAlign: "center", lineHeight: 1.2, minWidth: 0 }}>
+      <div style={{ fontSize: 8, color: "rgba(238,244,242,0.55)", whiteSpace: "nowrap" }}>{label}</div>
+      <div style={{ fontSize: 13, fontWeight: 700, color: C.gold, margin: "1px 0", whiteSpace: "nowrap" }}>{value}</div>
+      <div style={{ fontSize: 8, color: "rgba(238,244,242,0.55)", whiteSpace: "nowrap" }}>{unit}</div>
     </div>
   );
 }
@@ -5162,7 +5165,8 @@ function gunLine(loadout, mount, type, room) {
   const e = gunEffect(loadout, mount, type);
   const what = mount === "broadside" ? "her side" : mount === "bow" ? "her chasers" : "her swivels";
   const volley = `${what} from ${Math.round(e.side - e.damage)} to ${Math.round(e.side)} damage`;
-  const helm = e.turn < -0.005 ? `, stiffens the helm by ${Math.abs(e.turn).toFixed(2)}` : "";
+  const pts = handlingPoints(e.turn);
+  const helm = pts < -0.5 ? `, stiffens the helm by ${Math.round(Math.abs(pts))}` : "";
   const t = gunTons(type);
   const after = room - t;
   const tons = after >= -1e-6 ? `adds ${fmtTons(t)} tons, ${fmtTons(Math.max(0, after))} left` : `adds ${fmtTons(t)} tons, more than she can bear`;
@@ -5399,9 +5403,12 @@ function effectLine({ speed, turn }, how) {
     Math.abs(kn) < 0.05 ? (how === "yard" ? "no speed to speak of" : "no change to her speed")
       : how === "yard" ? `worth ${Math.abs(kn).toFixed(1)} knots`
         : `${kn > 0 ? "adds" : "costs"} ${Math.abs(kn).toFixed(1)} knots here`;
+  // the helm in the same points the handling score is read in, so "helps the helm by 3" is 3 on
+  // the figure the strip and the yard print; under half a point rounds to nothing and says so
+  const pts = handlingPoints(turn);
   const helm =
-    Math.abs(turn) < 0.005 ? "leaves the helm alone"
-      : `${turn > 0 ? "helps" : "stiffens"} the helm by ${Math.abs(turn).toFixed(2)}`;
+    Math.abs(pts) < 0.5 ? "leaves the helm alone"
+      : `${pts > 0 ? "helps" : "stiffens"} the helm by ${Math.round(Math.abs(pts))}`;
   return `${pace}, ${helm}`;
 }
 
