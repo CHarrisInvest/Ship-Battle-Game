@@ -10,6 +10,7 @@ import {
   ladder, peers, stockOfRate,
   HULLS, HULL_LIST, statBand, maximumLoadout, outfitCost,
   mastsForSocket, sailsForBerth, studsForBerth, gunsForMount,
+  knots, berthEffect, familyOf,
 } from "./shipyard.js";
 import { roll, tally } from "./achievements.js";
 
@@ -4067,7 +4068,7 @@ function YardScreen({ hold, onBack, onCommission, onOutfit }) {
       <MenuGalleon rig={rig} />
 
       <Slab title="How she sails">
-        <TallyRow label="Top speed" value={stats.speed.toFixed(2)} />
+        <TallyRow label="Top speed" value={fmtKnots(stats.speed)} />
         <TallyRow label="Handling" value={stats.turn.toFixed(2)} rule="hair" />
         <TallyRow label="Hull" value={stats.hull} rule="hair" />
         <TallyRow label="Crew" value={stats.crew} rule="hair" />
@@ -4104,21 +4105,33 @@ function YardScreen({ hold, onBack, onCommission, onOutfit }) {
                 mast.berths.map((berth, i) => {
                   const sail = entry.sails[i];
                   const stud = (entry.studs || [])[i];
+                  // What each sail is giving her, read the other way up from `berthEffect`: the
+                  // ship as she stands against the ship with this berth cleared. Taking the sail
+                  // off takes its studdingsail with it, so the sail's figure includes the stud's,
+                  // and the stud row below shows its own share of that.
+                  const worth = sail ? giving(berthEffect(loadout, socket.id, i, null)) : null;
+                  const studWorth = stud ? giving(berthEffect(loadout, socket.id, i, sail, null)) : null;
                   return (
                     <React.Fragment key={i}>
                       <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginTop: 3, paddingLeft: 10 }}>
                         <span style={{ fontSize: 9, color: "rgba(238,244,242,0.45)" }}>
                           {kindOf(berth.kind)?.name || berth.kind}
                         </span>
-                        <span style={{ fontSize: 10, color: sail ? "rgba(238,244,242,0.8)" : "rgba(238,244,242,0.35)" }}>
-                          {sail ? sail.name : "bare"}
+                        <span style={{ textAlign: "right" }}>
+                          <span style={{ display: "block", fontSize: 10, color: sail ? "rgba(238,244,242,0.8)" : "rgba(238,244,242,0.35)" }}>
+                            {sail ? sail.name : "bare"}
+                          </span>
+                          {worth && <span style={{ display: "block", fontSize: 9, color: "rgba(238,244,242,0.45)" }}>{effectLine(worth, "yard")}</span>}
                         </span>
                       </div>
                       {/* run out beyond the sail above, so it reads as part of that sail's row */}
                       {stud && (
                         <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginTop: 2, paddingLeft: 18 }}>
                           <span style={{ fontSize: 9, color: "rgba(238,244,242,0.45)" }}>Studdingsail</span>
-                          <span style={{ fontSize: 10, color: "rgba(238,244,242,0.8)" }}>{stud.name}</span>
+                          <span style={{ textAlign: "right" }}>
+                            <span style={{ display: "block", fontSize: 10, color: "rgba(238,244,242,0.8)" }}>{stud.name}</span>
+                            <span style={{ display: "block", fontSize: 9, color: "rgba(238,244,242,0.45)" }}>{effectLine(studWorth, "yard")}</span>
+                          </span>
                         </div>
                       )}
                     </React.Fragment>
@@ -4442,7 +4455,7 @@ function HullRow({ shelf, first, owned, coins, open, onToggle, onBuy }) {
           </div>
           <TallyRow label="Hull" value={range("hull")} />
           <TallyRow label="Crew" value={range("crew")} rule="hair" />
-          <TallyRow label="Top speed" value={range("speed", 2)} rule="hair" />
+          <TallyRow label="Top speed" value={`${knots(band.speed.bare).toFixed(1)} to ${knots(band.speed.found).toFixed(1)} knots`} rule="hair" />
           <TallyRow label="Handling" value={range("turn", 2)} rule="hair" />
           <TallyRow label="Broadside guns, a side" value={range("broadside")} rule="hair" />
           <TallyRow label="Bow chasers" value={range("bow")} rule="hair" />
@@ -4618,6 +4631,22 @@ function OutfitterScreen({ hold, onBack }) {
                       : picking.what === "stud" ? (entry.studs || [])[picking.berth]
                       : entry.sails[picking.berth]
                   }
+                  // what a socket takes, said up front, so a mast she owns that is not in the
+                  // list is not a mystery: it is the wrong shape of rig for this station
+                  note={
+                    picking.what === "mast" && socket.rigs.length
+                      ? `Her ${socket.station} takes ${socket.rigs.map((f) => familyOf(f)?.name || f).join(" or ")}.`
+                      : null
+                  }
+                  // every sail and studdingsail shows what fitting it HERE would do to her, the
+                  // ship as she stands against the ship with this one in the berth
+                  effect={
+                    picking.what === "sail"
+                      ? (type) => berthEffect(loadout, socket.id, picking.berth, type, (entry.studs || [])[picking.berth])
+                      : picking.what === "stud"
+                        ? (type) => berthEffect(loadout, socket.id, picking.berth, entry.sails[picking.berth], type)
+                        : null
+                  }
                   removeLabel={
                     picking.what === "mast"
                       ? socket.spar ? "Unrig the spar" : "Take the mast down"
@@ -4780,13 +4809,16 @@ function FitRow({ label, value, empty, indent, onClick }) {
  * What she owns counts the rigging and guns standing in her other hulls as well as what is lying
  * loose, because being aboard one ship has never been a reason a part cannot be fitted to another.
  */
-function Picker({ title, options, fitted, removeLabel, spare, coins, onPick, onRemove, onClose }) {
+function Picker({ title, note, options, fitted, effect, removeLabel, spare, coins, onPick, onRemove, onClose }) {
   return (
     <div style={{ borderTop: `1px solid ${C.hair}`, marginTop: 6, paddingTop: 6 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, paddingBottom: 2 }}>
         <span style={{ fontSize: 10, letterSpacing: 1, color: C.gold }}>{title}</span>
         <TinyButton label="Close" onClick={onClose} />
       </div>
+      {note && (
+        <div style={{ fontSize: 10, color: "rgba(238,244,242,0.5)", lineHeight: 1.5, paddingBottom: 4 }}>{note}</div>
+      )}
       {fitted && onRemove && (
         <div style={{ padding: "6px 0", borderTop: "1px solid rgba(160,224,210,0.14)" }}>
           <TinyButton label={removeLabel} onClick={onRemove} />
@@ -4794,7 +4826,10 @@ function Picker({ title, options, fitted, removeLabel, spare, coins, onPick, onR
       )}
       {options.map((type) => {
         const held = (spare.get(type.id) || []).length;
-        const afford = held > 0 || coins >= type.price;
+        // the part already in the slot is in the list, so the captain can see it against the
+        // rest, and it is not a button: tapping it would buy her a second one
+        const here = !!fitted && fitted.id === type.id;
+        const afford = !here && (held > 0 || coins >= type.price);
         return (
           <button
             key={type.id}
@@ -4803,25 +4838,54 @@ function Picker({ title, options, fitted, removeLabel, spare, coins, onPick, onR
               display: "flex", width: "100%", alignItems: "baseline", justifyContent: "space-between", gap: 8,
               background: "transparent", border: "none", borderTop: "1px solid rgba(160,224,210,0.14)",
               padding: "8px 0", textAlign: "left", cursor: afford ? "pointer" : "default",
-              opacity: afford ? 1 : 0.45, WebkitTapHighlightColor: "transparent",
+              opacity: afford || here ? 1 : 0.45, WebkitTapHighlightColor: "transparent",
             }}
           >
             <span>
-              <span style={{ display: "block", fontSize: 11, color: C.ink }}>{type.name}</span>
+              <span style={{ display: "block", fontSize: 11, color: here ? C.grass : C.ink }}>{type.name}</span>
               <span style={{ display: "block", fontSize: 9, color: "rgba(238,244,242,0.45)", marginTop: 2 }}>
-                {partLine(type)}
+                {/* a sail is priced by what it would do to THIS ship from here, and the one already
+                    in the berth by what it is giving her, so the two read against each other; a
+                    mast or a gun by its own figures, which are the same wherever it goes */}
+                {effect ? effectLine(here ? giving(effect(null)) : effect(type), here ? "yard" : "shop") : partLine(type)}
               </span>
             </span>
-            <span style={{ fontSize: 11, color: held ? C.grass : afford ? C.gold : "rgba(238,244,242,0.4)", whiteSpace: "nowrap" }}>
+            <span style={{ fontSize: 11, color: here || held ? C.grass : afford ? C.gold : "rgba(238,244,242,0.4)", whiteSpace: "nowrap" }}>
               {/* "Already yours" rather than "in the hold": one of these may be standing in another
                   of her hulls this minute, and it is hers to fit here all the same. */}
-              {held ? `${held} already yours` : type.price === 0 ? "free" : <Coins n={type.price} />}
+              {here ? "fitted here" : held ? `${held} already yours` : type.price === 0 ? "free" : <Coins n={type.price} />}
             </span>
           </button>
         );
       })}
     </div>
   );
+}
+
+// Speed to one decimal in knots, because the reference speeds the fleet was fitted against are
+// written in halves and "12 knots" against "12.4" is the difference between two sails.
+const fmtKnots = (rating) => `${knots(rating).toFixed(1)} knots`;
+
+// A part's contribution read the other way up: `berthEffect` with the berth cleared says what she
+// loses, and what she loses is what the part is giving her.
+const giving = (e) => ({ speed: -e.speed, turn: -e.turn });
+
+/**
+ * What a change to one berth does to her, in words. `how` is "shop", where the figure is what
+ * fitting the part from here would add or cost, or "yard", where it is what the part aboard is
+ * worth to her. Under a twentieth of a knot is nothing a captain could feel, so it says so rather
+ * than printing 0.0.
+ */
+function effectLine({ speed, turn }, how) {
+  const kn = knots(speed);
+  const pace =
+    Math.abs(kn) < 0.05 ? (how === "yard" ? "no speed to speak of" : "no change to her speed")
+      : how === "yard" ? `worth ${Math.abs(kn).toFixed(1)} knots`
+        : `${kn > 0 ? "adds" : "costs"} ${Math.abs(kn).toFixed(1)} knots here`;
+  const helm =
+    Math.abs(turn) < 0.005 ? "leaves the helm alone"
+      : `${turn > 0 ? "helps" : "stiffens"} the helm by ${Math.abs(turn).toFixed(2)}`;
+  return `${pace}, ${helm}`;
 }
 
 // The figures that decide between two parts of the same sort, and no others. A mast is chosen for

@@ -69,6 +69,31 @@ A **spar** is not a mast. A jibboom goes on the bowsprit and nowhere else, and a
 goes over the bow. Size alone would allow both, since a spar is small and small fits everything, so
 `mastFitsSocket` matches the sort of thing first and consults the size rung second.
 
+**And a hull says which shapes of rig she takes.** The same phantom one level further: a lug mast is
+small and small fits a first rate's fore, so for as long as size was the only rule every rated ship in
+the fleet could be rigged as a lugger, and her "plain" stock fit actually was, because the plain
+standard picks a third of the way up a price-sorted list and a lug topmast sat there. So every mast
+carries a `family`, one of the ten in `RIG_FAMILIES` (square, spanker, schooner, gaff, Bermuda, lateen,
+lug, boat, headsails, spritsail), and every socket of a class that sails names the families it takes,
+written `station/size/family+family` in `hulls.tsv`. A frigate is square rig on her fore and main and
+spanker rig on her mizzen; a xebec is lateen from stem to stern; a cutter's one mast takes gaff or
+spanker rig; a gundalow takes whatever an open boat steps. The family is matched before the size rung,
+and a socket that names none takes any mast of its size, which is how the laid-up rows stand until
+somebody rigs them: the bench asks every sailing class to say, and checks that every family named is
+carried by a mast that fits the socket and that every socket steps something at all three stock
+standards.
+
+Two things follow. **The free pole mast is a boat's**, so the cheapest legal fill of a rated hull is
+a lower mast at 420 rather than nothing, and the floor of outfitting rises with the ship, which is the
+direction the economy wanted. And **a mast a captain owns may fit none of her other hulls**, so the
+outfitter says up front what a socket takes rather than leaving her to wonder why the mast in her
+sloop is not offered for her corvette.
+
+**Studdingsails follow the family.** Only square and schooner rig ever carried the booms for them
+(`STUDDING_FAMILIES`), so a brigantine's square fore takes them and a Baltimore Clipper's schooner
+fore does, while a lateen yard and a boat's pole take none whatever square canvas is bent on them.
+`studFitsSail` and `studsForBerth` both ask the mast, so nothing needed the hull.
+
 **Sails** fit a berth of their own category, and that is the whole of the rule. This is also the whole
 of "a sloop's triangular canvas is no use on a square-rigged ship": a frigate has no triangular berth
 below her mizzen, so the sail simply does not go in. Each sail has a `drive` (pull) and a `hand` (what
@@ -213,6 +238,31 @@ constant by a rating rather than replacing the numbers wholesale. Nothing about 
 moves on the day the shipyard opens, and each hull can then be pulled around one at a time.
 
 `maxHull` and `maxCrew` are the exception and come out in the same points the health bars already use.
+
+**Knots are a label on the speed rating**, and the only thing that reads them is a screen. A rating
+of 1.07 told a captain nothing she could hold against anything, and a knot is a figure she arrives
+knowing roughly. But the fight runs on a sea where a first rate crosses two hull lengths a second, so a
+literal conversion would print two hundred knots; instead `KNOTS_PER_RATING` in `shipyard.js` is one
+constant, fitted by least squares so that the fully found fleet lands near the `topSpeed` column of
+the reference, which is the best each class was ever driven. `npm run catalogue` refits it every run
+and prints each class's residual, so a hull a knot or two off her own figure is a row to look at
+rather than a guess, and it says so when the constant in the source has drifted from the fit. At 11.4
+a point a fully found Baltimore Clipper makes 13.9 against 14.5 recorded, a first rate 8.6 against 9,
+and the gundalow 7.0 against 4: she is the outlier, because thirty percent of her hull speed is hers
+before a stitch of canvas, and she is left where she is until the fleet is looked at together.
+`BASE_SPEED`, `measure()` and every mode still read the rating.
+
+**A sail's figure is what she does to this ship, from here.** Her `drive` is a share of a course and
+that is a fact about the sail; what it does to the ship is not, because drive runs into the saturating
+curve against `canvas`, the berth fades it, and a studdingsail is a share of whatever it booms out
+from. So the same topsail moves a cutter more than a galleon and the fifth sail up a mast less than
+the first, and no fixed figure printed beside a sail could be true of every berth. `berthEffect` rates
+the ship as she stands against the ship with one berth changed and returns the difference in the
+speed and turn ratings. The outfitter passes the candidate, so an empty berth shows the whole gain, a
+filled berth the gain of the swap, and the sail already there reads "fitted here" and is not a button,
+since tapping it would buy a second one. The yard passes nothing and reads the answer the other way
+up: what she would lose is what the sail is worth to her. A sail's figure includes its studdingsail,
+which comes off with it, and the stud row shows its own share.
 
 ## As it stands
 

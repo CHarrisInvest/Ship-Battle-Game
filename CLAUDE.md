@@ -68,9 +68,14 @@ are built from. `broadside` in the code is the side guns, not the old title, and
   an id, one sailing and one laid up, which is what a class rebuilt to new figures looks like: only
   the sailing half is ever written into `shipyard.js` or `shipref.js`, and both tools refuse two rows
   that both sail. Delete a row only to forget a ship ever existed.
-- **A mast type is a shape of rig, not a station.** A mast carrying three square sails is that mast
-  wherever it is stepped, so a brig's fore and main are one part bought twice. Only the size rung
-  says where it can go. Berths run deck upward, and a fore-and-aft driving sail sharing the lowest
+- **A mast type is a shape of rig, not a station, and a hull says which shapes she takes.** A mast
+  carrying three square sails is that mast wherever it is stepped, so a brig's fore and main are one
+  part bought twice. Every mast carries one `family` in `RIG_FAMILIES` (square, spanker, schooner,
+  gaff, Bermuda, lateen, lug, boat, headsails, spritsail) and every socket of a sailing class names
+  the families it takes, written `station/size/family+family` in `hulls.tsv`. `mastFitsSocket`
+  matches the family before the size rung, the way it matches spar against mast, because size alone
+  let a lug mast step in a first rate and her "plain" stock fit really did sail under lug topmasts.
+  Berths run deck upward, and a fore-and-aft driving sail sharing the lowest
   level with a course takes berth 0 with the square canvas above it, because the model holds one sail
   to a band and a spanker belongs at the bottom of the rig rather than over the topgallant.
 - **A sail's category is the whole of the fitting rule.** A berth names one of the seven in
@@ -90,7 +95,18 @@ are built from. `broadside` in the code is the side guns, not the old title, and
   off that sail, so `STU` is marked `additive` and the bench fails a berth that asks for one. It is
   wired as exactly that: an attachment on a sail (`studFitsSail`, `fitStud`), matched by the *level*
   of square canvas it extends rather than by berth number, its drive a share of its host's, and it
-  comes loose the moment the host sail does.
+  comes loose the moment the host sail does. Only square and schooner rig carry the booms for one
+  (`STUDDING_FAMILIES`): a boat's pole and a lateen yard have nothing to boom a sail out from.
+- **Knots are a label on the speed rating, and the fight never reads them.** `rate().speed` stays a
+  multiplier around 1 and `BASE_SPEED` stays what it is; `KNOTS_PER_RATING` turns the rating into a
+  figure a captain can hold against something, fitted so a fully found ship lands near the `topSpeed`
+  her reference row records. `npm run catalogue` fits the constant and prints each class's residual.
+  `measure()` never sees knots, so nothing about strength or matchmaking moves when the constant does.
+- **A sail's figure is what she does to this ship, from here.** Drive runs into a saturating curve
+  against the hull's `canvas`, the berth fades it, and a studdingsail is a share of its host, so
+  "adds 1.3 knots" is only true of one berth on one ship as she stands. `berthEffect` is the one
+  reader: the outfitter shows the change fitting a sail would make, the yard shows what each sail
+  aboard is worth, and neither prints a sail's `drive` as if it were a speed.
 - **A part's `part` says what sort of thing it is; a sail's `kind` says which category.** They were
   one field, and the two meanings collided the moment the categories arrived.
 - **The renderer draws up to five sails up a mast, and the bands are generated.** Three or fewer are
