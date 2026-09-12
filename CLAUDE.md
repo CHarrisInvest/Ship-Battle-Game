@@ -56,8 +56,8 @@ are built from. `broadside` in the code is the side guns, not the old title, and
 - **The yard is the hub, and every row on it is a door.** The plate on the menu turns any ship she
   owns, the strip at the head of the yard and the outfitter looks at any of them, and "Sail her" is
   its own act rather than a side effect of looking. Tapping a socket, a berth or a mount in the yard
-  opens the outfitter on that thing, with its picker up where one is wanted, so `OutfitterScreen`
-  takes a `start` and the yard screens take a `shipId`. `ownedFill` is "fit what you own" worked out
+  opens the outfitter on that tab, whole and with no picker up, so `OutfitterScreen` takes a
+  `start` naming the tab and the yard screens take a `shipId`. `ownedFill` is "fit what you own" worked out
   on a copy, so the button can say how many parts it will fit before it is tapped, and `readiness`
   is the same run against a hull she has not bought, for the shelf.
 - **A part sells back in full.** `REFUND_SHARE` in `hold.js` is 1 and `sellPart` is the one door:

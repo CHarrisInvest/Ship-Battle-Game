@@ -4128,10 +4128,11 @@ function YardScreen({ hold, shipId, onView, onBack, onCommission, onOutfit }) {
         <Glossary />
       </Slab>
 
-      {/* Every row here is a door. Tapping a socket opens the outfitter on that socket, tapping a
-          berth opens it on that sail, so reading what she has and changing it are one screen apart
-          rather than a screen and a tab and a scroll. An empty socket opens with the mast picker
-          already up, because that is the only thing a captain tapping it can want. */}
+      {/* Every row here is a door. Tapping a socket or a berth opens the outfitter on the rigging
+          tab, so reading what she has and changing it are one screen apart rather than a screen and
+          a tab and a scroll. The tab opens whole, with no picker up: a picker sprung open under a
+          slab the captain has not scrolled past landed her mid-screen, and one tap more on the row
+          she wants is cheaper than finding where she is. */}
       <Slab title="Her rigging" sub="Tap a mast or a sail to change it">
         {loadout.hull.sockets.map((socket) => {
           const entry = loadout.rig[socket.id];
@@ -4139,7 +4140,7 @@ function YardScreen({ hold, shipId, onView, onBack, onCommission, onOutfit }) {
           return (
             <div key={socket.id} style={{ borderTop: `1px solid rgba(160,224,210,0.14)`, padding: "4px 0 6px" }}>
               <DoorRow
-                onClick={() => onOutfit({ view: "rigging", socket: socket.id, what: mast ? null : "mast" })}
+                onClick={() => onOutfit({ view: "rigging" })}
                 label={<span style={{ fontSize: 11, fontWeight: 700, color: C.mast }}>{socket.station.toUpperCase()}</span>}
                 value={
                   <span style={{ fontSize: 11, color: mast ? C.ink : "rgba(238,244,242,0.4)" }}>
@@ -4161,7 +4162,7 @@ function YardScreen({ hold, shipId, onView, onBack, onCommission, onOutfit }) {
                     <React.Fragment key={i}>
                       <DoorRow
                         indent={10}
-                        onClick={() => onOutfit({ view: "rigging", socket: socket.id, what: "sail", berth: i })}
+                        onClick={() => onOutfit({ view: "rigging" })}
                         label={<span style={{ fontSize: 9, color: "rgba(238,244,242,0.45)" }}>{kindOf(berth.kind)?.name || berth.kind}</span>}
                         value={
                           <span style={{ textAlign: "right" }}>
@@ -4176,7 +4177,7 @@ function YardScreen({ hold, shipId, onView, onBack, onCommission, onOutfit }) {
                       {stud && (
                         <DoorRow
                           indent={18}
-                          onClick={() => onOutfit({ view: "rigging", socket: socket.id, what: "stud", berth: i })}
+                          onClick={() => onOutfit({ view: "rigging" })}
                           label={<span style={{ fontSize: 9, color: "rgba(238,244,242,0.45)" }}>Studdingsail</span>}
                           value={
                             <span style={{ textAlign: "right" }}>
@@ -4804,13 +4805,11 @@ function HullRow({ shelf, first, owned, ready, coins, open, onToggle, onBuy }) {
  * this screen could invite.
  */
 function OutfitterScreen({ hold, shipId: asked, onView, start, onBack }) {
-  // `start` is where the yard sent her: which tab, and which socket, berth or mount she tapped, so
-  // the screen opens on the thing she was looking at with its picker already up where one is wanted.
+  // `start` is where the yard sent her: which tab to open on.
   const [view, setView] = useState((start && start.view) || "rigging");
-  const [picking, setPicking] = useState(() => {
-    if (!start || start.view === "guns") return null; // the guns tab opens whole, no picker up
-    return start.what ? { what: start.what, socket: start.socket, berth: start.berth } : null;
-  });
+  // No picker is ever up on arrival, whichever row sent her: the tab opens whole, read from the
+  // top, and the tap that opens a picker is made here where the picker will appear.
+  const [picking, setPicking] = useState(null);
   const shipId = hold.yard.ships[asked] ? asked : hold.yard.active;
   const loadout = useMemo(() => shipLoadout(hold, shipId), [hold, shipId]);
   const stats = useMemo(() => rate(loadout), [loadout]);

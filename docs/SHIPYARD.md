@@ -816,8 +816,8 @@ against how many she has, and what `shortfall()` says she still wants. Empty soc
 are listed rather than skipped, because the gaps are the point of the screen.
 
 Buying a hull is through the one door under it. Fitting is through the rows themselves: tapping a
-socket, a berth or a mount opens the outfitter on that thing, with its picker already up where there
-is only one thing the tap can mean, an empty socket or an empty port. There was a second door reading
+socket or a berth opens the outfitter on its rigging tab and tapping a mount opens the guns tab,
+whole and read from the top, with no picker sprung open under a slab the captain has not seen. There was a second door reading
 "Rigging Outfitter" and it sent a captain the long way round to the same screen through a tab and a
 scroll. The hull shop stays a door because a hull is a rare purchase a captain saves for, and a rig
 is a dozen small ones made from the thing being changed.
