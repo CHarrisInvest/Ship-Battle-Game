@@ -4897,7 +4897,7 @@ function OutfitterScreen({ hold, shipId: asked, onView, start, onBack }) {
             two lines centred on the strip, in the ink the figures are not, with a rule between it
             and them. The coin keeps its gold; it is the one mark on the strip and it says which
             number is money. */}
-        <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", alignSelf: "stretch", textAlign: "center", lineHeight: 1.2, paddingRight: 2 }}>
+        <div style={{ flex: "1 1 auto", display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", alignSelf: "stretch", textAlign: "center", lineHeight: 1.2 }}>
           <div style={{ fontSize: 14, fontWeight: 800, color: C.ink, whiteSpace: "nowrap" }}>{fmtCoins(hold.coins)}</div>
           <div style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 3, fontSize: 8, color: "rgba(238,244,242,0.55)", marginTop: 2 }}>
             <span style={{ color: C.gold, display: "inline-flex" }}><CoinIcon size={9} /></span>coins
@@ -4905,9 +4905,9 @@ function OutfitterScreen({ hold, shipId: asked, onView, start, onBack }) {
         </div>
         <div aria-hidden="true" style={{ alignSelf: "stretch", width: 1, background: C.hair, margin: "0 2px" }} />
         <Stat label="Speed" value={knots(stats.speed).toFixed(1)} unit="knots" />
-        <Stat label="Handling" value={handlingScore(stats.turn).toFixed(1)} unit="/100" />
+        <Stat label="Steer" value={handlingScore(stats.turn).toFixed(1)} unit="/100" />
         <Stat label="Damage" value={stats.broadside.perBall.toFixed(1)} unit={`${stats.broadside.count}/side`} />
-        <Stat label="Carrying" value={fmtTons(stats.weight)} unit={`/${fmtTons(loadout.hull.tons)} tons`} />
+        <Stat label="Weight" value={fmtTons(stats.weight)} unit={`/${fmtTons(loadout.hull.tons)} tons`} />
       </Pinned>
 
       <Segmented
@@ -5147,9 +5147,10 @@ function Pinned({ children }) {
  */
 function Stat({ label, value, unit }) {
   return (
-    // sized to its own content rather than to an equal share of the strip, because the purse is
-    // three times the width of the speed and equal shares put the two on top of each other at 320px
-    <div style={{ flex: "0 1 auto", textAlign: "center", lineHeight: 1.2, minWidth: 0 }}>
+    // grows from its own content rather than from an equal share of the strip, because the purse is
+    // three times the width of the speed and equal shares put the two on top of each other at 320px;
+    // what room is left over is shared out evenly, which is what centres each figure in its space
+    <div style={{ flex: "1 1 auto", textAlign: "center", lineHeight: 1.2, minWidth: 0 }}>
       <div style={{ fontSize: 8, color: "rgba(238,244,242,0.55)", whiteSpace: "nowrap" }}>{label}</div>
       <div style={{ fontSize: 13, fontWeight: 700, color: C.gold, margin: "1px 0", whiteSpace: "nowrap" }}>{value}</div>
       <div style={{ fontSize: 8, color: "rgba(238,244,242,0.55)", whiteSpace: "nowrap" }}>{unit}</div>
