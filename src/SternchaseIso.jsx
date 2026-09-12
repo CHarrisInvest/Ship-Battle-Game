@@ -4312,11 +4312,34 @@ function FleetStrip({ hold, shipId, onView }) {
   const sailing = shipId === hold.yard.active;
   return (
     <div>
-      <Segmented
-        options={fleet.map((s) => ({ key: s.id, label: shipName(hold, s.id) }))}
-        value={shipId}
-        onChange={onView}
-      />
+      {/* A native select rather than a row of pills: a fleet of six named ships wrapped into three
+          rows of pills and pushed the screen down, and the phone's own picker is the one control
+          every player already knows how to work. Styled to sit with the cards, in the UI face. A
+          named ship lists her class after her name so two Speedwells can be told apart. */}
+      <div style={{ position: "relative", margin: "10px 0 0" }}>
+        <select
+          value={shipId}
+          onChange={(e) => onView(e.target.value)}
+          aria-label="Which ship"
+          style={{
+            display: "block", width: "100%", padding: "9px 32px 9px 12px", boxSizing: "border-box",
+            fontFamily: UI, fontSize: 12, fontWeight: 700, color: C.ink,
+            background: "rgba(11,51,49,0.6)", border: `1px solid ${C.gold}`, borderRadius: 10,
+            WebkitAppearance: "none", appearance: "none", cursor: "pointer",
+          }}
+        >
+          {fleet.map((s) => (
+            <option key={s.id} value={s.id} style={{ color: "#000" }}>
+              {shipName(hold, s.id)}{s.name && HULLS[s.hull] ? `, ${HULLS[s.hull].name}` : ""}
+            </option>
+          ))}
+        </select>
+        {/* the screens' own chevron, turned to point down, so the box reads as a list that opens
+            rather than a field to type in; the select underneath takes the tap */}
+        <span style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%) rotate(90deg)", display: "inline-flex", pointerEvents: "none" }}>
+          <ChevronIcon size={12} />
+        </span>
+      </div>
       <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 8, margin: "8px 0 2px", fontSize: 10, color: "rgba(238,244,242,0.5)" }}>
         {sailing ? (
           <span>The ship you sail</span>
@@ -4593,6 +4616,7 @@ function CommissionScreen({ hold, onBack, onBought }) {
     <Shell>
       <BackLink label="Back to the yard" onClick={onBack} />
       <div style={{ fontFamily: DISPLAY, fontSize: 30, color: C.gold, letterSpacing: 1 }}>BOAT COMMISSION</div>
+      <PurseLine hold={hold} />
 
       {/* Her fleet above the shelf rather than under it, where it sat below sixteen rows of classes
           she was not buying. Small, because it is a list to check against the shelf, not the shelf. */}
@@ -4617,12 +4641,6 @@ function CommissionScreen({ hold, onBack, onBought }) {
           );
         })}
       </Slab>
-
-      {/* The purse, pinned above the shelf, because every price on it is read against the purse and
-          the shelf is sixteen rows long. */}
-      <Pinned>
-        In the hold <span style={{ color: C.gold, fontWeight: 700 }}><Coins n={hold.coins} /></span>.
-      </Pinned>
 
       <Segmented options={SHELVING} value={how} onChange={setHow} />
 
@@ -4869,13 +4887,16 @@ function OutfitterScreen({ hold, shipId: asked, onView, start, onBack }) {
           Whatever you own can be fitted here, and what your other ships carry stays aboard them.
         </div>
       )}
-      {/* Pinned above the tabs and everything under them: her purse, which every price below is read
-          against, and her figures as she stands, so what a tap just did is read where the tap was
-          made rather than by scrolling back to the yard. */}
+      <PurseLine hold={hold} />
+      {/* Pinned above the tabs and everything under them: her figures as she stands, so what a tap
+          just did is read where the tap was made rather than by scrolling back to the yard. Four
+          numbers and nothing else, each with its name over it and its unit under it, because a
+          sentence of figures is read once and a row of tiles is glanced at every tap. */}
       <Pinned>
-        In the hold <span style={{ color: C.gold, fontWeight: 700 }}><Coins n={hold.coins} /></span>.
-        As she stands: {fmtKnots(stats.speed)}, handling {stats.turn.toFixed(2)}, side {Math.round(stats.broadside.damage)} damage,
-        iron {fmtTons(stats.weight)} of {fmtTons(loadout.hull.tons)} tons.
+        <Stat label="Speed" value={knots(stats.speed).toFixed(1)} unit="knots" />
+        <Stat label="Handling" value={stats.turn.toFixed(2)} unit="turn rate" />
+        <Stat label="Side" value={Math.round(stats.broadside.damage)} unit="damage" />
+        <Stat label="Weight" value={`${fmtTons(stats.weight)}/${fmtTons(loadout.hull.tons)}`} unit="tons" />
       </Pinned>
 
       <Segmented
@@ -5099,12 +5120,35 @@ function Pinned({ children }) {
   return (
     <div
       style={{
-        position: "sticky", top: 0, zIndex: 2, margin: "10px 0 0", padding: "7px 10px",
+        position: "sticky", top: 0, zIndex: 2, margin: "10px 0 0", padding: "6px 6px 7px",
+        display: "flex", justifyContent: "space-around", alignItems: "flex-start", gap: 4,
         background: "rgba(8,38,37,0.96)", border: `1px solid ${C.hair}`, borderRadius: 10,
-        fontSize: 10, lineHeight: 1.5, color: "rgba(238,244,242,0.8)", textAlign: "center",
       }}
     >
       {children}
+    </div>
+  );
+}
+
+/**
+ * One figure in the pinned strip: its name over it, the number big, its unit under it. The number
+ * is the only thing set large, because it is the only thing that changes when a captain taps.
+ */
+function Stat({ label, value, unit }) {
+  return (
+    <div style={{ textAlign: "center", lineHeight: 1.2, minWidth: 0 }}>
+      <div style={{ fontSize: 9, color: "rgba(238,244,242,0.55)" }}>{label}</div>
+      <div style={{ fontSize: 15, fontWeight: 700, color: C.gold, margin: "1px 0", whiteSpace: "nowrap" }}>{value}</div>
+      <div style={{ fontSize: 9, color: "rgba(238,244,242,0.55)" }}>{unit}</div>
+    </div>
+  );
+}
+
+/** The purse, on its own line under a shop's title, because every price below is read against it. */
+function PurseLine({ hold }) {
+  return (
+    <div style={{ fontSize: 12, color: "rgba(238,244,242,0.7)", margin: "6px 0 0" }}>
+      In the hold: <span style={{ color: C.gold, fontWeight: 700 }}><Coins n={hold.coins} /></span>
     </div>
   );
 }
