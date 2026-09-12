@@ -4591,7 +4591,6 @@ function CommissionScreen({ hold, onBack, onBought }) {
     <Shell>
       <BackLink label="Back to the yard" onClick={onBack} />
       <div style={{ fontFamily: DISPLAY, fontSize: 30, color: C.gold, letterSpacing: 1 }}>BOAT COMMISSION</div>
-      <PurseLine hold={hold} />
 
       {/* Her fleet above the shelf rather than under it, where it sat below sixteen rows of classes
           she was not buying. Small, because it is a list to check against the shelf, not the shelf. */}
@@ -4616,6 +4615,12 @@ function CommissionScreen({ hold, onBack, onBought }) {
           );
         })}
       </Slab>
+
+      {/* The purse, pinned above the shelf, because every price on it is read against the purse and
+          the shelf is sixteen rows long. */}
+      <Pinned>
+        In the hold <span style={{ color: C.gold, fontWeight: 700 }}><Coins n={hold.coins} /></span>.
+      </Pinned>
 
       <Segmented options={SHELVING} value={how} onChange={setHow} />
 
@@ -4664,15 +4669,6 @@ function socketsLine(hull) {
   };
   const line = runs.map(say).join(", ");
   return `Her ${line}.`;
-}
-
-/** The purse, on its own line under a shop's title, because every price below is read against it. */
-function PurseLine({ hold }) {
-  return (
-    <div style={{ fontSize: 12, color: "rgba(238,244,242,0.7)", margin: "6px 0 0" }}>
-      In the hold: <span style={{ color: C.gold, fontWeight: 700 }}><Coins n={hold.coins} /></span>
-    </div>
-  );
 }
 
 /**
@@ -4872,7 +4868,14 @@ function OutfitterScreen({ hold, shipId: asked, onView, start, onBack }) {
           Whatever you own can be fitted here, and what your other ships carry stays aboard them.
         </div>
       )}
-      <PurseLine hold={hold} />
+      {/* Pinned above the tabs and everything under them: her purse, which every price below is read
+          against, and her figures as she stands, so what a tap just did is read where the tap was
+          made rather than by scrolling back to the yard. */}
+      <Pinned>
+        In the hold <span style={{ color: C.gold, fontWeight: 700 }}><Coins n={hold.coins} /></span>.
+        As she stands: {fmtKnots(stats.speed)}, handling {stats.turn.toFixed(2)}, side {Math.round(stats.broadside.damage)} damage,
+        iron {fmtTons(stats.weight)} of {fmtTons(loadout.hull.tons)} tons.
+      </Pinned>
 
       <Segmented
         options={[{ key: "rigging", label: "Masts and sails" }, { key: "guns", label: "Guns" }, { key: "spares", label: "Spares" }]}
@@ -5079,18 +5082,29 @@ function OutfitterScreen({ hold, shipId: asked, onView, start, onBack }) {
 
       <StartButton onClick={onBack} label="Back to the yard" />
       <div style={{ height: 8 }} />
-      {/* Her figures as she stands, pinned to the foot of the screen, so what a tap just did is
-          read without scrolling back up to the yard. One line, so it covers as little as a line. */}
-      <div
-        style={{
-          position: "sticky", bottom: 0, marginTop: 4, padding: "7px 10px",
-          background: "rgba(8,38,37,0.96)", border: `1px solid ${C.hair}`, borderRadius: 10,
-          fontSize: 10, lineHeight: 1.5, color: "rgba(238,244,242,0.8)",
-        }}
-      >
-        As she stands: {fmtKnots(stats.speed)}, handling {stats.turn.toFixed(2)}, side {Math.round(stats.broadside.damage)} damage, iron {fmtTons(stats.weight)} of {fmtTons(loadout.hull.tons)} tons.
-      </div>
     </Shell>
+  );
+}
+
+/**
+ * A line that stays at the top of the screen as it scrolls, under the title and above the tabs.
+ *
+ * The shops are long and the figures a choice is made against, the purse and the ship as she
+ * stands, were at the head of the screen and out of sight by the second slab. Sticky rather than
+ * fixed, so it scrolls with the shell and sits in the flow where it is read first. The menu and the
+ * yard carry nothing pinned: the yard is the reading screen and has nowhere a tap changes a figure.
+ */
+function Pinned({ children }) {
+  return (
+    <div
+      style={{
+        position: "sticky", top: 0, zIndex: 2, margin: "10px 0 0", padding: "7px 10px",
+        background: "rgba(8,38,37,0.96)", border: `1px solid ${C.hair}`, borderRadius: 10,
+        fontSize: 10, lineHeight: 1.5, color: "rgba(238,244,242,0.8)", textAlign: "center",
+      }}
+    >
+      {children}
+    </div>
   );
 }
 
@@ -5126,6 +5140,10 @@ function mastLine(type) {
  * the tap. Loose ones go first.
  */
 function SparesView({ hold, shipId }) {
+  // A part standing in a sister ship is sold on the second tap, not the first: the row names her
+  // and asks, because a captain selling "a spare 12-pounder" is not expecting to strip her frigate.
+  // A loose part sells on the first tap; there is nothing to strip.
+  const [asking, setAsking] = useState(null);
   // where every part of hers that is not on THIS ship stands: loose, or aboard which other ship
   const aboard = new Map();
   for (const [sid, ship] of Object.entries(hold.yard.ships)) {
@@ -5164,13 +5182,32 @@ function SparesView({ hold, shipId }) {
         ].filter(Boolean).join(", ");
         // a loose one goes before one standing in a sister ship, so nothing is stripped that need not be
         const next = loose[0] || standing[0];
+        const strips = !loose.length;
+        const her = strips ? shipName(hold, aboard.get(next)) : null;
+        const sell = () => { sellPart(next); setAsking(null); };
         return (
-          <div key={type.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "7px 0", borderTop: "1px solid rgba(160,224,210,0.14)" }}>
-            <span>
-              <span style={{ display: "block", fontSize: 11, color: C.ink }}>{type.name}</span>
-              <span style={{ display: "block", fontSize: 9, color: "rgba(238,244,242,0.45)", marginTop: 2 }}>{said}</span>
-            </span>
-            <TinyButton label={<span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>Sell one for <Coins n={refundOf(type)} /></span>} onClick={() => sellPart(next)} />
+          <div key={type.id} style={{ padding: "7px 0", borderTop: "1px solid rgba(160,224,210,0.14)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+              <span>
+                <span style={{ display: "block", fontSize: 11, color: C.ink }}>{type.name}</span>
+                <span style={{ display: "block", fontSize: 9, color: "rgba(238,244,242,0.45)", marginTop: 2 }}>{said}</span>
+              </span>
+              <TinyButton
+                label={<span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>Sell one for <Coins n={refundOf(type)} /></span>}
+                onClick={() => (strips ? setAsking(asking === type.id ? null : type.id) : sell())}
+              />
+            </div>
+            {strips && asking === type.id && (
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginTop: 6, padding: "6px 8px", border: `1px solid ${C.crew}`, borderRadius: 10 }}>
+                <span style={{ fontSize: 10, color: "rgba(238,244,242,0.8)", lineHeight: 1.4 }}>
+                  This one is aboard {her}. Selling it takes it off her.
+                </span>
+                <span style={{ display: "inline-flex", gap: 6, flexShrink: 0 }}>
+                  <TinyButton label="Sell it" onClick={sell} />
+                  <TinyButton label="Keep it" onClick={() => setAsking(null)} />
+                </span>
+              </div>
+            )}
           </div>
         );
       })}

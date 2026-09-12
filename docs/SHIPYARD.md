@@ -856,9 +856,15 @@ default, because a captain who knows them should not scroll past eight lines eve
 "her side from 108 to 113 damage, stiffens the helm by 0.02, every 1.32s, adds 0.7 tons, 5.7 left",
 from `gunEffect`, which is `berthEffect`'s shape for a gun. A mast's row adds what the cheapest
 canvas on all its berths would come to, from `cheapestCanvas`, because a mast is a purchase that
-opens purchases. And the outfitter pins one line to the foot of the screen, "As she stands: 3.0
-knots, handling 0.72, side 108 damage, iron 39.0 of 45.4 tons", so what a tap just did is read
-without scrolling back to the yard.
+opens purchases. And both shops pin one line to the top of the screen, under the title and above
+the tabs, that stays put as the screen scrolls: the purse on the hull shop, and on the outfitter the
+purse with "As she stands: 3.0 knots, handling 0.72, side 108 damage, iron 39.0 of 45.4 tons", so
+what a tap just did is read where the tap was made. The menu and the yard pin nothing; the yard is
+the reading screen and no tap on it moves a figure.
+
+Selling a spare that is standing in a sister ship takes a second tap. The row names her and says
+the sale takes the part off her, with "Sell it" and "Keep it" beside it, because a captain selling
+"a spare 12-pounder" is not expecting to strip her frigate. A loose part sells on the first tap.
 
 **The hull shop says how far what she owns already goes.** An open row reads "From what you own:
 masts for 2 of 4 sockets, sails for 0 of 3 berths on them, guns for 5 of 13 ports. The rest at the
