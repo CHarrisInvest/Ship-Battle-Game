@@ -11,7 +11,7 @@ import {
   ladder, peers, stockOfRate,
   HULLS, HULL_LIST, PARTS, statBand, maximumLoadout, outfitCost,
   mastsForSocket, sailsForBerth, studsForBerth, gunsForMount,
-  knots, berthEffect, familyOf, gunTons, gunFits, gunEffect, cheapestCanvas,
+  knots, berthEffect, familyOf, gunTons, gunFits, gunEffect, cheapestCanvas, handlingScore, handlingPoints,
 } from "./shipyard.js";
 import { roll, tally } from "./achievements.js";
 
@@ -4075,7 +4075,6 @@ function YardScreen({ hold, shipId, onView, onBack, onCommission, onOutfit }) {
   const loadout = useMemo(() => shipLoadout(hold, id), [hold, id]);
   const rig = useMemo(() => rigSpec(loadout), [loadout]);
   const stats = useMemo(() => rate(loadout), [loadout]);
-  const strength = useMemo(() => measure(stats), [stats]);
   const want = useMemo(() => shortfall(hold, id), [hold, id]);
   const rated = rateOf(loadout.hull);
   // How many of her spares would go aboard if she asked, worked out the way the button does it, so
@@ -4101,13 +4100,13 @@ function YardScreen({ hold, shipId, onView, onBack, onCommission, onOutfit }) {
             and it reads "1st rate, 1st rate". Six of the sixteen are named that way today and the
             fleet is still being written: a line that drops one of them when they happen to match
             would hide the rating on exactly the ships whose names are about to stop matching. */}
-        {loadout.hull.name}, {rated.name}, and she measures {Math.round(strength.overall)} as she stands.
+        {loadout.hull.name}, {rated.name}
       </div>
       <MenuGalleon rig={rig} />
 
       <Slab title="How she sails">
         <TallyRow label="Top speed" value={fmtKnots(stats.speed)} />
-        <TallyRow label="Handling" value={stats.turn.toFixed(2)} rule="hair" />
+        <TallyRow label="Handling" value={`${handlingScore(stats.turn).toFixed(1)} of 100`} rule="hair" />
         <TallyRow label="Hull" value={stats.hull} rule="hair" />
         <TallyRow label="Mast" value={stats.mast} rule="hair" />
         <TallyRow label="Crew" value={stats.crew} rule="hair" />
@@ -4200,10 +4199,13 @@ function YardScreen({ hold, shipId, onView, onBack, onCommission, onOutfit }) {
         <IronRow weight={stats.weight} tons={loadout.hull.tons} />
         {/* Green once a mount is full, and the ordinary gold otherwise. Colouring a short mount by its
             system read as an alarm: no swivels is not a fault, it is a purchase she has not made. */}
+        {/* Every gun row opens the guns tab as a whole rather than one mount's picker: the tonnage
+            and the three mounts are read together, and a picker sprung open under one of them
+            landed a captain in the middle of a screen she had not seen the top of. */}
         {guns.map(([mount, label, has, bears]) => (
           <DoorRow
             key={mount}
-            onClick={() => onOutfit({ view: "guns", mount })}
+            onClick={() => onOutfit({ view: "guns" })}
             label={<span style={{ fontSize: 11, color: "rgba(238,244,242,0.6)", letterSpacing: 0.5 }}>{label}</span>}
             value={
               <span style={{ fontSize: 13, fontWeight: 700, color: bears > 0 && has >= bears ? C.grass : C.gold }}>
@@ -4268,7 +4270,7 @@ function YardScreen({ hold, shipId, onView, onBack, onCommission, onOutfit }) {
  */
 const GLOSSARY = [
   ["Top speed", "What she makes with all her canvas drawing. The fight reads the rating; knots are the label on it."],
-  ["Handling", "How quickly she comes round. Iron aboard stiffens it, and fore-and-aft canvas helps it."],
+  ["Handling", "How quickly she comes round, scored out of 100. Iron aboard stiffens it, and fore-and-aft canvas helps it."],
   ["Hull", "What side guns and rams take off. At nothing she sinks."],
   ["Mast", "What bow chasers bring down. As it falls she slows towards half speed and answers the helm less; at nothing her masts are gone."],
   ["Crew", "What muskets and swivels clear. At nothing she is taken."],
@@ -4310,11 +4312,34 @@ function FleetStrip({ hold, shipId, onView }) {
   const sailing = shipId === hold.yard.active;
   return (
     <div>
-      <Segmented
-        options={fleet.map((s) => ({ key: s.id, label: shipName(hold, s.id) }))}
-        value={shipId}
-        onChange={onView}
-      />
+      {/* A native select rather than a row of pills: a fleet of six named ships wrapped into three
+          rows of pills and pushed the screen down, and the phone's own picker is the one control
+          every player already knows how to work. Styled to sit with the cards, in the UI face. A
+          named ship lists her class after her name so two Speedwells can be told apart. */}
+      <div style={{ position: "relative", margin: "10px 0 0" }}>
+        <select
+          value={shipId}
+          onChange={(e) => onView(e.target.value)}
+          aria-label="Which ship"
+          style={{
+            display: "block", width: "100%", padding: "9px 32px 9px 12px", boxSizing: "border-box",
+            fontFamily: UI, fontSize: 12, fontWeight: 700, color: C.ink,
+            background: "rgba(11,51,49,0.6)", border: `1px solid ${C.gold}`, borderRadius: 10,
+            WebkitAppearance: "none", appearance: "none", cursor: "pointer",
+          }}
+        >
+          {fleet.map((s) => (
+            <option key={s.id} value={s.id} style={{ color: "#000" }}>
+              {shipName(hold, s.id)}{s.name && HULLS[s.hull] ? `, ${HULLS[s.hull].name}` : ""}
+            </option>
+          ))}
+        </select>
+        {/* the screens' own chevron, turned to point down, so the box reads as a list that opens
+            rather than a field to type in; the select underneath takes the tap */}
+        <span style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%) rotate(90deg)", display: "inline-flex", pointerEvents: "none" }}>
+          <ChevronIcon size={12} />
+        </span>
+      </div>
       <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 8, margin: "8px 0 2px", fontSize: 10, color: "rgba(238,244,242,0.5)" }}>
         {sailing ? (
           <span>The ship you sail</span>
@@ -4591,6 +4616,7 @@ function CommissionScreen({ hold, onBack, onBought }) {
     <Shell>
       <BackLink label="Back to the yard" onClick={onBack} />
       <div style={{ fontFamily: DISPLAY, fontSize: 30, color: C.gold, letterSpacing: 1 }}>BOAT COMMISSION</div>
+      <PurseLine hold={hold} />
 
       {/* Her fleet above the shelf rather than under it, where it sat below sixteen rows of classes
           she was not buying. Small, because it is a list to check against the shelf, not the shelf. */}
@@ -4615,12 +4641,6 @@ function CommissionScreen({ hold, onBack, onBought }) {
           );
         })}
       </Slab>
-
-      {/* The purse, pinned above the shelf, because every price on it is read against the purse and
-          the shelf is sixteen rows long. */}
-      <Pinned>
-        In the hold <span style={{ color: C.gold, fontWeight: 700 }}><Coins n={hold.coins} /></span>.
-      </Pinned>
 
       <Segmented options={SHELVING} value={how} onChange={setHow} />
 
@@ -4684,9 +4704,9 @@ function HullRow({ shelf, first, owned, ready, coins, open, onToggle, onBuy }) {
   /* Handling is the one stat that runs BACKWARDS: fully found, under a press of canvas with every
      port filled, she is stiffer on the helm than she was bare. Printed as a plain range that reads
      as a mistake, so a falling stat says which way it goes. */
-  const range = (key, dp = 0) => {
+  const range = (key, dp = 0, map = (v) => v) => {
     const b = band[key];
-    const f = (v) => (dp ? v.toFixed(dp) : Math.round(v));
+    const f = (v) => (dp ? map(v).toFixed(dp) : Math.round(map(v)));
     if (b.low === b.high) return `${f(b.low)}`;
     return `${f(b.bare)} ${b.rises ? "to" : "down to"} ${f(b.found)}`;
   };
@@ -4720,7 +4740,7 @@ function HullRow({ shelf, first, owned, ready, coins, open, onToggle, onBuy }) {
           <TallyRow label="Hull" value={range("hull")} />
           <TallyRow label="Crew" value={range("crew")} rule="hair" />
           <TallyRow label="Top speed" value={`${knots(band.speed.bare).toFixed(1)} to ${knots(band.speed.found).toFixed(1)} knots`} rule="hair" />
-          <TallyRow label="Handling" value={range("turn", 2)} rule="hair" />
+          <TallyRow label="Handling, of 100" value={range("turn", 1, handlingScore)} rule="hair" />
           <TallyRow label="Broadside guns, a side" value={range("broadside")} rule="hair" />
           <TallyRow label="Bow chasers" value={range("bow")} rule="hair" />
           <TallyRow label="Swivel guns" value={range("swivel")} rule="hair" />
@@ -4788,8 +4808,7 @@ function OutfitterScreen({ hold, shipId: asked, onView, start, onBack }) {
   // the screen opens on the thing she was looking at with its picker already up where one is wanted.
   const [view, setView] = useState((start && start.view) || "rigging");
   const [picking, setPicking] = useState(() => {
-    if (!start) return null;
-    if (start.view === "guns") return start.mount ? { what: "gun", mount: start.mount } : null;
+    if (!start || start.view === "guns") return null; // the guns tab opens whole, no picker up
     return start.what ? { what: start.what, socket: start.socket, berth: start.berth } : null;
   });
   const shipId = hold.yard.ships[asked] ? asked : hold.yard.active;
@@ -4868,13 +4887,27 @@ function OutfitterScreen({ hold, shipId: asked, onView, start, onBack }) {
           Whatever you own can be fitted here, and what your other ships carry stays aboard them.
         </div>
       )}
-      {/* Pinned above the tabs and everything under them: her purse, which every price below is read
-          against, and her figures as she stands, so what a tap just did is read where the tap was
-          made rather than by scrolling back to the yard. */}
+      {/* Pinned above the tabs and everything under them: her purse and her figures as she stands,
+          so what a tap just did, and what is left to spend, are read where the tap was made rather
+          than by scrolling back. Five tiles and nothing else, each with its name over it and its
+          unit or its ceiling under it, because a sentence of figures is read once and a row of
+          tiles is glanced at every tap. */}
       <Pinned>
-        In the hold <span style={{ color: C.gold, fontWeight: 700 }}><Coins n={hold.coins} /></span>.
-        As she stands: {fmtKnots(stats.speed)}, handling {stats.turn.toFixed(2)}, side {Math.round(stats.broadside.damage)} damage,
-        iron {fmtTons(stats.weight)} of {fmtTons(loadout.hull.tons)} tons.
+        {/* The purse is not a figure of hers, so it is not a tile: it sits on its own at the left,
+            two lines centred on the strip, in the ink the figures are not, with a rule between it
+            and them. The coin keeps its gold; it is the one mark on the strip and it says which
+            number is money. */}
+        <div style={{ flex: "1 1 auto", display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", alignSelf: "stretch", textAlign: "center", lineHeight: 1.2 }}>
+          <div style={{ fontSize: 14, fontWeight: 800, color: C.ink, whiteSpace: "nowrap" }}>{fmtCoins(hold.coins)}</div>
+          <div style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 3, fontSize: 8, color: "rgba(238,244,242,0.55)", marginTop: 2 }}>
+            <span style={{ color: C.gold, display: "inline-flex" }}><CoinIcon size={9} /></span>coins
+          </div>
+        </div>
+        <div aria-hidden="true" style={{ alignSelf: "stretch", width: 1, background: C.hair, margin: "0 2px" }} />
+        <Stat label="Speed" value={knots(stats.speed).toFixed(1)} unit="knots" />
+        <Stat label="Steer" value={handlingScore(stats.turn).toFixed(1)} unit="/100" />
+        <Stat label="Damage" value={stats.broadside.perBall.toFixed(1)} unit={`${stats.broadside.count}/side`} />
+        <Stat label="Weight" value={fmtTons(stats.weight)} unit={`/${fmtTons(loadout.hull.tons)} tons`} />
       </Pinned>
 
       <Segmented
@@ -5098,12 +5131,38 @@ function Pinned({ children }) {
   return (
     <div
       style={{
-        position: "sticky", top: 0, zIndex: 2, margin: "10px 0 0", padding: "7px 10px",
+        position: "sticky", top: 0, zIndex: 2, margin: "10px 0 0", padding: "6px 4px 7px",
+        display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 2,
         background: "rgba(8,38,37,0.96)", border: `1px solid ${C.hair}`, borderRadius: 10,
-        fontSize: 10, lineHeight: 1.5, color: "rgba(238,244,242,0.8)", textAlign: "center",
       }}
     >
       {children}
+    </div>
+  );
+}
+
+/**
+ * One figure in the pinned strip: its name over it, the number big, its unit under it. The number
+ * is the only thing set large, because it is the only thing that changes when a captain taps.
+ */
+function Stat({ label, value, unit }) {
+  return (
+    // grows from its own content rather than from an equal share of the strip, because the purse is
+    // three times the width of the speed and equal shares put the two on top of each other at 320px;
+    // what room is left over is shared out evenly, which is what centres each figure in its space
+    <div style={{ flex: "1 1 auto", textAlign: "center", lineHeight: 1.2, minWidth: 0 }}>
+      <div style={{ fontSize: 8, color: "rgba(238,244,242,0.55)", whiteSpace: "nowrap" }}>{label}</div>
+      <div style={{ fontSize: 13, fontWeight: 700, color: C.gold, margin: "1px 0", whiteSpace: "nowrap" }}>{value}</div>
+      <div style={{ fontSize: 8, color: "rgba(238,244,242,0.55)", whiteSpace: "nowrap" }}>{unit}</div>
+    </div>
+  );
+}
+
+/** The purse, on its own line under a shop's title, because every price below is read against it. */
+function PurseLine({ hold }) {
+  return (
+    <div style={{ fontSize: 12, color: "rgba(238,244,242,0.7)", margin: "6px 0 0" }}>
+      In the hold: <span style={{ color: C.gold, fontWeight: 700 }}><Coins n={hold.coins} /></span>
     </div>
   );
 }
@@ -5117,7 +5176,8 @@ function gunLine(loadout, mount, type, room) {
   const e = gunEffect(loadout, mount, type);
   const what = mount === "broadside" ? "her side" : mount === "bow" ? "her chasers" : "her swivels";
   const volley = `${what} from ${Math.round(e.side - e.damage)} to ${Math.round(e.side)} damage`;
-  const helm = e.turn < -0.005 ? `, stiffens the helm by ${Math.abs(e.turn).toFixed(2)}` : "";
+  const pts = handlingPoints(e.turn);
+  const helm = pts < -0.5 ? `, stiffens the helm by ${Math.round(Math.abs(pts))}` : "";
   const t = gunTons(type);
   const after = room - t;
   const tons = after >= -1e-6 ? `adds ${fmtTons(t)} tons, ${fmtTons(Math.max(0, after))} left` : `adds ${fmtTons(t)} tons, more than she can bear`;
@@ -5354,9 +5414,12 @@ function effectLine({ speed, turn }, how) {
     Math.abs(kn) < 0.05 ? (how === "yard" ? "no speed to speak of" : "no change to her speed")
       : how === "yard" ? `worth ${Math.abs(kn).toFixed(1)} knots`
         : `${kn > 0 ? "adds" : "costs"} ${Math.abs(kn).toFixed(1)} knots here`;
+  // the helm in the same points the handling score is read in, so "helps the helm by 3" is 3 on
+  // the figure the strip and the yard print; under half a point rounds to nothing and says so
+  const pts = handlingPoints(turn);
   const helm =
-    Math.abs(turn) < 0.005 ? "leaves the helm alone"
-      : `${turn > 0 ? "helps" : "stiffens"} the helm by ${Math.abs(turn).toFixed(2)}`;
+    Math.abs(pts) < 0.5 ? "leaves the helm alone"
+      : `${pts > 0 ? "helps" : "stiffens"} the helm by ${Math.round(Math.abs(pts))}`;
   return `${pace}, ${helm}`;
 }
 

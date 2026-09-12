@@ -126,6 +126,13 @@ are built from. `broadside` in the code is the side guns, not the old title, and
   figure a captain can hold against something, fitted so a fully found ship lands near the `topSpeed`
   her reference row records. `npm run catalogue` fits the constant and prints each class's residual.
   `measure()` never sees knots, so nothing about strength or matchmaking moves when the constant does.
+- **Handling is printed as a score out of 100, and nothing scores 100.** `rate().turn` stays a
+  multiplier around 1 and the fight reads that; `handlingScore` divides it by `HANDLING_TOP` for
+  every figure a captain reads, and `handlingPoints` turns a change in it into points for the "helps
+  the helm by 3" lines. The constant is set so the best rig in the catalogue lands in the low
+  nineties, the score is capped at 100 besides, and `npm run catalogue` rigs every class for the most
+  handling she can reach and fails if one comes within reach of the cap. Raise the constant then;
+  never lift the cap, and never print the raw rating to a player.
 - **A sail's figure is what she does to this ship, from here.** Drive runs into a saturating curve
   against the hull's `canvas`, the berth fades it, and a studdingsail is a share of its host, so
   "adds 1.3 knots" is only true of one berth on one ship as she stands. `berthEffect` is the one

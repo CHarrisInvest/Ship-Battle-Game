@@ -1401,6 +1401,52 @@ const HAND_PER_POINT = 0.16; // how much a point of sail handling moves her turn
 const LOAD_BITE = 0.22; // handling lost when she is loaded to her tonnage in guns
 
 /**
+ * HANDLING AS A CAPTAIN READS IT: a score out of 100, and never over it.
+ *
+ * `rate().turn` is a multiplier around 1 and the fight keeps reading it as such; nothing here moves
+ * a ship. But "0.72" tells a captain nothing about whether that is good, and a scale with a top does.
+ * `HANDLING_TOP` is the turn rating that would score 100, set a little above the best any rig in the
+ * catalogue can reach: the quickest hull on the shelf under the most weatherly canvas she takes, no
+ * iron aboard, comes out in the low nineties. The score is capped at 100 as well, so a class added
+ * tomorrow cannot print 104 whatever her row says; `npm run catalogue` finds the best rig of every
+ * class and fails if one gets within reach of the cap, which is when this constant is raised, not
+ * the cap lifted. `handlingPoints` is a change in turn as a change in score, for the "helps the helm
+ * by 3" lines, so the shelf and the strip speak the same scale.
+ */
+export const HANDLING_TOP = 1.56;
+// unrounded, so a screen can print it to one place where a tenth is worth reading; capped at 100
+export const handlingScore = (turn) => Math.min(100, Math.max(0, (100 * turn) / HANDLING_TOP));
+export const handlingPoints = (delta) => (100 * delta) / HANDLING_TOP;
+
+/**
+ * The best handling a class can be rigged for: her most weatherly mast in every socket, the sail
+ * that helps the helm most in every berth it helps in, no guns. Sockets add independently, so the
+ * best is found socket by socket. The bench reads this to hold every class under the cap.
+ */
+export function bestHandling(hullId) {
+  const lo = emptyLoadout(hullId);
+  for (const socket of lo.hull.sockets) {
+    let best = null;
+    let bestTurn = -Infinity;
+    for (const mast of mastsForSocket(socket)) {
+      const sails = mast.berths.map((b) => {
+        const s = sailsForBerth(b).slice().sort((x, y) => y.hand - x.hand)[0];
+        return s && s.hand > 0 ? s : null;
+      });
+      const studs = mast.berths.map((b, i) => {
+        if (!sails[i]) return null;
+        const st = studsForBerth(mast, i).slice().sort((x, y) => y.hand - x.hand)[0];
+        return st && st.hand > 0 ? st : null;
+      });
+      const turn = rate({ ...lo, rig: { ...lo.rig, [socket.id]: { mast, sails, studs } } }).turn;
+      if (turn > bestTurn) { bestTurn = turn; best = { mast, sails, studs }; }
+    }
+    if (best) lo.rig[socket.id] = best;
+  }
+  return rate(lo).turn;
+}
+
+/**
  * WHAT A GUN WEIGHS ON HER BOOKS. A broadside gun is bought once and mounted both sides, so it counts
  * twice against her tonnage; a chaser and a swivel stand once and count once. This is the one place
  * the doubling is written, and `rate()`, the hold's tonnage check and every screen that prints a

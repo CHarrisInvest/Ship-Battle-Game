@@ -20,6 +20,7 @@ import {
   HULLS, HULL_LIST, STATIONS, SAIL_KINDS, KIND_LIST, MAST_LIST, SAIL_LIST, GUN_LIST,
   mastsForSocket, sailsForBerth, berthsOf, gunsForMount,
   rate, measure, statBand, fitOut, minimumLoadout, maximumLoadout, loadoutValue, outfitCost,
+  bestHandling, handlingScore, HANDLING_TOP,
   RATES, rateOf, gunsBorne, ladder, stockOfRate, resolve, STARTER, STOCK, STANDARDS, riggingValue, mastRebuildCost,
   squareLevel, RIG_FAMILIES, mastFitsSocket, KNOTS_PER_RATING, knots,
 } from "../src/shipyard.js";
@@ -362,6 +363,26 @@ for (const h of HULL_LIST) {
     num(`${b.broadside.low} to ${b.broadside.high}`, 11),
     num(`${b.muskets.low} to ${b.muskets.high}`, 9),
   );
+}
+
+/* HANDLING IS A SCORE OUT OF 100, AND NOTHING SCORES 100. The captain reads `handlingScore`, which
+   divides the turn rating by HANDLING_TOP; the fight reads the rating. The constant is set so the
+   best rig in the catalogue lands in the low nineties, and this holds it there: every class is rigged
+   for the most handling she can be, and one that comes within reach of the cap is a fault, because
+   the answer is to raise the constant, never to let the cap clip. A best that has sunk well under
+   ninety is noted rather than faulted, since the scale has simply gone slack. */
+{
+  console.log(`\nHANDLING  (out of 100; HANDLING_TOP is ${n2(HANDLING_TOP)}; best is her most weatherly rig with no iron aboard)`);
+  console.log("  " + pad("class", 19) + num("bare", 6) + num("found", 7) + num("best", 6) + num("best turn", 11));
+  let top = 0;
+  for (const h of HULL_LIST) {
+    const b = statBand(h.id);
+    const best = bestHandling(h.id);
+    top = Math.max(top, best);
+    console.log("  " + pad(h.name, 19) + num(n1(handlingScore(b.turn.bare)), 6) + num(n1(handlingScore(b.turn.found)), 7) + num(n1(handlingScore(best)), 6) + num(n2(best), 11));
+    if (handlingScore(best) > 98) fault("handling", `${h.name} can be rigged to ${n1(handlingScore(best))} of 100; raise HANDLING_TOP in shipyard.js above ${n2(best / 0.91)}`);
+  }
+  if (handlingScore(top) < 85) console.log(`  note: the best rig in the fleet scores ${n1(handlingScore(top))}; HANDLING_TOP could come down to ${n2(top / 0.91)}`);
 }
 
 /* KNOTS ARE FITTED, NOT DECLARED. One constant turns the speed rating into knots for printing, and
