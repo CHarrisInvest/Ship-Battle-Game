@@ -811,9 +811,37 @@ by socket with every berth named and every empty one marked bare, how many guns 
 against how many she has, and what `shortfall()` says she still wants. Empty sockets and bare berths
 are listed rather than skipped, because the gaps are the point of the screen.
 
-Buying and fitting are through the two doors under it, and they are two rather than one because they
-are different decisions: a hull is a rare purchase a captain saves for, a rig is a dozen small ones,
-and one screen would bury the second in the first.
+Buying a hull is through the one door under it. Fitting is through the rows themselves: tapping a
+socket, a berth or a mount opens the outfitter on that thing, with its picker already up where there
+is only one thing the tap can mean, an empty socket or an empty port. There was a second door reading
+"Rigging Outfitter" and it sent a captain the long way round to the same screen through a tab and a
+scroll. The hull shop stays a door because a hull is a rare purchase a captain saves for, and a rig
+is a dozen small ones made from the thing being changed.
+
+**The yard looks at any ship she owns.** A strip at its head, and at the outfitter's, turns it to any
+hull in her fleet, and the plate on the menu has arrows that do the same. Looking and sailing are two
+different acts: the ship she sails says so under the strip, and any other offers "Sail her". Before
+this the only way to change ship was a list at the foot of the hull shop, under sixteen rows of
+classes she was not buying.
+
+**She has a name.** The record carries one, empty until given, and `shipName` reads it or her class.
+It is set from the yard, "Name her" beside her class until she has one and "Rename her" after, and
+it is what the plate on the menu sets in the display face with her class in ordinary text under it.
+The plate never says the same words twice: an unnamed ship goes by her class, so only her rate goes
+under it, and a class named for her rate is said once.
+
+**Her iron is on every screen that talks about guns.** "Iron aboard, 44.2 of 45.4 tons" with a bar,
+on the plate, in the yard's gun slab and at the head of the outfitter's guns, with the rule in one
+line under it: a broadside gun counts twice, a chaser and a swivel once, and she refuses a gun she
+cannot bear. The cap was there all along and appeared nowhere, which made it a rule nobody could
+plan around, and it was soft, costing handling and nothing else. It is hard now, at the rail and on
+load, and the gun picker greys a gun she cannot bear the way it greys one she cannot afford, with
+"adds 1.7 tons, more than she can bear" on its line.
+
+**Fit what you own** puts every spare she owns into an empty slot it fits, in one tap and for
+nothing: masts first, then the sails their berths open, then guns under her tonnage, best gun first.
+It is worked out on a copy before it is offered, so the button says how many parts it will fit and
+is not shown when the answer is none.
 
 ### The Boat Commission
 

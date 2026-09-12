@@ -4,13 +4,14 @@ import { hullForm, tintTimber } from "./hullform.js";
 import {
   getHold, bankVoyage, resetHold, subscribeHold, modeRecord, shipLoadout, shortfall,
   buyShip, buyPart, fitMast, fitSail, fitStud, fitGun, unfitGun, setActiveShip, spareParts, ownedShips, partOf,
+  shipName, nameShip, fitOwned, ownedFill, NAME_LIMIT,
 } from "./hold.js";
 import {
   STARTER, kindOf, mastRebuildCost, measure, rate, rateOf, resolve, rigSpec,
   ladder, peers, stockOfRate,
-  HULLS, HULL_LIST, statBand, maximumLoadout, outfitCost,
+  HULLS, HULL_LIST, PARTS, statBand, maximumLoadout, outfitCost,
   mastsForSocket, sailsForBerth, studsForBerth, gunsForMount,
-  knots, berthEffect, familyOf,
+  knots, berthEffect, familyOf, gunTons, gunFits,
 } from "./shipyard.js";
 import { roll, tally } from "./achievements.js";
 
@@ -1150,6 +1151,11 @@ export default function App() {
   const btnRefs = { broadside: useRef(null), bow: useRef(null), musket: useRef(null) };
 
   const [phase, setPhase] = useState("start");
+  // Which of her ships the yard screens are looking at, and where the outfitter opens. The yard is
+  // not bound to the ship she sails: the plate's arrows and the strip at the head of the yard turn
+  // it to any hull she owns, and "Sail her" is a separate act. `null` follows the active ship.
+  const [yardShip, setYardShip] = useState(null);
+  const [outfitStart, setOutfitStart] = useState(null);
   const [mode, setMode] = useState("arena");
   const [result, setResult] = useState("");
   const [place, setPlace] = useState({ rank: 0, total: 0 });
@@ -3406,10 +3412,31 @@ export default function App() {
         </>
       )}
 
-      {phase === "start" && <StartOverlay onStart={(m) => startRef.current(m)} onEdit={() => setPhase("yard")} onRecords={() => setPhase("records")} hold={hold} onScuttle={() => resetHold()} />}
-      {phase === "yard" && <YardScreen hold={hold} onBack={() => setPhase("start")} onCommission={() => setPhase("commission")} onOutfit={() => setPhase("outfitter")} />}
-      {phase === "commission" && <CommissionScreen hold={hold} onBack={() => setPhase("yard")} />}
-      {phase === "outfitter" && <OutfitterScreen hold={hold} onBack={() => setPhase("yard")} />}
+      {phase === "start" && (
+        <StartOverlay
+          onStart={(m) => startRef.current(m)}
+          onEdit={(id) => { setYardShip(id || null); setPhase("yard"); }}
+          onRecords={() => setPhase("records")}
+          hold={hold}
+          onScuttle={() => { setYardShip(null); resetHold(); }}
+        />
+      )}
+      {phase === "yard" && (
+        <YardScreen
+          hold={hold}
+          shipId={yardShip}
+          onView={setYardShip}
+          onBack={() => setPhase("start")}
+          onCommission={() => setPhase("commission")}
+          onOutfit={(start) => { setOutfitStart(start || null); setPhase("outfitter"); }}
+        />
+      )}
+      {phase === "commission" && (
+        <CommissionScreen hold={hold} onBack={() => setPhase("yard")} onBought={(id) => setYardShip(id)} />
+      )}
+      {phase === "outfitter" && (
+        <OutfitterScreen hold={hold} shipId={yardShip} onView={setYardShip} start={outfitStart} onBack={() => setPhase("yard")} />
+      )}
       {phase === "records" && <RecordsScreen hold={hold} onBack={() => setPhase("start")} onAchievements={() => setPhase("achievements")} />}
       {phase === "achievements" && <AchievementsScreen hold={hold} onBack={() => setPhase("records")} />}
       {phase === "won" && <EndOverlay title="LAST AFLOAT" titleColor={C.gold} result={result} stats={stats} mode={mode} place={place} hold={hold} banked={banked} onAgain={() => startRef.current(mode)} onMenu={() => setPhase("start")} />}
@@ -3637,6 +3664,9 @@ function MenuGalleon({ rig }) {
   // canvas tears down and restarts on every parent render, and the ship jumps
   // back to bearing zero mid-turn.
   const key = JSON.stringify(rig);
+  // Her bearing lives outside the effect, so a change of rig, or a change of ship under the plate's
+  // arrows, carries on from where she was turning rather than snapping her back to bearing zero.
+  const degRef = useRef(0);
 
   useEffect(() => {
     const c = cvs.current;
@@ -3663,11 +3693,10 @@ function MenuGalleon({ rig }) {
 
     let raf = 0;
     let last = 0;
-    let deg = 0;
     const frame = (t) => {
-      if (last) deg = (deg + (t - last) * GALLEON_DEG_PER_MS) % 360;
+      if (last) degRef.current = (degRef.current + (t - last) * GALLEON_DEG_PER_MS) % 360;
       last = t;
-      paint(deg);
+      paint(degRef.current);
       raf = requestAnimationFrame(frame);
     };
     raf = requestAnimationFrame(frame);
@@ -4038,26 +4067,34 @@ function ScuttleHold({ onScuttle }) {
  * `masts` reads in the catalogue. An empty socket and an empty berth are both shown rather than
  * skipped: the gaps are the whole point of the screen.
  */
-function YardScreen({ hold, onBack, onCommission, onOutfit }) {
-  const loadout = useMemo(() => shipLoadout(hold), [hold]);
+function YardScreen({ hold, shipId, onView, onBack, onCommission, onOutfit }) {
+  // The ship the yard is looking at: whichever she asked for, or the one she sails if that ship is
+  // gone. Everything below reads off her, and the outfitter opens on her too.
+  const id = hold.yard.ships[shipId] ? shipId : hold.yard.active;
+  const loadout = useMemo(() => shipLoadout(hold, id), [hold, id]);
   const rig = useMemo(() => rigSpec(loadout), [loadout]);
   const stats = useMemo(() => rate(loadout), [loadout]);
   const strength = useMemo(() => measure(stats), [stats]);
-  const want = useMemo(() => shortfall(hold), [hold]);
+  const want = useMemo(() => shortfall(hold, id), [hold, id]);
   const rated = rateOf(loadout.hull);
+  // How many of her spares would go aboard if she asked, worked out the way the button does it, so
+  // the button never offers a number it cannot fit.
+  const canFit = useMemo(() => ownedFill(hold, id).fitted, [hold, id]);
 
   // Named for the parts rather than for the HUD buttons: this is the shipyard, where a captain is
   // looking at guns she owns, not at the three keys she fires them with.
   const guns = [
-    ["Broadside guns, a side", stats.broadside.count, loadout.hull.guns.broadside],
-    ["Bow chasers", stats.bow.count, loadout.hull.guns.bow],
-    ["Swivel guns", stats.swivel.count, loadout.hull.guns.swivel],
+    ["broadside", "Broadside guns, a side", stats.broadside.count, loadout.hull.guns.broadside],
+    ["bow", "Bow chasers", stats.bow.count, loadout.hull.guns.bow],
+    ["swivel", "Swivel guns", stats.swivel.count, loadout.hull.guns.swivel],
   ];
 
   return (
     <Shell>
       <BackLink label="Back to the sea" onClick={onBack} />
       <div style={{ fontFamily: DISPLAY, fontSize: 30, color: C.gold, letterSpacing: 1 }}>THE YARD</div>
+      <FleetStrip hold={hold} shipId={id} onView={onView} />
+      <NamePlate hold={hold} shipId={id} />
       <div style={{ fontSize: 12, color: "rgba(238,244,242,0.7)", margin: "6px 0 2px" }}>
         {/* Her class and then her rating, always both, even where the class is named for the rating
             and it reads "1st rate, 1st rate". Six of the sixteen are named that way today and the
@@ -4071,6 +4108,7 @@ function YardScreen({ hold, onBack, onCommission, onOutfit }) {
         <TallyRow label="Top speed" value={fmtKnots(stats.speed)} />
         <TallyRow label="Handling" value={stats.turn.toFixed(2)} rule="hair" />
         <TallyRow label="Hull" value={stats.hull} rule="hair" />
+        <TallyRow label="Mast" value={stats.mast} rule="hair" />
         <TallyRow label="Crew" value={stats.crew} rule="hair" />
         <TallyRow label="Muskets in a volley" value={stats.muskets} rule="hair" />
         {/* Every gun throws its own ball, so the count above already says how many. What it does not
@@ -4089,18 +4127,25 @@ function YardScreen({ hold, onBack, onCommission, onOutfit }) {
         )}
       </Slab>
 
-      <Slab title="Her rigging">
+      {/* Every row here is a door. Tapping a socket opens the outfitter on that socket, tapping a
+          berth opens it on that sail, so reading what she has and changing it are one screen apart
+          rather than a screen and a tab and a scroll. An empty socket opens with the mast picker
+          already up, because that is the only thing a captain tapping it can want. */}
+      <Slab title="Her rigging" sub="Tap a mast or a sail to change it">
         {loadout.hull.sockets.map((socket) => {
           const entry = loadout.rig[socket.id];
           const mast = entry && entry.mast;
           return (
-            <div key={socket.id} style={{ borderTop: `1px solid rgba(160,224,210,0.14)`, padding: "7px 0 6px" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
-                <span style={{ fontSize: 11, fontWeight: 700, color: C.mast }}>{socket.station.toUpperCase()}</span>
-                <span style={{ fontSize: 11, color: mast ? C.ink : "rgba(238,244,242,0.4)" }}>
-                  {mast ? mast.name : socket.spar ? "no spar rigged" : "no mast stepped"}
-                </span>
-              </div>
+            <div key={socket.id} style={{ borderTop: `1px solid rgba(160,224,210,0.14)`, padding: "4px 0 6px" }}>
+              <DoorRow
+                onClick={() => onOutfit({ view: "rigging", socket: socket.id, what: mast ? null : "mast" })}
+                label={<span style={{ fontSize: 11, fontWeight: 700, color: C.mast }}>{socket.station.toUpperCase()}</span>}
+                value={
+                  <span style={{ fontSize: 11, color: mast ? C.ink : "rgba(238,244,242,0.4)" }}>
+                    {mast ? mast.name : socket.spar ? "no spar rigged" : "no mast stepped"}
+                  </span>
+                }
+              />
               {mast &&
                 mast.berths.map((berth, i) => {
                   const sail = entry.sails[i];
@@ -4113,26 +4158,32 @@ function YardScreen({ hold, onBack, onCommission, onOutfit }) {
                   const studWorth = stud ? giving(berthEffect(loadout, socket.id, i, sail, null)) : null;
                   return (
                     <React.Fragment key={i}>
-                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginTop: 3, paddingLeft: 10 }}>
-                        <span style={{ fontSize: 9, color: "rgba(238,244,242,0.45)" }}>
-                          {kindOf(berth.kind)?.name || berth.kind}
-                        </span>
-                        <span style={{ textAlign: "right" }}>
-                          <span style={{ display: "block", fontSize: 10, color: sail ? "rgba(238,244,242,0.8)" : "rgba(238,244,242,0.35)" }}>
-                            {sail ? sail.name : "bare"}
+                      <DoorRow
+                        indent={10}
+                        onClick={() => onOutfit({ view: "rigging", socket: socket.id, what: "sail", berth: i })}
+                        label={<span style={{ fontSize: 9, color: "rgba(238,244,242,0.45)" }}>{kindOf(berth.kind)?.name || berth.kind}</span>}
+                        value={
+                          <span style={{ textAlign: "right" }}>
+                            <span style={{ display: "block", fontSize: 10, color: sail ? "rgba(238,244,242,0.8)" : "rgba(238,244,242,0.35)" }}>
+                              {sail ? sail.name : "bare"}
+                            </span>
+                            {worth && <span style={{ display: "block", fontSize: 9, color: "rgba(238,244,242,0.45)" }}>{effectLine(worth, "yard")}</span>}
                           </span>
-                          {worth && <span style={{ display: "block", fontSize: 9, color: "rgba(238,244,242,0.45)" }}>{effectLine(worth, "yard")}</span>}
-                        </span>
-                      </div>
+                        }
+                      />
                       {/* run out beyond the sail above, so it reads as part of that sail's row */}
                       {stud && (
-                        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginTop: 2, paddingLeft: 18 }}>
-                          <span style={{ fontSize: 9, color: "rgba(238,244,242,0.45)" }}>Studdingsail</span>
-                          <span style={{ textAlign: "right" }}>
-                            <span style={{ display: "block", fontSize: 10, color: "rgba(238,244,242,0.8)" }}>{stud.name}</span>
-                            <span style={{ display: "block", fontSize: 9, color: "rgba(238,244,242,0.45)" }}>{effectLine(studWorth, "yard")}</span>
-                          </span>
-                        </div>
+                        <DoorRow
+                          indent={18}
+                          onClick={() => onOutfit({ view: "rigging", socket: socket.id, what: "stud", berth: i })}
+                          label={<span style={{ fontSize: 9, color: "rgba(238,244,242,0.45)" }}>Studdingsail</span>}
+                          value={
+                            <span style={{ textAlign: "right" }}>
+                              <span style={{ display: "block", fontSize: 10, color: "rgba(238,244,242,0.8)" }}>{stud.name}</span>
+                              <span style={{ display: "block", fontSize: 9, color: "rgba(238,244,242,0.45)" }}>{effectLine(studWorth, "yard")}</span>
+                            </span>
+                          }
+                        />
                       )}
                     </React.Fragment>
                   );
@@ -4142,32 +4193,44 @@ function YardScreen({ hold, onBack, onCommission, onOutfit }) {
         })}
       </Slab>
 
-      <Slab title="Her guns">
+      <Slab title="Her guns" sub="Tap a mount to arm it">
+        {/* Her iron first, because it is the figure every gun below is bought against. */}
+        <IronRow weight={stats.weight} tons={loadout.hull.tons} />
         {/* Green once a mount is full, and the ordinary gold otherwise. Colouring a short mount by its
             system read as an alarm: no swivels is not a fault, it is a purchase she has not made. */}
-        {guns.map(([label, has, bears], i) => (
-          <TallyRow
-            key={label}
-            label={label}
-            value={`${has} of ${bears}`}
-            rule={i > 0 ? "hair" : ""}
-            valueColor={bears > 0 && has >= bears ? C.grass : undefined}
+        {guns.map(([mount, label, has, bears]) => (
+          <DoorRow
+            key={mount}
+            onClick={() => onOutfit({ view: "guns", mount })}
+            label={<span style={{ fontSize: 11, color: "rgba(238,244,242,0.6)", letterSpacing: 0.5 }}>{label}</span>}
+            value={
+              <span style={{ fontSize: 13, fontWeight: 700, color: bears > 0 && has >= bears ? C.grass : C.gold }}>
+                {has} of {bears}
+              </span>
+            }
           />
         ))}
       </Slab>
 
       {/* What she is short, and what of it the captain already owns, loose or aboard another of her
           ships. The cheapest legal fill is a floor, not a recommendation: a pole mast is free and
-          fits any socket. */}
+          fits any socket. What she already owns goes aboard in one tap, for nothing. */}
       <Slab title={want.gaps.length ? `She wants ${want.gaps.length} more ${want.gaps.length === 1 ? "part" : "parts"}` : "Fully found"}>
         {want.gaps.length ? (
           <>
             <TallyRow label="Cheapest way to fill her out" value={<Coins n={want.cost} />} />
-            <TallyRow
-              label="Of those, already yours"
-              value={want.gaps.filter((g) => g.owned.length).length}
-              rule="hair"
-            />
+            <TallyRow label="Of those, already yours" value={canFit} rule="hair" />
+            {canFit > 0 && (
+              <div style={{ marginTop: 8 }}>
+                <WideButton
+                  label={`Fit what you own, ${plural(canFit, "part")} for nothing`}
+                  onClick={() => fitOwned(id)}
+                />
+                <div style={{ fontSize: 10, color: "rgba(238,244,242,0.45)", marginTop: 6, lineHeight: 1.5 }}>
+                  Puts every spare mast, sail and gun you own into an empty slot it fits. Nothing is bought.
+                </div>
+              </div>
+            )}
           </>
         ) : (
           <div style={{ fontSize: 11, color: "rgba(238,244,242,0.6)", padding: "6px 0", lineHeight: 1.6 }}>
@@ -4176,9 +4239,9 @@ function YardScreen({ hold, onBack, onCommission, onOutfit }) {
         )}
       </Slab>
 
-      {/* The two shops. They are separate because they are separate decisions: a hull is one large,
-          rare purchase and a rig is a dozen small ones, and putting them on one screen would bury the
-          second in the first. The yard is the reading half and stays that way; these are the doing. */}
+      {/* The hull shop is the one door left. Rigging and arming are reached through the rows above,
+          from the thing being changed, and a second card saying "Rigging Outfitter" would send a
+          captain the long way round to the same screen. */}
       <div style={{ display: "grid", gap: 10, margin: "4px 0 16px" }}>
         <ShopLink
           title="Boat Commission"
@@ -4186,15 +4249,143 @@ function YardScreen({ hold, onBack, onCommission, onOutfit }) {
           color={C.gold}
           onClick={onCommission}
         />
-        <ShopLink
-          title="Rigging Outfitter"
-          sub="Masts, sails and guns for the ship you sail"
-          color={C.mast}
-          onClick={onOutfit}
-        />
       </div>
       <StartButton onClick={onBack} label="Back to the sea" />
     </Shell>
+  );
+}
+
+/**
+ * Which of her ships the yard is looking at, at the head of every yard screen, so switching hull is
+ * one tap from anywhere in the shipyard rather than a walk to the foot of the hull shop. Shown only
+ * once there are two to choose between, because a strip with one pill on it is a label.
+ *
+ * Looking at a ship and sailing her are two different things, and the line under the strip keeps
+ * them apart: the ship she sails says so, and any other offers to be.
+ */
+function FleetStrip({ hold, shipId, onView }) {
+  const fleet = ownedShips(hold);
+  if (fleet.length < 2) return null;
+  const sailing = shipId === hold.yard.active;
+  return (
+    <div>
+      <Segmented
+        options={fleet.map((s) => ({ key: s.id, label: shipName(hold, s.id) }))}
+        value={shipId}
+        onChange={onView}
+      />
+      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 8, margin: "8px 0 2px", fontSize: 10, color: "rgba(238,244,242,0.5)" }}>
+        {sailing ? (
+          <span>The ship you sail</span>
+        ) : (
+          <>
+            <span>Not the ship you sail</span>
+            <TinyButton label="Sail her" onClick={() => setActiveShip(shipId)} />
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Her name, and the way to give her one.
+ *
+ * Read, it is the name in the display face, the way the plate on the menu sets it, with the button
+ * beside it saying which of two things it does: "Name her" while she goes by her class, "Rename
+ * her" once she does not. Open, it is a field with the name in it and two buttons, and the keyboard's
+ * own return key keeps it too. An empty name takes hers off and she goes by her class again, which
+ * is said under the field so it is not a surprise.
+ */
+function NamePlate({ hold, shipId }) {
+  const ship = hold.yard.ships[shipId];
+  const named = !!(ship && ship.name);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const open = () => { setDraft(named ? ship.name : ""); setEditing(true); };
+  const keep = () => { nameShip(shipId, draft); setEditing(false); };
+
+  if (editing) {
+    return (
+      <form onSubmit={(e) => { e.preventDefault(); keep(); }} style={{ margin: "8px 0 2px" }}>
+        <input
+          autoFocus
+          value={draft}
+          maxLength={NAME_LIMIT}
+          placeholder={HULLS[ship.hull] ? HULLS[ship.hull].name : ""}
+          onChange={(e) => setDraft(e.target.value)}
+          aria-label="Her name"
+          style={{
+            display: "block", width: "100%", boxSizing: "border-box", padding: "9px 12px",
+            fontFamily: DISPLAY, fontSize: 17, color: C.gold, textAlign: "center",
+            background: "rgba(11,51,49,0.6)", border: `1px solid ${C.gold}`, borderRadius: 10, outline: "none",
+          }}
+        />
+        <div style={{ display: "flex", justifyContent: "center", gap: 8, marginTop: 8 }}>
+          <TinyButton label="Keep the name" onClick={keep} />
+          <TinyButton label="Cancel" onClick={() => setEditing(false)} />
+        </div>
+        <div style={{ fontSize: 10, color: "rgba(238,244,242,0.45)", marginTop: 6, lineHeight: 1.5 }}>
+          Up to {NAME_LIMIT} letters. Leave it empty and she goes by her class.
+        </div>
+      </form>
+    );
+  }
+  return (
+    <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 10, margin: "8px 0 0" }}>
+      <span style={{ fontFamily: DISPLAY, fontSize: 21, color: C.gold, letterSpacing: 0.4, overflowWrap: "anywhere" }}>{shipName(hold, shipId)}</span>
+      <TinyButton label={named ? "Rename her" : "Name her"} onClick={open} />
+    </div>
+  );
+}
+
+/**
+ * Her iron against her tonnage: the figure, a bar of it, and the rule in one line.
+ *
+ * This is the one limit in the shipyard a captain has to plan around, and for a long time it was
+ * nowhere on any screen. It is a bar rather than a figure alone because "31.2 of 45.4" takes a
+ * moment's arithmetic and a bar two thirds full takes none. It never runs over: the rail refuses a
+ * gun she cannot bear, so a full bar is a full bar and not a warning.
+ */
+function IronRow({ weight, tons }) {
+  const share = tons > 0 ? Math.min(1, weight / tons) : 0;
+  return (
+    <div style={{ padding: "6px 0 8px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span style={{ fontSize: 11, color: "rgba(238,244,242,0.6)", letterSpacing: 0.5 }}>Iron aboard</span>
+        <span style={{ fontSize: 13, fontWeight: 700, color: share >= 1 ? C.grass : C.gold }}>{fmtTons(weight)} of {fmtTons(tons)} tons</span>
+      </div>
+      <div style={{ height: 4, marginTop: 6, background: "rgba(0,0,0,0.35)", borderRadius: 3, overflow: "hidden" }}>
+        <div style={{ height: "100%", width: `${share * 100}%`, background: share >= 1 ? C.grass : C.gold, borderRadius: 3 }} />
+      </div>
+      <div style={{ fontSize: 10, color: "rgba(238,244,242,0.45)", lineHeight: 1.5, marginTop: 5 }}>
+        A broadside gun counts twice, one each side. Bow chasers and swivels count once. She refuses a gun she cannot bear.
+      </div>
+    </div>
+  );
+}
+
+/**
+ * A row that is a way into the outfitter: what it says on the left, what is there on the right, and
+ * a chevron to say the row opens. The label and the value come in as elements so the yard's rows
+ * keep the sizes and inks they had when they were plain text.
+ */
+function DoorRow({ label, value, indent = 0, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        display: "flex", width: "100%", alignItems: "center", justifyContent: "space-between", gap: 8,
+        background: "transparent", border: "none", padding: "5px 0", paddingLeft: indent, textAlign: "left",
+        color: C.ink, cursor: "pointer", WebkitTapHighlightColor: "transparent",
+      }}
+    >
+      {label}
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+        {value}
+        <ChevronIcon size={9} />
+      </span>
+    </button>
   );
 }
 
@@ -4335,7 +4526,7 @@ function shelve(how) {
  * rest of the money. Both are worth seeing before committing, because the gap between them is the
  * real price of a big hull.
  */
-function CommissionScreen({ hold, onBack }) {
+function CommissionScreen({ hold, onBack, onBought }) {
   const [how, setHow] = useState("price");
   const [open, setOpen] = useState(null);
   const groups = useMemo(() => shelve(how), [how]);
@@ -4344,9 +4535,12 @@ function CommissionScreen({ hold, onBack }) {
 
   const commission = (hullId) => {
     const bought = buyShip(hullId);
-    // She becomes the ship you sail. Leaving the old one active would point the outfitter at the
-    // wrong hull and hide the new one entirely, and the list below switches back in one tap.
-    if (bought) setActiveShip(bought.ship);
+    // She becomes the ship you sail and the ship the yard is looking at. Leaving the old one active
+    // would hide the new one entirely, and the list below switches back in one tap.
+    if (bought) {
+      setActiveShip(bought.ship);
+      if (onBought) onBought(bought.ship);
+    }
   };
 
   return (
@@ -4380,7 +4574,11 @@ function CommissionScreen({ hold, onBack }) {
           return (
             <div key={ship.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "7px 0", borderTop: i ? "1px solid rgba(160,224,210,0.14)" : "none" }}>
               <span style={{ fontSize: 12, color: active ? C.gold : C.ink }}>
-                {HULLS[ship.hull] ? HULLS[ship.hull].name : ship.hull}
+                {shipName(hold, ship.id)}
+                {/* her class after her name, once she has a name of her own to be told apart from */}
+                {ship.name && (
+                  <span style={{ fontSize: 10, color: "rgba(238,244,242,0.5)" }}>, {HULLS[ship.hull] ? HULLS[ship.hull].name : ship.hull}</span>
+                )}
               </span>
               {active ? (
                 <span style={{ fontSize: 10, color: "rgba(238,244,242,0.5)" }}>the ship you sail</span>
@@ -4493,12 +4691,21 @@ function HullRow({ shelf, first, owned, coins, open, onToggle, onBuy }) {
  * under the title says so, because fitting a topsail to a hull you are not sailing is the one mistake
  * this screen could invite.
  */
-function OutfitterScreen({ hold, onBack }) {
-  const [view, setView] = useState("rigging");
-  const [picking, setPicking] = useState(null);
-  const shipId = hold.yard.active;
-  const loadout = useMemo(() => shipLoadout(hold), [hold]);
+function OutfitterScreen({ hold, shipId: asked, onView, start, onBack }) {
+  // `start` is where the yard sent her: which tab, and which socket, berth or mount she tapped, so
+  // the screen opens on the thing she was looking at with its picker already up where one is wanted.
+  const [view, setView] = useState((start && start.view) || "rigging");
+  const [picking, setPicking] = useState(() => {
+    if (!start) return null;
+    if (start.view === "guns") return start.mount ? { what: "gun", mount: start.mount } : null;
+    return start.what ? { what: start.what, socket: start.socket, berth: start.berth } : null;
+  });
+  const shipId = hold.yard.ships[asked] ? asked : hold.yard.active;
+  const loadout = useMemo(() => shipLoadout(hold, shipId), [hold, shipId]);
+  const stats = useMemo(() => rate(loadout), [loadout]);
   const fleetSize = Object.keys(hold.yard.ships).length;
+  // Tons she has left under her cap, which is what every gun row below is measured against.
+  const room = loadout.hull.tons - stats.weight;
 
   // Everything she owns that THIS ship is not already carrying, counted by type, so the picker can
   // offer one she owns ahead of one in the shop and a captain never buys a second of something she
@@ -4536,6 +4743,10 @@ function OutfitterScreen({ hold, onBack }) {
    */
   const fitMany = (typeId, n, fit) => {
     const held = (spare.get(typeId) || []).slice();
+    // Her tonnage decides the count before a coin is spent, because a gun bought and then refused at
+    // the rail would land loose in the hold, paid for and going nowhere.
+    const type = PARTS[typeId];
+    if (type && type.part === "gun") n = Math.min(n, Math.floor(room / gunTons(type) + 1e-6));
     for (let i = 0; i < n; i++) {
       const pid = held.shift();
       if (pid) {
@@ -4551,8 +4762,11 @@ function OutfitterScreen({ hold, onBack }) {
     <Shell>
       <BackLink label="Back to the yard" onClick={onBack} />
       <div style={{ fontFamily: DISPLAY, fontSize: 30, color: C.gold, letterSpacing: 1 }}>RIGGING OUTFITTER</div>
+      <FleetStrip hold={hold} shipId={shipId} onView={(id) => { close(); if (onView) onView(id); }} />
       <div style={{ fontSize: 12, color: "rgba(238,244,242,0.7)", margin: "6px 0 0" }}>
-        Fitting out your {loadout.hull.name.toLowerCase()}.
+        {/* Always names the ship, with her class after her name once she has one, because fitting a
+            topsail to a hull you are not looking at is the one mistake this screen could invite. */}
+        Fitting out {hold.yard.ships[shipId].name ? `${shipName(hold, shipId)}, your ${loadout.hull.name}` : `your ${loadout.hull.name}`}.
       </div>
       {/* Said only to a captain with a second hull, because it is only true of one. A part standing
           in another of her ships reads "already yours" in the pickers below and costs nothing here,
@@ -4676,6 +4890,13 @@ function OutfitterScreen({ hold, onBack }) {
           );
         })}
 
+      {/* Her iron at the head of the guns, above every mount, because it is one figure for the whole
+          battery and every gun below is bought against it. It moves as she is armed. */}
+      {view === "guns" && (
+        <Slab title="Her tonnage">
+          <IronRow weight={stats.weight} tons={loadout.hull.tons} />
+        </Slab>
+      )}
       {view === "guns" &&
         GUN_MOUNTS.map(({ mount, title, note }) => {
           const bears = loadout.hull.guns[mount];
@@ -4730,9 +4951,19 @@ function OutfitterScreen({ hold, onBack }) {
                   {picking && picking.what === "gun" && picking.mount === mount && (
                     <Picker
                       title={picking.fill ? "One gun in every empty port" : "Guns for this mount"}
+                      note={picking.fill ? `${fmtTons(room)} tons left under her cap. The fill stops where her tonnage or your purse does.` : null}
                       options={gunsForMount(mount)}
                       spare={spare}
                       coins={hold.coins}
+                      // a gun she cannot bear is in the list and not a button, the same as one she
+                      // cannot afford, and its line says which of the two it is
+                      fits={(type) => gunFits(type, stats.weight, loadout.hull.tons)}
+                      line={(type) => {
+                        const t = gunTons(type);
+                        const after = room - t;
+                        return `${type.damage} damage every ${type.reload.toFixed(2)}s, adds ${fmtTons(t)} tons` +
+                          (after >= -1e-6 ? `, ${fmtTons(Math.max(0, after))} left` : ", more than she can bear");
+                      }}
                       onPick={(type) => {
                         const fit = (pid) => fitGun(shipId, mount, pid);
                         if (picking.fill) fitMany(type.id, bears - fitted.length, fit);
@@ -4809,9 +5040,16 @@ function FitRow({ label, value, empty, indent, onClick }) {
  * What she owns counts the rigging and guns standing in her other hulls as well as what is lying
  * loose, because being aboard one ship has never been a reason a part cannot be fitted to another.
  */
-function Picker({ title, note, options, fitted, effect, removeLabel, spare, coins, onPick, onRemove, onClose }) {
+function Picker({ title, note, options, fitted, effect, line, fits, removeLabel, spare, coins, onPick, onRemove, onClose }) {
+  // A picker opens under the row that asked for it, which on a phone is often below the fold, and
+  // one opened straight from the yard is under a slab or two the captain has not scrolled past. It
+  // brings itself into view, and no further than that, so a picker already on screen stays put.
+  const box = useRef(null);
+  useEffect(() => {
+    if (box.current && box.current.scrollIntoView) box.current.scrollIntoView({ block: "nearest" });
+  }, []);
   return (
-    <div style={{ borderTop: `1px solid ${C.hair}`, marginTop: 6, paddingTop: 6 }}>
+    <div ref={box} style={{ borderTop: `1px solid ${C.hair}`, marginTop: 6, paddingTop: 6 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, paddingBottom: 2 }}>
         <span style={{ fontSize: 10, letterSpacing: 1, color: C.gold }}>{title}</span>
         <TinyButton label="Close" onClick={onClose} />
@@ -4829,7 +5067,10 @@ function Picker({ title, note, options, fitted, effect, removeLabel, spare, coin
         // the part already in the slot is in the list, so the captain can see it against the
         // rest, and it is not a button: tapping it would buy her a second one
         const here = !!fitted && fitted.id === type.id;
-        const afford = !here && (held > 0 || coins >= type.price);
+        // she cannot take it if it does not fit her, whatever it costs; a gun past her tonnage is
+        // the one case, and it is greyed the same way as one she cannot afford
+        const bears = !fits || fits(type);
+        const afford = !here && bears && (held > 0 || coins >= type.price);
         return (
           <button
             key={type.id}
@@ -4846,14 +5087,15 @@ function Picker({ title, note, options, fitted, effect, removeLabel, spare, coin
               <span style={{ display: "block", fontSize: 9, color: "rgba(238,244,242,0.45)", marginTop: 2 }}>
                 {/* a sail is priced by what it would do to THIS ship from here, and the one already
                     in the berth by what it is giving her, so the two read against each other; a
-                    mast or a gun by its own figures, which are the same wherever it goes */}
-                {effect ? effectLine(here ? giving(effect(null)) : effect(type), here ? "yard" : "shop") : partLine(type)}
+                    mast or a gun by its own figures, which are the same wherever it goes, unless
+                    the caller has a line of its own, which a gun has: its weight against her room */}
+                {effect ? effectLine(here ? giving(effect(null)) : effect(type), here ? "yard" : "shop") : line ? line(type) : partLine(type)}
               </span>
             </span>
-            <span style={{ fontSize: 11, color: here || held ? C.grass : afford ? C.gold : "rgba(238,244,242,0.4)", whiteSpace: "nowrap" }}>
+            <span style={{ fontSize: 11, color: here || (held && bears) ? C.grass : afford ? C.gold : "rgba(238,244,242,0.4)", whiteSpace: "nowrap" }}>
               {/* "Already yours" rather than "in the hold": one of these may be standing in another
                   of her hulls this minute, and it is hers to fit here all the same. */}
-              {here ? "fitted here" : held ? `${held} already yours` : type.price === 0 ? "free" : <Coins n={type.price} />}
+              {here ? "fitted here" : !bears ? "too heavy for her" : held ? `${held} already yours` : type.price === 0 ? "free" : <Coins n={type.price} />}
             </span>
           </button>
         );
@@ -4953,7 +5195,7 @@ function WideButton({ label, onClick, disabled }) {
 // next, so they are centred and set in full ink to read as the heading of a section rather than as
 // the first line of it. Full ink is what the button above them uses, which is the brightest thing on
 // that screen that is not a figure, and the headings are its equals.
-function Slab({ title, children, centred }) {
+function Slab({ title, sub, children, centred }) {
   return (
     <div style={{ background: "rgba(11,51,49,0.6)", border: `1px solid ${C.hair}`, borderRadius: 10, padding: "8px 12px 10px", margin: "12px 0", textAlign: "left" }}>
       <div
@@ -4962,9 +5204,12 @@ function Slab({ title, children, centred }) {
           color: centred ? C.ink : "rgba(238,244,242,0.55)",
           textAlign: centred ? "center" : "left",
           padding: centred ? "2px 0 5px" : 0,
+          display: sub ? "flex" : "block", justifyContent: "space-between", alignItems: "baseline", gap: 8,
         }}
       >
-        {title}
+        <span>{title}</span>
+        {/* what the rows below do when tapped, said once at the head rather than on every row */}
+        {sub && <span style={{ letterSpacing: 0, color: "rgba(232,200,119,0.72)", textAlign: "right" }}>{sub}</span>}
       </div>
       {children}
     </div>
@@ -4994,36 +5239,136 @@ const Coins = ({ n }) => (
  * The whole plate is one button. A frame you have to hit the middle of is a frame that feels broken
  * on a phone, and the ship inside it is a canvas with transparent corners.
  */
-function ShipPlate({ loadout, rig, onEdit }) {
+function ShipPlate({ hold, onEdit }) {
   const [lit, setLit] = useState(false);
+  const fleet = ownedShips(hold);
+  // The plate turns any of her ships, not only the one she sails. It starts on that one, and comes
+  // back to it if the ship it was showing is gone, which only a scuttled hold can do.
+  const [viewing, setViewing] = useState(hold.yard.active);
+  const id = hold.yard.ships[viewing] ? viewing : hold.yard.active;
+  const loadout = useMemo(() => shipLoadout(hold, id), [hold, id]);
+  const rig = useMemo(() => rigSpec(loadout), [loadout]);
+  const stats = useMemo(() => rate(loadout), [loadout]);
+  const sailing = id === hold.yard.active;
+  const at = fleet.findIndex((s) => s.id === id);
+  const step = (d) => setViewing(fleet[(at + d + fleet.length) % fleet.length].id);
+
   return (
-    <button
-      onClick={onEdit}
-      onPointerEnter={() => setLit(true)}
-      onPointerLeave={() => setLit(false)}
+    <div
       style={{
-        display: "block", width: "100%", margin: "10px 0 0", padding: "8px 10px 9px",
-        borderRadius: 10, border: `1px solid ${lit ? C.gold : C.hair}`, background: C.panel,
-        color: C.ink, cursor: "pointer", WebkitTapHighlightColor: "transparent",
+        width: "100%", margin: "10px 0 0", padding: "8px 10px 9px", boxSizing: "border-box",
+        borderRadius: 10, border: `1px solid ${lit ? C.gold : C.hair}`, background: C.panel, color: C.ink,
       }}
     >
-      <div style={{ textAlign: "left", lineHeight: 1.1 }}>
-        <span style={{ fontFamily: DISPLAY, fontSize: 17, color: C.gold, letterSpacing: 0.4 }}>{loadout.hull.name}</span>
+      {/* Her name over her class on the left, her figures on the right. The name is what the captain
+          called her, or her class until she has one, and it is set in the display face because it is
+          the name of a ship. The class line under it is ordinary text: it is information, not a name. */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, textAlign: "left" }}>
+        <div style={{ minWidth: 0, lineHeight: 1.15 }}>
+          <div style={{ fontFamily: DISPLAY, fontSize: 17, color: C.gold, letterSpacing: 0.4, overflowWrap: "anywhere" }}>{shipName(hold, id)}</div>
+          {/* Her class and her rate under the name, and never the same words twice on one plate:
+              an unnamed ship goes by her class, so only the rate is news, and a class named for
+              her rate, "6th rate", is said once. The yard's line keeps both on purpose; this is a
+              plate, not a description, and it has two lines to say what she is. */}
+          <div style={{ fontSize: 10, color: "rgba(238,244,242,0.55)", marginTop: 3 }}>
+            {(() => {
+              const rated = rateOf(loadout.hull).name;
+              if (!hold.yard.ships[id].name || loadout.hull.name === rated) return rated;
+              return `${loadout.hull.name}, ${rated}`;
+            })()}
+          </div>
+          <div style={{ marginTop: 8 }}>
+            {sailing ? (
+              <span style={{ fontSize: 10, color: "rgba(238,244,242,0.5)" }}>The ship you sail</span>
+            ) : (
+              <TinyButton label="Sail her" onClick={() => setActiveShip(id)} />
+            )}
+          </div>
+        </div>
+        <QuickStats stats={stats} tons={loadout.hull.tons} />
       </div>
-      <MenuGalleon rig={rig} />
-      {/* MenuGalleon carries a -6px bottom margin to tuck itself up under whatever follows, so this
-          pays that back before spacing itself off her keel. */}
-      <div style={{ textAlign: "center", paddingTop: 14, fontSize: 10, letterSpacing: 0.5, color: lit ? C.gold : "rgba(232,200,119,0.72)" }}>
-        Tap to edit
-      </div>
+
+      {/* The ship herself is the way into the yard. She is the only picture of the captain's own
+          ship in the game, and a turning ship that does nothing when tapped is a worse answer than a
+          still one. */}
+      <button
+        onClick={() => onEdit(id)}
+        onPointerEnter={() => setLit(true)}
+        onPointerLeave={() => setLit(false)}
+        aria-label={`Open the yard for ${shipName(hold, id)}`}
+        style={{ display: "block", width: "100%", padding: 0, background: "transparent", border: "none", color: C.ink, cursor: "pointer", WebkitTapHighlightColor: "transparent" }}
+      >
+        <MenuGalleon rig={rig} />
+        {/* MenuGalleon carries a -6px bottom margin to tuck itself up under whatever follows, so this
+            pays that back before spacing itself off her keel. */}
+        <div style={{ textAlign: "center", paddingTop: 14, fontSize: 10, letterSpacing: 0.5, color: lit ? C.gold : "rgba(232,200,119,0.72)" }}>
+          Tap the ship to edit
+        </div>
+      </button>
+
+      {/* The arrows, only once there is somewhere to turn to. They step through her ships in the
+          order she bought them and wrap at either end, and the count between them says where in
+          the fleet the plate is. */}
+      {fleet.length > 1 && (
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginTop: 8 }}>
+          <ArrowButton back label="Previous ship" onClick={() => step(-1)} />
+          <span style={{ fontSize: 10, color: "rgba(238,244,242,0.5)" }}>Ship {at + 1} of {fleet.length}</span>
+          <ArrowButton label="Next ship" onClick={() => step(1)} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Her figures as she stands, in words and numbers and nothing else. These are the same five the fight
+ * reads off `rate()`, plus her iron, which is the one figure with a cap a captain has to plan around.
+ * Right aligned so the numbers make a column, and small, because the plate is her picture first.
+ */
+function QuickStats({ stats, tons }) {
+  const rows = [
+    ["Hull", stats.hull],
+    ["Mast", stats.mast],
+    ["Crew", stats.crew],
+    ["Speed", fmtKnots(stats.speed)],
+    ["Guns", `${stats.broadside.count} a side`],
+    ["Iron", `${fmtTons(stats.weight)} of ${fmtTons(tons)} tons`],
+  ];
+  return (
+    <div style={{ flexShrink: 0, textAlign: "right", fontSize: 10, lineHeight: 1.45 }}>
+      {rows.map(([label, value]) => (
+        <div key={label}>
+          <span style={{ color: "rgba(238,244,242,0.5)" }}>{label} </span>
+          <span style={{ color: C.ink }}>{value}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** One of the plate's two arrows: the chevron the screens already use, in a tappable ring. */
+function ArrowButton({ back, label, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      style={{
+        display: "inline-flex", alignItems: "center", justifyContent: "center", width: 36, height: 36,
+        background: "transparent", border: `1px solid ${C.hair}`, borderRadius: 20,
+        cursor: "pointer", WebkitTapHighlightColor: "transparent",
+      }}
+    >
+      <ChevronIcon size={14} back={back} />
     </button>
   );
 }
 
+// Tons to one decimal, because the guns are weighed in hundredths and a cap of 45.4 read as 45
+// would let a captain think a gun fits when it does not.
+const fmtTons = (t) => t.toFixed(1);
+
 function StartOverlay({ onStart, onEdit, onRecords, hold, onScuttle }) {
-  // What she is sailing, resolved from the hold every time it changes.
-  const loadout = useMemo(() => shipLoadout(hold), [hold]);
-  const rig = useMemo(() => rigSpec(loadout), [loadout]);
   return (
     <Shell>
       {/* The name is a lockup of two lines, and the first one carries it. STERNCHASE is the word a
@@ -5034,7 +5379,7 @@ function StartOverlay({ onStart, onEdit, onRecords, hold, onScuttle }) {
           It gives size back on a narrow screen rather than being set small everywhere. */}
       <div style={{ fontFamily: DISPLAY, fontSize: "clamp(34px, 12vw, 44px)", color: C.gold, letterSpacing: 2, lineHeight: 1.05 }}>STERNCHASE</div>
       <div style={{ fontFamily: DISPLAY, fontSize: 15, color: "rgba(232,200,119,0.62)", letterSpacing: 3, marginTop: 4 }}>HELM &amp; HULL</div>
-      <ShipPlate loadout={loadout} rig={rig} onEdit={onEdit} />
+      <ShipPlate hold={hold} onEdit={onEdit} />
       <HoldPanel hold={hold} onRecords={onRecords} />
       {/* No prompt over the modes. Three named cards under the game's own title are visibly the
           choice, and a line telling you to choose is the kind of thing only a template asks for. */}

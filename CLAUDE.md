@@ -40,6 +40,25 @@ are built from. `broadside` in the code is the side guns, not the old title, and
   130-foot hull; she carries the forty-six a great galleon of her size really did.
 - `src/hold.js` persists coins, lifetime stats and the yard to localStorage. Nothing else is saved;
   worlds and islands are generated fresh every match.
+- **A ship's name is the captain's, and her class is the catalogue's.** A ship record carries a
+  `name`, empty until she is given one, and `shipName(rec, id)` is the one reader: the name if she
+  has one, her class if not. Every screen that prints a ship's name reads it from there, so she is
+  called one thing everywhere and an unnamed ship reads exactly as she did before names existed.
+  `NAME_LIMIT` and `cleanName` are the whole of the rule; there is no filter, because the hold is
+  local and the only reader is the captain who wrote it.
+- **Her tonnage is a hard limit, and the rail refuses a gun she cannot bear.** `hull.tons` is the
+  iron she carries, in the tons the guns are weighed in, and a broadside gun counts twice because it
+  is mounted both sides. `gunTons` and `gunFits` in `shipyard.js` are the one statement of that rule;
+  `fitGun` checks it, `sanitizeYard` checks it on load so an old record comes up under the cap, and
+  `shortfall` counts her ports under it so a port nothing is light enough for is not a gap. For a
+  long time the cap was a soft one that cost handling and appeared on no screen, which is a rule
+  nobody could plan around. The figure now sits on the menu plate, the yard and the outfitter.
+- **The yard is the hub, and every row on it is a door.** The plate on the menu turns any ship she
+  owns, the strip at the head of the yard and the outfitter looks at any of them, and "Sail her" is
+  its own act rather than a side effect of looking. Tapping a socket, a berth or a mount in the yard
+  opens the outfitter on that thing, with its picker up where one is wanted, so `OutfitterScreen`
+  takes a `start` and the yard screens take a `shipId`. `ownedFill` is "fit what you own" worked out
+  on a copy, so the button can say how many parts it will fit before it is tapped.
 - **A part is exclusive to a slot, not to a ship.** One instance is in one slot of one hull or in
   none of hers, so a ship pierced for fifty a side still wants fifty guns bought to fill her. Across
   the fleet nothing is exclusive: a mast standing in the frigate steps in the sloop as well, and the
