@@ -4893,7 +4893,17 @@ function OutfitterScreen({ hold, shipId: asked, onView, start, onBack }) {
           unit or its ceiling under it, because a sentence of figures is read once and a row of
           tiles is glanced at every tap. */}
       <Pinned>
-        <Stat label="" value={fmtCoins(hold.coins)} unit={<span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}><CoinIcon size={9} />coins</span>} />
+        {/* The purse is not a figure of hers, so it is not a tile: it sits on its own at the left,
+            two lines centred on the strip, in the ink the figures are not, with a rule between it
+            and them. The coin keeps its gold; it is the one mark on the strip and it says which
+            number is money. */}
+        <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", alignSelf: "stretch", textAlign: "center", lineHeight: 1.2, paddingRight: 2 }}>
+          <div style={{ fontSize: 14, fontWeight: 800, color: C.ink, whiteSpace: "nowrap" }}>{fmtCoins(hold.coins)}</div>
+          <div style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 3, fontSize: 8, color: "rgba(238,244,242,0.55)", marginTop: 2 }}>
+            <span style={{ color: C.gold, display: "inline-flex" }}><CoinIcon size={9} /></span>coins
+          </div>
+        </div>
+        <div aria-hidden="true" style={{ alignSelf: "stretch", width: 1, background: C.hair, margin: "0 2px" }} />
         <Stat label="Speed" value={knots(stats.speed).toFixed(1)} unit="knots" />
         <Stat label="Handling" value={handlingScore(stats.turn).toFixed(1)} unit="/100" />
         <Stat label="Damage" value={stats.broadside.perBall.toFixed(1)} unit={`${stats.broadside.count}/side`} />
@@ -5140,9 +5150,7 @@ function Stat({ label, value, unit }) {
     // sized to its own content rather than to an equal share of the strip, because the purse is
     // three times the width of the speed and equal shares put the two on top of each other at 320px
     <div style={{ flex: "0 1 auto", textAlign: "center", lineHeight: 1.2, minWidth: 0 }}>
-      {/* a non-breaking space holds the row when a tile has no name, so its number lines up with
-          the others' */}
-      <div style={{ fontSize: 8, color: "rgba(238,244,242,0.55)", whiteSpace: "nowrap" }}>{label || " "}</div>
+      <div style={{ fontSize: 8, color: "rgba(238,244,242,0.55)", whiteSpace: "nowrap" }}>{label}</div>
       <div style={{ fontSize: 13, fontWeight: 700, color: C.gold, margin: "1px 0", whiteSpace: "nowrap" }}>{value}</div>
       <div style={{ fontSize: 8, color: "rgba(238,244,242,0.55)", whiteSpace: "nowrap" }}>{unit}</div>
     </div>
