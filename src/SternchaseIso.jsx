@@ -4270,14 +4270,14 @@ function YardScreen({ hold, shipId, onView, onBack, onCommission, onOutfit }) {
  * scroll past eight lines of them every visit.
  */
 const GLOSSARY = [
-  ["Top speed", "What she makes with all her canvas drawing. The fight reads the rating; knots are the label on it."],
-  ["Handling", "How quickly she comes round, scored out of 100. Iron aboard stiffens it, and fore-and-aft canvas helps it."],
-  ["Hull", "What side guns and rams take off. At nothing she sinks."],
-  ["Mast", "What bow chasers bring down. As it falls she slows towards half speed and answers the helm less; at nothing her masts are gone."],
-  ["Crew", "What muskets and swivels clear. At nothing she is taken."],
-  ["Muskets in a volley", "Balls in her small-arms volley, from her hands and every swivel on the rail."],
-  ["Damage a ball", "What one broadside gun takes off a hull."],
-  ["Her whole side is away in", "How long her broadside takes to roll down her side, bow to stern."],
+  ["Top speed", "How fast she goes, in knots. Over 10 is quick. Under 5 means most of her sails are missing."],
+  ["Handling", "How fast she turns, scored out of 100. Shown as Steer on the outfitter. 70 and up turns on a coin, under 40 is a slow wide turn. Guns aboard lower it, fore-and-aft sails raise it."],
+  ["Hull", "How much damage her hull can take before she sinks. Side guns and rams take it off. A small boat has around 150, a first rate nearly 2,700."],
+  ["Mast", "How much damage her masts can take. Bow chasers take it off. As it drops she slows down and turns worse, and at 0 her masts are gone."],
+  ["Crew", "How many hands she has. Muskets and swivels take them off, and at 0 she is captured. A boat has about 30, a first rate 800."],
+  ["Muskets in a volley", "How many musket balls she fires at once. It comes from her crew size, plus 1 for every swivel gun. 2 is a boat, 14 is the most any ship fires."],
+  ["Damage a ball", "How much damage 1 cannonball from her side guns does, between 5 and 18 depending on the gun. Times her guns a side is her whole broadside."],
+  ["Her whole side is away in", "How long it takes every side gun to fire once. A boat fires all at once, a first rate takes about a second."],
 ];
 
 function Glossary() {
