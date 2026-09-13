@@ -47,6 +47,8 @@
 // The rolling count most deeds climb. Long on purpose: the top of it is a career, not a season.
 const COUNT_RUNGS = [1, 10, 25, 50, 75, 100, 150, 200, 250, 300, 400, 500];
 const COUNT_PAY = [10, 25, 50, 100, 150, 200, 300, 400, 500, 600, 800, 1000];
+// The three ladders in points and coins share a scale: eleven rungs from a few hundred to the top.
+const FIGURE_PAY = [10, 25, 40, 60, 100, 150, 250, 400, 600, 1000, 1500];
 // What a single card pays: a first done one way, a first win, a name given.
 const FIRST_PAY = 50;
 const WIN_PAY = 100;
@@ -91,8 +93,8 @@ export const ACHIEVEMENTS = [
     id: "dmg",
     name: "Damage dealt",
     blurb: (g) => `Deal ${g.toLocaleString()} hull damage.`,
-    goals: [1000, 10000, 50000, 250000],
-    rewards: [25, 100, 250, 500],
+    goals: [250, 500, 1000, 2500, 5000, 10000, 25000, 50000, 100000, 250000, 500000],
+    rewards: FIGURE_PAY,
     count: (h) => h.lifetime.dmg,
   },
   {
@@ -107,8 +109,8 @@ export const ACHIEVEMENTS = [
     id: "healed",
     name: "Damage repaired",
     blurb: (g) => `Repair ${g.toLocaleString()} points of hull damage.`,
-    goals: [500, 5000, 25000, 100000],
-    rewards: [25, 100, 250, 500],
+    goals: [100, 250, 500, 1000, 2500, 5000, 10000, 25000, 50000, 100000, 250000],
+    rewards: FIGURE_PAY,
     count: (h) => h.lifetime.healed,
   },
   {
@@ -122,10 +124,10 @@ export const ACHIEVEMENTS = [
   },
   {
     id: "earned",
-    name: "Into the hold",
+    name: "Coins earned",
     blurb: (g) => `Bank ${g.toLocaleString()} coins from voyages.`,
-    goals: [100, 1000, 10000, 100000],
-    rewards: [10, 50, 250, 1000],
+    goals: [500, 1000, 2500, 5000, 10000, 25000, 50000, 100000, 250000, 500000, 1000000],
+    rewards: FIGURE_PAY,
     unit: "coins",
     count: (h) => h.lifetime.earned,
   },
@@ -278,8 +280,11 @@ export function fmtProgress(a, p) {
   return progressParts(a, p).join("/");
 }
 
-/** A goal in thousands to one place, the place dropped when it is a nought: 1,500 is 1.5k and 15,000 is 15k. */
-export const inK = (n) => `${Math.round(n / 100) / 10}k`;
+/**
+ * A goal in thousands to one place, the place dropped when it is a nought: 1,500 is 1.5k and 15,000
+ * is 15k. From a million up it is in millions the same way, because 1000k is a figure nobody says.
+ */
+export const inK = (n) => (n >= 1e6 ? `${Math.round(n / 1e5) / 10}M` : `${Math.round(n / 100) / 10}k`);
 
 /** The same figure in two parts, the count and the goal, for a cell that sets them either side of the slash. */
 export function progressParts(a, p) {
