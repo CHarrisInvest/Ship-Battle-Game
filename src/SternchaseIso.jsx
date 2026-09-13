@@ -5688,9 +5688,9 @@ function StartOverlay({ onStart, onEdit, onOutfit, onRecords, hold, onScuttle })
       <div style={{ fontFamily: DISPLAY, fontSize: 15, color: "rgba(232,200,119,0.62)", letterSpacing: 3, marginTop: 4 }}>HELM &amp; HULL</div>
       <ShipPlate hold={hold} onEdit={onEdit} onOutfit={onOutfit} />
       <HoldPanel hold={hold} onRecords={onRecords} />
-      {/* No prompt over the modes. Three named cards under the game's own title are visibly the
-          choice, and a line telling you to choose is the kind of thing only a template asks for. */}
-      <div style={{ height: 14 }} />
+      {/* A heading over the modes, in the display face like the screens' own titles, so the three
+          cards read as a section of the menu rather than as three more panels after the hold. */}
+      <div style={{ fontFamily: DISPLAY, fontSize: 20, color: C.gold, letterSpacing: 1, textAlign: "left", margin: "18px 0 10px" }}>GAME MODES</div>
       {MODE_LIST.map((key) => {
         const m = MODES[key];
         return <ModeCard key={key} color={m.color} title={m.title} desc={m.desc} onClick={() => onStart(key)} />;
