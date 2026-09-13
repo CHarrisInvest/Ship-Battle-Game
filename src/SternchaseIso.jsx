@@ -5861,12 +5861,14 @@ function StartOverlay({ onStart, onEdit, onOutfit, onRecords, hold, onScuttle })
           cards read as a section of the menu rather than as three more panels after the hold. To its
           right, in small words, what the cards are for: the same coin as the purse above, so a
           captain reads that entering a mode is how that figure grows. */}
-      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, margin: "18px 0 10px" }}>
-        {/* the heading never breaks; on a narrow phone the note wraps to two lines against it instead */}
+      <div className="mode-head" style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, margin: "18px 0 10px" }}>
+        {/* Neither side ever breaks. Where the row is too narrow for the whole note beside the
+            heading, `index.css` swaps the long wording for the short one on the row's own width. */}
         <div style={{ fontFamily: DISPLAY, fontSize: 20, color: C.gold, letterSpacing: 1, whiteSpace: "nowrap" }}>GAME MODES</div>
-        <div style={{ fontSize: 11, color: "rgba(238,244,242,0.6)", textAlign: "right", lineHeight: 1.4 }}>
-          Enter to earn{" "}
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 3, color: C.gold, whiteSpace: "nowrap", verticalAlign: "bottom" }}><CoinIcon size={11} />coins</span>
+        <div style={{ fontSize: 11, color: "rgba(238,244,242,0.6)", whiteSpace: "nowrap" }}>
+          <span className="earn-long">Enter to earn</span>
+          <span className="earn-short">Earn</span>{" "}
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 3, color: C.gold, verticalAlign: "bottom" }}><CoinIcon size={11} />coins</span>
         </div>
       </div>
       {MODE_LIST.map((key) => {

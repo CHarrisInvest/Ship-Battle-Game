@@ -39,3 +39,24 @@ body {
   user-select: none;
   overscroll-behavior: none; /* and no pull to refresh in the middle of a round */
 }
+
+/*
+ * The note beside the GAME MODES heading never breaks onto a second line. It reads "Enter to earn
+ * coins" where the row is wide enough for that beside the heading, and "Earn coins" where it is
+ * not, decided by the row's own width rather than the screen's, because the row is what the two
+ * have to share. The break came at a row of about 290px in the game's fonts; 310 leaves a margin.
+ */
+.mode-head {
+  container-type: inline-size;
+}
+.mode-head .earn-short {
+  display: none;
+}
+@container (max-width: 309px) {
+  .mode-head .earn-long {
+    display: none;
+  }
+  .mode-head .earn-short {
+    display: inline;
+  }
+}
