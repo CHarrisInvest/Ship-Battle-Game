@@ -5592,7 +5592,7 @@ function ShipPlate({ hold, onEdit, onOutfit }) {
             <TinyButton label="Outfit her" onClick={() => onOutfit(id)} />
           </div>
         </div>
-        <QuickStats stats={stats} tons={loadout.hull.tons} />
+        <QuickStats stats={stats} />
       </div>
 
       {/* The ship herself is the way into the yard. She is the only picture of the captain's own
@@ -5628,18 +5628,18 @@ function ShipPlate({ hold, onEdit, onOutfit }) {
 }
 
 /**
- * Her figures as she stands, in words and numbers and nothing else. These are the same five the fight
- * reads off `rate()`, plus her iron, which is the one figure with a cap a captain has to plan around.
- * Right aligned so the numbers make a column, and small, because the plate is her picture first.
+ * Her figures as she stands, in words and numbers and nothing else: the five the fight reads off
+ * `rate()`, speed as a bare figure in knots. Her weight is not here; it is a shipyard concern and the
+ * yard and the outfitter carry it. Right aligned so the numbers make a column, and small, because
+ * the plate is her picture first.
  */
-function QuickStats({ stats, tons }) {
+function QuickStats({ stats }) {
   const rows = [
     ["Hull", stats.hull],
     ["Mast", stats.mast],
     ["Crew", stats.crew],
-    ["Speed", fmtKnots(stats.speed)],
-    ["Guns", `${stats.broadside.count} a side`],
-    ["Iron", `${fmtTons(stats.weight)} of ${fmtTons(tons)} tons`],
+    ["Speed", knots(stats.speed).toFixed(1)],
+    ["Broadsides", stats.broadside.count],
   ];
   return (
     <div style={{ flexShrink: 0, textAlign: "right", fontSize: 10, lineHeight: 1.45 }}>
