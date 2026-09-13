@@ -1178,6 +1178,7 @@ export default function App() {
   const [storm, setStorm] = useState({ closes: 0, out: false, closing: false });
   const [hold, setHold] = useState(getHold);
   const [banked, setBanked] = useState(0); // what the voyage on the end screen put in the hold
+  const [bounty, setBounty] = useState(0); // ...and what the achievements it finished paid besides
 
   useEffect(() => subscribeHold(setHold), []);
 
@@ -1554,7 +1555,7 @@ export default function App() {
       if (g.banked) return;
       g.banked = true;
       const s = finalStats(won);
-      const { banked: got } = bankVoyage({
+      const { banked: got, bounty: paid } = bankVoyage({
         mode: g.mode, earned: s.total, repaired: s.repaired, kills: s.kills, dmg: s.dmg,
         time: s.time, rams: s.rams, patches: s.patches, won, rank,
         dismasted: s.dismasted, healed: s.healed,
@@ -1562,6 +1563,7 @@ export default function App() {
         rammedWhole: s.rammedWhole, wornDown: s.wornDown,
       });
       setBanked(got);
+      setBounty(paid);
     }
 
     function endWin() {
@@ -3321,6 +3323,7 @@ export default function App() {
       syncRef.current();
       setResult("");
       setBanked(0);
+      setBounty(0);
       setMode(m);
       setPhase("playing");
     }
@@ -3482,9 +3485,9 @@ export default function App() {
       )}
       {phase === "records" && <RecordsScreen hold={hold} onBack={() => setPhase("start")} onAchievements={() => setPhase("achievements")} />}
       {phase === "achievements" && <AchievementsScreen hold={hold} onBack={() => setPhase("records")} />}
-      {phase === "won" && <EndOverlay title="LAST AFLOAT" titleColor={C.gold} result={result} stats={stats} mode={mode} place={place} hold={hold} banked={banked} onAgain={() => startRef.current(mode)} onMenu={() => setPhase("start")} />}
+      {phase === "won" && <EndOverlay title="LAST AFLOAT" titleColor={C.gold} result={result} stats={stats} mode={mode} place={place} hold={hold} banked={banked} bounty={bounty} onAgain={() => startRef.current(mode)} onMenu={() => setPhase("start")} />}
       {phase === "dead" && (
-        <EndOverlay title="SUNK" titleColor={C.crew} result={result} stats={stats} mode={mode} place={place} hold={hold} banked={banked} onAgain={() => startRef.current(mode)} onMenu={() => setPhase("start")} />
+        <EndOverlay title="SUNK" titleColor={C.crew} result={result} stats={stats} mode={mode} place={place} hold={hold} banked={banked} bounty={bounty} onAgain={() => startRef.current(mode)} onMenu={() => setPhase("start")} />
       )}
     </div>
   );
@@ -3914,6 +3917,7 @@ function RecordsScreen({ hold, onBack, onAchievements }) {
               ["Damage repaired", fmtNum(lt.healed)],
               ["Paid to the carpenter", <Coins key="c" n={lt.repaired} />],
               ["Into the hold", <Coins key="h" n={lt.earned} />],
+              ["From achievements", <Coins key="b" n={hold.bounties} />],
             ]}
           />
         ) : (
@@ -4031,12 +4035,18 @@ function AchievementsScreen({ hold, onBack }) {
           </div>
           {/* The figure only earns its place while it is still moving. Once it is done the seal says
               so, and "1 of 1" beside a struck seal is the same news twice. A ladder shows its rung
-              under the figure, because "37 of 50" on its own does not say there are ten more. */}
-          {!a.done && (a.goal > 1 || a.rungs > 1) && (
+              under the figure, because "37 of 50" on its own does not say there are ten more, and
+              every unfinished card says what the next rung pays. */}
+          {!a.done && (
             <div style={{ flexShrink: 0, textAlign: "right" }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: C.gold }}>{fmtProgress(a, a)}</div>
+              {(a.goal > 1 || a.rungs > 1) && <div style={{ fontSize: 12, fontWeight: 700, color: C.gold }}>{fmtProgress(a, a)}</div>}
               {a.rungs > 1 && (
                 <div style={{ fontSize: 10, color: "rgba(238,244,242,0.5)", marginTop: 2 }}>Rung {a.rung + 1} of {a.rungs}</div>
+              )}
+              {a.reward > 0 && (
+                <div style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10, fontWeight: 700, color: C.grass, marginTop: 2 }}>
+                  <CoinIcon size={10} />+{fmtCoins(a.reward)}
+                </div>
               )}
             </div>
           )}
@@ -5799,7 +5809,7 @@ function TallyRow({ label, value, rule, labelColor, valueColor, valueSize, value
   );
 }
 
-function EndOverlay({ title, titleColor, result, stats, mode, place, hold, banked, onAgain, onMenu }) {
+function EndOverlay({ title, titleColor, result, stats, mode, place, hold, banked, bounty, onAgain, onMenu }) {
   const rules = modeOf(mode);
 
   // How she sailed.
@@ -5838,6 +5848,10 @@ function EndOverlay({ title, titleColor, result, stats, mode, place, hold, banke
         {/* The voyage is over and the ship's purse with it; this is the part that sails on. */}
         <TallyRow label="Into the hold" value={`+${fmtCoins(banked)}`} rule="group"
           valueColor={banked > 0 ? C.grass : "rgba(238,244,242,0.5)"} />
+        {/* Paid by the achievements this voyage finished, apart from what the voyage was worth,
+            and between that and the total so the column still adds up. Only shown when there is
+            one: most voyages finish nothing, and a row of noughts would say so every time. */}
+        {bounty > 0 && <TallyRow label="For achievements" value={`+${fmtCoins(bounty)}`} valueColor={C.grass} rule="hair" />}
         <TallyRow label="Hold total" value={<span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><CoinIcon size={15} />{fmtCoins(hold.coins)}</span>} valueSize={15} valueWeight={800} />
       </div>
       <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>

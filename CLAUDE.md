@@ -73,9 +73,13 @@ are built from. `broadside` in the code is the side guns, not the old title, and
   shipId)` — everything owned that this ship is not already carrying — is the inventory the outfitter
   offers. Do not reintroduce a fleet-wide claim on a part.
 - `src/achievements.js` is the achievement list, and **an achievement is a question asked of the hold,
-  never a stored flag**: a `count(hold)` and a `goal`. So one added tomorrow credits what a captain
-  did last week, and it can only ask what the hold actually keeps. Wanting one the record cannot
-  answer means adding what it counts to `hold.js` first, then the achievement is a row.
+  never a stored flag**: a `count(hold)` and a `goal`, or `goals` for a ladder climbed rung by rung.
+  So one added tomorrow credits what a captain did last week, and it can only ask what the hold
+  actually keeps. Wanting one the record cannot answer means adding what it counts to `hold.js` first,
+  then the achievement is a row. **A rung pays coins, and what is stored is the payment, not the
+  achievement.** `rewards` on the row says what each rung is worth; `settle` in `hold.js` pays every
+  rung earned above the `paid` ledger on every write and once on load, and `bounties` totals it so the
+  purse still reconstructs. Do not write an achievement's state anywhere else.
 - **Nothing is bought at sea but repairs.** A ship is what she was when she sailed; what she is comes
   from the shipyard between voyages. Repairs are paid out of the voyage's own takings, so a coin spent
   on the carpenter is a coin that never reaches the hold. If you find yourself adding a stat that
