@@ -38,6 +38,7 @@ import {
   HULLS, PARTS, STARTER, gunsForMount, mastFitsSocket, mastsForSocket, resolve, sailFitsBerth,
   sailsForBerth, socketOf, studFitsSail, gunTons, gunFits, TONS_SLACK,
 } from "./shipyard.js";
+import { ACHIEVEMENTS, progressOf, rewardOf } from "./achievements.js";
 
 const KEY = "sternchase.hold";
 const VERSION = 2;
@@ -82,18 +83,38 @@ function blankMode() {
   return {
     runs: 0, wins: 0, earned: 0,
     sunk: 0, dmg: 0, afloat: 0, repaired: 0, rams: 0, patches: 0,
+    ...blankDeeds(),
     bestSunk: 0, bestTime: 0, bestRank: 0,
   };
 }
+
+/**
+ * The finer tallies, kept in the lifetime and in every mode alike. How a sinking was done, because
+ * a count of sinkings cannot say; masts brought down; what the carpenter gave back, in points, as
+ * the twin of `dmg`; and the two judged on what the player did to one ship before she went, which
+ * nothing after the voyage could reconstruct. `sunkByRam`, `sunkByGuns` and `sunkByMuskets` add up
+ * to less than `sunk` where a storm finished her for you, and that is right: the weather is not you.
+ */
+function blankDeeds() {
+  return { dismasted: 0, healed: 0, sunkByRam: 0, sunkByGuns: 0, sunkByMuskets: 0, rammedWhole: 0, wornDown: 0 };
+}
+const DEEDS = Object.keys(blankDeeds());
 
 function blank() {
   return {
     v: VERSION,
     coins: 0, // unspent, the balance the shipyard draws on
     spent: 0, // taken back out again, so the two sides of the ledger always reconstruct `earned`
+    // What achievements have paid in, all told, and which rungs of each have been paid. The one
+    // thing about an achievement that IS stored, and it is a record of payments rather than of the
+    // achievement: `settle` compares what the list says is earned against what has been paid and
+    // pays the difference, so a rung is paid once and a row added later pays for what she did
+    // before it existed. `coins` reconstructs as earned plus bounties less spent.
+    bounties: 0,
+    paid: {}, // achievement id to rungs paid, created on demand
     // `repaired` is coins spent at sea that never reached the hold, so it is not reconstructible
     // from `earned` and `spent` the way shore spending is. Recorded from the day the feature exists.
-    lifetime: { earned: 0, runs: 0, wins: 0, sunk: 0, dmg: 0, afloat: 0, repaired: 0, rams: 0, patches: 0 },
+    lifetime: { earned: 0, runs: 0, wins: 0, sunk: 0, dmg: 0, afloat: 0, repaired: 0, rams: 0, patches: 0, ...blankDeeds() },
     modes: {}, // keyed by mode name, created on demand so a new mode needs no schema change
     yard: starterYard(),
   };
@@ -122,6 +143,9 @@ function sanitize(raw) {
   if (!raw || typeof raw !== "object") return rec;
   rec.coins = num(raw.coins);
   rec.spent = num(raw.spent);
+  rec.bounties = num(raw.bounties);
+  const paid = raw.paid && typeof raw.paid === "object" ? raw.paid : {};
+  for (const [id, n] of Object.entries(paid)) if (num(n) > 0) rec.paid[id] = Math.floor(num(n));
   const lt = raw.lifetime && typeof raw.lifetime === "object" ? raw.lifetime : {};
   for (const k of Object.keys(rec.lifetime)) rec.lifetime[k] = num(lt[k]);
   const modes = raw.modes && typeof raw.modes === "object" ? raw.modes : {};
@@ -311,8 +335,41 @@ function save(rec) {
 let cache = null;
 const listeners = new Set();
 
+/**
+ * Pay what the achievements say is earned and the ledger says is not yet paid.
+ *
+ * Every rung above the last one paid for is paid for now, out of the table in `achievements.js`, and
+ * the ledger moves up to the rung she holds. Nothing is ever paid twice, because the ledger only
+ * climbs; nothing is ever missed, because this runs on every write to the hold and once on load, so
+ * a rung earned at sea is paid at the end screen, one earned in the yard is paid on the spot, and
+ * one added to the list tomorrow is paid the next time the hold is opened.
+ *
+ * Returns the record as it stands after, what was paid, and the rungs it was paid for, so the end
+ * screen can say so. The same record comes back when there is nothing owed, so a caller can tell.
+ */
+function settle(rec) {
+  let owed = 0;
+  const rungs = [];
+  let paid = null;
+  for (const a of ACHIEVEMENTS) {
+    const have = num(rec.paid[a.id]);
+    const p = progressOf(a, rec);
+    if (p.rung <= have) continue;
+    for (let i = have; i < p.rung; i++) { owed += rewardOf(a, i); rungs.push({ id: a.id, rung: i, reward: rewardOf(a, i) }); }
+    paid = paid || { ...rec.paid };
+    paid[a.id] = p.rung;
+  }
+  if (!paid) return { rec, paid: 0, rungs };
+  return { rec: { ...rec, paid, coins: rec.coins + owed, bounties: rec.bounties + owed }, paid: owed, rungs };
+}
+
 function current() {
-  if (!cache) cache = load();
+  if (!cache) {
+    // An old record opened under a longer list is paid for what it already holds, once, here.
+    const s = settle(load());
+    cache = s.rec;
+    if (s.paid > 0) save(cache);
+  }
   return cache;
 }
 
@@ -322,9 +379,10 @@ function publish(rec) {
 }
 
 function commit(rec) {
-  save(rec);
-  publish(rec);
-  return rec;
+  const settled = settle(rec).rec;
+  save(settled);
+  publish(settled);
+  return settled;
 }
 
 /** The hold as it stands. Treat the returned record as read-only; every writer here returns a fresh one. */
@@ -354,10 +412,15 @@ export function voyageValue(earned, repaired = 0) {
 }
 
 /**
- * Bank one finished voyage and return the new hold alongside the coins it added.
+ * Bank one finished voyage and return the new hold alongside the coins it added, and beside them
+ * `bounty`, what the achievements the voyage completed paid, with the rungs they were paid for in
+ * `rungs`. The two are kept apart because the end screen prints them apart: one is what the voyage
+ * was worth and the other is what it finished.
  *
  * `run` is the end-of-round summary:
- * `{ mode, earned, repaired, kills, dmg, time, won, rank, rams, patches }`.
+ * `{ mode, earned, repaired, kills, dmg, time, won, rank, rams, patches }` and then the deeds,
+ * `{ dismasted, healed, sunkByRam, sunkByGuns, sunkByMuskets, rammedWhole, wornDown }`, any of which
+ * may be left out by a caller with nothing to say about it.
  * `earned` is what the ship took in at sea, not what she had left; `repaired` is the part of it she
  * handed to the carpenter, and only the difference reaches the hold.
  */
@@ -373,6 +436,8 @@ export function bankVoyage(run) {
   const patches = num(run.patches);
   const won = !!run.won;
   const rank = num(run.rank);
+  const deeds = Object.fromEntries(DEEDS.map((k) => [k, num(run[k])]));
+  const addDeeds = (to) => Object.fromEntries(DEEDS.map((k) => [k, num(to[k]) + deeds[k]]));
 
   const next = {
     ...rec,
@@ -387,6 +452,7 @@ export function bankVoyage(run) {
       repaired: rec.lifetime.repaired + repaired,
       rams: rec.lifetime.rams + rams,
       patches: rec.lifetime.patches + patches,
+      ...addDeeds(rec.lifetime),
     },
     modes: { ...rec.modes },
   };
@@ -402,13 +468,17 @@ export function bankVoyage(run) {
     repaired: m.repaired + repaired,
     rams: m.rams + rams,
     patches: m.patches + patches,
+    ...addDeeds(m),
     bestSunk: Math.max(m.bestSunk, kills),
     bestTime: Math.max(m.bestTime, time),
     // placement counts down, not up, and 0 means "never placed" — so the first finish always takes it
     bestRank: rank > 0 && (m.bestRank === 0 || rank < m.bestRank) ? rank : m.bestRank,
   };
 
-  return { hold: commit(next), banked };
+  // settled here rather than left to `commit`, which would settle it just the same, so the caller
+  // can be told what was paid; `commit` then finds nothing owed
+  const s = settle(next);
+  return { hold: commit(s.rec), banked, bounty: s.paid, rungs: s.rungs };
 }
 
 /**

@@ -13,7 +13,7 @@ import {
   mastsForSocket, sailsForBerth, studsForBerth, gunsForMount,
   knots, berthEffect, familyOf, gunTons, gunFits, gunEffect, cheapestCanvas, handlingScore, handlingPoints,
 } from "./shipyard.js";
-import { roll, tally } from "./achievements.js";
+import { roll, tally, fmtProgress } from "./achievements.js";
 
 /**
  * STERNCHASE: HELM & HULL — pirate battles at sea, on a tilted (isometric-ish) sea with tall wooden
@@ -1123,6 +1123,7 @@ const canFire = (s, wk) => (wk === "musket" ? s.rating.muskets > 0 : s.rating[wk
 function repair(s, sys) {
   const q = repairQuote(s, sys);
   if (q.whole || q.afford <= 0) return 0;
+  const before = s[sys];
   if (sys === "hull") {
     s.hull = Math.min(patchCap(s), s.hull + q.points * (q.afford / q.cost));
   } else {
@@ -1136,6 +1137,8 @@ function repair(s, sys) {
   s.coins -= q.afford;
   s.repaired += q.afford;
   s.patches += 1;
+  // the points the work put back, the twin of `dmgDealt` on the other side of the ledger
+  s.healed += Math.max(0, s[sys] - before);
   return q.afford;
 }
 
@@ -1175,6 +1178,7 @@ export default function App() {
   const [storm, setStorm] = useState({ closes: 0, out: false, closing: false });
   const [hold, setHold] = useState(getHold);
   const [banked, setBanked] = useState(0); // what the voyage on the end screen put in the hold
+  const [bounty, setBounty] = useState(0); // ...and what the achievements it finished paid besides
 
   useEffect(() => subscribeHold(setHold), []);
 
@@ -1273,6 +1277,13 @@ export default function App() {
           spar: tintTimber(C.wood, form.timber),
         },
         coins: 0, earned: 0, repaired: 0, patches: 0, rank: 0, kills: 0, dmgDealt: 0, rams: 0, exposure: 0,
+        // What the record wants to know beyond the count of sinkings: how each one was done, and
+        // what the carpenter gave back. `sunkBy` is keyed by the cause `applyHit` is told.
+        dismasted: 0, healed: 0, sunkBy: { ram: 0, broadside: 0, musket: 0 }, rammedWhole: 0, wornDown: 0,
+        // What the PLAYER has done to this ship, bar by bar, and how much of her hull went to the
+        // player's bow. Rivals hit each other in a melee and the storm takes crew, so "you wore her
+        // down" and "you sank her by the bow alone" are judged on this and never on her bars.
+        byPlayer: { hull: 0, mast: 0, crew: 0, ram: 0 },
         maxHull: rating.hull, maxMast: rating.mast, maxCrew: rating.crew,
         hull: rating.hull, mast: rating.mast, crew: rating.crew,
         cd: { broadside: Math.random() * 0.5, bow: Math.random() * 0.5, musket: Math.random() * 0.5 },
@@ -1523,6 +1534,11 @@ export default function App() {
         patches: p.patches || 0,
         repaired, // ...and what she handed straight back to the carpenter, all of it her own money
         rams: p.rams || 0,
+        dismasted: p.dismasted || 0,
+        healed: Math.round(p.healed || 0),
+        sunkByRam: p.sunkBy.ram, sunkByGuns: p.sunkBy.broadside, sunkByMuskets: p.sunkBy.musket,
+        rammedWhole: p.rammedWhole || 0,
+        wornDown: p.wornDown || 0,
         timePay, winPay, paidInFull,
         total,
         // What the hold will actually see. A voyage that spent everything it took on staying afloat
@@ -1539,11 +1555,15 @@ export default function App() {
       if (g.banked) return;
       g.banked = true;
       const s = finalStats(won);
-      const { banked: got } = bankVoyage({
+      const { banked: got, bounty: paid } = bankVoyage({
         mode: g.mode, earned: s.total, repaired: s.repaired, kills: s.kills, dmg: s.dmg,
         time: s.time, rams: s.rams, patches: s.patches, won, rank,
+        dismasted: s.dismasted, healed: s.healed,
+        sunkByRam: s.sunkByRam, sunkByGuns: s.sunkByGuns, sunkByMuskets: s.sunkByMuskets,
+        rammedWhole: s.rammedWhole, wornDown: s.wornDown,
       });
       setBanked(got);
+      setBounty(paid);
     }
 
     function endWin() {
@@ -1587,14 +1607,25 @@ export default function App() {
      * the reward for finishing her. A quarter of her hull comes to exactly 25 on the smallest ship
      * in the fleet, so nothing moved at the bottom of it.
      */
-    function killShip(s, attacker) {
+    function killShip(s, attacker, cause) {
       const g = gameRef.current;
       if (attacker && attacker.alive) {
         const bounty = Math.round(KILL_SHARE * s.maxHull);
         attacker.coins += bounty;
         attacker.earned += bounty;
         attacker.kills = (attacker.kills || 0) + 1;
-        if (attacker.isPlayer) g.hudDirty = true;
+        if (cause in attacker.sunkBy) attacker.sunkBy[cause] += 1;
+        if (attacker.isPlayer) {
+          g.hudDirty = true;
+          // Both are judged on what the player did to her and not on the state she went down in,
+          // because in a melee her bars carry every rival's work and the storm's besides. Worn down
+          // is half of each of her three bars off the player's own guns and bow; by the bow alone is
+          // her whole hull gone to the player's ram, with a hair of tolerance for the float sum.
+          const b = s.byPlayer;
+          const half = (got, max) => max <= 0 || got >= max * 0.5;
+          if (half(b.hull, s.maxHull) && half(b.mast, s.maxMast) && half(b.crew, s.maxCrew)) attacker.wornDown += 1;
+          if (cause === "ram" && b.ram >= s.maxHull - 1e-6) attacker.rammedWhole += 1;
+        }
       }
       sinkFx(s.x, s.y, s.fill);
       if (s.isPlayer) { playerDied(s._deathBar || "hull"); return; }
@@ -1617,7 +1648,12 @@ export default function App() {
       return owner.isPlayer !== target.isPlayer;
     }
 
-    function applyHit(target, bar, amt, attacker) {
+    /**
+     * One hit landing. `cause` names what landed it, `ram` or the weapon kind on the ball, and it is
+     * carried because the bar alone cannot say: a ram and a broadside both stave in the hull, and
+     * the record wants to know which one finished her.
+     */
+    function applyHit(target, bar, amt, attacker, cause) {
       const g = gameRef.current;
       const before = target[bar];
       target[bar] = Math.max(0, before - amt);
@@ -1626,7 +1662,14 @@ export default function App() {
         attacker.coins += amt;
         attacker.earned += amt;
         attacker.dmgDealt = (attacker.dmgDealt || 0) + amt;
-        if (attacker.isPlayer) g.hudDirty = true;
+        if (attacker.isPlayer) {
+          g.hudDirty = true;
+          // credited as what she actually lost, not what was thrown, so the sum over every hit
+          // she took is her whole bar and a single ball cannot overshoot it
+          const took = before - target[bar];
+          target.byPlayer[bar] += took;
+          if (cause === "ram") target.byPlayer.ram += took;
+        }
       }
       if (target.isPlayer) {
         g.hudDirty = true;
@@ -1634,11 +1677,12 @@ export default function App() {
       }
       if (bar === "mast" && before > 0 && target[bar] <= 0 && !target.mastDown) {
         target.mastDown = true;
+        if (attacker && attacker.alive) attacker.dismasted += 1;
         pushText(target.x, target.y, target.isPlayer ? "OUR MAST!" : "MAST DOWN");
       }
       if ((bar === "hull" || bar === "crew") && target[bar] <= 0 && target.alive) {
         target._deathBar = bar;
-        killShip(target, attacker);
+        killShip(target, attacker, cause);
       }
     }
 
@@ -2117,8 +2161,8 @@ export default function App() {
           // stays free to ram properly, so a light touch can never rob a captain of her charge
           if (Math.max(hurtA, hurtB) < RAM_GRAZE) { hurtA = 0; hurtB = 0; }
           let rammed = false;
-          if (hurtB > 0) { applyHit(b, "hull", hurtB, a); a.ramCd = RAM_CD; a.baffled = 0; if (hurtB >= RAM_GRAZE) a.rams++; rammed = true; }
-          if (hurtA > 0 && b.alive) { applyHit(a, "hull", hurtA, b); b.ramCd = RAM_CD; b.baffled = 0; if (hurtA >= RAM_GRAZE) b.rams++; rammed = true; }
+          if (hurtB > 0) { applyHit(b, "hull", hurtB, a, "ram"); a.ramCd = RAM_CD; a.baffled = 0; if (hurtB >= RAM_GRAZE) a.rams++; rammed = true; }
+          if (hurtA > 0 && b.alive) { applyHit(a, "hull", hurtA, b, "ram"); b.ramCd = RAM_CD; b.baffled = 0; if (hurtA >= RAM_GRAZE) b.rams++; rammed = true; }
           if (rammed) {
             a.locked.set(b, g.time); b.locked.set(a, g.time);
             // each ship spends the part of her way that went into the impact, so one driving
@@ -2165,7 +2209,7 @@ export default function App() {
           g.vign = Math.max(g.vign, 0.2 + 0.55 * (s.exposure / STORM_RAMP));
           g.hudDirty = true;
         }
-        if (s.crew <= 0 && s.alive) { s._deathBar = "storm"; killShip(s, null); }
+        if (s.crew <= 0 && s.alive) { s._deathBar = "storm"; killShip(s, null, "storm"); }
       }
       // the countdown ticks in whole seconds, and going in or out of the weather is worth a redraw
       const tick = Math.max(0, Math.ceil(w.grace - g.time));
@@ -2308,7 +2352,7 @@ export default function App() {
         if (hit) {
           // and it breaks where it bit her, not at the end of a step it never finished
           const hx = fromX + (b.x - fromX) * when, hy = fromY + (b.y - fromY) * when;
-          if (struck) { applyHit(struck, b.bar, b.dmg, b.owner); burst(hx, hy, b.bar); }
+          if (struck) { applyHit(struck, b.bar, b.dmg, b.owner, b.kind); burst(hx, hy, b.bar); }
           else splash(hx, hy);
         }
         if (hit || b.life <= 0 || b.x < 0 || b.x > WORLD || b.y < 0 || b.y > WORLD) s.splice(i, 1);
@@ -3279,6 +3323,7 @@ export default function App() {
       syncRef.current();
       setResult("");
       setBanked(0);
+      setBounty(0);
       setMode(m);
       setPhase("playing");
     }
@@ -3440,9 +3485,9 @@ export default function App() {
       )}
       {phase === "records" && <RecordsScreen hold={hold} onBack={() => setPhase("start")} onAchievements={() => setPhase("achievements")} />}
       {phase === "achievements" && <AchievementsScreen hold={hold} onBack={() => setPhase("records")} />}
-      {phase === "won" && <EndOverlay title="LAST AFLOAT" titleColor={C.gold} result={result} stats={stats} mode={mode} place={place} hold={hold} banked={banked} onAgain={() => startRef.current(mode)} onMenu={() => setPhase("start")} />}
+      {phase === "won" && <EndOverlay title="LAST AFLOAT" titleColor={C.gold} result={result} stats={stats} mode={mode} place={place} hold={hold} banked={banked} bounty={bounty} onAgain={() => startRef.current(mode)} onMenu={() => setPhase("start")} />}
       {phase === "dead" && (
-        <EndOverlay title="SUNK" titleColor={C.crew} result={result} stats={stats} mode={mode} place={place} hold={hold} banked={banked} onAgain={() => startRef.current(mode)} onMenu={() => setPhase("start")} />
+        <EndOverlay title="SUNK" titleColor={C.crew} result={result} stats={stats} mode={mode} place={place} hold={hold} banked={banked} bounty={bounty} onAgain={() => startRef.current(mode)} onMenu={() => setPhase("start")} />
       )}
     </div>
   );
@@ -3864,12 +3909,15 @@ function RecordsScreen({ hold, onBack, onAchievements }) {
               ["Voyages", fmtNum(lt.runs)],
               ["Voyages won", fmtNum(lt.wins)],
               ["Ships sunk", fmtNum(lt.sunk)],
+              ["Masts brought down", fmtNum(lt.dismasted)],
               ["Damage dealt", fmtNum(lt.dmg)],
               ["Rams landed", fmtNum(lt.rams)],
               ["Time afloat", fmtTime(lt.afloat)],
               ["Repairs bought", fmtNum(lt.patches)],
+              ["Damage repaired", fmtNum(lt.healed)],
               ["Paid to the carpenter", <Coins key="c" n={lt.repaired} />],
               ["Into the hold", <Coins key="h" n={lt.earned} />],
+              ["From achievements", <Coins key="b" n={hold.bounties} />],
             ]}
           />
         ) : (
@@ -3894,11 +3942,13 @@ function RecordsScreen({ hold, onBack, onAchievements }) {
                         ]
                       : [["Most sunk in one voyage", fmtNum(r.bestSunk)]]),
                     ["Ships sunk", fmtNum(r.sunk)],
+                    // A mast comes down to a bow gun, so the line only means something where there are guns.
+                    ...(m.guns ? [["Masts brought down", fmtNum(r.dismasted)]] : []),
                     ["Damage dealt", fmtNum(r.dmg)],
                     // The end-of-voyage tally makes this same split, and for the same reason: a mode
                     // with no guns aboard is a mode where ramming is the whole of the fighting.
                     m.guns ? ["Repairs bought", fmtNum(r.patches)] : ["Rams landed", fmtNum(r.rams)],
-                    ...(m.repairs ? [["Paid to the carpenter", <Coins key="c" n={r.repaired} />]] : []),
+                    ...(m.repairs ? [["Damage repaired", fmtNum(r.healed)], ["Paid to the carpenter", <Coins key="c" n={r.repaired} />]] : []),
                     ["Time afloat", fmtTime(r.afloat)],
                     ["Longest voyage", fmtTime(r.bestTime)],
                     ["Into the hold", <Coins key="h" n={r.earned} />],
@@ -3948,6 +3998,10 @@ function BigRow({ label, value, onClick }) {
  * Nothing here is stored. `achievements.js` asks the hold a question per achievement and the answer
  * is the progress, which is why a captain who sank her first ship before any of this existed opens
  * the screen already holding it.
+ *
+ * A ladder is one card. It carries the blurb for the rung she is on, the figure against that rung,
+ * and under the figure which rung it is, so "Ships sunk" reads as one climb and not as twelve cards
+ * that differ by a number. The count at the head of the screen is in rungs for the same reason.
  */
 function AchievementsScreen({ hold, onBack }) {
   const list = roll(hold);
@@ -3973,13 +4027,28 @@ function AchievementsScreen({ hold, onBack }) {
         >
           <SealIcon done={a.done} />
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: a.done ? C.ink : "rgba(238,244,242,0.7)" }}>{a.name}</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+              <span style={{ fontSize: 13, fontWeight: 700, color: a.done ? C.ink : "rgba(238,244,242,0.7)" }}>{a.name}</span>
+              {a.mode && MODES[a.mode] && <ModeTag mode={MODES[a.mode]} />}
+            </div>
             <div style={{ fontSize: 11, color: "rgba(238,244,242,0.55)", lineHeight: 1.5, marginTop: 2 }}>{a.blurb}</div>
           </div>
           {/* The figure only earns its place while it is still moving. Once it is done the seal says
-              so, and "1 of 1" beside a struck seal is the same news twice. */}
-          {!a.done && a.goal > 1 && (
-            <span style={{ fontSize: 12, fontWeight: 700, color: C.gold, flexShrink: 0 }}>{a.count} of {a.goal}</span>
+              so, and "1 of 1" beside a struck seal is the same news twice. A ladder shows its rung
+              under the figure, because "37 of 50" on its own does not say there are ten more, and
+              every unfinished card says what the next rung pays. */}
+          {!a.done && (
+            <div style={{ flexShrink: 0, textAlign: "right" }}>
+              {(a.goal > 1 || a.rungs > 1) && <div style={{ fontSize: 12, fontWeight: 700, color: C.gold }}>{fmtProgress(a, a)}</div>}
+              {a.rungs > 1 && (
+                <div style={{ fontSize: 10, color: "rgba(238,244,242,0.5)", marginTop: 2 }}>Rung {a.rung + 1} of {a.rungs}</div>
+              )}
+              {a.reward > 0 && (
+                <div style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10, fontWeight: 700, color: C.grass, marginTop: 2 }}>
+                  <CoinIcon size={10} />+{fmtCoins(a.reward)}
+                </div>
+              )}
+            </div>
           )}
         </div>
       ))}
@@ -3990,6 +4059,19 @@ function AchievementsScreen({ hold, onBack }) {
       </div>
       <StartButton onClick={onBack} label="Back to the tallies" />
     </Shell>
+  );
+}
+
+/**
+ * The mode an achievement belongs to, as a small pill in that mode's colour beside its name. The
+ * mode's short name rather than its title, because a title in caps beside a card name is two
+ * headlines on one line.
+ */
+function ModeTag({ mode }) {
+  return (
+    <span style={{ fontSize: 9, fontWeight: 700, color: mode.color, border: `1px solid ${mode.color}`, borderRadius: 20, padding: "1px 6px", opacity: 0.85, whiteSpace: "nowrap" }}>
+      {mode.short}
+    </span>
   );
 }
 
@@ -5727,7 +5809,7 @@ function TallyRow({ label, value, rule, labelColor, valueColor, valueSize, value
   );
 }
 
-function EndOverlay({ title, titleColor, result, stats, mode, place, hold, banked, onAgain, onMenu }) {
+function EndOverlay({ title, titleColor, result, stats, mode, place, hold, banked, bounty, onAgain, onMenu }) {
   const rules = modeOf(mode);
 
   // How she sailed.
@@ -5735,6 +5817,7 @@ function EndOverlay({ title, titleColor, result, stats, mode, place, hold, banke
   if (rules.ranked && place) statRows.push(["Placement", `#${place.rank} of ${place.total}`]);
   statRows.push(["Time survived", fmtTime(stats.time)]);
   statRows.push(["Ships sunk", stats.kills]);
+  if (rules.guns) statRows.push(["Masts brought down", stats.dismasted || 0]);
   statRows.push(["Damage dealt", stats.dmg]);
   statRows.push(rules.repairs ? ["Repairs bought", stats.patches || 0] : ["Rams landed", stats.rams || 0]);
 
@@ -5765,6 +5848,10 @@ function EndOverlay({ title, titleColor, result, stats, mode, place, hold, banke
         {/* The voyage is over and the ship's purse with it; this is the part that sails on. */}
         <TallyRow label="Into the hold" value={`+${fmtCoins(banked)}`} rule="group"
           valueColor={banked > 0 ? C.grass : "rgba(238,244,242,0.5)"} />
+        {/* Paid by the achievements this voyage finished, apart from what the voyage was worth,
+            and between that and the total so the column still adds up. Only shown when there is
+            one: most voyages finish nothing, and a row of noughts would say so every time. */}
+        {bounty > 0 && <TallyRow label="For achievements" value={`+${fmtCoins(bounty)}`} valueColor={C.grass} rule="hair" />}
         <TallyRow label="Hold total" value={<span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><CoinIcon size={15} />{fmtCoins(hold.coins)}</span>} valueSize={15} valueWeight={800} />
       </div>
       <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>

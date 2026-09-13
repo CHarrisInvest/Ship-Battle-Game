@@ -213,16 +213,32 @@ are no guns aboard, and no carpenter's line at all in the derby, which repairs n
 ## Achievements
 
 `src/achievements.js` is the list, and every entry is a **question asked of the hold** rather than a
-flag written when it happens: a `count(hold)` and a `goal`, done when the first reaches the second.
+flag written when it happens: a `count(hold)` and a goal, done when the first reaches the second.
 Nothing about an achievement is stored. A captain who sank her first ship long before the file existed
-holds *First Sunk Ship* the moment she opens the screen, the tallies beside it can never drift out of
-step because they are the same numbers, and adding one is a row rather than a row plus a write in
-`bankVoyage` plus a migration for everyone who already played.
+holds the first rung of *Ships sunk* the moment she opens the screen, the tallies beside it can never
+drift out of step because they are the same numbers, and adding one is a row rather than a row plus a
+write in `bankVoyage` plus a migration for everyone who already played.
+
+Most rows are **ladders**: one card with several goals climbed in order, so *Ships sunk* reads 1, then
+10, then 25 and so on to 500 rather than being twelve cards that differ by a number. The card shows the
+rung she is on, and the count at the head of the screen is in rungs, so a ladder half climbed counts
+for half. A single goal is a ladder of one.
 
 The cost is worth stating: an achievement can only ask what the hold actually keeps. Totals and bests
 are kept, so "sink fifty ships" is a row and "sink three in one voyage without touching the carpenter"
 is not, because nothing counts that. Wanting one of those means first adding what it counts to the
-record, the way the per-mode tallies were added, and then it too is a row.
+record, the way the per-mode tallies were added, and then it too is a row. That is how the finer
+tallies came to be kept: how each sinking was done (ram, guns or muskets), masts brought down, damage
+the carpenter put back, and two judged on what the player did to one ship before she went, half of
+each of her bars and her whole hull to the bow alone.
+
+**Every rung pays coins into the hold**, from a table on the row. The one thing about achievements
+that is stored is the ledger of payments: `paid` in the hold says how many rungs of each have been
+paid for, and `settle` in `hold.js` runs on every write and once on load, pays every rung earned above
+that, and moves the ledger up. So a rung is paid once, a rung earned in the yard is paid on the spot,
+and a row added tomorrow pays for what she did last week. `bounties` is the running total, so the
+purse reconstructs as earned plus bounties less spent, and the end screen prints what a voyage's
+achievements paid apart from what the voyage was worth.
 
 The screen is reached from a button above the tallies, which carries the earned count on its face so a
 captain who only wanted the number does not have to open it.
