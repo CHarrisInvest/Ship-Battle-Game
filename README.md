@@ -220,9 +220,11 @@ drift out of step because they are the same numbers, and adding one is a row rat
 write in `bankVoyage` plus a migration for everyone who already played.
 
 Most rows are **ladders**: one card with several goals climbed in order, so *Ships sunk* reads 1, then
-10, then 25 and so on to 500 rather than being twelve cards that differ by a number. The card shows the
-rung she is on, and the count at the head of the screen is in rungs, so a ladder half climbed counts
-for half. A single goal is a ladder of one.
+10, then 25 and so on to 500 rather than being twelve cards that differ by a number. The ladders are
+set out as one table at the head of the screen, a row each with the figure against the rung she is
+on, which rung it is, what it pays and a bar of how far up it she is; the single goals follow as
+cards. The count at the head of the screen is in rungs, so a ladder half climbed counts for half. A
+single goal is a ladder of one.
 
 The cost is worth stating: an achievement can only ask what the hold actually keeps. Totals and bests
 are kept, so "sink fifty ships" is a row and "sink three in one voyage without touching the carpenter"

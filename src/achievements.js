@@ -56,19 +56,17 @@ const plural = (n, one, many) => `${n.toLocaleString()} ${n === 1 ? one : many}`
 // "a ship" for one rather than "1 ship", which reads as a number dropped into a slot
 const ships = (n) => (n === 1 ? "a ship" : plural(n, "ship", "ships"));
 
-/** A span of seconds as a captain reads it on a card: whole minutes under an hour, hours above. */
-export function spanOf(sec, precise = false) {
-  if (sec < 3600) return plural(Math.floor(sec / 60), "minute", "minutes");
-  const h = sec / 3600;
-  const shown = precise ? Math.round(h * 10) / 10 : Math.floor(h);
-  return `${shown.toLocaleString()} ${h === 1 ? "hour" : "hours"}`;
+/** A span of seconds as a captain reads it on a card: whole minutes under an hour as `10 min`, hours above as `3 hr`. */
+export function spanOf(sec) {
+  if (sec < 3600) return `${Math.floor(sec / 60)} min`;
+  return `${Math.floor(sec / 3600).toLocaleString()} hr`;
 }
 
 export const ACHIEVEMENTS = [
   {
     id: "sunk",
     name: "Ships sunk",
-    blurb: (g) => (g === 1 ? "Send one to the bottom." : `Send ${g} to the bottom.`),
+    blurb: (g) => (g === 1 ? "Sink one ship." : `Sink ${g} ships.`),
     goals: COUNT_RUNGS,
     rewards: COUNT_PAY,
     count: (h) => h.lifetime.sunk,
@@ -76,7 +74,7 @@ export const ACHIEVEMENTS = [
   {
     id: "dismasted",
     name: "Masts brought down",
-    blurb: (g) => (g === 1 ? "Bring down a mast with the bow gun." : `Bring down ${g} masts with the bow gun.`),
+    blurb: (g) => (g === 1 ? "Bring down a mast with the bow gun." : `Bring down ${g} masts.`),
     goals: COUNT_RUNGS,
     rewards: COUNT_PAY,
     count: (h) => h.lifetime.dismasted,
@@ -84,10 +82,70 @@ export const ACHIEVEMENTS = [
   {
     id: "rams",
     name: "Rams landed",
-    blurb: (g) => (g === 1 ? "Drive your bow into a rival's beam." : `Land ${g} rams. Her beam, not her bow.`),
+    blurb: (g) => (g === 1 ? "Drive your bow into a rival's beam." : `Land ${g} rams into a ship's beam.`),
     goals: COUNT_RUNGS,
     rewards: COUNT_PAY,
     count: (h) => h.lifetime.rams,
+  },
+  {
+    id: "dmg",
+    name: "Damage dealt",
+    blurb: (g) => `Deal ${g.toLocaleString()} hull damage.`,
+    goals: [1000, 10000, 50000, 250000],
+    rewards: [25, 100, 250, 500],
+    count: (h) => h.lifetime.dmg,
+  },
+  {
+    id: "patches",
+    name: "Repairs bought",
+    blurb: (g) => (g === 1 ? "Buy a repair from the carpenter." : `Buy ${g} repairs from the carpenter.`),
+    goals: [1, 10, 25, 50, 100, 250],
+    rewards: [10, 25, 50, 100, 200, 500],
+    count: (h) => h.lifetime.patches,
+  },
+  {
+    id: "healed",
+    name: "Damage repaired",
+    blurb: (g) => `Repair ${g.toLocaleString()} points of hull damage.`,
+    goals: [500, 5000, 25000, 100000],
+    rewards: [25, 100, 250, 500],
+    count: (h) => h.lifetime.healed,
+  },
+  {
+    id: "afloat",
+    name: "Time afloat",
+    blurb: (g) => `Spend ${spanOf(g)} at sea.`,
+    goals: [600, 1800, 3600, 10800, 36000, 86400],
+    rewards: [25, 50, 100, 250, 500, 1000],
+    unit: "time",
+    count: (h) => h.lifetime.afloat,
+  },
+  {
+    id: "earned",
+    name: "Into the hold",
+    blurb: (g) => `Bank ${g.toLocaleString()} coins from voyages.`,
+    goals: [100, 1000, 10000, 100000],
+    rewards: [10, 50, 250, 1000],
+    unit: "coins",
+    count: (h) => h.lifetime.earned,
+  },
+  {
+    id: "arenaVoyage",
+    name: "In one arena voyage",
+    blurb: (g) => `Sink ${ships(g)} in a single arena voyage.`,
+    goals: [1, 3, 5, 10, 15, 20, 30],
+    rewards: [10, 25, 50, 100, 200, 300, 500],
+    mode: "arena",
+    count: (h) => modeCount(h, "arena", "bestSunk"),
+  },
+  {
+    id: "arenaSunk",
+    name: "Arena, all told",
+    blurb: (g) => `Sink ${ships(g)} in the arena, across all voyages.`,
+    goals: [5, 25, 50, 100, 250, 500],
+    rewards: [25, 50, 100, 200, 500, 1000],
+    mode: "arena",
+    count: (h) => modeCount(h, "arena", "sunk"),
   },
   {
     id: "sunkByRam",
@@ -100,7 +158,7 @@ export const ACHIEVEMENTS = [
   {
     id: "sunkByGuns",
     name: "Sunk by the guns",
-    blurb: "Sink a ship with your side guns.",
+    blurb: "Sink a ship with side cannons.",
     goal: 1,
     reward: FIRST_PAY,
     count: (h) => h.lifetime.sunkByGuns,
@@ -108,26 +166,26 @@ export const ACHIEVEMENTS = [
   {
     id: "sunkByMuskets",
     name: "Crew routed",
-    blurb: "Clear a ship's crew with muskets until she strikes.",
+    blurb: "Clear a ship's crew with muskets.",
     goal: 1,
     reward: FIRST_PAY,
     count: (h) => h.lifetime.sunkByMuskets,
   },
   {
     id: "rammedWhole",
-    name: "By the bow alone",
-    blurb: (g) => `In the arena or the free-for-all, sink ${ships(g)} with your ram and not one ball into her hull.`,
-    goals: [1, 5, 25],
-    rewards: [50, 150, 500],
+    name: "By ramming alone",
+    blurb: "Sink a ship from ramming only.",
+    goal: 1,
+    reward: FIRST_PAY,
     // the derby is left out because it would be true of every sinking there: there are no guns in it
     count: (h) => modeCount(h, "arena", "rammedWhole") + modeCount(h, "ffa", "rammedWhole"),
   },
   {
     id: "wornDown",
     name: "Worn down",
-    blurb: (g) => `Sink ${ships(g)} after taking half her hull, half her mast and half her crew yourself.`,
-    goals: [1, 10, 50],
-    rewards: [50, 200, 750],
+    blurb: "Sink a ship after taking half hull, mast and crew health.",
+    goal: 1,
+    reward: FIRST_PAY,
     count: (h) => h.lifetime.wornDown,
   },
   {
@@ -149,78 +207,9 @@ export const ACHIEVEMENTS = [
     count: (h) => modeCount(h, "derby", "wins"),
   },
   {
-    id: "arenaVoyage",
-    name: "In one arena voyage",
-    blurb: (g) => `Sink ${ships(g)} in a single arena voyage.`,
-    goals: [1, 3, 5, 10, 15, 20, 30],
-    rewards: [10, 25, 50, 100, 200, 300, 500],
-    mode: "arena",
-    count: (h) => modeCount(h, "arena", "bestSunk"),
-  },
-  {
-    id: "arenaSunk",
-    name: "Arena, all told",
-    blurb: (g) => `Sink ${ships(g)} in the arena, over every voyage.`,
-    goals: [5, 25, 50, 100, 250, 500],
-    rewards: [25, 50, 100, 200, 500, 1000],
-    mode: "arena",
-    count: (h) => modeCount(h, "arena", "sunk"),
-  },
-  {
-    id: "patches",
-    name: "Repairs bought",
-    blurb: (g) => (g === 1 ? "Buy a repair from the carpenter at sea." : `Buy ${g} repairs from the carpenter at sea.`),
-    goals: [1, 10, 25, 50, 100, 250],
-    rewards: [10, 25, 50, 100, 200, 500],
-    count: (h) => h.lifetime.patches,
-  },
-  {
-    id: "healed",
-    name: "Damage repaired",
-    blurb: (g) => `Have the carpenter put back ${g.toLocaleString()} points of damage.`,
-    goals: [500, 5000, 25000, 100000],
-    rewards: [25, 100, 250, 500],
-    count: (h) => h.lifetime.healed,
-  },
-  {
-    id: "dmg",
-    name: "Damage dealt",
-    blurb: (g) => `Deal ${g.toLocaleString()} points of damage, by gun and by bow.`,
-    goals: [1000, 10000, 50000, 250000],
-    rewards: [25, 100, 250, 500],
-    count: (h) => h.lifetime.dmg,
-  },
-  {
-    id: "afloat",
-    name: "Time afloat",
-    blurb: (g) => `Spend ${spanOf(g)} at sea, across every voyage.`,
-    goals: [600, 1800, 3600, 10800, 36000, 86400],
-    rewards: [25, 50, 100, 250, 500, 1000],
-    unit: "time",
-    count: (h) => h.lifetime.afloat,
-  },
-  {
-    id: "earned",
-    name: "Into the hold",
-    blurb: (g) => `Bank ${g.toLocaleString()} coins from voyages.`,
-    goals: [100, 1000, 10000, 100000],
-    rewards: [10, 50, 250, 1000],
-    unit: "coins",
-    count: (h) => h.lifetime.earned,
-  },
-  {
-    id: "repaired",
-    name: "Paid to the carpenter",
-    blurb: (g) => `Spend ${g.toLocaleString()} coins on repairs at sea.`,
-    goals: [100, 1000, 10000, 100000],
-    rewards: [10, 50, 250, 1000],
-    unit: "coins",
-    count: (h) => h.lifetime.repaired,
-  },
-  {
     id: "christened",
     name: "Christened",
-    blurb: "Give a ship a name of her own, in the yard.",
+    blurb: "Give a ship a name in the yard.",
     goal: 1,
     reward: 25,
     // asked of the yard rather than the tallies: a named ship is one whose record carries a name
@@ -259,9 +248,12 @@ export function progressOf(a, hold) {
   return { id: a.id, count: Math.min(raw, goal), goal, rung, rungs: goals.length, done, blurb, reward };
 }
 
-/** Every achievement against one hold, earned first, so a captain sees what she has before what she has not. */
+/**
+ * Every achievement against one hold, in list order. The screen splits them, the ladders into one
+ * table and the single goals into cards, and orders each its own way, so nothing is sorted here.
+ */
 export function roll(hold) {
-  return ACHIEVEMENTS.map((a) => ({ ...a, ...progressOf(a, hold) })).sort((x, y) => Number(y.done) - Number(x.done));
+  return ACHIEVEMENTS.map((a) => ({ ...a, ...progressOf(a, hold) }));
 }
 
 /** The count for the overview: `{ done, total }`, in rungs, so a ladder half climbed counts for half. */
@@ -276,15 +268,25 @@ export function tally(hold) {
 }
 
 /**
- * The figure on a card, `count of goal` in the achievement's unit. Time is minutes under an hour and
- * hours above, to a tenth on the count so an hour and a half does not read as one; coins and counts
- * are grouped numerals.
+ * The figure on a card: `count/goal` in the achievement's unit. The count is always the whole
+ * figure, grouped, because it is the one that moves and a captain reads it against the tally on the
+ * screen before; the goal is fixed and reads in thousands from a thousand up, `999/1k`, `12,000/50k`,
+ * so the k is said once and on the number that never changes. Time is minutes under an hour and
+ * hours above, to a tenth on the count so an hour and a half does not read as one.
  */
 export function fmtProgress(a, p) {
+  return progressParts(a, p).join("/");
+}
+
+/** A goal in thousands to one place, the place dropped when it is a nought: 1,500 is 1.5k and 15,000 is 15k. */
+export const inK = (n) => `${Math.round(n / 100) / 10}k`;
+
+/** The same figure in two parts, the count and the goal, for a cell that sets them either side of the slash. */
+export function progressParts(a, p) {
   if (a.unit === "time") {
-    if (p.goal < 3600) return `${Math.floor(p.count / 60)} of ${spanOf(p.goal)}`;
+    if (p.goal < 3600) return [String(Math.floor(p.count / 60)), spanOf(p.goal)];
     const h = Math.floor((p.count / 3600) * 10) / 10;
-    return `${h.toLocaleString()} of ${spanOf(p.goal)}`;
+    return [h.toLocaleString(), spanOf(p.goal)];
   }
-  return `${p.count.toLocaleString()} of ${p.goal.toLocaleString()}`;
+  return [p.count.toLocaleString(), p.goal >= 1000 ? inK(p.goal) : p.goal.toLocaleString()];
 }
