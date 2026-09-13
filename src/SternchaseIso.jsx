@@ -4084,7 +4084,7 @@ function YardScreen({ hold, shipId, onView, onBack, onCommission, onOutfit }) {
   // Named for the parts rather than for the HUD buttons: this is the shipyard, where a captain is
   // looking at guns she owns, not at the three keys she fires them with.
   const guns = [
-    ["broadside", "Broadside guns, a side", stats.broadside.count, loadout.hull.guns.broadside],
+    ["broadside", "Broadside cannons, a side", stats.broadside.count, loadout.hull.guns.broadside],
     ["bow", "Bow chasers", stats.bow.count, loadout.hull.guns.bow],
     ["swivel", "Swivel guns", stats.swivel.count, loadout.hull.guns.swivel],
   ];
@@ -4195,7 +4195,7 @@ function YardScreen({ hold, shipId, onView, onBack, onCommission, onOutfit }) {
         })}
       </Slab>
 
-      <Slab title="Her guns" sub="Tap a mount to arm it">
+      <Slab title="Armament" sub="Tap a mount to arm it">
         {/* Her iron first, because it is the figure every gun below is bought against. */}
         <IronRow weight={stats.weight} tons={loadout.hull.tons} />
         {/* Green once a mount is full, and the ordinary gold otherwise. Colouring a short mount by its
@@ -4419,14 +4419,14 @@ function IronRow({ weight, tons }) {
   return (
     <div style={{ padding: "6px 0 8px" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <span style={{ fontSize: 11, color: "rgba(238,244,242,0.6)", letterSpacing: 0.5 }}>Iron aboard</span>
+        <span style={{ fontSize: 11, color: "rgba(238,244,242,0.6)", letterSpacing: 0.5 }}>Weight aboard</span>
         <span style={{ fontSize: 13, fontWeight: 700, color: share >= 1 ? C.grass : C.gold }}>{fmtTons(weight)} of {fmtTons(tons)} tons</span>
       </div>
       <div style={{ height: 4, marginTop: 6, background: "rgba(0,0,0,0.35)", borderRadius: 3, overflow: "hidden" }}>
         <div style={{ height: "100%", width: `${share * 100}%`, background: share >= 1 ? C.grass : C.gold, borderRadius: 3 }} />
       </div>
       <div style={{ fontSize: 10, color: "rgba(238,244,242,0.45)", lineHeight: 1.5, marginTop: 5 }}>
-        A broadside gun counts twice, one each side. Bow chasers and swivels count once. She refuses a gun she cannot bear.
+        A broadside cannon counts twice, one each side. Bow chasers and swivels count once. She refuses a gun she cannot bear.
       </div>
     </div>
   );
@@ -4742,7 +4742,7 @@ function HullRow({ shelf, first, owned, ready, coins, open, onToggle, onBuy }) {
           <TallyRow label="Crew" value={range("crew")} rule="hair" />
           <TallyRow label="Top speed" value={`${knots(band.speed.bare).toFixed(1)} to ${knots(band.speed.found).toFixed(1)} knots`} rule="hair" />
           <TallyRow label="Handling, of 100" value={range("turn", 1, handlingScore)} rule="hair" />
-          <TallyRow label="Broadside guns, a side" value={range("broadside")} rule="hair" />
+          <TallyRow label="Broadside cannons, a side" value={range("broadside")} rule="hair" />
           <TallyRow label="Bow chasers" value={range("bow")} rule="hair" />
           <TallyRow label="Swivel guns" value={range("swivel")} rule="hair" />
           <TallyRow label="Muskets in a volley" value={range("muskets")} rule="hair" />
@@ -5027,7 +5027,7 @@ function OutfitterScreen({ hold, shipId: asked, onView, start, onBack }) {
       {/* Her iron at the head of the guns, above every mount, because it is one figure for the whole
           battery and every gun below is bought against it. It moves as she is armed. */}
       {view === "guns" && (
-        <Slab title="Her tonnage">
+        <Slab title="Weight">
           <IronRow weight={stats.weight} tons={loadout.hull.tons} />
         </Slab>
       )}
