@@ -109,7 +109,7 @@ export const ACHIEVEMENTS = [
     id: "healed",
     name: "Damage repaired",
     blurb: (g) => `Repair ${g.toLocaleString()} points of hull damage.`,
-    goals: [250, 500, 1000, 2500, 5000, 10000, 25000, 50000, 100000, 250000, 500000],
+    goals: [100, 250, 500, 1000, 2500, 5000, 10000, 25000, 50000, 100000, 250000],
     rewards: FIGURE_PAY,
     count: (h) => h.lifetime.healed,
   },
