@@ -56,19 +56,17 @@ const plural = (n, one, many) => `${n.toLocaleString()} ${n === 1 ? one : many}`
 // "a ship" for one rather than "1 ship", which reads as a number dropped into a slot
 const ships = (n) => (n === 1 ? "a ship" : plural(n, "ship", "ships"));
 
-/** A span of seconds as a captain reads it on a card: whole minutes under an hour, hours above. */
-export function spanOf(sec, precise = false) {
-  if (sec < 3600) return plural(Math.floor(sec / 60), "minute", "minutes");
-  const h = sec / 3600;
-  const shown = precise ? Math.round(h * 10) / 10 : Math.floor(h);
-  return `${shown.toLocaleString()} ${h === 1 ? "hour" : "hours"}`;
+/** A span of seconds as a captain reads it on a card: whole minutes under an hour as `10 min`, hours above as `3 hr`. */
+export function spanOf(sec) {
+  if (sec < 3600) return `${Math.floor(sec / 60)} min`;
+  return `${Math.floor(sec / 3600).toLocaleString()} hr`;
 }
 
 export const ACHIEVEMENTS = [
   {
     id: "sunk",
     name: "Ships sunk",
-    blurb: (g) => (g === 1 ? "Send one to the bottom." : `Send ${g} to the bottom.`),
+    blurb: (g) => (g === 1 ? "Sink one ship." : `Sink ${g} ships.`),
     goals: COUNT_RUNGS,
     rewards: COUNT_PAY,
     count: (h) => h.lifetime.sunk,
@@ -76,7 +74,7 @@ export const ACHIEVEMENTS = [
   {
     id: "dismasted",
     name: "Masts brought down",
-    blurb: (g) => (g === 1 ? "Bring down a mast with the bow gun." : `Bring down ${g} masts with the bow gun.`),
+    blurb: (g) => (g === 1 ? "Bring down a mast with the bow gun." : `Bring down ${g} masts.`),
     goals: COUNT_RUNGS,
     rewards: COUNT_PAY,
     count: (h) => h.lifetime.dismasted,
@@ -84,7 +82,7 @@ export const ACHIEVEMENTS = [
   {
     id: "rams",
     name: "Rams landed",
-    blurb: (g) => (g === 1 ? "Drive your bow into a rival's beam." : `Land ${g} rams. Her beam, not her bow.`),
+    blurb: (g) => (g === 1 ? "Drive your bow into a rival's beam." : `Land ${g} rams into a ship's beam.`),
     goals: COUNT_RUNGS,
     rewards: COUNT_PAY,
     count: (h) => h.lifetime.rams,
@@ -92,7 +90,7 @@ export const ACHIEVEMENTS = [
   {
     id: "dmg",
     name: "Damage dealt",
-    blurb: (g) => `Deal ${g.toLocaleString()} points of damage, by gun and by bow.`,
+    blurb: (g) => `Deal ${g.toLocaleString()} hull damage.`,
     goals: [1000, 10000, 50000, 250000],
     rewards: [25, 100, 250, 500],
     count: (h) => h.lifetime.dmg,
@@ -100,7 +98,7 @@ export const ACHIEVEMENTS = [
   {
     id: "patches",
     name: "Repairs bought",
-    blurb: (g) => (g === 1 ? "Buy a repair from the carpenter at sea." : `Buy ${g} repairs from the carpenter at sea.`),
+    blurb: (g) => (g === 1 ? "Buy a repair from the carpenter." : `Buy ${g} repairs from the carpenter.`),
     goals: [1, 10, 25, 50, 100, 250],
     rewards: [10, 25, 50, 100, 200, 500],
     count: (h) => h.lifetime.patches,
@@ -108,7 +106,7 @@ export const ACHIEVEMENTS = [
   {
     id: "healed",
     name: "Damage repaired",
-    blurb: (g) => `Have the carpenter put back ${g.toLocaleString()} points of damage.`,
+    blurb: (g) => `Repair ${g.toLocaleString()} points of hull damage.`,
     goals: [500, 5000, 25000, 100000],
     rewards: [25, 100, 250, 500],
     count: (h) => h.lifetime.healed,
@@ -116,7 +114,7 @@ export const ACHIEVEMENTS = [
   {
     id: "afloat",
     name: "Time afloat",
-    blurb: (g) => `Spend ${spanOf(g)} at sea, across every voyage.`,
+    blurb: (g) => `Spend ${spanOf(g)} at sea.`,
     goals: [600, 1800, 3600, 10800, 36000, 86400],
     rewards: [25, 50, 100, 250, 500, 1000],
     unit: "time",
@@ -132,32 +130,6 @@ export const ACHIEVEMENTS = [
     count: (h) => h.lifetime.earned,
   },
   {
-    id: "repaired",
-    name: "Paid to the carpenter",
-    blurb: (g) => `Spend ${g.toLocaleString()} coins on repairs at sea.`,
-    goals: [100, 1000, 10000, 100000],
-    rewards: [10, 50, 250, 1000],
-    unit: "coins",
-    count: (h) => h.lifetime.repaired,
-  },
-  {
-    id: "rammedWhole",
-    name: "By the bow alone",
-    blurb: (g) => `In the arena or the free-for-all, sink ${ships(g)} with your ram and not one ball into her hull.`,
-    goals: [1, 5, 25],
-    rewards: [50, 150, 500],
-    // the derby is left out because it would be true of every sinking there: there are no guns in it
-    count: (h) => modeCount(h, "arena", "rammedWhole") + modeCount(h, "ffa", "rammedWhole"),
-  },
-  {
-    id: "wornDown",
-    name: "Worn down",
-    blurb: (g) => `Sink ${ships(g)} after taking half her hull, half her mast and half her crew yourself.`,
-    goals: [1, 10, 50],
-    rewards: [50, 200, 750],
-    count: (h) => h.lifetime.wornDown,
-  },
-  {
     id: "arenaVoyage",
     name: "In one arena voyage",
     blurb: (g) => `Sink ${ships(g)} in a single arena voyage.`,
@@ -169,7 +141,7 @@ export const ACHIEVEMENTS = [
   {
     id: "arenaSunk",
     name: "Arena, all told",
-    blurb: (g) => `Sink ${ships(g)} in the arena, over every voyage.`,
+    blurb: (g) => `Sink ${ships(g)} in the arena, across all voyages.`,
     goals: [5, 25, 50, 100, 250, 500],
     rewards: [25, 50, 100, 200, 500, 1000],
     mode: "arena",
@@ -186,7 +158,7 @@ export const ACHIEVEMENTS = [
   {
     id: "sunkByGuns",
     name: "Sunk by the guns",
-    blurb: "Sink a ship with your side guns.",
+    blurb: "Sink a ship with side cannons.",
     goal: 1,
     reward: FIRST_PAY,
     count: (h) => h.lifetime.sunkByGuns,
@@ -194,10 +166,27 @@ export const ACHIEVEMENTS = [
   {
     id: "sunkByMuskets",
     name: "Crew routed",
-    blurb: "Clear a ship's crew with muskets until she strikes.",
+    blurb: "Clear a ship's crew with muskets.",
     goal: 1,
     reward: FIRST_PAY,
     count: (h) => h.lifetime.sunkByMuskets,
+  },
+  {
+    id: "rammedWhole",
+    name: "By ramming alone",
+    blurb: "Sink a ship from ramming only.",
+    goal: 1,
+    reward: FIRST_PAY,
+    // the derby is left out because it would be true of every sinking there: there are no guns in it
+    count: (h) => modeCount(h, "arena", "rammedWhole") + modeCount(h, "ffa", "rammedWhole"),
+  },
+  {
+    id: "wornDown",
+    name: "Worn down",
+    blurb: "Sink a ship after taking half hull, mast and crew health.",
+    goal: 1,
+    reward: FIRST_PAY,
+    count: (h) => h.lifetime.wornDown,
   },
   {
     id: "ffaWin",
@@ -220,7 +209,7 @@ export const ACHIEVEMENTS = [
   {
     id: "christened",
     name: "Christened",
-    blurb: "Give a ship a name of her own, in the yard.",
+    blurb: "Give a ship a name in the yard.",
     goal: 1,
     reward: 25,
     // asked of the yard rather than the tallies: a named ship is one whose record carries a name
