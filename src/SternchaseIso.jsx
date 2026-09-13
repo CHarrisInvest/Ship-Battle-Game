@@ -4271,12 +4271,12 @@ function YardScreen({ hold, shipId, onView, onBack, onCommission, onOutfit }) {
  */
 const GLOSSARY = [
   ["Top speed", "How fast the ship goes, in knots. Over 11 is quick. Under 5 means sails are missing."],
-  ["Handling", "Steering ability, out of 100. 70 and up turns on a coin, under 40 is a slow wide turn. More weight lowers it, fore-and-aft sails raise it."],
+  ["Handling", "Steering ability, out of 100. Above 70 turns on a coin, under 40 is a slow wide turn. More weight lowers it, some sails raise it."],
   ["Hull", "How much damage the hull can take before sinking. Side cannons and rams hit the hull."],
-  ["Mast", "How much damage the masts can take. Bow chasers hit the masts. As it drops the ship slows and turns worse. At 0 the masts are downed."],
+  ["Mast", "How much damage the masts can take. Bow chasers hit the masts. As it drops, ships slow and turn worse. At 0, masts are downed."],
   ["Crew", "How many hands the ship has. Musket volleys hit the crew. At 0 the crew surrenders."],
   ["Muskets in a volley", "How many musket balls fired at once. It comes from crew size, plus 1 for every swivel gun."],
-  ["Damage a ball", "How much damage per cannonball from the side cannons, between 5 and 18 depending on the cannon size."],
+  ["Damage a ball", "How much damage per cannonball from side cannons, between 5 and 18 depending on the cannon size."],
   ["Her whole side is away in", "How long it takes every side cannon to fire once. More cannons can take longer to fire a volley."],
 ];
 
@@ -4550,6 +4550,7 @@ const shelfOf = (hullId) => SHELF.find((s) => s.hull.id === hullId);
 const SHELVING = [
   { key: "price", label: "All by price" },
   { key: "purse", label: "Price range" },
+  { key: "rate", label: "Rating" },
   { key: "masts", label: "Masts" },
   { key: "canvas", label: "Sails needed" },
 ];
@@ -4578,6 +4579,16 @@ const CANVAS_BANDS = [
 function shelve(how) {
   const byPrice = SHELF.slice().sort((a, b) => a.hull.price - b.hull.price || a.hull.order - b.hull.order);
   if (how === "price") return [{ title: "", ships: byPrice }];
+  // By rating the bands are the rungs themselves, read off each class's ports, so a rung with no
+  // class on it is simply not shown and a new class lands on hers without a band being written.
+  if (how === "rate") {
+    const rungs = new Map();
+    for (const s of byPrice) {
+      if (!rungs.has(s.rated.rung)) rungs.set(s.rated.rung, { title: s.rated.name, ships: [] });
+      rungs.get(s.rated.rung).ships.push(s);
+    }
+    return [...rungs.entries()].sort((a, b) => a[0] - b[0]).map(([, g]) => g);
+  }
   const bands = how === "purse" ? PURSE_BANDS : how === "masts" ? MAST_BANDS : CANVAS_BANDS;
   return bands
     .map((b) => ({ title: b.title, ships: byPrice.filter(b.has) }))
