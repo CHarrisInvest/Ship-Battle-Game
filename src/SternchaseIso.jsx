@@ -4093,6 +4093,17 @@ function YardScreen({ hold, shipId, onView, onBack, onCommission, onOutfit }) {
     <Shell>
       <BackLink label="Back to the sea" onClick={onBack} />
       <div style={{ fontFamily: DISPLAY, fontSize: 30, color: C.gold, letterSpacing: 1 }}>THE YARD</div>
+      {/* The hull shop is the one door left off the yard, and it sits at the head rather than the
+          foot: buying a hull comes before choosing which of them to look at, and a door under six
+          slabs is a door only a captain who reads to the bottom finds. */}
+      <div style={{ margin: "12px 0 0" }}>
+        <ShopLink
+          title="Boat Commission"
+          sub="Buy a hull, and choose the one you sail"
+          color={C.gold}
+          onClick={onCommission}
+        />
+      </div>
       <FleetStrip hold={hold} shipId={id} onView={onView} />
       <NamePlate hold={hold} shipId={id} />
       <div style={{ fontSize: 12, color: "rgba(238,244,242,0.7)", margin: "6px 0 2px" }}>
@@ -4244,17 +4255,7 @@ function YardScreen({ hold, shipId, onView, onBack, onCommission, onOutfit }) {
         )}
       </Slab>
 
-      {/* The hull shop is the one door left. Rigging and arming are reached through the rows above,
-          from the thing being changed, and a second card saying "Rigging Outfitter" would send a
-          captain the long way round to the same screen. */}
-      <div style={{ display: "grid", gap: 10, margin: "4px 0 16px" }}>
-        <ShopLink
-          title="Boat Commission"
-          sub="Buy a hull, and choose the one you sail"
-          color={C.gold}
-          onClick={onCommission}
-        />
-      </div>
+      <div style={{ height: 4 }} />
       <StartButton onClick={onBack} label="Back to the sea" />
     </Shell>
   );
