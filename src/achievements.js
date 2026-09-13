@@ -131,7 +131,7 @@ export const ACHIEVEMENTS = [
   },
   {
     id: "arenaVoyage",
-    name: "In one arena voyage",
+    name: "Arena streak",
     blurb: (g) => `Sink ${ships(g)} in a single arena voyage.`,
     goals: [1, 3, 5, 10, 15, 20, 30],
     rewards: [10, 25, 50, 100, 200, 300, 500],
@@ -140,7 +140,7 @@ export const ACHIEVEMENTS = [
   },
   {
     id: "arenaSunk",
-    name: "Arena, all told",
+    name: "Arena total",
     blurb: (g) => `Sink ${ships(g)} in the arena, across all voyages.`,
     goals: [5, 25, 50, 100, 250, 500],
     rewards: [25, 50, 100, 200, 500, 1000],
