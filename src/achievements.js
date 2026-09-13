@@ -259,9 +259,12 @@ export function progressOf(a, hold) {
   return { id: a.id, count: Math.min(raw, goal), goal, rung, rungs: goals.length, done, blurb, reward };
 }
 
-/** Every achievement against one hold, earned first, so a captain sees what she has before what she has not. */
+/**
+ * Every achievement against one hold, in list order. The screen splits them, the ladders into one
+ * table and the single goals into cards, and orders each its own way, so nothing is sorted here.
+ */
 export function roll(hold) {
-  return ACHIEVEMENTS.map((a) => ({ ...a, ...progressOf(a, hold) })).sort((x, y) => Number(y.done) - Number(x.done));
+  return ACHIEVEMENTS.map((a) => ({ ...a, ...progressOf(a, hold) }));
 }
 
 /** The count for the overview: `{ done, total }`, in rungs, so a ladder half climbed counts for half. */
@@ -281,10 +284,15 @@ export function tally(hold) {
  * are grouped numerals.
  */
 export function fmtProgress(a, p) {
+  return progressParts(a, p).join(" of ");
+}
+
+/** The same figure in two halves, the count and the goal, for a cell that may break between them. */
+export function progressParts(a, p) {
   if (a.unit === "time") {
-    if (p.goal < 3600) return `${Math.floor(p.count / 60)} of ${spanOf(p.goal)}`;
+    if (p.goal < 3600) return [String(Math.floor(p.count / 60)), spanOf(p.goal)];
     const h = Math.floor((p.count / 3600) * 10) / 10;
-    return `${h.toLocaleString()} of ${spanOf(p.goal)}`;
+    return [h.toLocaleString(), spanOf(p.goal)];
   }
-  return `${p.count.toLocaleString()} of ${p.goal.toLocaleString()}`;
+  return [p.count.toLocaleString(), p.goal.toLocaleString()];
 }

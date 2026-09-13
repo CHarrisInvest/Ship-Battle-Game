@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect, useCallback, useMemo } from "react";
+import React, { Fragment, useRef, useState, useEffect, useCallback, useMemo } from "react";
 import { drawGalleon } from "./galleon.js";
 import { hullForm, tintTimber } from "./hullform.js";
 import {
@@ -13,7 +13,7 @@ import {
   mastsForSocket, sailsForBerth, studsForBerth, gunsForMount,
   knots, berthEffect, familyOf, gunTons, gunFits, gunEffect, cheapestCanvas, handlingScore, handlingPoints,
 } from "./shipyard.js";
-import { roll, tally, fmtProgress } from "./achievements.js";
+import { roll, tally, progressParts } from "./achievements.js";
 
 /**
  * STERNCHASE: HELM & HULL — pirate battles at sea, on a tilted (isometric-ish) sea with tall wooden
@@ -3999,13 +3999,18 @@ function BigRow({ label, value, onClick }) {
  * is the progress, which is why a captain who sank her first ship before any of this existed opens
  * the screen already holding it.
  *
- * A ladder is one card. It carries the blurb for the rung she is on, the figure against that rung,
- * and under the figure which rung it is, so "Ships sunk" reads as one climb and not as twelve cards
- * that differ by a number. The count at the head of the screen is in rungs for the same reason.
+ * The ladders come first, as one table: a row each, with the figure against the rung she is on,
+ * which rung it is, and what it pays. They are the running counts, and a table is how running
+ * counts are read side by side; a card each would be twelve cards that differ by a number. They
+ * keep the list's order rather than sorting, because a table that reshuffles as she plays is a
+ * table she has to re-find her place in. The single goals follow as cards, earned first, so she
+ * sees what she has before what she has not. The count at the head of the screen is in rungs.
  */
 function AchievementsScreen({ hold, onBack }) {
   const list = roll(hold);
   const won = tally(hold);
+  const ladders = list.filter((a) => a.rungs > 1);
+  const singles = list.filter((a) => a.rungs === 1).sort((x, y) => Number(y.done) - Number(x.done));
   return (
     <Shell>
       <BackLink label="Back to the tallies" onClick={onBack} />
@@ -4016,7 +4021,12 @@ function AchievementsScreen({ hold, onBack }) {
         {won.done} of {won.total} earned.
       </div>
 
-      {list.map((a) => (
+      <Slab centred title="LADDERS">
+        <LadderTable ladders={ladders} />
+      </Slab>
+
+      <div style={{ fontSize: 10, letterSpacing: 1, color: C.ink, textAlign: "center", margin: "16px 0 0" }}>ONE-OFFS</div>
+      {singles.map((a) => (
         <div
           key={a.id}
           style={{
@@ -4033,23 +4043,9 @@ function AchievementsScreen({ hold, onBack }) {
             </div>
             <div style={{ fontSize: 11, color: "rgba(238,244,242,0.55)", lineHeight: 1.5, marginTop: 2 }}>{a.blurb}</div>
           </div>
-          {/* The figure only earns its place while it is still moving. Once it is done the seal says
-              so, and "1 of 1" beside a struck seal is the same news twice. A ladder shows its rung
-              under the figure, because "37 of 50" on its own does not say there are ten more, and
-              every unfinished card says what the next rung pays. */}
-          {!a.done && (
-            <div style={{ flexShrink: 0, textAlign: "right" }}>
-              {(a.goal > 1 || a.rungs > 1) && <div style={{ fontSize: 12, fontWeight: 700, color: C.gold }}>{fmtProgress(a, a)}</div>}
-              {a.rungs > 1 && (
-                <div style={{ fontSize: 10, color: "rgba(238,244,242,0.5)", marginTop: 2 }}>Rung {a.rung + 1} of {a.rungs}</div>
-              )}
-              {a.reward > 0 && (
-                <div style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10, fontWeight: 700, color: C.grass, marginTop: 2 }}>
-                  <CoinIcon size={10} />+{fmtCoins(a.reward)}
-                </div>
-              )}
-            </div>
-          )}
+          {/* What it pays, only while it is still to be earned. Once it is done the seal says so, and
+              a figure beside a struck seal is the same news twice. */}
+          {!a.done && a.reward > 0 && <Pays n={a.reward} />}
         </div>
       ))}
 
@@ -4059,6 +4055,78 @@ function AchievementsScreen({ hold, onBack }) {
       </div>
       <StartButton onClick={onBack} label="Back to the tallies" />
     </Shell>
+  );
+}
+
+/**
+ * The ladders as one table. Four columns: the ladder, with its mode tag and the line for the rung
+ * she is on under it; the figure against that rung; which rung it is; and what it pays. A climbed
+ * ladder keeps its row with a struck seal where the figure was and nothing in the pays column, so
+ * the table holds one shape however far she is: a row that vanishes when it is done is a row she
+ * cannot find again to see that it is done.
+ *
+ * A grid rather than a table element, because the rule between rows has to run the whole width and
+ * the first column has to give way to the other three, which are figures and must not wrap. The
+ * line for the rung sits under the four cells on a row of its own, spanning the width: beside the
+ * figures it had a third of a phone to wrap in and came out one word to a line.
+ */
+function LadderTable({ ladders }) {
+  const head = { fontSize: 10, color: "rgba(238,244,242,0.5)", letterSpacing: 0.5, paddingBottom: 4 };
+  // the rule is one cell across the whole row, not a border on each of four cells: cells of
+  // different heights centred on one another put four borders at four heights
+  const rule = { gridColumn: "1 / -1", borderTop: "1px solid rgba(160,224,210,0.14)", marginTop: 2, marginBottom: 6 };
+  const cell = { alignSelf: "center" };
+  const figure = { ...cell, fontSize: 12, fontWeight: 700, color: C.gold, textAlign: "right", whiteSpace: "nowrap" };
+  return (
+    // The first column has a floor, so the progress column, which a grid sizes to its widest cell
+    // in any row, gives way before the names do: "12,000 of 50,000" breaks over two lines in its
+    // one row rather than breaking "Masts brought down" into three in every row. A figure breaks
+    // only between its count and its goal, never after the "of", so a short one never breaks.
+    <div style={{ display: "grid", gridTemplateColumns: "minmax(88px, 1fr) auto auto auto", columnGap: 8 }}>
+      <div style={head}>Ladder</div>
+      <div style={{ ...head, textAlign: "right" }}>Progress</div>
+      <div style={{ ...head, textAlign: "right" }}>Rung</div>
+      <div style={{ ...head, textAlign: "right" }}>Pays</div>
+      {ladders.map((a) => (
+        <Fragment key={a.id}>
+          <div style={rule} />
+          <div style={{ ...cell, minWidth: 0, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: a.done ? C.ink : ROW_LABEL }}>{a.name}</span>
+            {a.mode && MODES[a.mode] && <ModeTag mode={MODES[a.mode]} />}
+          </div>
+          <div style={{ ...figure, whiteSpace: "normal", display: "flex", justifyContent: "flex-end" }}>
+            {a.done ? <SealIcon done size={16} /> : <Progress parts={progressParts(a, a)} />}
+          </div>
+          <div style={{ ...figure, color: a.done ? C.ink : ROW_LABEL, fontWeight: 400 }}>
+            {a.done ? a.rungs : a.rung + 1} of {a.rungs}
+          </div>
+          <div style={{ ...figure, display: "flex", justifyContent: "flex-end" }}>
+            {!a.done && <Pays n={a.reward} />}
+          </div>
+          <div style={{ gridColumn: "1 / -1", fontSize: 10, color: "rgba(238,244,242,0.5)", lineHeight: 1.4, padding: "2px 0 4px" }}>
+            {a.done ? "Climbed to the top." : a.blurb}
+          </div>
+        </Fragment>
+      ))}
+    </div>
+  );
+}
+
+/** `count of goal`, each half unbreakable, so a squeezed cell breaks before "of" or not at all. */
+function Progress({ parts: [count, goal] }) {
+  return (
+    <span>
+      <span style={{ whiteSpace: "nowrap" }}>{count}</span> <span style={{ whiteSpace: "nowrap" }}>of {goal}</span>
+    </span>
+  );
+}
+
+/** What a rung or a card pays, as a small coin figure in the colour money into the hold is drawn in. */
+function Pays({ n }) {
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 11, fontWeight: 700, color: C.grass, whiteSpace: "nowrap", flexShrink: 0 }}>
+      <CoinIcon size={10} />+{fmtCoins(n)}
+    </span>
   );
 }
 
