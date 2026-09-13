@@ -82,9 +82,22 @@ function blankMode() {
   return {
     runs: 0, wins: 0, earned: 0,
     sunk: 0, dmg: 0, afloat: 0, repaired: 0, rams: 0, patches: 0,
+    ...blankDeeds(),
     bestSunk: 0, bestTime: 0, bestRank: 0,
   };
 }
+
+/**
+ * The finer tallies, kept in the lifetime and in every mode alike. How a sinking was done, because
+ * a count of sinkings cannot say; masts brought down; what the carpenter gave back, in points, as
+ * the twin of `dmg`; and the two judged on what the player did to one ship before she went, which
+ * nothing after the voyage could reconstruct. `sunkByRam`, `sunkByGuns` and `sunkByMuskets` add up
+ * to less than `sunk` where a storm finished her for you, and that is right: the weather is not you.
+ */
+function blankDeeds() {
+  return { dismasted: 0, healed: 0, sunkByRam: 0, sunkByGuns: 0, sunkByMuskets: 0, rammedWhole: 0, wornDown: 0 };
+}
+const DEEDS = Object.keys(blankDeeds());
 
 function blank() {
   return {
@@ -93,7 +106,7 @@ function blank() {
     spent: 0, // taken back out again, so the two sides of the ledger always reconstruct `earned`
     // `repaired` is coins spent at sea that never reached the hold, so it is not reconstructible
     // from `earned` and `spent` the way shore spending is. Recorded from the day the feature exists.
-    lifetime: { earned: 0, runs: 0, wins: 0, sunk: 0, dmg: 0, afloat: 0, repaired: 0, rams: 0, patches: 0 },
+    lifetime: { earned: 0, runs: 0, wins: 0, sunk: 0, dmg: 0, afloat: 0, repaired: 0, rams: 0, patches: 0, ...blankDeeds() },
     modes: {}, // keyed by mode name, created on demand so a new mode needs no schema change
     yard: starterYard(),
   };
@@ -357,7 +370,9 @@ export function voyageValue(earned, repaired = 0) {
  * Bank one finished voyage and return the new hold alongside the coins it added.
  *
  * `run` is the end-of-round summary:
- * `{ mode, earned, repaired, kills, dmg, time, won, rank, rams, patches }`.
+ * `{ mode, earned, repaired, kills, dmg, time, won, rank, rams, patches }` and then the deeds,
+ * `{ dismasted, healed, sunkByRam, sunkByGuns, sunkByMuskets, rammedWhole, wornDown }`, any of which
+ * may be left out by a caller with nothing to say about it.
  * `earned` is what the ship took in at sea, not what she had left; `repaired` is the part of it she
  * handed to the carpenter, and only the difference reaches the hold.
  */
@@ -373,6 +388,8 @@ export function bankVoyage(run) {
   const patches = num(run.patches);
   const won = !!run.won;
   const rank = num(run.rank);
+  const deeds = Object.fromEntries(DEEDS.map((k) => [k, num(run[k])]));
+  const addDeeds = (to) => Object.fromEntries(DEEDS.map((k) => [k, num(to[k]) + deeds[k]]));
 
   const next = {
     ...rec,
@@ -387,6 +404,7 @@ export function bankVoyage(run) {
       repaired: rec.lifetime.repaired + repaired,
       rams: rec.lifetime.rams + rams,
       patches: rec.lifetime.patches + patches,
+      ...addDeeds(rec.lifetime),
     },
     modes: { ...rec.modes },
   };
@@ -402,6 +420,7 @@ export function bankVoyage(run) {
     repaired: m.repaired + repaired,
     rams: m.rams + rams,
     patches: m.patches + patches,
+    ...addDeeds(m),
     bestSunk: Math.max(m.bestSunk, kills),
     bestTime: Math.max(m.bestTime, time),
     // placement counts down, not up, and 0 means "never placed" — so the first finish always takes it
