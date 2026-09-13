@@ -4270,14 +4270,14 @@ function YardScreen({ hold, shipId, onView, onBack, onCommission, onOutfit }) {
  * scroll past eight lines of them every visit.
  */
 const GLOSSARY = [
-  ["Top speed", "What she makes with all her canvas drawing. The fight reads the rating; knots are the label on it."],
-  ["Handling", "How quickly she comes round, scored out of 100. Iron aboard stiffens it, and fore-and-aft canvas helps it."],
-  ["Hull", "What side guns and rams take off. At nothing she sinks."],
-  ["Mast", "What bow chasers bring down. As it falls she slows towards half speed and answers the helm less; at nothing her masts are gone."],
-  ["Crew", "What muskets and swivels clear. At nothing she is taken."],
-  ["Muskets in a volley", "Balls in her small-arms volley, from her hands and every swivel on the rail."],
-  ["Damage a ball", "What one broadside gun takes off a hull."],
-  ["Her whole side is away in", "How long her broadside takes to roll down her side, bow to stern."],
+  ["Top speed", "How fast the ship goes, in knots. Over 11 is quick. Under 5 means sails are missing."],
+  ["Handling", "Steering ability, out of 100. 70 and up turns on a coin, under 40 is a slow wide turn. More weight lowers it, fore-and-aft sails raise it."],
+  ["Hull", "How much damage the hull can take before sinking. Side cannons and rams hit the hull."],
+  ["Mast", "How much damage the masts can take. Bow chasers hit the masts. As it drops the ship slows and turns worse. At 0 the masts are downed."],
+  ["Crew", "How many hands the ship has. Musket volleys hit the crew. At 0 the crew surrenders."],
+  ["Muskets in a volley", "How many musket balls fired at once. It comes from crew size, plus 1 for every swivel gun."],
+  ["Damage a ball", "How much damage per cannonball from the side cannons, between 5 and 18 depending on the cannon size."],
+  ["Her whole side is away in", "How long it takes every side cannon to fire once. More cannons can take longer to fire a volley."],
 ];
 
 function Glossary() {
