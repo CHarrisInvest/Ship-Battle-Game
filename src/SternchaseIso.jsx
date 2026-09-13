@@ -13,7 +13,7 @@ import {
   mastsForSocket, sailsForBerth, studsForBerth, gunsForMount,
   knots, berthEffect, familyOf, gunTons, gunFits, gunEffect, cheapestCanvas, handlingScore, handlingPoints,
 } from "./shipyard.js";
-import { roll, tally } from "./achievements.js";
+import { roll, tally, fmtProgress } from "./achievements.js";
 
 /**
  * STERNCHASE: HELM & HULL — pirate battles at sea, on a tilted (isometric-ish) sea with tall wooden
@@ -3994,6 +3994,10 @@ function BigRow({ label, value, onClick }) {
  * Nothing here is stored. `achievements.js` asks the hold a question per achievement and the answer
  * is the progress, which is why a captain who sank her first ship before any of this existed opens
  * the screen already holding it.
+ *
+ * A ladder is one card. It carries the blurb for the rung she is on, the figure against that rung,
+ * and under the figure which rung it is, so "Ships sunk" reads as one climb and not as twelve cards
+ * that differ by a number. The count at the head of the screen is in rungs for the same reason.
  */
 function AchievementsScreen({ hold, onBack }) {
   const list = roll(hold);
@@ -4019,13 +4023,22 @@ function AchievementsScreen({ hold, onBack }) {
         >
           <SealIcon done={a.done} />
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: a.done ? C.ink : "rgba(238,244,242,0.7)" }}>{a.name}</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+              <span style={{ fontSize: 13, fontWeight: 700, color: a.done ? C.ink : "rgba(238,244,242,0.7)" }}>{a.name}</span>
+              {a.mode && MODES[a.mode] && <ModeTag mode={MODES[a.mode]} />}
+            </div>
             <div style={{ fontSize: 11, color: "rgba(238,244,242,0.55)", lineHeight: 1.5, marginTop: 2 }}>{a.blurb}</div>
           </div>
           {/* The figure only earns its place while it is still moving. Once it is done the seal says
-              so, and "1 of 1" beside a struck seal is the same news twice. */}
-          {!a.done && a.goal > 1 && (
-            <span style={{ fontSize: 12, fontWeight: 700, color: C.gold, flexShrink: 0 }}>{a.count} of {a.goal}</span>
+              so, and "1 of 1" beside a struck seal is the same news twice. A ladder shows its rung
+              under the figure, because "37 of 50" on its own does not say there are ten more. */}
+          {!a.done && (a.goal > 1 || a.rungs > 1) && (
+            <div style={{ flexShrink: 0, textAlign: "right" }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: C.gold }}>{fmtProgress(a, a)}</div>
+              {a.rungs > 1 && (
+                <div style={{ fontSize: 10, color: "rgba(238,244,242,0.5)", marginTop: 2 }}>Rung {a.rung + 1} of {a.rungs}</div>
+              )}
+            </div>
           )}
         </div>
       ))}
@@ -4036,6 +4049,19 @@ function AchievementsScreen({ hold, onBack }) {
       </div>
       <StartButton onClick={onBack} label="Back to the tallies" />
     </Shell>
+  );
+}
+
+/**
+ * The mode an achievement belongs to, as a small pill in that mode's colour beside its name. The
+ * mode's short name rather than its title, because a title in caps beside a card name is two
+ * headlines on one line.
+ */
+function ModeTag({ mode }) {
+  return (
+    <span style={{ fontSize: 9, fontWeight: 700, color: mode.color, border: `1px solid ${mode.color}`, borderRadius: 20, padding: "1px 6px", opacity: 0.85, whiteSpace: "nowrap" }}>
+      {mode.short}
+    </span>
   );
 }
 
