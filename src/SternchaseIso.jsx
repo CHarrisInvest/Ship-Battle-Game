@@ -4270,14 +4270,14 @@ function YardScreen({ hold, shipId, onView, onBack, onCommission, onOutfit }) {
  * scroll past eight lines of them every visit.
  */
 const GLOSSARY = [
-  ["Top speed", "How fast she goes, in knots. Over 10 is quick. Under 5 means most of her sails are missing."],
-  ["Handling", "How fast she turns, scored out of 100. Shown as Steer on the outfitter. 70 and up turns on a coin, under 40 is a slow wide turn. Guns aboard lower it, fore-and-aft sails raise it."],
-  ["Hull", "How much damage her hull can take before she sinks. Side guns and rams take it off. A small boat has around 150, a first rate nearly 2,700."],
-  ["Mast", "How much damage her masts can take. Bow chasers take it off. As it drops she slows down and turns worse, and at 0 her masts are gone."],
-  ["Crew", "How many hands she has. Muskets and swivels take them off, and at 0 she is captured. A boat has about 30, a first rate 800."],
-  ["Muskets in a volley", "How many musket balls she fires at once. It comes from her crew size, plus 1 for every swivel gun. 2 is a boat, 14 is the most any ship fires."],
-  ["Damage a ball", "How much damage 1 cannonball from her side guns does, between 5 and 18 depending on the gun. Times her guns a side is her whole broadside."],
-  ["Her whole side is away in", "How long it takes every side gun to fire once. A boat fires all at once, a first rate takes about a second."],
+  ["Top speed", "How fast the ship goes, in knots. Over 11 is quick. Under 5 means sails are missing."],
+  ["Handling", "Steering ability, out of 100. 70 and up turns on a coin, under 40 is a slow wide turn. More weight lowers it, fore-and-aft sails raise it."],
+  ["Hull", "How much damage the hull can take before sinking. Side cannons and rams hit the hull."],
+  ["Mast", "How much damage the masts can take. Bow chasers hit the masts. As it drops the ship slows and turns worse. At 0 the masts are downed."],
+  ["Crew", "How many hands the ship has. Musket volleys hit the crew. At 0 the crew surrenders."],
+  ["Muskets in a volley", "How many musket balls fired at once. It comes from crew size, plus 1 for every swivel gun."],
+  ["Damage a ball", "How much damage per cannonball from the side cannons, between 5 and 18 depending on the cannon size."],
+  ["Her whole side is away in", "How long it takes every side cannon to fire once. More cannons can take longer to fire a volley."],
 ];
 
 function Glossary() {
