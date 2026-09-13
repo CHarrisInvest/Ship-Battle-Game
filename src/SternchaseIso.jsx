@@ -5858,8 +5858,19 @@ function StartOverlay({ onStart, onEdit, onOutfit, onRecords, hold, onScuttle })
       <ShipPlate hold={hold} onEdit={onEdit} onOutfit={onOutfit} />
       <HoldPanel hold={hold} onRecords={onRecords} />
       {/* A heading over the modes, in the display face like the screens' own titles, so the three
-          cards read as a section of the menu rather than as three more panels after the hold. */}
-      <div style={{ fontFamily: DISPLAY, fontSize: 20, color: C.gold, letterSpacing: 1, textAlign: "left", margin: "18px 0 10px" }}>GAME MODES</div>
+          cards read as a section of the menu rather than as three more panels after the hold. To its
+          right, in small words, what the cards are for: the same coin as the purse above, so a
+          captain reads that entering a mode is how that figure grows. */}
+      <div className="mode-head" style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, margin: "18px 0 10px" }}>
+        {/* Neither side ever breaks. Where the row is too narrow for the whole note beside the
+            heading, `index.css` swaps the long wording for the short one on the row's own width. */}
+        <div style={{ fontFamily: DISPLAY, fontSize: 20, color: C.gold, letterSpacing: 1, whiteSpace: "nowrap" }}>GAME MODES</div>
+        <div style={{ fontSize: 11, color: "rgba(238,244,242,0.6)", whiteSpace: "nowrap" }}>
+          <span className="earn-long">Enter to earn</span>
+          <span className="earn-short">Earn</span>{" "}
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 3, color: C.gold, verticalAlign: "bottom" }}><CoinIcon size={11} />coins</span>
+        </div>
+      </div>
       {MODE_LIST.map((key) => {
         const m = MODES[key];
         return <ModeCard key={key} color={m.color} title={m.title} desc={m.desc} onClick={() => onStart(key)} />;
