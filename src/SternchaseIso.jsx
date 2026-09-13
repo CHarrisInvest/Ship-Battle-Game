@@ -4079,7 +4079,7 @@ function LadderTable({ ladders }) {
   const figure = { ...cell, fontSize: 12, fontWeight: 700, color: C.gold, textAlign: "right", whiteSpace: "nowrap" };
   return (
     // The first column has a floor, so the progress column, which a grid sizes to its widest cell
-    // in any row, gives way before the names do: "12,000 of 50,000" breaks over two lines in its
+    // in any row, gives way before the names do: "1.1 of 3 hours" breaks over two lines in its
     // one row rather than breaking "Masts brought down" into three in every row. A figure breaks
     // only between its count and its goal, never after the "of", so a short one never breaks.
     <div style={{ display: "grid", gridTemplateColumns: "minmax(88px, 1fr) auto auto auto", columnGap: 8 }}>
@@ -4112,8 +4112,12 @@ function LadderTable({ ladders }) {
   );
 }
 
-/** `count of goal`, each half unbreakable, so a squeezed cell breaks before "of" or not at all. */
-function Progress({ parts: [count, goal] }) {
+/**
+ * `count of goal`, each half unbreakable, so a squeezed cell breaks before "of" or not at all; a
+ * figure in thousands is `count/goal` and is never broken.
+ */
+function Progress({ parts: [count, goal, sep] }) {
+  if (sep === "/") return <span style={{ whiteSpace: "nowrap" }}>{count}/{goal}</span>;
   return (
     <span>
       <span style={{ whiteSpace: "nowrap" }}>{count}</span> <span style={{ whiteSpace: "nowrap" }}>of {goal}</span>

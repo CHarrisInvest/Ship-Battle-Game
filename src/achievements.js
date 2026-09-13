@@ -279,20 +279,35 @@ export function tally(hold) {
 }
 
 /**
- * The figure on a card, `count of goal` in the achievement's unit. Time is minutes under an hour and
- * hours above, to a tenth on the count so an hour and a half does not read as one; coins and counts
- * are grouped numerals.
+ * The figure on a card. `count of goal` in the achievement's unit while the goal is under a
+ * thousand; from a thousand up it is `count/goal` in thousands, `12/50k`, with the k said once on
+ * the goal, because "12,000 of 50,000" is sixteen characters of figure in a column a phone gives
+ * ninety pixels to. Time is minutes under an hour and hours above, to a tenth on the count so an
+ * hour and a half does not read as one.
  */
 export function fmtProgress(a, p) {
-  return progressParts(a, p).join(" of ");
+  const [count, goal, sep] = progressParts(a, p);
+  return `${count}${sep}${goal}`;
 }
 
-/** The same figure in two halves, the count and the goal, for a cell that may break between them. */
+/**
+ * A figure in thousands to one place, the place dropped when it is a nought: 1,500 is 1.5 and 15,000
+ * is 15. Floored rather than rounded, so 999 against a thousand reads 0.9 and never 1, which would
+ * say she is there when she is not.
+ */
+export const inK = (n) => String(Math.floor(n / 100) / 10);
+
+/**
+ * The same figure in three parts, the count, the goal and what joins them, for a cell that may break
+ * between the first two. The join is " of " or "/", and a figure joined by "/" is short enough that
+ * a cell never needs to break it.
+ */
 export function progressParts(a, p) {
   if (a.unit === "time") {
-    if (p.goal < 3600) return [String(Math.floor(p.count / 60)), spanOf(p.goal)];
+    if (p.goal < 3600) return [String(Math.floor(p.count / 60)), spanOf(p.goal), " of "];
     const h = Math.floor((p.count / 3600) * 10) / 10;
-    return [h.toLocaleString(), spanOf(p.goal)];
+    return [h.toLocaleString(), spanOf(p.goal), " of "];
   }
-  return [p.count.toLocaleString(), p.goal.toLocaleString()];
+  if (p.goal >= 1000) return [inK(p.count), `${inK(p.goal)}k`, "/"];
+  return [p.count.toLocaleString(), p.goal.toLocaleString(), " of "];
 }
