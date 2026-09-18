@@ -127,6 +127,20 @@ const stormRadius = (t, w) => {
   if (t <= closed) return STORM_R0 + (w.ring - STORM_R0) * clamp((t - w.grace) / w.close, 0, 1);
   return w.ring + (STORM_R2 - w.ring) * clamp((t - closed - w.hold) / w.squeeze, 0, 1);
 };
+/**
+ * What the weather is doing at `t`, in the word the HUD prints: `waiting` through the grace,
+ * `closing` while the ring comes in, `holding` while it stands at the ring, `closing` again through
+ * the squeeze, and `closed` once the eye has shut. Read off the clock rather than off the radius,
+ * because the radius is below the ring for the whole of the squeeze, which is when the weather is
+ * closing fastest and the pill used to say it had stopped.
+ */
+const stormPhase = (t, w) => {
+  if (t < w.grace) return "waiting";
+  if (t < w.grace + w.close) return "closing";
+  if (t < w.grace + w.close + w.hold) return "holding";
+  if (t < w.grace + w.close + w.hold + w.squeeze) return "closing";
+  return "closed";
+};
 
 // The sea is three tones of one hue, laid down by depth: open water everywhere, the shallows banked
 // around each island, and a thin beach rim where the bottom comes up to meet the sand. Everything the
@@ -710,6 +724,11 @@ const RAM_RECOIL = 0.3; // floor on the bounce for whoever drove into the blow
 const RAM_DRIVE_LOSS = 0.88; // share of her way a ship spends into the impact, bow-on
 const RAM_REARM_GAP = 26; // hulls must break this far clear before the pair can ram again
 const RAM_CD = 0.9; // seconds before a ship can ram again
+// Hulls touching without a charge behind them are eased apart with this much push a second. It is a
+// force a second rather than a knock a frame: it was 32 a frame, which at sixty frames is this figure
+// and at a hundred and twenty was twice it, so a ship nudged along by another crossed the sea at a
+// different pace depending on the phone she was on.
+const HULL_NUDGE = 1920;
 // Breaking clear was the only way out of that lock, which two ships circling each other never manage:
 // they can hold station inside the gap indefinitely and the pair stays barred from ever trading
 // another blow. The lock is meant to stop damage being ground out of hulls already touching, and a
@@ -1175,7 +1194,7 @@ export default function App() {
   // hers on the first frame.
   const [ph, setPh] = useState(() => barsOf(shipLoadout(getHold())));
   const [phMax, setPhMax] = useState(() => barsOf(shipLoadout(getHold())));
-  const [storm, setStorm] = useState({ closes: 0, out: false, closing: false });
+  const [storm, setStorm] = useState({ closes: 0, out: false, phase: "waiting" });
   const [hold, setHold] = useState(getHold);
   const [banked, setBanked] = useState(0); // what the voyage on the end screen put in the hold
   const [bounty, setBounty] = useState(0); // ...and what the achievements it finished paid besides
@@ -1189,7 +1208,9 @@ export default function App() {
     setCoins(Math.floor(p.coins));
     setSunk(g.sunk);
     const aliveCount = g.ships.filter((s) => s.alive).length;
-    setLeft(aliveCount);
+    // her rivals, not every hull afloat: the pill that counts them used to count her as well, so a
+    // fresh free-for-all read "11 left" under a card promising ten other captains
+    setLeft(Math.max(0, aliveCount - (p.alive ? 1 : 0)));
     setRank({ rank: p.rank || 1, total: g.aliveCount || aliveCount });
     if (g.rules.repairs) {
       const q = {};
@@ -1200,7 +1221,7 @@ export default function App() {
     setPhMax({ hull: p.maxHull, mast: p.maxMast, crew: p.maxCrew });
     if (g.rules.storm) {
       const w = g.rules.storm;
-      setStorm({ closes: Math.max(0, w.grace - g.time), out: g.playerOut, closing: g.stormR > w.ring });
+      setStorm({ closes: Math.max(0, w.grace - g.time), out: g.playerOut, phase: stormPhase(g.time, w) });
     }
   }, []);
   syncRef.current = syncHUD;
@@ -1448,7 +1469,7 @@ export default function App() {
         mode: m, rules, player: null, ships: [], shots: [], volleys: [], parts: [], wakes: [], islands: [], texts: [],
         cam: { x: 0, y: 0 }, sunk: 0, fieldSize: 0, aliveCount: 0, leader: null, avgEarned: 0,
         _lastRank: 0, spawnT: 0, spawnQueue: 0, vign: 0, running: false, hudDirty: false, hudAcc: 0, time: 0,
-        banked: false, stormR: STORM_R0, stormTick: -1, playerOut: false,
+        banked: false, stormR: STORM_R0, stormTick: -1, stormPhase: "", playerOut: false,
       };
       const g = gameRef.current;
       // Her own ship, read fresh out of the hold rather than off a closure, so a mast bought between
@@ -1547,9 +1568,8 @@ export default function App() {
       };
     }
 
-    // A voyage banks once, at the end screen, whichever end it was. The flag matters because both ends
-    // can fire for one round: a mutual ram that sinks the last rival and you resolves hit by hit, so
-    // the win and the sinking arrive one after the other.
+    // A voyage banks once, at the end screen, whichever end it was. `judge` decides which end once a
+    // frame, so the two cannot both fire for one round; the flag is the guard behind that.
     function bankRun(won, rank) {
       const g = gameRef.current;
       if (g.banked) return;
@@ -1581,19 +1601,38 @@ export default function App() {
       g.running = false;
       g.vign = 1;
       g.player.alive = false;
-      const rank = g.rules.ranked ? g.ships.filter((s) => s.alive).length + 1 : 0;
+      const standing = g.ships.filter((s) => s.alive).length;
+      const rank = g.rules.ranked ? standing + 1 : 0;
       if (g.rules.ranked) setPlace({ rank, total: g.fieldSize });
       setStats(finalStats(false));
       bankRun(false, rank);
       setResult(
-        // Three different shapes on purpose. Written to one template they read as filled-in slots,
-        // however good the words are.
-        bar === "storm" ? "The squall has your crew, and she founders in the weather."
+        // Four different shapes on purpose. Written to one template they read as filled-in slots,
+        // however good the words are. The fourth is the round nobody survived: she and the last
+        // rival went down in the same moment, which is a sinking and not a win.
+        g.rules.lastAfloatWins && standing === 0 ? "Nobody is left afloat. She and the last of them went down together."
+          : bar === "storm" ? "The squall has your crew, and she founders in the weather."
           : bar === "hull" ? "Your hull is breached. She goes under."
           : "Crew routed. You strike your colors."
       );
       setPhase("dead");
       syncRef.current();
+    }
+
+    /**
+     * THE ROUND ENDS ONCE, HERE, at the end of the frame. Hits and the weather only mark ships dead;
+     * nothing inside a hit handler ends the round, because a frame is not over when a hull goes
+     * under. A rival's ball already in the air can still find the player after her last rival sank,
+     * and the storm can take the last two crews on one tick, and each of those used to raise both
+     * ends at once: a win banked, then a sinking painted over it. So the frame plays out and one
+     * question is asked of what it left. A sinking outranks a win: if she is not afloat she was not
+     * the last afloat, whatever else went down beside her.
+     */
+    function judge() {
+      const g = gameRef.current;
+      if (!g.running) return;
+      if (!g.player.alive) { playerDied(g.player._deathBar || "hull"); return; }
+      if (g.rules.lastAfloatWins && g.ships.filter((s) => s.alive).length === 1) endWin();
     }
 
     /**
@@ -1607,9 +1646,9 @@ export default function App() {
      * the reward for finishing her. A quarter of her hull comes to exactly 25 on the smallest ship
      * in the fleet, so nothing moved at the bottom of it.
      */
-    function killShip(s, attacker, cause) {
+    function killShip(s, attacker, cause, standing = !!(attacker && attacker.alive)) {
       const g = gameRef.current;
-      if (attacker && attacker.alive) {
+      if (attacker && standing) {
         const bounty = Math.round(KILL_SHARE * s.maxHull);
         attacker.coins += bounty;
         attacker.earned += bounty;
@@ -1628,7 +1667,8 @@ export default function App() {
         }
       }
       sinkFx(s.x, s.y, s.fill);
-      if (s.isPlayer) { playerDied(s._deathBar || "hull"); return; }
+      // she is marked and left where she lies; `judge` reads the frame when it is over
+      if (s.isPlayer) { s.alive = false; g.vign = 1; g.hudDirty = true; return; }
       const i = g.ships.indexOf(s);
       if (i >= 0) g.ships.splice(i, 1);
       for (const o of g.ships) o.locked.delete(s); // she is on the bottom; nobody is fouled on her
@@ -1639,7 +1679,6 @@ export default function App() {
         g.spawnT = 0; // lead ship of the wave sails in at once, the next one waits out the gap
       }
       g.hudDirty = true;
-      if (g.rules.lastAfloatWins && g.player.alive && g.ships.filter((x) => x.alive).length === 1) endWin();
     }
 
     function canHit(owner, target) {
@@ -1653,20 +1692,25 @@ export default function App() {
      * carried because the bar alone cannot say: a ram and a broadside both stave in the hull, and
      * the record wants to know which one finished her.
      */
-    function applyHit(target, bar, amt, attacker, cause) {
+    function applyHit(target, bar, amt, attacker, cause, standing = !!(attacker && attacker.alive)) {
       const g = gameRef.current;
       const before = target[bar];
       target[bar] = Math.max(0, before - amt);
       if (bar !== "mast") target.flash = 0.35;
-      if (attacker && attacker.alive) {
-        attacker.coins += amt;
-        attacker.earned += amt;
-        attacker.dmgDealt = (attacker.dmgDealt || 0) + amt;
+      // Credited as what she actually lost, not what was thrown, so the sum over every hit she took
+      // is her whole bar and a single ball cannot overshoot it. That goes for the coins as well as
+      // the tallies: a coin a point is the promise the repair rail makes, and a ram worth seven
+      // hundred landing on a boat with a hundred to lose was being paid the seven hundred.
+      const took = before - target[bar];
+      // `standing` is whether the attacker counts for the credit. It is her being afloat, unless the
+      // caller says otherwise: two bows meeting resolve both blows, and the second is still hers
+      // even if the first has just put her under.
+      if (attacker && standing) {
+        attacker.coins += took;
+        attacker.earned += took;
+        attacker.dmgDealt = (attacker.dmgDealt || 0) + took;
         if (attacker.isPlayer) {
           g.hudDirty = true;
-          // credited as what she actually lost, not what was thrown, so the sum over every hit
-          // she took is her whole bar and a single ball cannot overshoot it
-          const took = before - target[bar];
           target.byPlayer[bar] += took;
           if (cause === "ram") target.byPlayer.ram += took;
         }
@@ -1677,12 +1721,12 @@ export default function App() {
       }
       if (bar === "mast" && before > 0 && target[bar] <= 0 && !target.mastDown) {
         target.mastDown = true;
-        if (attacker && attacker.alive) attacker.dismasted += 1;
+        if (attacker && standing) attacker.dismasted += 1;
         pushText(target.x, target.y, target.isPlayer ? "OUR MAST!" : "MAST DOWN");
       }
       if ((bar === "hull" || bar === "crew") && target[bar] <= 0 && target.alive) {
         target._deathBar = bar;
-        killShip(target, attacker, cause);
+        killShip(target, attacker, cause, standing);
       }
     }
 
@@ -2099,7 +2143,7 @@ export default function App() {
       }
     }
 
-    function stepRam() {
+    function stepRam(dt) {
       const g = gameRef.current;
       const ships = g.ships;
       for (let i = 0; i < ships.length; i++) {
@@ -2161,8 +2205,14 @@ export default function App() {
           // stays free to ram properly, so a light touch can never rob a captain of her charge
           if (Math.max(hurtA, hurtB) < RAM_GRAZE) { hurtA = 0; hurtB = 0; }
           let rammed = false;
-          if (hurtB > 0) { applyHit(b, "hull", hurtB, a, "ram"); a.ramCd = RAM_CD; a.baffled = 0; if (hurtB >= RAM_GRAZE) a.rams++; rammed = true; }
-          if (hurtA > 0 && b.alive) { applyHit(a, "hull", hurtA, b, "ram"); b.ramCd = RAM_CD; b.baffled = 0; if (hurtA >= RAM_GRAZE) b.rams++; rammed = true; }
+          // Both blows land, whatever the first one did. They used to resolve in list order with the
+          // second skipped if the first had sunk its target, which made every simultaneous kill a
+          // survival for the lower-numbered hull, and the player is always hull number one. Two bows
+          // meeting at speed can now put both ships under, and each is credited for her blow even
+          // when the other's has just sunk her, because she was afloat when she struck.
+          const aStanding = a.alive, bStanding = b.alive;
+          if (hurtB > 0) { applyHit(b, "hull", hurtB, a, "ram", aStanding); a.ramCd = RAM_CD; a.baffled = 0; if (hurtB >= RAM_GRAZE) a.rams++; rammed = true; }
+          if (hurtA > 0) { applyHit(a, "hull", hurtA, b, "ram", bStanding); b.ramCd = RAM_CD; b.baffled = 0; if (hurtA >= RAM_GRAZE) b.rams++; rammed = true; }
           if (rammed) {
             a.locked.set(b, g.time); b.locked.set(a, g.time);
             // each ship spends the part of her way that went into the impact, so one driving
@@ -2174,13 +2224,17 @@ export default function App() {
             const bKnock = impulse * (RAM_RECOIL + (1 - RAM_RECOIL) * share);
             a.kx -= nx * aKnock; a.ky -= ny * aKnock;
             b.kx += nx * bKnock; b.ky += ny * bKnock;
-            a.spdCur *= 1 - RAM_DRIVE_LOSS * (driveA / Math.max(1, a.spdCur));
-            b.spdCur *= 1 - RAM_DRIVE_LOSS * (driveB / Math.max(1, b.spdCur));
+            // the share is held to one whole: her measured way can run past her own speed for a
+            // moment after a knock, and an unclamped share threw her astern at a fraction of top
+            // speed, which is not what spending her way into a blow means
+            a.spdCur *= 1 - RAM_DRIVE_LOSS * clamp(driveA / Math.max(1, a.spdCur), 0, 1);
+            b.spdCur *= 1 - RAM_DRIVE_LOSS * clamp(driveB / Math.max(1, b.spdCur), 0, 1);
             burst((a.x + b.x) / 2, (a.y + b.y) / 2, "hull");
           } else {
-            // hulls touching without a charge behind them: gentle nudge, no damage
-            a.kx -= nx * 32; a.ky -= ny * 32;
-            b.kx += nx * 32; b.ky += ny * 32;
+            // hulls touching without a charge behind them: gentle nudge, no damage, by the second
+            const nudge = HULL_NUDGE * dt;
+            a.kx -= nx * nudge; a.ky -= ny * nudge;
+            b.kx += nx * nudge; b.ky += ny * nudge;
           }
         }
       }
@@ -2211,11 +2265,14 @@ export default function App() {
         }
         if (s.crew <= 0 && s.alive) { s._deathBar = "storm"; killShip(s, null, "storm"); }
       }
-      // the countdown ticks in whole seconds, and going in or out of the weather is worth a redraw
+      // the countdown ticks in whole seconds, and going in or out of the weather, or the weather
+      // changing what it is doing, is worth a redraw
       const tick = Math.max(0, Math.ceil(w.grace - g.time));
+      const phase = stormPhase(g.time, w);
       const playerOut = g.player.alive && Math.hypot(g.player.x - cx, g.player.y - cy) > g.stormR;
-      if (tick !== g.stormTick || playerOut !== g.playerOut) {
+      if (tick !== g.stormTick || phase !== g.stormPhase || playerOut !== g.playerOut) {
         g.stormTick = tick;
+        g.stormPhase = phase;
         g.playerOut = playerOut;
         g.hudDirty = true;
       }
@@ -2443,7 +2500,7 @@ export default function App() {
       for (const s of g.ships) { s.px = s.x; s.py = s.y; s.foul = false; } // where she started the frame
       stepPlayer(dt);
       for (const s of g.ships) if (!s.isPlayer) stepAI(s, dt);
-      stepRam();
+      stepRam(dt);
       measureWay(dt);
       stepStorm(dt);
       stepVolley();
@@ -2481,6 +2538,7 @@ export default function App() {
         const target = clamp(-s.turnVel * 0.16, -0.4, 0.4);
         s.roll += (target - s.roll) * Math.min(1, dt * 6);
       }
+      judge();
       camUpdate();
       updateButtons();
       g.hudAcc += dt;
@@ -3384,7 +3442,7 @@ export default function App() {
             {rules.reinforcements ? (
               <>
                 <Pill label={`${sunk} sunk`}><SunkIcon /><span>{sunk}</span></Pill>
-                <Pill label={`${Math.max(0, left - 1)} hunting you`}><ShipIcon /><span>{Math.max(0, left - 1)} hunting</span></Pill>
+                <Pill label={`${left} hunting you`}><ShipIcon /><span>{left} hunting</span></Pill>
               </>
             ) : (
               <Pill label={`${left} rivals left`}><ShipIcon /><span>{left} left</span></Pill>
@@ -3611,7 +3669,9 @@ function Pill({ children, label }) {
 function StormPill({ storm }) {
   if (storm.out) return <div style={{ background: "rgba(70,18,18,0.85)", border: `1px solid ${C.crew}`, borderRadius: 20, padding: "5px 11px", fontSize: 12, color: "#ffd9d9", fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }} aria-label="You are in the storm"><SquallIcon /><span>In the storm</span></div>;
   if (storm.closes > 0) return <Pill label={`Storm closes in ${fmtTime(storm.closes)}`}><SquallIcon /><span>{fmtTime(storm.closes)}</span></Pill>;
-  return <Pill label={storm.closing ? "Storm closing" : "Storm closed"}><SquallIcon /><span>{storm.closing ? "closing" : "closed"}</span></Pill>;
+  // the word is the weather's phase off the clock: closing, holding at the ring, closing again
+  // through the squeeze, and closed once the eye has shut
+  return <Pill label={`Storm ${storm.phase}`}><SquallIcon /><span>{storm.phase}</span></Pill>;
 }
 
 function RankBadge({ rank, total }) {
