@@ -16,6 +16,11 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+// The vocabularies are read from the source rather than copied here, so a size or a family is one
+// list in one place. They are hand-written blocks of `shipyard.js`, not generated ones, so importing
+// them does not depend on what this run is about to write.
+import { SIZES, STATIONS, RIG_FAMILIES } from "../src/shipyard.js";
+import { DRAWN_FIELDS } from "../src/hullform.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const src = join(root, "src", "shipyard.js");
@@ -70,9 +75,24 @@ const number = (row, col, file) => {
   if (!Number.isFinite(v)) throw new Error(`${file}: "${row.id}" has ${col} of "${row[col]}", which is not a number`);
   return v;
 };
-// blank means "you work it out", so it comes through as undefined and the builder's default applies
-const maybe = (row, col) => (row[col] === "" || row[col] == null ? null : Number(row[col]));
+// blank means "you work it out", so it comes through as undefined and the builder's default applies;
+// anything else has to be a number, because `Number("abc")` is NaN and NaN written into the source
+// is a class whose strength is NaN, which sorts nowhere and faults nowhere
+const maybe = (row, col, file) => {
+  if (row[col] === "" || row[col] == null) return null;
+  const v = Number(row[col]);
+  if (!Number.isFinite(v)) throw new Error(`${file}: "${row.id}" has ${col} of "${row[col]}", which is not a number (leave it blank for the default)`);
+  return v;
+};
 const yesNo = (v) => /^(y|yes|true|1)$/i.test(v);
+// A word from a fixed vocabulary, checked against it: a size or a family misspelled by one capital
+// letter is written out as a bare string and nothing downstream can tell it from a real one. A
+// mast whose size ranks nowhere fitted every socket, which is how "Heavy" would step in a boat.
+const oneOf = (row, col, file, list, what) => {
+  const v = need(row, col, file);
+  if (!list.includes(v)) throw new Error(`${file}: "${row.id}" has ${col} "${v}", which is not a ${what} (${list.join(", ")})`);
+  return v;
+};
 
 /* ---- writing ---------------------------------------------------------------------------------- */
 
@@ -131,6 +151,10 @@ function checkBattery(r) {
 function referenceRows() {
   return fleet("hulls.tsv").map((r) => {
     checkBattery(r);
+    // A class that sails is drawn from these, with no default behind any of them. Blank, the field
+    // was simply left out of her row and she came through the maths as a hull of NaN, invisible on
+    // the menu and at sea, with a green bench.
+    for (const k of DRAWN_FIELDS) number(r, k, "hulls.tsv");
     const fields = REFERENCE.filter((k) => r[k] !== undefined && r[k] !== "").map((k) => {
       const n = Number(r[k]);
       return `    ${k}: ${r[k] !== "" && Number.isFinite(n) ? n : str(r[k])},`;
@@ -147,11 +171,20 @@ function hullRows() {
     if (seen.has(id)) throw new Error(`${file}: two classes share the id "${id}"`);
     seen.add(id);
     const masts = need(r, "masts", file).split(/\s+/).filter(Boolean);
+    // every socket is station/size/family+family, and each word has to be one the catalogue knows
+    for (const m of masts) {
+      const [station, size, rigs] = m.split("/");
+      if (!STATIONS.includes(station)) throw new Error(`${file}: "${id}" steps a mast at "${station}", which is not a station (${STATIONS.join(", ")})`);
+      if (!SIZES.includes(size)) throw new Error(`${file}: "${id}" has a ${station} socket of size "${size}", which is not a size (${SIZES.join(", ")})`);
+      for (const f of (rigs || "").split("+").filter(Boolean)) {
+        if (!RIG_FAMILIES[f]) throw new Error(`${file}: "${id}" says her ${station} takes "${f}", which is not a rig family (${Object.keys(RIG_FAMILIES).join(", ")})`);
+      }
+    }
     const optional = [
-      ["speed", maybe(r, "speed")],
-      ["hand", maybe(r, "hand")],
-      ["canvas", maybe(r, "canvas")],
-      ["tons", maybe(r, "tons")],
+      ["speed", maybe(r, "speed", file)],
+      ["hand", maybe(r, "hand", file)],
+      ["canvas", maybe(r, "canvas", file)],
+      ["tons", maybe(r, "tons", file)],
     ]
       .filter(([, v]) => v != null)
       .map(([k, v]) => `${k}: ${v}`)
@@ -189,8 +222,8 @@ function mastRows() {
       `    name: ${str(need(r, "name", file))},`,
       `    price: ${number(r, "price", file)},`,
       `    blurb: ${str(need(r, "blurb", file))},`,
-      `    size: ${str(need(r, "size", file))},`,
-      `    family: ${str(need(r, "family", file))},`,
+      `    size: ${str(oneOf(r, "size", file, SIZES, "size"))},`,
+      `    family: ${str(oneOf(r, "family", file, Object.keys(RIG_FAMILIES), "rig family"))},`,
       ...(yesNo(r.spar) ? ['    spar: true,'] : []),
       `    height: ${number(r, "height", file)},`,
       `    berths: [${berths.join(", ")}],`,
@@ -208,7 +241,7 @@ function sailRows() {
     seen.add(id);
     // `level` is a studdingsail's business and blank on everything else: which square sail up the
     // mast it booms out from, so it is only written where the table says something
-    const level = maybe(r, "level");
+    const level = maybe(r, "level", file);
     return [
       `  ${id}: {`,
       `    id: ${str(id)},`,
@@ -234,7 +267,7 @@ function gunRows() {
     seen.add(id);
     // `group` is a swivel's business and blank on everything else, so it is only written where the
     // table actually says something
-    const group = maybe(r, "group");
+    const group = maybe(r, "group", file);
     return [
       `  ${id}: {`,
       `    id: ${str(id)},`,

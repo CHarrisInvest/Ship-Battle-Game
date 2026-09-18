@@ -229,12 +229,15 @@ Caps and letterspacing stopped meaning anything when everything had them. The sp
 text *is*, not by where it sits:
 
 - **Caps** for the game's proper nouns: the title, both lines of it (`STERNCHASE` over
-  `HELM & HULL`), the three mode names, and the five
-  ship systems (`MAST` `HULL` `CREW` `SIDE` `FRONT`). Outcome headlines set in the display face at
-  title size count here too, so `SUNK` and `LAST AFLOAT` keep their caps; they name the moment
-  rather than instruct.
-- **Sentence case** for anything the player is told or asked: buttons, section headers, stat labels,
-  prose. `Rematch`, not `REMATCH`.
+  `HELM & HULL`), the three mode names, and the six
+  fight controls and what they hit (`MAST` `HULL` `CREW` `SIDE` `FRONT` `MUSKET`). Outcome headlines
+  set in the display face at title size count here too, so `SUNK` and `LAST AFLOAT` keep their caps;
+  they name the moment rather than instruct. **Screen titles and section titles are caps as well**,
+  `THE YARD` and `HOW SHE SAILS` alike, so every heading in the game reads one way; `Slab` applies
+  it as a transform, so a title built from a figure or a class name is written in the source as it
+  is spoken.
+- **Sentence case** for anything the player is told or asked: buttons, row labels, stat labels,
+  prose. `Rematch`, not `REMATCH`; a mast's station on a row is `Main`, not `MAIN`.
 - **A ship's name is whatever the catalogue says it is.** `Bermuda Sloop light` and `Baltimore
   Clipper` carry their capitals because the fleet was named that way on purpose. A class is a proper
   noun and the table is where it is spelled: do not sentence-case the `name` column to match the rule
@@ -276,7 +279,9 @@ Buttons take size over tracking. Wide letterspacing makes every control read as 
   thumbs, so two taps inside a few hundred milliseconds are ordinary play rather than a gesture.
   `index.css` sets `touch-action: manipulation` on `*`, because the element the browser reads is the
   one under the finger and a label inside a button inside a card is what gets hit. It has to be
-  `touch-action`: `user-scalable=no` is ignored by iOS Safari on purpose and is not a fix. The canvas,
+  `touch-action`: `user-scalable=no` in the viewport meta is kept, since Android honours it and it
+  spares the shell an accidental pinch, but iOS Safari ignores it on purpose, so it is not the fix
+  and never was on an iPhone. The canvas,
   the joystick and the fire buttons override it with `none` inline, which is the play surface and
   belongs there. Nothing that is an ancestor of a shop or menu screen may carry `none`: a `none` up
   the chain can stop the screen under a finger from scrolling.

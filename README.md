@@ -19,6 +19,17 @@ npm run build    # production bundle into dist/
 npm run preview  # serve the built bundle
 ```
 
+```bash
+npm run catalogue  # check the fleet is riggable and drawable, and print it
+npm run smoke      # play every mode headless to its end screen; about four minutes
+```
+
+The smoke test needs a Chromium: `npx playwright install chromium` fetches one, or set `SMOKE_CHROME`
+to an executable. It fails on a screen that throws, a mode that never ends, an end screen whose
+column does not add up to what reached the hold, or a runtime error in any round, and it writes
+every screen's picture and text to a folder it names. It says nothing about balance or feel; those
+are read off `npm run catalogue` and played.
+
 ## Deploying
 
 Pushing to `main` builds the site and publishes it to GitHub Pages via
@@ -37,22 +48,28 @@ serves from the domain root instead — Netlify, Vercel, a plain static host —
 ## Modes
 
 - **Arena** — endless survival against a growing swarm. You open with an empty purse and one hunter on
-  the water, matched to your ship gun for gun and reload for reload. Kills bring reinforcements in from
-  the edge of the map, spawned well clear of your bow: one for the first kill, then 1-2-1-2 through
-  the fourth, then two for every kill after that up to the fleet cap. The second ship of a wave holds
-  off five seconds before it sails in. Every hull on the water is the same hull, so the pressure comes
-  from the count. Score by ships sunk.
+  the water, a stock ship from the ladder a shade under your own (`ARENA_OPEN`). Kills bring
+  reinforcements in from the edge of the map, spawned well clear of your bow: one for the first kill,
+  then 1-2-1-2 through the fourth, then two for every kill after that up to the fleet cap. The second
+  ship of a wave holds off five seconds before it sails in. Every second kill (`ARENA_STEP`) the next
+  rung of the stock ladder comes out of the horizon, so the pressure comes from the ships as well as
+  the count; a captain with nothing under her on the ladder, which is the first ship, holds her
+  opening hunter for `ARENA_HOLD` kills before the climb starts. `arenaHunter` in `shipyard.js` is
+  the rule and `npm run catalogue` prints the climb. Score by ships sunk.
 - **Demolition derby** — ten captains and not a gun between them. Hulls are broken open by ramming
   alone, there is nothing to buy, and a squall closes on the middle of the sea. Last afloat wins.
-- **Free-for-all** — last afloat wins, out of up to 10 rival captains starting equal, and equal is
-  where they stay. The AI hunts whoever is weakest and gangs up on a runaway leader. For the first
+- **Free-for-all** — last afloat wins, out of up to 10 rival captains in ships of your own rate at
+  every standard of fitting out, or, in the starter gundalow, gundalows at every standard, since her
+  rate holds cutters with five times her guns. The AI hunts whoever is weakest, weighing a rival's
+  measured strength against its own (`PREY_STRENGTH`) as well as her wounds, and gangs up on a
+  runaway leader. For the first
   `OPENING_WINDOW` seconds it simply takes the nearest hull, since nobody has a reputation yet. It
   also fires on ships it is not hunting when one drifts into a weapon's arc, with a per-captain pause
   afterwards so the sea isn't wall-to-wall powder smoke. A squall closes here too, later and wider
   than the derby's, because a wounded captain runs at a third of her health and a runner has two
-  thousand paces of sea to do it in. Time afloat is paid by the second, and outlasting the field pays
-  a `winBonus` of 25 on top of it and on top of what her guns took, which is smaller than the derby's
-  because a free-for-all captain has been paid all round for the fighting that got her there.
+  thousand paces of sea to do it in. Time afloat is not paid here: her guns pay her by the point, and
+  outlasting the field pays a `winBonus` of 25 on top of what they took, which is smaller than the
+  derby's because a free-for-all captain has been paid all round for the fighting that got her there.
 
 AI ships reload on exactly the same cooldowns as the player in every mode that has guns; their only
 handicap is a touch of spread on every shot.
@@ -98,10 +115,12 @@ the end of one — three wounded captains keeping their distance, or a hull runn
 health across two thousand paces of sea.
 
 The weather works on the crew, exposed on deck, rather than on the hull, and it is not an attack: no
-captain is paid for it and it does not run through the damage path a ram does. Its bite starts at
-`STORM_DPS_MIN` and climbs to `STORM_DPS_MAX` over `STORM_RAMP` seconds out in it, so a dash across
-the weather costs a few hands and living out there costs about eight seconds and the ship. Come back
-inside and the exposure sheds at `STORM_RECOVER` a second.
+captain is paid for it and it does not run through the damage path a ram does. It takes `STORM_BITE`
+of her full crew a second, a tenth, whatever her class and however many hands she has left, so ten
+seconds out in it is the ship for a gundalow and a first rate alike, and a dash across the weather
+costs every hull the same share of her people. Exposure still builds over `STORM_RAMP` seconds and
+sheds at `STORM_RECOVER` once she is back inside, but it drives an AI captain's urgency to get home
+and the tint on the player's screen, not the bite.
 
 The middle *pulls* an AI captain rather than fencing her away from the rail. Inside `STORM_HOME` of
 the ring she fights wherever she likes; past that the course home bends her steering, hardest at the
@@ -145,22 +164,23 @@ catch, since a slow hull turns far inside a fast one.
 
 #### What time at sea pays
 
-Both modes with weather pay for it by the second (`timeCoins`), on top of what a captain's guns and
-bow earn her. Win, and she is paid for a whole round — `fullRound` — however early she settled it,
-plus `winBonus` for being the last hull afloat. The derby pays 175 and 75, so a win comes to 250
-before a single ram is counted; the free-for-all pays 205 and 25, which is a smaller bounty on top of
-a larger one, since her guns have been earning all round.
+The derby pays for time afloat by the second (`timeCoins`), because there are no guns in it to pay
+anybody with. Win, and she is paid for a whole round — `fullRound` — however early she settled it,
+plus `winBonus` for being the last hull afloat: 175 and 75, so a win comes to 250 before a single
+ram is counted. The free-for-all pays nothing for time. It did, at the derby's rate, and a captain
+who sat in the middle of the ring and fired nothing was the last afloat at three minutes with 230
+coins for it, against a tenth of that for a round of fighting; her guns pay her by the point, and a
+win pays 25 on top.
 
-`fullRound` is a set purse a shade above the full span of that mode's weather — 168 seconds in the
-derby, 200 in the free-for-all — rather than a figure that tracks the clock, so retuning a ring wants
-this looked at with it.
+`fullRound` is a set purse a shade above the full span of the derby's weather — 168 seconds — rather
+than a figure that tracks the clock, so retuning that ring wants this looked at with it.
 
 Settling it in forty seconds therefore pays the same purse as outlasting the weather for the full
 span, which is to say it pays far better an hour: the time she saves is hers to spend on the next
 round. The end screen lists the parts — what she fought for, what her time afloat was worth, and the
 winner's bounty — so the tally adds up to what actually reaches the hold. The time row says "For a
 full round at sea" when she is being paid for one, because a captain reading "For time at sea" beside
-a clock showing 1:12 and a purse of 205 is owed the explanation.
+a clock showing 1:12 and a purse of 175 is owed the explanation.
 
 ## The hold
 
@@ -247,22 +267,24 @@ captain who only wanted the number does not have to open it.
 
 ## The shipyard
 
-Groundwork only so far: the data model, the save format and the plumbing that lets the menu turn the
-captain's own ship. There is no shipyard screen, and **the fight reads none of it yet**: every hull at
-sea is still the same hull. `docs/SHIPYARD.md` is the design note; the short version:
+Built, and the fight reads all of it: the captain sails her own ship in every mode, every rival is a
+stock ship matched to hers, and what she is comes from the yard between voyages. The yard is reached
+from the ship on the menu, with the Boat Commission (hulls) and the Rigging Outfitter (masts, sails,
+guns, spares) as its two doors. `docs/SHIPYARD.md` is the design note; the short version:
 
 - `src/shipyard.js` is the catalogue and the maths. Hulls, masts, sails and guns as data, what fits
-  what, and `rate()` turning a set of them into the figures a fight would read. It holds no state and
+  what, and `rate()` turning a set of them into the figures a fight reads. It holds no state and
   imports nothing.
 - A hull fixes maximum hull and crew, base speed and handling, how many guns of each kind she bears,
-  her mast sockets, and how big she is. A mast fits a socket and carries a fixed set of berths decided
-  when it was built. Every berth and every sail names one of six categories, large square, small
-  square, triangular, gaff, lugsail and studdingsail, and a sail fits a berth of its own category.
-  Studdingsails are the exception and never fill a berth: one booms out beyond a square sail already
-  set, so it wants an attachment to a sail rather than a place on a mast, and nothing models that yet.
-  Guns fit by the piece up to the
-  hull's bearing; `broadside` counts guns **a side**, mirrored, because that is how a volley fires, and
-  runs 2 on the cutter to 10 on the galleon. Muskets come off the crew rather than being bought.
+  the tons of iron she can carry, and her mast sockets with the rig families each takes. Her size
+  comes from her reference row through `hullform.js`, never from the catalogue. A mast fits a socket
+  of its family and size and carries a fixed set of berths decided when it was built. Every berth
+  and every sail names one of seven categories, large square, small square, headsail, lateen, gaff,
+  lugsail and studdingsail, and a sail fits a berth of its own category. Studdingsails are the
+  exception and never fill a berth: one booms out beyond a square sail already set, so it attaches to
+  that sail and comes off with it. Guns fit by the piece up to the hull's bearing and under her
+  tonnage; `broadside` counts guns **a side**, mirrored, because that is how a volley fires, and runs
+  1 on the gundalow to 50 on the first rate. Muskets come off the crew rather than being bought.
 - Parts are catalogue *types*, and a captain owns *instances*. An instance is in one slot of a ship or
   in none of hers, so fifty ports still want fifty guns bought; but nothing she owns is exclusive to
   one hull, so the guns and canvas aboard the frigate are the same ones her sloop is found with. Only
@@ -273,21 +295,25 @@ sea is still the same hull. `docs/SHIPYARD.md` is the design note; the short ver
   hull costs nothing to step and does not come out of that hull to do it.
 - `src/galleon.js` draws a rig rather than *the* rig. `drawGalleon(ctx, w, h, deg, spec)` builds
   whatever is stepped and bent on; called without a spec it builds the galleon it always drew.
-- **The menu ship is a control.** Her plate carries the class she is and `Tap to edit`, and opens the
-  yard: what she rates, her tier, her rigging socket by socket with bare berths marked, her guns
-  against what she bears, and what she still wants. Reading only for now; buying and fitting get built
-  into that screen.
+- **The menu ship is a control.** Her plate carries her name, her class and her figures, turns to any
+  ship the captain owns, and opens the yard: what she rates, her rigging socket by socket with bare
+  berths marked, her guns against what she bears and her tonnage, and what she still wants. Every
+  row on the yard is a door into the outfitter, and "Sail her" is its own act rather than a side
+  effect of buying or looking. The plate says so when the ship she sails has no sail bent on or no
+  gun aboard.
 - **Manoeuvrability is `hand`**, a hull figure separate from `speed`, moved by the sails she carries
   (`hand` again, negative on square canvas) and the guns weighing her down. `rate()` folds it into
   `turn`. In the fight the rudder also goes heavy with the way she carries.
-- **A ship's tier comes off her stat line, not her class.** `measure()` turns a rating into throw
-  weight, endurance and mobility, blends them into one figure, and `TIERS` bands that into five rungs.
-  A fully found cutter genuinely outclasses a bare brig, so matching on class would call that an even
-  fight. The derby matches on `ram` instead, which counts endurance and mobility and ignores guns
-  nobody has aboard.
+- **A ship's rate is read off her ports, and her strength off her stat line.** `rateOf()` counts her
+  broadside both sides and lands her on one of the eight rungs in `RATES`, the navy's own words, so a
+  hull pierced for fifty a side is a first rate whatever she carries. `measure()` turns a rating into
+  throw weight, endurance and mobility and blends them into one figure, which orders the stock
+  ladder. Free-for-all fields her own rate (her own class, in the starter gundalow), the arena climbs
+  the ladder from a shade under her strength, and the derby matches on `ram`, which counts endurance
+  and mobility and ignores guns nobody has aboard.
 - **The hull table is one terse row per class**, expanded by `buildHull` with defaults, with masts
-  written `station/size` and `order` defaulting to position. It is built for a fleet of around 38
-  classes rather than the five it holds: inserting a class is inserting a row.
+  written `station/size/family+family` and `order` defaulting to position. It holds 54 rows, 16 of
+  them at sea, and `active` says which: inserting a class is inserting a row.
 - **`fitOut(hullId, quality)` builds a coherent ship at a standard**, moving both the grade of part in
   each slot and how much of her is filled. `maximumLoadout` is this at 1. Stock opponents for a large
   catalogue are generated from it rather than written out and left to drift.

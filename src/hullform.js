@@ -571,13 +571,28 @@ const FORMS = new Map();
 /** The default form: the galleon this game has always drawn, for her own class and for anything unknown. */
 export const DEFAULT_FORM = { id: "galleon", menu: GALLEON_MENU, sea: GALLEON_SEA, timber: OAK };
 
-/** The form for one class: her menu model, her hull at sea and her timber, derived from her reference row. */
+/**
+ * The reference figures a hull cannot be drawn without. Every one is read as a number above, with no
+ * default to fall back on: a row missing one came through the maths as NaN, which drew nothing and
+ * faulted nothing. `mastHeight` and `stern` are not here because they carry defaults. The importer
+ * refuses a sailing row without them and the bench faults one, so the fallback below is a net.
+ */
+export const DRAWN_FIELDS = ["lod", "beam", "freeboard", "sheer", "tumblehome", "bowFine", "castle", "roomSpace"];
+
+/** True if a reference row carries every figure the drawing reads, as a finite number. */
+export const drawable = (ref) => !!ref && DRAWN_FIELDS.every((k) => Number.isFinite(ref[k]));
+
+/**
+ * The form for one class: her menu model, her hull at sea and her timber, derived from her reference
+ * row. A row missing a drawn figure gets the default rather than a hull of NaN, which the bench
+ * reports as drawing on the galleon's hull, the same way it reports no row at all.
+ */
 export function hullForm(id) {
   if (!id || id === "galleon") return DEFAULT_FORM;
   let form = FORMS.get(id);
   if (!form) {
     const ref = HULL_REF[id];
-    if (!ref) return DEFAULT_FORM;
+    if (!drawable(ref)) return DEFAULT_FORM;
     const menu = menuForm(ref);
     form = { id, menu, sea: seaForm(ref, menu), timber: menu.timber };
     FORMS.set(id, form);

@@ -16,11 +16,12 @@ body,
  * few hundred milliseconds of each other is ordinary play, and on a phone the browser reads it as
  * "zoom in on whatever is under the finger" unless it is told not to.
  *
- * `user-scalable=no` in the viewport meta is not the answer. iOS Safari has ignored it deliberately
- * since iOS 10, on the grounds that a page should never be able to stop a reader zooming in, and it
- * is right about that. What it does honour is `touch-action`, and `manipulation` is exactly the value
- * this wants: panning and pinch to zoom still work, so nothing a reader chooses to do is taken away,
- * and only the double-tap gesture stops being a zoom.
+ * `user-scalable=no` in the viewport meta is not the answer on its own. iOS Safari has ignored it
+ * deliberately since iOS 10, on the grounds that a page should never be able to stop a reader
+ * zooming in. The meta stays because Android honours it and it spares the shell an accidental pinch,
+ * but it protects nothing on an iPhone. What every browser honours is `touch-action`, and
+ * `manipulation` is exactly the value this wants: panning still works, so nothing a reader chooses
+ * to do is taken away, and only the double-tap gesture stops being a zoom.
  *
  * It goes on everything rather than on the buttons, because the element the browser reads is the
  * element under the finger: a span of a label inside a button inside a card is what gets hit, and any

@@ -206,9 +206,9 @@ inventory, and it is asked of a ship rather than of the yard for that reason.
 - **Rigging and guns move ship to ship.** Falls out of instances, and they no longer have to leave one
   hull to reach another: what a captain owns, every ship she owns can be found with.
 - **A mast only ever carries the sails it was built for.** `berths`, fixed on the mast type.
-- **Various sail types.** Six categories, `LSQ` `SSQ` `TRI` `GAF` `LUG` `STU`, one on each berth and
-  one on each sail, compared as a single key. The head of a tall mast takes a small square sail
-  because that is what the berth up there asks for.
+- **Various sail types.** Seven categories, `LSQ` `SSQ` `TRI` `LAT` `GAF` `LUG` `STU`, one on each
+  berth and one on each sail, compared as a single key. The head of a tall mast takes a small square
+  sail because that is what the berth up there asks for.
 - **Sails affect speed and agility differently.** `drive` and `hand`.
 - **Muskets come off the crew, and swivels correlate with them.** `rate()` returns one `muskets`
   figure: crew capacity over 26, plus one per swivel on the rail, floor of 1. Small arms are one thing
@@ -228,7 +228,7 @@ inventory, and it is asked of a ship rather than of the yard for that reason.
 - **The menu ship is the captain's ship.** Done, and it is the part worth looking at.
 - **Upgrades are gone from the modes and the AI.** Nothing is bought at sea but repairs. See below.
 - **Ships tiered by their stat lines, and a stock fleet for the modes to issue.** `measure()`,
-  `TIERS`, `STOCK` and the lookups each mode needs. See below.
+  `RATES`, `STOCK` and the lookups each mode needs. See below.
 
 ## Ratings, not speeds
 
@@ -757,13 +757,17 @@ is a count of ports, and ports do not move when a formula does.
 
 ### What each mode is to do with it
 
-- **Arena** climbs the ladder. Open on the weakest rung and work up through the stock fleet, so the
-  mode escalates by putting harder ships on the water rather than more of the same one. `ladder()` is
-  that list, in ascending strength.
+- **Arena** climbs the ladder. Open a shade under her and work up through the stock fleet a rung
+  every second sinking, so the mode escalates by putting harder ships on the water rather than more
+  of the same one. `ladder()` is that list, in ascending strength, and `arenaHunter(strength, kills)`
+  is the walk up it; the bench prints the climb for a handful of starting ships.
 - **Demolition derby** fields ships of similar stats, matched on `ram` rather than on rate, because a
   rate is a count of guns and nobody in that mode has one aboard. `peers(strength, tol, "ram")`.
 - **Free-for-all** fields stock ships of her own rate: `stockOfRate(rung)`. Ships of her own sort of
-  ship at every standard of fitting out, which is equal without being identical.
+  ship at every standard of fitting out, which is equal without being identical. In the first ship it
+  fields her own class instead, `stockOfHull`: the lowest rate holds four classes, and a gundalow with
+  one gun a side was meeting cutters with five, which is a fight she could only lose. Gundalows at
+  every standard is the same idea in the one place the rate is not.
 - **A ranked free-for-all**, later: win a rung to move up against the next. The ladder and the bands
   are the same ones, so this needs no new model, only a record of the highest rung a captain has won.
 
@@ -896,8 +900,10 @@ and what she becomes fully found, which is what the outfitter will charge for af
 printed "1.16 down to 1.05" rather than as a plain range, because it runs backwards and a range that
 falls reads as a mistake.
 
-Commissioning her makes her the ship you sail. Leaving the old one active would point the outfitter at
-the wrong hull, and the list of ships below switches back in one tap.
+Commissioning her lands on her page in the yard, where "Sail her" is, and does not make her the ship
+you sail: "Sail her" is its own act, and a hull bought bare would otherwise be the one sent to sea
+the next time a mode card was tapped. The menu plate says so when the ship she sails has no sail
+bent on or no gun aboard.
 
 ### The Rigging Outfitter
 
@@ -1031,7 +1037,7 @@ Three things to decide alongside them:
 - ~~**Sizes beyond small, medium and large.**~~ Done. `SIZES` runs `boat`, `small`, `medium`, `large`,
   `heavy`.
 
-The six categories mean a lugsail mast or a gaff-rigged ketch is a row in `data/masts.tsv` rather than
+The seven categories mean a lugsail mast or a gaff-rigged ketch is a row in `data/masts.tsv` rather than
 a code change, and the bench catches a berth whose category is a typo. Every berth-filling category
 draws in a shape of its own now: `LSQ` and `SSQ` as square canvas, `TRI` and `LAT` as the triangle,
 `GAF` as the four-sided sail on a gaff abaft the mast, and `LUG` on its slung, raking yard. The two
@@ -1070,18 +1076,18 @@ with it is as cheap as changing it.
    What that does not touch is the bottom end: a launch still pays a few thousand to fill out against
    a 120 coin hoy. If the opening should be cheaper as well, the lever is a cheaper low grade of sail,
    not the hull prices.
-2. ~~**Where the tier bands fall.**~~ **Settled.** Eight rungs, and **the edges are geometric**: evenly
-   spaced in ratio from the weakest stock ship to the strongest rather than in plain steps. `measure()`
-   blends its parts geometrically, so a fixed multiple of strength is what one rung ought to mean
-   across a fleet running a factor of fifteen, and 75 to 105 is the same step up as 405 to 565.
-   Occupancy over the 114 stock ships comes out 18, 17, 18, 19, 12, 14, 10 and 6, thinning at the top
-   because only a handful of classes reach it. Still nothing about how a fight actually plays has gone
-   into them, which is the part that wants the fight wired first.
+2. ~~**Where the tier bands fall.**~~ **Settled twice, and the second answer stands.** The rungs were
+   bands of blended strength with geometric edges for a while; they are counts of guns borne now,
+   the navy's own rates, read off a hull's ports and never declared, which is what **Rates, the stock
+   fleet, and what each mode does with them** above describes. A rung is a count of ports, and ports
+   do not move when a formula does, so the bands never want rebanding as `measure()` moves.
 3. ~~**Does the player's own ship sail in every mode, or only some?**~~ **Settled: every mode.** The
    field is matched to her instead, which is what the measures were built to make possible, and being
    beaten in a ship you chose is the point of choosing one. Free-for-all fields her own tier, so the
    fight is equal without being identical; the derby matches on `ram`, because `overall` counts guns
-   nobody in that mode has aboard; arena aims a shade under her and raises the bar with every sinking.
+   nobody in that mode has aboard; arena opens a shade under her and climbs the ladder a rung every
+   second sinking (`arenaHunter`), holding the opening hunter a few kills for a ship with nothing
+   under her, which is the first ship.
 4. ~~**How big should the classes actually get?**~~ **Settled, with the compression the worry asked
    for.** Real lengths run a factor of nearly nine and the sea is 2000 across, so both views raise
    the size ratio to a power below one, anchored on the galleon: at sea the fleet runs from a 16-unit
@@ -1096,7 +1102,8 @@ with it is as cheap as changing it.
 6. **Should the derby have repairs?** It has none today, because "only one hand needed" is that mode's
    whole promise and a rail is a second thing to think about. But trading coins for crew after a spell
    in the storm is a genuinely good decision, and it is one a free-for-all captain can already make:
-   both modes pay by the second now, and the free-for-all has both the carpenter and the weather.
+   she has both the carpenter and the weather, and her guns pay her by the point. Only the derby pays
+   by the second now, since it has nothing else to pay with.
 7. ~~**The crew divisor.**~~ **Settled, and it is not a divisor.** Crew runs from a dozen hands to nine
    hundred and fifty, a range of eighty, and one musket a head or anything near it ends with a
    three-decker throwing a volley nobody can count. So the count goes as the SQUARE ROOT of the crew:

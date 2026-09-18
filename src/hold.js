@@ -1,12 +1,12 @@
 /**
  * THE HOLD — what a captain keeps between voyages.
  *
- * Coins are two different things and it matters which one you mean. The purse a ship carries into a
- * battle is spent at sea on her own upgrades and goes down with her: that lives on the ship object in
- * `SternchaseIso.jsx` and is gone the moment the round ends. The hold is the other one — a record that
- * outlives any single round, holds coins across arena and free-for-all alike, and is written to
- * `localStorage` so it survives a reload. Nothing spends from the hold yet; this is the collection
- * side, and `spendFromHold` is the door the rest of it will come through.
+ * Coins are two different things and it matters which one you mean. The purse a ship carries at sea
+ * is what her guns and her bow have taken this round, spent on nothing but the carpenter, and it goes
+ * down with her: that lives on the ship object in `SternchaseIso.jsx` and is gone the moment the
+ * round ends. The hold is the other one — a record that outlives any single round, holds coins across
+ * every mode alike, and is written to `localStorage` so it survives a reload. The shipyard spends
+ * from it, through `spendFromHold` and the yard writers below, and nothing else does.
  *
  * Every voyage that reaches an end screen banks into it, win or lose. The reasoning: coins are earned
  * by fighting, and a captain who fought well and sank anyway earned them just the same. Only a round
@@ -59,9 +59,9 @@ export function cleanName(raw) {
   return raw.replace(/\s+/g, " ").trim().slice(0, NAME_LIMIT).trim();
 }
 
-// Share of a voyage's earnings that reaches the hold. At 1 every coin you earn at sea is also logged
-// ashore — spending at sea costs you nothing here, so upgrading mid-round is never a tax on progress.
-// Drop it below 1 if the meta economy ever needs slowing down without touching the in-round loop.
+// Share of a voyage's takings, less what the carpenter took, that reaches the hold. At 1 every coin
+// she kept at sea is a coin ashore. Drop it below 1 if the meta economy ever needs slowing down
+// without touching the in-round loop.
 export const HOLD_SHARE = 1;
 
 const num = (v, d = 0) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : d);
@@ -235,17 +235,19 @@ function sanitizeYard(raw) {
     // Her tonnage is checked here as well as at the rail, so a record written before the cap held
     // comes up under it: the guns past it come loose into the hold, last fitted first, rather than
     // sailing over a limit the outfitter now refuses.
+    // Every stored id is judged and the ports are filled from the ones that pass, so a bad id in the
+    // list costs nobody a good gun further down it. Cut to the port count first, as this once was, a
+    // wrong-mount entry among the first few pushed a valid gun past the cut and into the spares.
     let iron = 0;
     for (const mount of ["broadside", "bow", "swivel"]) {
-      const want = ((s.guns && s.guns[mount]) || []).slice(0, hull.guns[mount]);
-      for (const stored of want) {
-        const gunId = take(stored, "gun");
+      const stored = Array.isArray(s.guns && s.guns[mount]) ? s.guns[mount] : [];
+      for (const id of stored) {
+        if (ship.guns[mount].length >= hull.guns[mount]) break;
+        const gunId = take(id, "gun");
         if (!gunId) continue;
         const type = PARTS[yard.parts[gunId].type];
-        if (type.mount !== mount) { used.delete(gunId); continue; }
-        const tons = gunTons(type);
-        if (iron + tons > hull.tons + TONS_SLACK) { used.delete(gunId); continue; }
-        iron += tons;
+        if (type.mount !== mount || !gunFits(type, iron, hull.tons)) { used.delete(gunId); continue; }
+        iron += gunTons(type);
         ship.guns[mount].push(gunId);
       }
     }
