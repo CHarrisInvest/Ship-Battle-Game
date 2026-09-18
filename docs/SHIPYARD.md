@@ -757,9 +757,10 @@ is a count of ports, and ports do not move when a formula does.
 
 ### What each mode is to do with it
 
-- **Arena** climbs the ladder. Open on the weakest rung and work up through the stock fleet, so the
-  mode escalates by putting harder ships on the water rather than more of the same one. `ladder()` is
-  that list, in ascending strength.
+- **Arena** climbs the ladder. Open a shade under her and work up through the stock fleet a rung
+  every second sinking, so the mode escalates by putting harder ships on the water rather than more
+  of the same one. `ladder()` is that list, in ascending strength, and `arenaHunter(strength, kills)`
+  is the walk up it; the bench prints the climb for a handful of starting ships.
 - **Demolition derby** fields ships of similar stats, matched on `ram` rather than on rate, because a
   rate is a count of guns and nobody in that mode has one aboard. `peers(strength, tol, "ram")`.
 - **Free-for-all** fields stock ships of her own rate: `stockOfRate(rung)`. Ships of her own sort of
@@ -1086,7 +1087,9 @@ with it is as cheap as changing it.
    field is matched to her instead, which is what the measures were built to make possible, and being
    beaten in a ship you chose is the point of choosing one. Free-for-all fields her own tier, so the
    fight is equal without being identical; the derby matches on `ram`, because `overall` counts guns
-   nobody in that mode has aboard; arena aims a shade under her and raises the bar with every sinking.
+   nobody in that mode has aboard; arena opens a shade under her and climbs the ladder a rung every
+   second sinking (`arenaHunter`), holding the opening hunter a few kills for a ship with nothing
+   under her, which is the first ship.
 4. ~~**How big should the classes actually get?**~~ **Settled, with the compression the worry asked
    for.** Real lengths run a factor of nearly nine and the sea is 2000 across, so both views raise
    the size ratio to a power below one, anchored on the galleon: at sea the fleet runs from a 16-unit

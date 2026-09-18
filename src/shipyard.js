@@ -2161,6 +2161,35 @@ export const stockOfRate = (rung) => ladder().filter((s) => s.rate.rung === rung
 export const stockOfHull = (hullId) => ladder().filter((s) => s.loadout.hull.id === hullId);
 
 /**
+ * WHO THE ARENA SENDS AFTER HER `kills` SINKINGS IN.
+ *
+ * The climb is a walk up the ladder by rung rather than a target in strength: her first hunter is
+ * the stock ship nearest `ARENA_OPEN` of her own strength, a shade under her, and every
+ * `ARENA_STEP` kills the next rung comes out of the horizon. A target in strength was what this
+ * was, three quarters plus seven percent a kill, and it made the mode's opening depend on how the
+ * ladder happened to be spaced around her: a first ship met the same gundalow five times running
+ * and a corvette met a new class every kill. A rung is a new ship whatever the spacing.
+ *
+ * A ship with nothing under her on the ladder opens on her own strength, because there is nothing
+ * else to open on, and holds that hunter for `ARENA_HOLD` kills before the climb starts, so the
+ * first ship still gets the flat opening she always had rather than a harder ship at her second
+ * kill. Everyone else has the rungs under her to climb through and needs no hold.
+ *
+ * The top of the ladder is a ceiling all the same: past it the arena escalates by count alone.
+ */
+export const ARENA_OPEN = 0.75; // her first hunter, as a share of her own strength
+export const ARENA_STEP = 2; // kills between one rung and the next
+export const ARENA_HOLD = 4; // kills the opening hunter is held for when nothing sits under her
+export function arenaHunter(strength, kills) {
+  const rungs = ladder();
+  const nearest = (want) => rungs.reduce((a, b, i) => (Math.abs(b.measure.overall - want) < Math.abs(rungs[a].measure.overall - want) ? i : a), 0);
+  const opening = nearest(strength * ARENA_OPEN);
+  const hold = opening >= nearest(strength) ? ARENA_HOLD : 0;
+  const climbed = Math.floor(Math.max(0, kills - hold) / ARENA_STEP);
+  return rungs[Math.min(rungs.length - 1, opening + climbed)];
+}
+
+/**
  * Stock ships within `tolerance` of a given strength, by whichever measure the mode fights on.
  *
  * `key` is `overall` for a mode with guns and `ram` for one without, which is the difference between

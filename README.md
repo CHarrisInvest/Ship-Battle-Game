@@ -37,11 +37,14 @@ serves from the domain root instead — Netlify, Vercel, a plain static host —
 ## Modes
 
 - **Arena** — endless survival against a growing swarm. You open with an empty purse and one hunter on
-  the water, matched to your ship gun for gun and reload for reload. Kills bring reinforcements in from
-  the edge of the map, spawned well clear of your bow: one for the first kill, then 1-2-1-2 through
-  the fourth, then two for every kill after that up to the fleet cap. The second ship of a wave holds
-  off five seconds before it sails in. Every hull on the water is the same hull, so the pressure comes
-  from the count. Score by ships sunk.
+  the water, a stock ship from the ladder a shade under your own (`ARENA_OPEN`). Kills bring
+  reinforcements in from the edge of the map, spawned well clear of your bow: one for the first kill,
+  then 1-2-1-2 through the fourth, then two for every kill after that up to the fleet cap. The second
+  ship of a wave holds off five seconds before it sails in. Every second kill (`ARENA_STEP`) the next
+  rung of the stock ladder comes out of the horizon, so the pressure comes from the ships as well as
+  the count; a captain with nothing under her on the ladder, which is the first ship, holds her
+  opening hunter for `ARENA_HOLD` kills before the climb starts. `arenaHunter` in `shipyard.js` is
+  the rule and `npm run catalogue` prints the climb. Score by ships sunk.
 - **Demolition derby** — ten captains and not a gun between them. Hulls are broken open by ramming
   alone, there is nothing to buy, and a squall closes on the middle of the sea. Last afloat wins.
 - **Free-for-all** — last afloat wins, out of up to 10 rival captains in ships of your own rate at

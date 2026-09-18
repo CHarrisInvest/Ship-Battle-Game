@@ -8,7 +8,7 @@ import {
 } from "./hold.js";
 import {
   STARTER, kindOf, mastRebuildCost, measure, rate, rateOf, resolve, rigSpec,
-  ladder, peers, stockOfRate, stockOfHull,
+  ladder, peers, stockOfRate, stockOfHull, arenaHunter,
   HULLS, HULL_LIST, PARTS, statBand, maximumLoadout, outfitCost,
   mastsForSocket, sailsForBerth, studsForBerth, gunsForMount,
   knots, berthEffect, familyOf, gunTons, gunFits, gunEffect, cheapestCanvas, handlingScore, handlingPoints,
@@ -19,9 +19,9 @@ import { roll, tally, progressParts } from "./achievements.js";
  * STERNCHASE: HELM & HULL — pirate battles at sea, on a tilted (isometric-ish) sea with tall wooden
  * ships. "Broadside" survives below as the name of the side guns, which is the job it was always
  * doing in the simulation; the game's own name is Sternchase.
- * ARENA: endless survival. One hunter to start, matched to the player gun for gun; kills bring
- * reinforcements in from the edge of the map, well clear of your bow, 1-2-1-2 and then two a kill.
- * They never get stronger, there just get to be more of them.
+ * ARENA: endless survival. One hunter to start, a stock ship a shade under the player's own; kills
+ * bring reinforcements in from the edge of the map, well clear of your bow, 1-2-1-2 and then two a
+ * kill, and every second kill the next rung of the stock ladder comes out of the horizon.
  * FREE-FOR-ALL: up to 10 rival captains, equal start, opening on the nearest hull before they start
  * shopping for weak prey, loosing the odd volley at whatever drifts into the arc, and turning on a
  * runaway leader. Last afloat wins.
@@ -1449,9 +1449,10 @@ export default function App() {
      * A fully found cutter genuinely outclasses a plain brig, so matching on the shelf would call
      * that an even fight. Every mode issues from `STOCK` and every mode picks on a measure:
      *
-     *   arena        climbs. The first hunter is a shade under her, and every sinking raises the
-     *                bar, so the mode escalates by putting harder ships on the water rather than
-     *                more of the same one.
+     *   arena        climbs the ladder a rung at a time: the first hunter is a shade under her, and
+     *                every second sinking brings the next rung out of the horizon, so the mode
+     *                escalates by putting harder ships on the water rather than more of the same
+     *                one. `arenaHunter` in the catalogue is the rule, and the bench prints it.
      *   free-for-all fields her own rate: ships of her own class of ship, at every standard of
      *                fitting out, which is equal without being identical. In the first ship it
      *                fields her own class instead: the lowest rate holds four classes, and a
@@ -1465,11 +1466,7 @@ export default function App() {
     function rivalLoadout(rules, strength, step, hull) {
       const key = rules.guns ? "overall" : "ram";
       const rungs = ladder();
-      if (rules.reinforcements) {
-        // arena: aim a little under her at the drop and climb from there
-        const want = strength[key] * (0.75 + 0.07 * step);
-        return nearestRung(rungs, key, want).loadout;
-      }
+      if (rules.reinforcements) return arenaHunter(strength.overall, step).loadout;
       if (rules.guns) {
         const band = hull.id === STARTER.hull ? stockOfHull(hull.id) : stockOfRate(rateOf(hull).rung);
         if (band.length) return band[Math.floor(Math.random() * band.length)].loadout;

@@ -23,7 +23,7 @@ import {
   bestHandling, handlingScore, HANDLING_TOP,
   RATES, rateOf, gunsBorne, ladder, stockOfRate, resolve, STARTER, STOCK, STANDARDS, riggingValue, mastRebuildCost,
   squareLevel, RIG_FAMILIES, SIZES, mastFitsSocket, KNOTS_PER_RATING, knots,
-  ironAboard, gunTons, TONS_SLACK,
+  ironAboard, gunTons, TONS_SLACK, arenaHunter, ARENA_OPEN, ARENA_STEP, ARENA_HOLD,
 } from "../src/shipyard.js";
 import { RIG_STATIONS, RIG_KINDS, RIG_BERTHS, rigBands } from "../src/galleon.js";
 import { hullForm, DEFAULT_FORM, DRAWN_FIELDS, GALLEON_REF, parseBattery, portZ } from "../src/hullform.js";
@@ -455,6 +455,35 @@ console.log("  class              " + [0, 0.25, 0.5, 0.75, 1].map((q) => num(`q$
 for (const h of HULL_LIST) {
   const row = [0, 0.25, 0.5, 0.75, 1].map((q) => num(n1(measure(rate(fitOut(h.id, q))).overall), 8)).join("");
   console.log("  " + pad(h.name, 19) + row);
+}
+
+/* THE ARENA CLIMB, read before it is played. Each row is a ship a captain might sail in and the
+   hunter the arena issues after each count of sinkings, as a share of her own strength, with the
+   ship's name where the hunter changes. A run of equal figures at the top of the table is the hold
+   a first ship gets; a jump of more than a rung's worth between two figures is the ladder's spacing
+   showing through, which is where a class is missing rather than the rule failing. */
+{
+  const starts = [
+    ["The first ship", resolve(STARTER)],
+    ["Cutter light, fully found", fitOut("cutter", 1)],
+    ["Corvette, plain", fitOut("corvette", STANDARDS[0].quality)],
+    ["5th rate, well found", fitOut("fifthRate", STANDARDS[1].quality)],
+    ["3rd rate, fully found", fitOut("thirdRate", 1)],
+  ].filter(([, lo]) => lo && lo.hull);
+  const kills = [0, 1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 20];
+  console.log(`\nTHE ARENA CLIMB  (hunter strength as a share of hers; opens at ${ARENA_OPEN}, a rung every ${ARENA_STEP} kills, held ${ARENA_HOLD} kills with nothing under her)`);
+  console.log("  " + pad("she sails", 27) + kills.map((k) => num(`${k}`, 6)).join("") + "   new hunters, by kill");
+  for (const [label, lo] of starts) {
+    const S = measure(rate(lo)).overall;
+    const row = kills.map((k) => num(n2(arenaHunter(S, k).measure.overall / S), 6)).join("");
+    const seq = [];
+    let last = null;
+    for (let k = 0; k <= 10; k++) {
+      const h = arenaHunter(S, k);
+      if (h !== last) { seq.push(`${k}: ${h.name}`); last = h; }
+    }
+    console.log("  " + pad(label, 27) + row + "   " + seq.join("; "));
+  }
 }
 
 console.log("\nTHE STOCK LADDER  (what the modes issue, in ascending strength)");
