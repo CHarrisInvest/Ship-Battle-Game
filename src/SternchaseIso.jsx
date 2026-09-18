@@ -1192,7 +1192,7 @@ export default function App() {
   const [mode, setMode] = useState("arena");
   const [result, setResult] = useState("");
   const [place, setPlace] = useState({ rank: 0, total: 0 });
-  const [stats, setStats] = useState({ time: 0, kills: 0, dmg: 0, coins: 0, patches: 0, repaired: 0, kept: 0 });
+  const [stats, setStats] = useState({ time: 0, kills: 0, dmg: 0, coins: 0, patches: 0, repaired: 0 });
   const [coins, setCoins] = useState(0);
   const [sunk, setSunk] = useState(0);
   const [left, setLeft] = useState(0);
@@ -1578,9 +1578,6 @@ export default function App() {
         wornDown: p.wornDown || 0,
         timePay, winPay, paidInFull,
         total,
-        // What the hold will actually see. A voyage that spent everything it took on staying afloat
-        // banks nothing, and never less than nothing: a round cannot cost a captain her savings.
-        kept: Math.max(0, total - repaired),
       };
     }
 
@@ -2147,7 +2144,7 @@ export default function App() {
       ({ desired, throttle } = weatherCourse(s, desired, throttle));
       moveShip(s, dt, avoidIslands(s, desired), throttle);
 
-      if (g.rules.guns) for (const wk of ["broadside", "bow", "musket"]) {
+      for (const wk of ["broadside", "bow", "musket"]) {
         if (s.cd[wk] > 0 || !canFire(s, wk)) continue;
         const shot = linedUp(s, wk, tgt);
         if (!shot) continue;
@@ -3203,21 +3200,7 @@ export default function App() {
       for (const p of g.parts) {
         if (p.kind === "muzzle") continue;
         const sx = SX(p.x, cam), sy = SY(p.y, cam);
-        if (false) {
-          const k = p.life / p.max;
-          ctx.save();
-          ctx.translate(sx, sy);
-          ctx.scale(1, TILT);
-          ctx.rotate(p.ang);
-          ctx.globalAlpha = k;
-          ctx.fillStyle = "#ffe9a8";
-          ctx.beginPath();
-          ctx.moveTo(6, 0); ctx.lineTo(14, -3); ctx.lineTo(20, 0); ctx.lineTo(14, 3);
-          ctx.closePath();
-          ctx.fill();
-          ctx.globalAlpha = 1;
-          ctx.restore();
-        } else if (p.kind === "puff") {
+        if (p.kind === "puff") {
           // It swells the whole way and thins as it goes, so what fades out is a wide soft bank
           // rather than a hard dot winking out. Squashed like everything else lying on the water.
           //
@@ -3432,7 +3415,11 @@ export default function App() {
     const cl = Math.min(len, js.R);
     if (knobRef.current) knobRef.current.style.transform = `translate(${(dx / len) * cl}px, ${(dy / len) * cl}px)`;
     inputRef.current.joyMag = cl / js.R;
-    inputRef.current.joyAng = Math.atan2(dy, dx);
+    // The stick is read in screen space and steers a world heading, and the sea is squashed by
+    // TILT on the screen, so the two are not the same angle off the axes: a stick at 45 degrees
+    // steered a course that showed at 31. Dividing the vertical by TILT is the world direction
+    // that draws where the stick points.
+    inputRef.current.joyAng = Math.atan2(dy / TILT, dx);
   };
   const joyUp = (e) => {
     if (joyState.current.id !== e.pointerId) return;
@@ -5693,12 +5680,11 @@ function partLine(type) {
   if (type.part === "mast") {
     return `${type.berths.length} sail${type.berths.length === 1 ? "" : "s"}: ${type.berths.map((b) => kindOf(b.kind)?.name || b.kind).join(", ")}`;
   }
-  if (type.part === "sail") {
-    const helm = type.hand >= 0 ? `helps the helm by ${type.hand.toFixed(2)}` : `stiffens the helm by ${Math.abs(type.hand).toFixed(2)}`;
-    // a studdingsail's drive is a share of the sail it booms out from, not of a course
-    if (type.kind === "STU") return `adds ${type.drive.toFixed(2)} of the sail it extends, ${helm}`;
-    return `pulls ${type.drive.toFixed(2)} of a course, ${helm}`;
-  }
+  // A sail's figure is what she does to THIS ship from HERE, which is `berthEffect`'s answer and
+  // the one every sail picker passes in, so this is never reached for a sail in the game as it
+  // stands. It used to print the raw `drive` and `hand` coefficients, which the rules forbid; if it
+  // is ever reached, her category is the one thing about a sail that is true everywhere.
+  if (type.part === "sail") return kindOf(type.kind)?.name || type.kind;
   // a swivel's grouping is the other half of what quality buys, so a tighter one says so
   const group = type.group != null && type.group < 1 ? `, groups ${Math.round((1 - type.group) * 100)}% tighter than a musket` : "";
   return `${type.damage} damage every ${type.reload.toFixed(2)}s, weighs ${type.weight.toFixed(2)}${group}`;
@@ -5711,7 +5697,10 @@ const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
 /** A small inline action inside a slab: a link that is a button, not a control that competes. */
 function TinyButton({ label, onClick }) {
   return (
+    // an explicit type, because one of these sits inside the naming form beside its Keep button and
+    // a button in a form submits it unless told otherwise
     <button
+      type="button"
       onClick={onClick}
       style={{
         fontFamily: UI, fontSize: 10, color: C.gold, background: "transparent",

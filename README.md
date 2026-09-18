@@ -19,6 +19,17 @@ npm run build    # production bundle into dist/
 npm run preview  # serve the built bundle
 ```
 
+```bash
+npm run catalogue  # check the fleet is riggable and drawable, and print it
+npm run smoke      # play every mode headless to its end screen; about four minutes
+```
+
+The smoke test needs a Chromium: `npx playwright install chromium` fetches one, or set `SMOKE_CHROME`
+to an executable. It fails on a screen that throws, a mode that never ends, an end screen whose
+column does not add up to what reached the hold, or a runtime error in any round, and it writes
+every screen's picture and text to a folder it names. It says nothing about balance or feel; those
+are read off `npm run catalogue` and played.
+
 ## Deploying
 
 Pushing to `main` builds the site and publishes it to GitHub Pages via
