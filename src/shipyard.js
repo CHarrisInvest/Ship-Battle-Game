@@ -1857,9 +1857,31 @@ export function fitOut(hullId, quality = 1) {
      itself and nothing is multiplied by anything. It used to be a dimensionless figure read against
      eight times itself, which meant a table written in real tons quietly stopped binding: every hull
      in the fleet could bear the heaviest gun in the shop and this loop never ran. */
-  const carried = () =>
-    mounts.reduce((t, m) => t + (chosen[m] ? chosen[m].piece.weight * chosen[m].n * (m === "broadside" ? 2 : 1) : 0), 0);
-  const limit = lo.hull.tons;
+  /* AND NO ONE PIECE HEAVIER THAN HER BROADSIDE. The tonnage loop lightens whichever mount is
+     carrying the most, which is always the battery, because a broadside is counted twice and there
+     are twenty of it. So a boat could come out under her tonnage with four pounders in the ports and
+     a frigate's eighteen on the bow: her total weight was legal and the single gun on it was not.
+     A chaser is a gun on the same deck as the rest, and if her scantlings will not stand an eighteen
+     abeam they will not stand one over the stem either. Cap it at the piece she carries a side and
+     let her keep the lightest in the shop when nothing is light enough.
+
+     The cap is applied before the loop weighs her and again every time the battery steps down,
+     rather than once after the loop has finished. Applied afterwards it lightened the bow AFTER the
+     loop had already given up broadside weight to make room for the heavy chaser, and the tonnage
+     that freed was never spent: a fully found cutter came out at 7.1 of her 9.7 tons with four
+     pounders in her ports when six pounders fit, and five classes were short the same way. */
+  const capChaser = () => {
+    const abeam = chosen.broadside && chosen.broadside.piece;
+    if (!abeam || !chosen.bow) return;
+    const c = chosen.bow;
+    if (c.piece.weight > abeam.weight) {
+      const fits = c.pieces.filter((g) => g.weight <= abeam.weight).sort((a, b) => b.weight - a.weight)[0];
+      c.piece = fits || c.pieces.slice().sort((a, b) => a.weight - b.weight)[0];
+    }
+  };
+  const carried = () => mounts.reduce((t, m) => t + (chosen[m] ? gunTons(chosen[m].piece) * chosen[m].n : 0), 0);
+  const limit = lo.hull.tons + TONS_SLACK;
+  capChaser();
   for (let guard = 0; guard < 24 && carried() > limit; guard++) {
     // lighten whichever mount is carrying the most, so a heavy broadside gives way before a chaser
     let worst = null;
@@ -1868,27 +1890,12 @@ export function fitOut(hullId, quality = 1) {
       if (!c) continue;
       const next = c.pieces.filter((g) => g.weight < c.piece.weight).sort((a, b) => b.weight - a.weight)[0];
       if (!next) continue;
-      const borne = c.piece.weight * c.n * (m === "broadside" ? 2 : 1);
+      const borne = gunTons(c.piece) * c.n;
       if (!worst || borne > worst.borne) worst = { mount: m, borne, next };
     }
     if (!worst) break; // she is over her tonnage with the lightest iron in the shop, and that is her problem
     chosen[worst.mount].piece = worst.next;
-  }
-
-  /* AND NO ONE PIECE HEAVIER THAN HER BROADSIDE. The tonnage loop above lightens whichever mount is
-     carrying the most, which is always the battery, because a broadside is counted twice and there
-     are twenty of it. So a boat could come out under her tonnage with four pounders in the ports and
-     a frigate's eighteen on the bow: her total weight was legal and the single gun on it was not.
-     A chaser is a gun on the same deck as the rest, and if her scantlings will not stand an eighteen
-     abeam they will not stand one over the stem either. Cap it at the piece she carries a side and
-     let her keep the lightest in the shop when nothing is light enough. */
-  const abeam = chosen.broadside && chosen.broadside.piece;
-  if (abeam && chosen.bow) {
-    const c = chosen.bow;
-    if (c.piece.weight > abeam.weight) {
-      const fits = c.pieces.filter((g) => g.weight <= abeam.weight).sort((a, b) => b.weight - a.weight)[0];
-      c.piece = fits || c.pieces.slice().sort((a, b) => a.weight - b.weight)[0];
-    }
+    capChaser();
   }
 
   for (const mount of mounts) {

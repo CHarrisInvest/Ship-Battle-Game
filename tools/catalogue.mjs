@@ -22,10 +22,11 @@ import {
   rate, measure, statBand, fitOut, minimumLoadout, maximumLoadout, loadoutValue, outfitCost,
   bestHandling, handlingScore, HANDLING_TOP,
   RATES, rateOf, gunsBorne, ladder, stockOfRate, resolve, STARTER, STOCK, STANDARDS, riggingValue, mastRebuildCost,
-  squareLevel, RIG_FAMILIES, mastFitsSocket, KNOTS_PER_RATING, knots,
+  squareLevel, RIG_FAMILIES, SIZES, mastFitsSocket, KNOTS_PER_RATING, knots,
+  ironAboard, gunTons, TONS_SLACK,
 } from "../src/shipyard.js";
 import { RIG_STATIONS, RIG_KINDS, RIG_BERTHS, rigBands } from "../src/galleon.js";
-import { hullForm, DEFAULT_FORM, GALLEON_REF, parseBattery, portZ } from "../src/hullform.js";
+import { hullForm, DEFAULT_FORM, DRAWN_FIELDS, GALLEON_REF, parseBattery, portZ } from "../src/hullform.js";
 import { HULL_REF } from "../src/shipref.js";
 
 // A set, not a list. The same fault reached from forty hulls is one fault about one part, and a
@@ -50,6 +51,9 @@ for (const h of HULL_LIST) {
   if (!(h.maxHull > 0) || !(h.maxCrew > 0)) fault(where, `hull ${h.maxHull} and crew ${h.maxCrew} must both be above zero`);
   if (!(h.canvas > 0)) fault(where, "canvas must be above zero, or she can never be driven");
   if (!(h.tons > 0)) fault(where, "tons must be above zero, or every gun aboard cripples her");
+  // speed and hand are the hull's own share of both ratings, and NaN in either is a strength of NaN,
+  // which sorts nowhere in the ladder and every comparison above lets through
+  if (!(h.speed > 0) || !(h.hand > 0)) fault(where, `speed ${h.speed} and hand ${h.hand} must both be above zero`);
   if (!h.sockets.length) fault(where, "no mast sockets, so she can never carry a sail");
   if (h.guns.broadside < 0 || h.guns.bow < 0 || h.guns.swivel < 0) fault(where, "negative gun bearing");
   if (h.guns.broadside === 0 && h.guns.bow === 0) fault(where, "bears no guns at all on either mount");
@@ -86,10 +90,27 @@ for (const h of HULL_LIST) {
     }
   }
 
-  // every class draws on a hull modelled from her own reference row; one without a row falls back
-  // to the galleon's, which is exactly the every-ship-is-the-galleon fault the forms exist to end
-  if (h.id !== "galleon" && hullForm(h.id) === DEFAULT_FORM) {
-    fault(where, "no reference row in shipref.js, so she draws on the galleon's hull at the galleon's size");
+  // every class draws on a hull modelled from her own reference row; one without a row, or with a
+  // drawn figure missing from it, falls back to the galleon's, which is exactly the
+  // every-ship-is-the-galleon fault the forms exist to end
+  if (h.id !== "galleon") {
+    const ref = HULL_REF[h.id];
+    const missing = ref ? DRAWN_FIELDS.filter((k) => !Number.isFinite(ref[k])) : [];
+    if (!ref) fault(where, "no reference row in shipref.js, so she draws on the galleon's hull at the galleon's size");
+    else if (missing.length) fault(where, `her reference row has no ${missing.join(", ")}, so she draws on the galleon's hull at the galleon's size`);
+    else if (hullForm(h.id) === DEFAULT_FORM) fault(where, "draws on the galleon's hull at the galleon's size");
+    // and everything the form worked out has to be a number: a NaN anywhere in it is a hull that
+    // draws nothing, and the port audit below compares against NaN and sees nothing wrong
+    const bad = [];
+    const walk = (v, path) => {
+      if (typeof v === "number") { if (!Number.isFinite(v)) bad.push(path); }
+      else if (Array.isArray(v)) v.forEach((x, i) => walk(x, `${path}[${i}]`));
+      else if (v && typeof v === "object") for (const [k, x] of Object.entries(v)) walk(x, `${path}.${k}`);
+    };
+    const form = hullForm(h.id);
+    walk(form.menu, "menu");
+    walk(form.sea, "sea");
+    if (bad.length) fault(where, `her hull comes out with ${bad.length} figure${bad.length === 1 ? "" : "s"} that ${bad.length === 1 ? "is" : "are"} not a number (${bad.slice(0, 4).join(", ")}${bad.length > 4 ? ", ..." : ""})`);
   }
 
   // she has to be riggable in practice, not only in principle
@@ -97,6 +118,17 @@ for (const h of HULL_LIST) {
   const r = rate(found);
   if (!(r.sails > 0)) fault(where, "fully found, she still carries no sail");
   if (r.broadside.count !== h.guns.broadside) fault(where, `fully found she runs out ${r.broadside.count} broadside guns, not the ${h.guns.broadside} she bears`);
+  // ...and armed in practice: a full battery she cannot bear is a stock ship over her tonnage, which
+  // `fitOut` ships anyway rather than leave her ports empty, and a battery no captain can buy under
+  // the cap is a class whose ports can never all be filled at the rail
+  const iron = ironAboard(found.guns);
+  if (iron > h.tons + TONS_SLACK) fault(where, `fully found she carries ${n2(iron)} tons of iron against the ${h.tons} she bears`);
+  const lightest = ["broadside", "bow", "swivel"].reduce((t, mount) => {
+    const guns = gunsForMount(mount);
+    if (!guns.length || !h.guns[mount]) return t;
+    return t + Math.min(...guns.map(gunTons)) * h.guns[mount];
+  }, 0);
+  if (lightest > h.tons + TONS_SLACK) fault(where, `the lightest full battery in the shop weighs ${n2(lightest)} tons against the ${h.tons} she bears, so her ports can never all be filled`);
 }
 
 /**
@@ -261,6 +293,10 @@ for (const st of RIG_STATIONS) {
 // a fact about the mast, and a category nobody declared is almost always a typo: neither throws, they
 // just produce a berth that stays empty forever.
 for (const m of MAST_LIST) {
+  // a size not in the list ranks below every socket and so fits every socket, and a family not in
+  // the list is a mast no socket names; neither throws anywhere but here
+  if (!SIZES.includes(m.size)) fault(`mast "${m.id}"`, `size "${m.size}" is not one of ${SIZES.join(", ")}, so it would step in any socket at all`);
+  if (!RIG_FAMILIES[m.family]) fault(`mast "${m.id}"`, `family "${m.family}" is not a rig family (${Object.keys(RIG_FAMILIES).join(", ")}), so no socket takes it`);
   if (!m.berths.length) fault(`mast "${m.id}"`, "no berths, so she can carry no sail at all");
   if (m.berths.length > RIG_BERTHS) {
     fault(`mast "${m.id}"`, `carries ${m.berths.length} sails and the renderer places ${RIG_BERTHS} up one mast. The bands are generated and squeezed into the air the authored ones occupy, so the limit is where the squeeze stops being worth drawing rather than a row that can be added: past it a stack is stripes on a pole`);

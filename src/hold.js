@@ -235,17 +235,19 @@ function sanitizeYard(raw) {
     // Her tonnage is checked here as well as at the rail, so a record written before the cap held
     // comes up under it: the guns past it come loose into the hold, last fitted first, rather than
     // sailing over a limit the outfitter now refuses.
+    // Every stored id is judged and the ports are filled from the ones that pass, so a bad id in the
+    // list costs nobody a good gun further down it. Cut to the port count first, as this once was, a
+    // wrong-mount entry among the first few pushed a valid gun past the cut and into the spares.
     let iron = 0;
     for (const mount of ["broadside", "bow", "swivel"]) {
-      const want = ((s.guns && s.guns[mount]) || []).slice(0, hull.guns[mount]);
-      for (const stored of want) {
-        const gunId = take(stored, "gun");
+      const stored = Array.isArray(s.guns && s.guns[mount]) ? s.guns[mount] : [];
+      for (const id of stored) {
+        if (ship.guns[mount].length >= hull.guns[mount]) break;
+        const gunId = take(id, "gun");
         if (!gunId) continue;
         const type = PARTS[yard.parts[gunId].type];
-        if (type.mount !== mount) { used.delete(gunId); continue; }
-        const tons = gunTons(type);
-        if (iron + tons > hull.tons + TONS_SLACK) { used.delete(gunId); continue; }
-        iron += tons;
+        if (type.mount !== mount || !gunFits(type, iron, hull.tons)) { used.delete(gunId); continue; }
+        iron += gunTons(type);
         ship.guns[mount].push(gunId);
       }
     }

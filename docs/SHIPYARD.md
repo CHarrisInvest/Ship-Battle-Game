@@ -896,8 +896,10 @@ and what she becomes fully found, which is what the outfitter will charge for af
 printed "1.16 down to 1.05" rather than as a plain range, because it runs backwards and a range that
 falls reads as a mistake.
 
-Commissioning her makes her the ship you sail. Leaving the old one active would point the outfitter at
-the wrong hull, and the list of ships below switches back in one tap.
+Commissioning her lands on her page in the yard, where "Sail her" is, and does not make her the ship
+you sail: "Sail her" is its own act, and a hull bought bare would otherwise be the one sent to sea
+the next time a mode card was tapped. The menu plate says so when the ship she sails has no sail
+bent on or no gun aboard.
 
 ### The Rigging Outfitter
 

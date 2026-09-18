@@ -4845,12 +4845,11 @@ function CommissionScreen({ hold, onBack, onBought }) {
 
   const commission = (hullId) => {
     const bought = buyShip(hullId);
-    // She becomes the ship you sail and the ship the yard is looking at. Leaving the old one active
-    // would hide the new one entirely, and the list below switches back in one tap.
-    if (bought) {
-      setActiveShip(bought.ship);
-      if (onBought) onBought(bought.ship);
-    }
+    // She becomes the ship the yard is looking at, and not the ship you sail: "Sail her" is its own
+    // act, on the page this lands on. She used to be made active here as well, from before the yard
+    // could look at any ship but the active one, and a captain who bought a bare first rate and
+    // tapped a mode card went to sea in a hull with no mast and no gun.
+    if (bought && onBought) onBought(bought.ship);
   };
 
   return (
@@ -5784,6 +5783,13 @@ function ShipPlate({ hold, onEdit, onOutfit }) {
   const sailing = id === hold.yard.active;
   const at = fleet.findIndex((s) => s.id === id);
   const step = (d) => setViewing(fleet[(at + d + fleet.length) % fleet.length].id);
+  // What would stop her fighting, said on the plate: nothing bent on, or nothing to fire. Buying a
+  // hull no longer makes her the ship you sail, but a captain can still choose a bare one, and the
+  // mode cards are a tap away.
+  const unfit = [
+    stats.sails > 0 ? null : "No sail is bent on her, so she cannot get under way.",
+    stats.broadside.count + stats.bow.count > 0 ? null : "She has no gun aboard, so she cannot fire.",
+  ].filter(Boolean);
 
   return (
     <div
@@ -5820,6 +5826,11 @@ function ShipPlate({ hold, onEdit, onOutfit }) {
             )}
             <TinyButton label="Outfit her" onClick={() => onOutfit(id)} />
           </div>
+          {unfit.length > 0 && (
+            <div style={{ fontSize: 10, color: C.crew, marginTop: 6, lineHeight: 1.5 }}>
+              {unfit.map((line) => <div key={line}>{line}</div>)}
+            </div>
+          )}
         </div>
         <QuickStats stats={stats} />
       </div>
