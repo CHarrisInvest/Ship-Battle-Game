@@ -4396,7 +4396,7 @@ function YardScreen({ hold, shipId, onView, onBack, onCommission, onOutfit }) {
           a tab and a scroll. The tab opens whole, with no picker up: a picker sprung open under a
           slab the captain has not scrolled past landed her mid-screen, and one tap more on the row
           she wants is cheaper than finding where she is. */}
-      <Slab title="Her rigging" sub="Tap a mast or a sail to change it">
+      <Slab title="Rigging" sub="Tap a mast or a sail to change it">
         {loadout.hull.sockets.map((socket) => {
           const entry = loadout.rig[socket.id];
           const mast = entry && entry.mast;

@@ -279,7 +279,9 @@ Buttons take size over tracking. Wide letterspacing makes every control read as 
   thumbs, so two taps inside a few hundred milliseconds are ordinary play rather than a gesture.
   `index.css` sets `touch-action: manipulation` on `*`, because the element the browser reads is the
   one under the finger and a label inside a button inside a card is what gets hit. It has to be
-  `touch-action`: `user-scalable=no` is ignored by iOS Safari on purpose and is not a fix. The canvas,
+  `touch-action`: `user-scalable=no` in the viewport meta is kept, since Android honours it and it
+  spares the shell an accidental pinch, but iOS Safari ignores it on purpose, so it is not the fix
+  and never was on an iPhone. The canvas,
   the joystick and the fire buttons override it with `none` inline, which is the play surface and
   belongs there. Nothing that is an ancestor of a shop or menu screen may carry `none`: a `none` up
   the chain can stop the screen under a finger from scrolling.
