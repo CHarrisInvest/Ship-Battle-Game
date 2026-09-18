@@ -206,9 +206,9 @@ inventory, and it is asked of a ship rather than of the yard for that reason.
 - **Rigging and guns move ship to ship.** Falls out of instances, and they no longer have to leave one
   hull to reach another: what a captain owns, every ship she owns can be found with.
 - **A mast only ever carries the sails it was built for.** `berths`, fixed on the mast type.
-- **Various sail types.** Six categories, `LSQ` `SSQ` `TRI` `GAF` `LUG` `STU`, one on each berth and
-  one on each sail, compared as a single key. The head of a tall mast takes a small square sail
-  because that is what the berth up there asks for.
+- **Various sail types.** Seven categories, `LSQ` `SSQ` `TRI` `LAT` `GAF` `LUG` `STU`, one on each
+  berth and one on each sail, compared as a single key. The head of a tall mast takes a small square
+  sail because that is what the berth up there asks for.
 - **Sails affect speed and agility differently.** `drive` and `hand`.
 - **Muskets come off the crew, and swivels correlate with them.** `rate()` returns one `muskets`
   figure: crew capacity over 26, plus one per swivel on the rail, floor of 1. Small arms are one thing
@@ -228,7 +228,7 @@ inventory, and it is asked of a ship rather than of the yard for that reason.
 - **The menu ship is the captain's ship.** Done, and it is the part worth looking at.
 - **Upgrades are gone from the modes and the AI.** Nothing is bought at sea but repairs. See below.
 - **Ships tiered by their stat lines, and a stock fleet for the modes to issue.** `measure()`,
-  `TIERS`, `STOCK` and the lookups each mode needs. See below.
+  `RATES`, `STOCK` and the lookups each mode needs. See below.
 
 ## Ratings, not speeds
 
@@ -1037,7 +1037,7 @@ Three things to decide alongside them:
 - ~~**Sizes beyond small, medium and large.**~~ Done. `SIZES` runs `boat`, `small`, `medium`, `large`,
   `heavy`.
 
-The six categories mean a lugsail mast or a gaff-rigged ketch is a row in `data/masts.tsv` rather than
+The seven categories mean a lugsail mast or a gaff-rigged ketch is a row in `data/masts.tsv` rather than
 a code change, and the bench catches a berth whose category is a typo. Every berth-filling category
 draws in a shape of its own now: `LSQ` and `SSQ` as square canvas, `TRI` and `LAT` as the triangle,
 `GAF` as the four-sided sail on a gaff abaft the mast, and `LUG` on its slung, raking yard. The two
@@ -1076,13 +1076,11 @@ with it is as cheap as changing it.
    What that does not touch is the bottom end: a launch still pays a few thousand to fill out against
    a 120 coin hoy. If the opening should be cheaper as well, the lever is a cheaper low grade of sail,
    not the hull prices.
-2. ~~**Where the tier bands fall.**~~ **Settled.** Eight rungs, and **the edges are geometric**: evenly
-   spaced in ratio from the weakest stock ship to the strongest rather than in plain steps. `measure()`
-   blends its parts geometrically, so a fixed multiple of strength is what one rung ought to mean
-   across a fleet running a factor of fifteen, and 75 to 105 is the same step up as 405 to 565.
-   Occupancy over the 114 stock ships comes out 18, 17, 18, 19, 12, 14, 10 and 6, thinning at the top
-   because only a handful of classes reach it. Still nothing about how a fight actually plays has gone
-   into them, which is the part that wants the fight wired first.
+2. ~~**Where the tier bands fall.**~~ **Settled twice, and the second answer stands.** The rungs were
+   bands of blended strength with geometric edges for a while; they are counts of guns borne now,
+   the navy's own rates, read off a hull's ports and never declared, which is what **Rates, the stock
+   fleet, and what each mode does with them** above describes. A rung is a count of ports, and ports
+   do not move when a formula does, so the bands never want rebanding as `measure()` moves.
 3. ~~**Does the player's own ship sail in every mode, or only some?**~~ **Settled: every mode.** The
    field is matched to her instead, which is what the measures were built to make possible, and being
    beaten in a ship you chose is the point of choosing one. Free-for-all fields her own tier, so the

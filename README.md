@@ -256,22 +256,24 @@ captain who only wanted the number does not have to open it.
 
 ## The shipyard
 
-Groundwork only so far: the data model, the save format and the plumbing that lets the menu turn the
-captain's own ship. There is no shipyard screen, and **the fight reads none of it yet**: every hull at
-sea is still the same hull. `docs/SHIPYARD.md` is the design note; the short version:
+Built, and the fight reads all of it: the captain sails her own ship in every mode, every rival is a
+stock ship matched to hers, and what she is comes from the yard between voyages. The yard is reached
+from the ship on the menu, with the Boat Commission (hulls) and the Rigging Outfitter (masts, sails,
+guns, spares) as its two doors. `docs/SHIPYARD.md` is the design note; the short version:
 
 - `src/shipyard.js` is the catalogue and the maths. Hulls, masts, sails and guns as data, what fits
-  what, and `rate()` turning a set of them into the figures a fight would read. It holds no state and
+  what, and `rate()` turning a set of them into the figures a fight reads. It holds no state and
   imports nothing.
 - A hull fixes maximum hull and crew, base speed and handling, how many guns of each kind she bears,
-  her mast sockets, and how big she is. A mast fits a socket and carries a fixed set of berths decided
-  when it was built. Every berth and every sail names one of six categories, large square, small
-  square, triangular, gaff, lugsail and studdingsail, and a sail fits a berth of its own category.
-  Studdingsails are the exception and never fill a berth: one booms out beyond a square sail already
-  set, so it wants an attachment to a sail rather than a place on a mast, and nothing models that yet.
-  Guns fit by the piece up to the
-  hull's bearing; `broadside` counts guns **a side**, mirrored, because that is how a volley fires, and
-  runs 2 on the cutter to 10 on the galleon. Muskets come off the crew rather than being bought.
+  the tons of iron she can carry, and her mast sockets with the rig families each takes. Her size
+  comes from her reference row through `hullform.js`, never from the catalogue. A mast fits a socket
+  of its family and size and carries a fixed set of berths decided when it was built. Every berth
+  and every sail names one of seven categories, large square, small square, headsail, lateen, gaff,
+  lugsail and studdingsail, and a sail fits a berth of its own category. Studdingsails are the
+  exception and never fill a berth: one booms out beyond a square sail already set, so it attaches to
+  that sail and comes off with it. Guns fit by the piece up to the hull's bearing and under her
+  tonnage; `broadside` counts guns **a side**, mirrored, because that is how a volley fires, and runs
+  1 on the gundalow to 50 on the first rate. Muskets come off the crew rather than being bought.
 - Parts are catalogue *types*, and a captain owns *instances*. An instance is in one slot of a ship or
   in none of hers, so fifty ports still want fifty guns bought; but nothing she owns is exclusive to
   one hull, so the guns and canvas aboard the frigate are the same ones her sloop is found with. Only
@@ -282,21 +284,25 @@ sea is still the same hull. `docs/SHIPYARD.md` is the design note; the short ver
   hull costs nothing to step and does not come out of that hull to do it.
 - `src/galleon.js` draws a rig rather than *the* rig. `drawGalleon(ctx, w, h, deg, spec)` builds
   whatever is stepped and bent on; called without a spec it builds the galleon it always drew.
-- **The menu ship is a control.** Her plate carries the class she is and `Tap to edit`, and opens the
-  yard: what she rates, her tier, her rigging socket by socket with bare berths marked, her guns
-  against what she bears, and what she still wants. Reading only for now; buying and fitting get built
-  into that screen.
+- **The menu ship is a control.** Her plate carries her name, her class and her figures, turns to any
+  ship the captain owns, and opens the yard: what she rates, her rigging socket by socket with bare
+  berths marked, her guns against what she bears and her tonnage, and what she still wants. Every
+  row on the yard is a door into the outfitter, and "Sail her" is its own act rather than a side
+  effect of buying or looking. The plate says so when the ship she sails has no sail bent on or no
+  gun aboard.
 - **Manoeuvrability is `hand`**, a hull figure separate from `speed`, moved by the sails she carries
   (`hand` again, negative on square canvas) and the guns weighing her down. `rate()` folds it into
   `turn`. In the fight the rudder also goes heavy with the way she carries.
-- **A ship's tier comes off her stat line, not her class.** `measure()` turns a rating into throw
-  weight, endurance and mobility, blends them into one figure, and `TIERS` bands that into five rungs.
-  A fully found cutter genuinely outclasses a bare brig, so matching on class would call that an even
-  fight. The derby matches on `ram` instead, which counts endurance and mobility and ignores guns
-  nobody has aboard.
+- **A ship's rate is read off her ports, and her strength off her stat line.** `rateOf()` counts her
+  broadside both sides and lands her on one of the eight rungs in `RATES`, the navy's own words, so a
+  hull pierced for fifty a side is a first rate whatever she carries. `measure()` turns a rating into
+  throw weight, endurance and mobility and blends them into one figure, which orders the stock
+  ladder. Free-for-all fields her own rate (her own class, in the starter gundalow), the arena climbs
+  the ladder from a shade under her strength, and the derby matches on `ram`, which counts endurance
+  and mobility and ignores guns nobody has aboard.
 - **The hull table is one terse row per class**, expanded by `buildHull` with defaults, with masts
-  written `station/size` and `order` defaulting to position. It is built for a fleet of around 38
-  classes rather than the five it holds: inserting a class is inserting a row.
+  written `station/size/family+family` and `order` defaulting to position. It holds 54 rows, 16 of
+  them at sea, and `active` says which: inserting a class is inserting a row.
 - **`fitOut(hullId, quality)` builds a coherent ship at a standard**, moving both the grade of part in
   each slot and how much of her is filled. `maximumLoadout` is this at 1. Stock opponents for a large
   catalogue are generated from it rather than written out and left to drift.

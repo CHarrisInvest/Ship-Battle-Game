@@ -3458,7 +3458,7 @@ export default function App() {
       {phase === "playing" && (
         <>
           <div style={{ position: "absolute", top: 8, left: 10, display: "flex", gap: 8 }}>
-            <Pill label={`${coins} coins`}><CoinIcon /><span>{coins}</span></Pill>
+            <Pill label={`${fmtCoins(coins)} coins`}><CoinIcon /><span>{fmtCoins(coins)}</span></Pill>
             {rules.reinforcements ? (
               <>
                 <Pill label={`${sunk} sunk`}><SunkIcon /><span>{sunk}</span></Pill>
@@ -3506,7 +3506,7 @@ export default function App() {
                     <span style={{ fontSize: 9, color: q.whole ? "rgba(238,244,242,0.6)" : can ? C.gold : "rgba(232,200,119,0.5)", display: "inline-flex", alignItems: "center", gap: 3 }}>
                       {/* A part payment names the whole bill beside it. "18 part" left a captain to
                           work out what part of what; "18 of 79" is the same width and answers it. */}
-                      {q.whole ? q.label || t.whole : <><CoinIcon size={9} />{part ? `${price} of ${q.cost}` : price}</>}
+                      {q.whole ? q.label || t.whole : <><CoinIcon size={9} />{part ? `${fmtCoins(price)} of ${fmtCoins(q.cost)}` : fmtCoins(price)}</>}
                     </span>
                   </div>
                 </button>
@@ -3750,7 +3750,9 @@ function FireButton({ refEl, name, sub, color, onDown, onUp }) {
       style={{ position: "relative", width: 66, height: 56, borderRadius: 10, border: `1px solid ${color}`, background: "rgba(13,58,56,0.88)", color: C.ink, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 1, overflow: "hidden", touchAction: "none", WebkitTapHighlightColor: "transparent", cursor: "pointer" }}
     >
       <span style={{ fontSize: 12, fontWeight: 700 }}>{name}</span>
-      <span style={{ fontSize: 8, color, letterSpacing: 1 }}>{sub}</span>
+      {/* the system it hits, set as the health panel sets the same word, so HULL on the button and
+          HULL on the bar read as one thing */}
+      <span style={{ fontSize: 8, color }}>{sub.toUpperCase()}</span>
       <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 3, background: "rgba(0,0,0,0.4)" }}>
         <div className="cd-fill" style={{ height: "100%", background: color, transformOrigin: "left", transform: "scaleX(1)" }} />
       </div>
@@ -3963,8 +3965,10 @@ function RecordsScreen({ hold, onBack, onAchievements }) {
   return (
     <Shell>
       <BackLink label="Back to the sea" onClick={onBack} />
-      <div style={{ fontFamily: DISPLAY, fontSize: "clamp(21px, 7vw, 26px)", color: C.gold, letterSpacing: 0.5 }}>
-        Achievements &amp; Tallies
+      {/* a step under the other screen titles: in caps this is the longest of them, and at 26px it
+          wrapped inside the 342px a 390px phone leaves the shell */}
+      <div style={{ fontFamily: DISPLAY, fontSize: "clamp(19px, 6.2vw, 24px)", color: C.gold, letterSpacing: 0.5 }}>
+        ACHIEVEMENTS &amp; TALLIES
       </div>
       <div style={{ fontSize: 12, color: "rgba(238,244,242,0.7)", margin: "6px 0 2px" }}>
         {sailed
@@ -4095,7 +4099,7 @@ function AchievementsScreen({ hold, onBack }) {
     <Shell>
       <BackLink label="Back to the tallies" onClick={onBack} />
       <div style={{ fontFamily: DISPLAY, fontSize: "clamp(24px, 8vw, 30px)", color: C.gold, letterSpacing: 0.5 }}>
-        Achievements
+        ACHIEVEMENTS
       </div>
       <div style={{ fontSize: 12, color: "rgba(238,244,242,0.7)", margin: "6px 0 2px" }}>
         {won.done} of {won.total} earned.
@@ -4296,7 +4300,7 @@ function ScuttleHold({ onScuttle }) {
     <button
       onClick={() => (armed ? (onScuttle(), setArmed(false)) : setArmed(true))}
       onBlur={() => setArmed(false)}
-      style={{ marginTop: 14, fontFamily: UI, fontSize: 10, letterSpacing: 1, color: armed ? C.crew : "rgba(238,244,242,0.35)", background: "transparent", border: "none", padding: 4, cursor: "pointer", WebkitTapHighlightColor: "transparent" }}
+      style={{ marginTop: 14, fontFamily: UI, fontSize: 10, color: armed ? C.crew : "rgba(238,244,242,0.35)", background: "transparent", border: "none", padding: 4, cursor: "pointer", WebkitTapHighlightColor: "transparent" }}
     >
       {armed ? "Tap again to scuttle the hold" : "Scuttle the hold"}
     </button>
@@ -4332,7 +4336,7 @@ function YardScreen({ hold, shipId, onView, onBack, onCommission, onOutfit }) {
   // Named for the parts rather than for the HUD buttons: this is the shipyard, where a captain is
   // looking at guns she owns, not at the three keys she fires them with.
   const guns = [
-    ["broadside", "Broadside cannons, a side", stats.broadside.count, loadout.hull.guns.broadside],
+    ["broadside", "Broadsides", stats.broadside.count, loadout.hull.guns.broadside],
     ["bow", "Bow chasers", stats.bow.count, loadout.hull.guns.bow],
     ["swivel", "Swivel guns", stats.swivel.count, loadout.hull.guns.swivel],
   ];
@@ -4400,7 +4404,7 @@ function YardScreen({ hold, shipId, onView, onBack, onCommission, onOutfit }) {
             <div key={socket.id} style={{ borderTop: `1px solid rgba(160,224,210,0.14)`, padding: "4px 0 6px" }}>
               <DoorRow
                 onClick={() => onOutfit({ view: "rigging" })}
-                label={<span style={{ fontSize: 11, fontWeight: 700, color: C.mast }}>{socket.station.toUpperCase()}</span>}
+                label={<span style={{ fontSize: 11, fontWeight: 700, color: C.mast }}>{socket.station[0].toUpperCase() + socket.station.slice(1)}</span>}
                 value={
                   <span style={{ fontSize: 11, color: mast ? C.ink : "rgba(238,244,242,0.4)" }}>
                     {mast ? mast.name : socket.spar ? "no spar rigged" : "no mast stepped"}
@@ -4525,7 +4529,8 @@ const GLOSSARY = [
   ["Mast", "How much damage the masts can take. Bow chasers hit the masts. As it drops, ships slow and turn worse. At 0, masts are downed."],
   ["Crew", "How many hands the ship has. Musket volleys hit the crew. At 0 the crew surrenders."],
   ["Muskets in a volley", "How many musket balls fired at once. It comes from crew size, plus 1 for every swivel gun."],
-  ["Damage a ball", "How much damage per cannonball from side cannons, between 5 and 18 depending on the cannon size."],
+  // the range is read off the guns on sale rather than written here, so it cannot go stale
+  ["Damage a ball", `How much damage per cannonball from side cannons, between ${Math.round(Math.min(...gunsForMount("broadside").map((g) => g.damage)))} and ${Math.round(Math.max(...gunsForMount("broadside").map((g) => g.damage)))} depending on the cannon size.`],
   ["Her whole side is away in", "How long it takes every side cannon to fire once. More cannons can take longer to fire a volley."],
 ];
 
@@ -5001,7 +5006,7 @@ function HullRow({ shelf, first, owned, ready, coins, open, onToggle, onBuy }) {
           <TallyRow label="Crew" value={range("crew")} rule="hair" />
           <TallyRow label="Top speed" value={`${knots(band.speed.bare).toFixed(1)} to ${knots(band.speed.found).toFixed(1)} knots`} rule="hair" />
           <TallyRow label="Handling, of 100" value={range("turn", 1, handlingScore)} rule="hair" />
-          <TallyRow label="Broadside cannons, a side" value={range("broadside")} rule="hair" />
+          <TallyRow label="Broadsides" value={range("broadside")} rule="hair" />
           <TallyRow label="Bow chasers" value={range("bow")} rule="hair" />
           <TallyRow label="Swivel guns" value={range("swivel")} rule="hair" />
           <TallyRow label="Muskets in a volley" value={range("muskets")} rule="hair" />
@@ -5554,7 +5559,7 @@ function groupGuns(fitted) {
 // The three mounts, and what each is for. A captain buying her first gun should not have to work out
 // from the name which of them puts iron into a hull.
 const GUN_MOUNTS = [
-  { mount: "broadside", title: "Broadside", note: "Counted a side and mirrored: one gun bought is one gun each side. These hole a hull." },
+  { mount: "broadside", title: "Broadsides", note: "Counted a side and mirrored: one gun bought is one gun each side. These hole a hull." },
   { mount: "bow", title: "Bow chasers", note: "They point where the bow points, and aimed high they bring a rig down." },
   { mount: "swivel", title: "Swivels", note: "On the rail, one hand to a gun. Each one adds a ball to the musket volley." },
 ];
@@ -5758,7 +5763,10 @@ function Slab({ title, sub, children, centred }) {
           display: sub ? "flex" : "block", justifyContent: "space-between", alignItems: "baseline", gap: 8,
         }}
       >
-        <span>{title}</span>
+        {/* a section title is set in caps, the same treatment as a screen's title and the game's
+            proper nouns, so every heading in the game reads one way; it is a transform rather than
+            a caps string so a title built from a figure or a class name stays legible in the source */}
+        <span style={{ textTransform: "uppercase" }}>{title}</span>
         {/* what the rows below do when tapped, said once at the head rather than on every row */}
         {sub && <span style={{ letterSpacing: 0, color: "rgba(232,200,119,0.72)", textAlign: "right" }}>{sub}</span>}
       </div>
@@ -6003,7 +6011,7 @@ function EndOverlay({ title, titleColor, result, stats, mode, place, hold, banke
   // How she sailed.
   const statRows = [];
   if (rules.ranked && place) statRows.push(["Placement", `#${place.rank} of ${place.total}`]);
-  statRows.push(["Time survived", fmtTime(stats.time)]);
+  statRows.push(["Time afloat", fmtTime(stats.time)]);
   statRows.push(["Ships sunk", stats.kills]);
   if (rules.guns) statRows.push(["Masts brought down", stats.dismasted || 0]);
   statRows.push(["Damage dealt", stats.dmg]);
@@ -6052,7 +6060,7 @@ function EndOverlay({ title, titleColor, result, stats, mode, place, hold, banke
 
 function StartButton({ onClick, label, ghost }) {
   return (
-    <button onClick={onClick} style={{ fontFamily: UI, fontSize: 14, letterSpacing: 0.5, fontWeight: 700, color: ghost ? C.gold : C.deep, background: ghost ? "transparent" : C.gold, border: ghost ? `1px solid ${C.gold}` : "none", borderRadius: 10, padding: "12px 22px", cursor: "pointer", WebkitTapHighlightColor: "transparent" }}>
+    <button onClick={onClick} style={{ fontFamily: UI, fontSize: 14, fontWeight: 700, color: ghost ? C.gold : C.deep, background: ghost ? "transparent" : C.gold, border: ghost ? `1px solid ${C.gold}` : "none", borderRadius: 10, padding: "12px 22px", cursor: "pointer", WebkitTapHighlightColor: "transparent" }}>
       {label}
     </button>
   );
