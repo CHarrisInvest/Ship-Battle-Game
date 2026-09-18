@@ -8,7 +8,7 @@ import {
 } from "./hold.js";
 import {
   STARTER, kindOf, mastRebuildCost, measure, rate, rateOf, resolve, rigSpec,
-  ladder, peers, stockOfRate,
+  ladder, peers, stockOfRate, stockOfHull,
   HULLS, HULL_LIST, PARTS, statBand, maximumLoadout, outfitCost,
   mastsForSocket, sailsForBerth, studsForBerth, gunsForMount,
   knots, berthEffect, familyOf, gunTons, gunFits, gunEffect, cheapestCanvas, handlingScore, handlingPoints,
@@ -44,6 +44,10 @@ const ISLAND_COUNT = 4;
 const MIDDLE_CLEAR = 320; // no island closer than this to the middle, in any mode
 const RING_CLEAR = 130; // ...and none within this of a closing ring's working size
 const OPENING_WINDOW = 30; // seconds the ffa AI weights range over reputation when picking prey
+// How much a rival's strength against her own weighs when an AI captain picks prey, at full weight
+// for a ship a factor of e weaker or stronger. Set beside the other terms: a runaway leader is worth
+// 130, a hull under half health up to 60, and a thousand paces of range 20 to 120.
+const PREY_STRENGTH = 60;
 
 // ARENA: the swarm grows instead of the ships. Reinforcements sail in from the map edge.
 const ARENA_START = 1; // hunters afloat when the round opens
@@ -1288,6 +1292,11 @@ export default function App() {
       // a ship changes at sea except her damage.
       const loadout = opts.loadout || STOCK_LOADOUT;
       const rating = rate(loadout);
+      // What she measures, on the scale the mode fights on: overall under gunfire, ram without it.
+      // A captain picking prey reads it against her own, so a plain sloop no longer charges a fully
+      // found one three times her strength as if the two were the same hull.
+      const measured = measure(rating);
+      const strength = gameRef.current && !gameRef.current.rules.guns ? measured.ram : measured.overall;
       // Her hull's own size, from the class's form: what she draws as, and also what she collides
       // as, because a first rate really is a bigger target than a yawl. Her timber comes with it,
       // so a pine boat sits pale on the water beside an oak brig.
@@ -1296,7 +1305,7 @@ export default function App() {
       const s = {
         x, y, heading, spdCur: 0, alive: true,
         isPlayer: !!opts.isPlayer,
-        loadout, rating, sea, seaRig: buildSeaRig(loadout, sea),
+        loadout, rating, strength, sea, seaRig: buildSeaRig(loadout, sea),
         hullA: sea.L / 2, hullB: sea.W / 2,
         cols: {
           dark: tintTimber(C.hullDark, form.timber),
@@ -1444,7 +1453,9 @@ export default function App() {
      *                bar, so the mode escalates by putting harder ships on the water rather than
      *                more of the same one.
      *   free-for-all fields her own rate: ships of her own class of ship, at every standard of
-     *                fitting out, which is equal without being identical.
+     *                fitting out, which is equal without being identical. In the first ship it
+     *                fields her own class instead: the lowest rate holds four classes, and a
+     *                gundalow with one gun a side against cutters with five is not an even fight.
      *   derby        matches on `ram` rather than on rate, because a rate is a count of guns and
      *                nobody in that mode has one aboard.
      *
@@ -1460,7 +1471,7 @@ export default function App() {
         return nearestRung(rungs, key, want).loadout;
       }
       if (rules.guns) {
-        const band = stockOfRate(rateOf(hull).rung);
+        const band = hull.id === STARTER.hull ? stockOfHull(hull.id) : stockOfRate(rateOf(hull).rung);
         if (band.length) return band[Math.floor(Math.random() * band.length)].loadout;
       } else {
         const band = peers(strength.ram, 0.15, "ram");
@@ -1864,11 +1875,14 @@ export default function App() {
         let score = -dist * distW;
         const isLead = leaderSnow && c === g.leader;
         if (isLead) score += 130 * shop;
-        // A term weighing her guns against theirs used to sit here, and it measured levels bought.
-        // With nothing bought at sea every hull in the water is the same hull, so it weighed nothing
-        // and reads as a comparison the game no longer makes. What is left is range, reputation and
-        // blood in the water, all of which are still true. It comes back off the ship she sailed in
-        // when the shipyard reaches the fight, and that is a better comparison than levels were.
+        // Weaker prey is better prey. The two ships' measures are read against each other on a log
+        // scale, so a hull half her strength is worth as much as one twice her strength costs, and
+        // the term is held to a factor of e either way so a first rate in a field of boats is not
+        // the only thing anyone ever hunts. A term like it sat here once, comparing levels bought at
+        // sea, and went when every hull became the same hull; the fleet varies again, off the
+        // shipyard, so it is back off the loadouts. It weighs prey only: nobody runs from a stronger
+        // ship on account of it, since a captain who fled every heavier hull would never fight.
+        if (s.strength > 0 && c.strength > 0) score += PREY_STRENGTH * shop * clamp(Math.log(s.strength / c.strength), -1, 1);
         const hpR = Math.min(c.hull / c.maxHull, c.crew / c.maxCrew);
         if (hpR < 0.5) score += (0.5 - hpR) * 120 * shop;
         if (score > bestScore) { bestScore = score; best = c; }

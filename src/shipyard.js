@@ -2153,6 +2153,14 @@ export function ladder() {
 export const stockOfRate = (rung) => ladder().filter((s) => s.rate.rung === rung);
 
 /**
+ * Every stock ship of one class, at every standard. What free-for-all fields against the first ship:
+ * her rate holds four classes, and a captain who has bought nothing yet was meeting sloops and
+ * cutters with three and five guns a side to her one, which is a fight she could only lose. Gundalows
+ * at every standard is equal without being identical, in the one case where the rate is not.
+ */
+export const stockOfHull = (hullId) => ladder().filter((s) => s.loadout.hull.id === hullId);
+
+/**
  * Stock ships within `tolerance` of a given strength, by whichever measure the mode fights on.
  *
  * `key` is `overall` for a mode with guns and `ram` for one without, which is the difference between

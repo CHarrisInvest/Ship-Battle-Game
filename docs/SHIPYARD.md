@@ -763,7 +763,10 @@ is a count of ports, and ports do not move when a formula does.
 - **Demolition derby** fields ships of similar stats, matched on `ram` rather than on rate, because a
   rate is a count of guns and nobody in that mode has one aboard. `peers(strength, tol, "ram")`.
 - **Free-for-all** fields stock ships of her own rate: `stockOfRate(rung)`. Ships of her own sort of
-  ship at every standard of fitting out, which is equal without being identical.
+  ship at every standard of fitting out, which is equal without being identical. In the first ship it
+  fields her own class instead, `stockOfHull`: the lowest rate holds four classes, and a gundalow with
+  one gun a side was meeting cutters with five, which is a fight she could only lose. Gundalows at
+  every standard is the same idea in the one place the rate is not.
 - **A ranked free-for-all**, later: win a rung to move up against the next. The ladder and the bands
   are the same ones, so this needs no new model, only a record of the highest rung a captain has won.
 

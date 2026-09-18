@@ -44,8 +44,11 @@ serves from the domain root instead — Netlify, Vercel, a plain static host —
   from the count. Score by ships sunk.
 - **Demolition derby** — ten captains and not a gun between them. Hulls are broken open by ramming
   alone, there is nothing to buy, and a squall closes on the middle of the sea. Last afloat wins.
-- **Free-for-all** — last afloat wins, out of up to 10 rival captains starting equal, and equal is
-  where they stay. The AI hunts whoever is weakest and gangs up on a runaway leader. For the first
+- **Free-for-all** — last afloat wins, out of up to 10 rival captains in ships of your own rate at
+  every standard of fitting out, or, in the starter gundalow, gundalows at every standard, since her
+  rate holds cutters with five times her guns. The AI hunts whoever is weakest, weighing a rival's
+  measured strength against its own (`PREY_STRENGTH`) as well as her wounds, and gangs up on a
+  runaway leader. For the first
   `OPENING_WINDOW` seconds it simply takes the nearest hull, since nobody has a reputation yet. It
   also fires on ships it is not hunting when one drifts into a weapon's arc, with a per-captain pause
   afterwards so the sea isn't wall-to-wall powder smoke. A squall closes here too, later and wider
