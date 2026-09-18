@@ -1098,7 +1098,8 @@ with it is as cheap as changing it.
 6. **Should the derby have repairs?** It has none today, because "only one hand needed" is that mode's
    whole promise and a rail is a second thing to think about. But trading coins for crew after a spell
    in the storm is a genuinely good decision, and it is one a free-for-all captain can already make:
-   both modes pay by the second now, and the free-for-all has both the carpenter and the weather.
+   she has both the carpenter and the weather, and her guns pay her by the point. Only the derby pays
+   by the second now, since it has nothing else to pay with.
 7. ~~**The crew divisor.**~~ **Settled, and it is not a divisor.** Crew runs from a dozen hands to nine
    hundred and fifty, a range of eighty, and one musket a head or anything near it ends with a
    three-decker throwing a volley nobody can count. So the count goes as the SQUARE ROOT of the crew:

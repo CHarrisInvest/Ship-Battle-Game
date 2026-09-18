@@ -50,9 +50,9 @@ serves from the domain root instead — Netlify, Vercel, a plain static host —
   also fires on ships it is not hunting when one drifts into a weapon's arc, with a per-captain pause
   afterwards so the sea isn't wall-to-wall powder smoke. A squall closes here too, later and wider
   than the derby's, because a wounded captain runs at a third of her health and a runner has two
-  thousand paces of sea to do it in. Time afloat is paid by the second, and outlasting the field pays
-  a `winBonus` of 25 on top of it and on top of what her guns took, which is smaller than the derby's
-  because a free-for-all captain has been paid all round for the fighting that got her there.
+  thousand paces of sea to do it in. Time afloat is not paid here: her guns pay her by the point, and
+  outlasting the field pays a `winBonus` of 25 on top of what they took, which is smaller than the
+  derby's because a free-for-all captain has been paid all round for the fighting that got her there.
 
 AI ships reload on exactly the same cooldowns as the player in every mode that has guns; their only
 handicap is a touch of spread on every shot.
@@ -98,10 +98,12 @@ the end of one — three wounded captains keeping their distance, or a hull runn
 health across two thousand paces of sea.
 
 The weather works on the crew, exposed on deck, rather than on the hull, and it is not an attack: no
-captain is paid for it and it does not run through the damage path a ram does. Its bite starts at
-`STORM_DPS_MIN` and climbs to `STORM_DPS_MAX` over `STORM_RAMP` seconds out in it, so a dash across
-the weather costs a few hands and living out there costs about eight seconds and the ship. Come back
-inside and the exposure sheds at `STORM_RECOVER` a second.
+captain is paid for it and it does not run through the damage path a ram does. It takes `STORM_BITE`
+of her full crew a second, a tenth, whatever her class and however many hands she has left, so ten
+seconds out in it is the ship for a gundalow and a first rate alike, and a dash across the weather
+costs every hull the same share of her people. Exposure still builds over `STORM_RAMP` seconds and
+sheds at `STORM_RECOVER` once she is back inside, but it drives an AI captain's urgency to get home
+and the tint on the player's screen, not the bite.
 
 The middle *pulls* an AI captain rather than fencing her away from the rail. Inside `STORM_HOME` of
 the ring she fights wherever she likes; past that the course home bends her steering, hardest at the
@@ -145,22 +147,23 @@ catch, since a slow hull turns far inside a fast one.
 
 #### What time at sea pays
 
-Both modes with weather pay for it by the second (`timeCoins`), on top of what a captain's guns and
-bow earn her. Win, and she is paid for a whole round — `fullRound` — however early she settled it,
-plus `winBonus` for being the last hull afloat. The derby pays 175 and 75, so a win comes to 250
-before a single ram is counted; the free-for-all pays 205 and 25, which is a smaller bounty on top of
-a larger one, since her guns have been earning all round.
+The derby pays for time afloat by the second (`timeCoins`), because there are no guns in it to pay
+anybody with. Win, and she is paid for a whole round — `fullRound` — however early she settled it,
+plus `winBonus` for being the last hull afloat: 175 and 75, so a win comes to 250 before a single
+ram is counted. The free-for-all pays nothing for time. It did, at the derby's rate, and a captain
+who sat in the middle of the ring and fired nothing was the last afloat at three minutes with 230
+coins for it, against a tenth of that for a round of fighting; her guns pay her by the point, and a
+win pays 25 on top.
 
-`fullRound` is a set purse a shade above the full span of that mode's weather — 168 seconds in the
-derby, 200 in the free-for-all — rather than a figure that tracks the clock, so retuning a ring wants
-this looked at with it.
+`fullRound` is a set purse a shade above the full span of the derby's weather — 168 seconds — rather
+than a figure that tracks the clock, so retuning that ring wants this looked at with it.
 
 Settling it in forty seconds therefore pays the same purse as outlasting the weather for the full
 span, which is to say it pays far better an hour: the time she saves is hers to spend on the next
 round. The end screen lists the parts — what she fought for, what her time afloat was worth, and the
 winner's bounty — so the tally adds up to what actually reaches the hold. The time row says "For a
 full round at sea" when she is being paid for one, because a captain reading "For time at sea" beside
-a clock showing 1:12 and a purse of 205 is owed the explanation.
+a clock showing 1:12 and a purse of 175 is owed the explanation.
 
 ## The hold
 

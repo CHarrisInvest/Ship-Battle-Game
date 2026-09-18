@@ -86,13 +86,20 @@ const DERBY_AI = 9; // rivals, so ten captains start
  */
 const STORM_R0 = 1400; // opening radius — just past the far corners of the map, so closing bites at once
 const STORM_R2 = 0; // ...and the eye shuts to nothing
-// The four times add up to how long a round runs when nobody settles it sooner, which is the figure
-// each mode's `fullRound` purse sits a shade above: 168 seconds in the derby, 200 in the free-for-all.
+// The four times add up to how long a round runs when nobody settles it sooner: 168 seconds in the
+// derby, 200 in the free-for-all. The derby's `fullRound` purse sits a shade above its figure.
 const DERBY_WEATHER = { grace: 18, close: 95, ring: 190, hold: 20, squeeze: 35 };
 const FFA_WEATHER = { grace: 40, close: 100, ring: 300, hold: 25, squeeze: 35 };
-const STORM_DPS_MIN = 3.5; // crew lost a second the moment she is caught out
-const STORM_DPS_MAX = 17; // ...and once she has been out there STORM_RAMP seconds
-const STORM_RAMP = 12; // how long the weather takes to work up to its worst
+// The weather takes this share of her FULL crew a second, every second she is out in it, whatever
+// class she is and however many hands she has left: ten seconds of exposure is the ship, for a
+// gundalow and a first rate alike. It was an absolute figure of hands a second that ramped up over
+// STORM_RAMP, which cost a boat of thirty her whole crew in five seconds and a three-decker of eight
+// hundred nothing she would miss for most of a minute, so the same weather was a death sentence in
+// one hull and an inconvenience in another.
+const STORM_BITE = 0.1;
+// Exposure still builds and sheds, because it is what turns an AI captain's course home urgent and
+// what deepens the tint on the player's screen; it no longer sets how hard the weather bites.
+const STORM_RAMP = 12; // seconds out in it before her exposure is at its worst
 const STORM_RECOVER = 2.2; // exposure shed a second once she is back inside
 // An AI captain is drawn toward the middle rather than fenced away from the edge. Inside STORM_HOME
 // of the ring she fights as she pleases; past it the middle bends her course, hardest at the rail.
@@ -1000,7 +1007,7 @@ const MODES = {
     title: "FREE-FOR-ALL",
     short: "free-for-all",
     color: C.mast,
-    desc: "Last afloat wins. 10 other captains with each ship rivaling your own, hunting for weak prey and turning on whoever pulls ahead. Spend what you take on repairs, or keep it. Time afloat is paid and a storm closes in that takes the crew of any ship caught.",
+    desc: "Last afloat wins. 10 other captains with each ship rivaling your own, hunting for weak prey and turning on whoever pulls ahead. Spend what you take on repairs, or keep it. A storm closes in that takes the crew of any ship caught.",
     unsailed: "You have not taken on the ten.",
     rivals: FFA_AI,
     guns: true,
@@ -1016,13 +1023,13 @@ const MODES = {
     // slower than the derby's, so the gunnery half of the round happens in open water and only the
     // end of it is fought where the weather says.
     storm: FFA_WEATHER,
-    // Staying afloat is paid by the second here as it is in the derby, and a winner is paid for a
-    // whole round however early she ended it. It is the other half of the ring: time at sea is worth
-    // something now, so a captain who would rather sit out the round has a reason to, and the
-    // weather is what makes sure she cannot. A round left alone runs the whole of FFA_WEATHER, 200
-    // seconds as it is tuned, and the winner's purse is a shade above that.
-    timeCoins: 1,
-    fullRound: 205,
+    // Time afloat is NOT paid here. It was, a coin a second as in the derby, and a captain who sat
+    // in the middle of the ring and fired nothing was the last afloat at three minutes with 230
+    // coins for it, against a tenth of that for a round of fighting: the best wage in the game was
+    // for staying out of the game. Her guns pay her, by the point, and the weather is what makes
+    // sure a round ends; the derby keeps its purse because it has no guns to pay anybody with.
+    timeCoins: 0,
+    fullRound: 0,
     // ...and a purse for outlasting ten rivals. Smaller than the derby's, because a free-for-all
     // captain has been paid all round for the fighting that got her there and a derby captain has
     // not: there are no guns in that mode, so the win is most of what it pays.
@@ -1307,7 +1314,8 @@ export default function App() {
         byPlayer: { hull: 0, mast: 0, crew: 0, ram: 0 },
         maxHull: rating.hull, maxMast: rating.mast, maxCrew: rating.crew,
         hull: rating.hull, mast: rating.mast, crew: rating.crew,
-        cd: { broadside: Math.random() * 0.5, bow: Math.random() * 0.5, musket: Math.random() * 0.5 },
+        // her guns are loaded at the drop; a rival's are not, or ten of them would fire as one
+        cd: opts.isPlayer ? { broadside: 0, bow: 0, musket: 0 } : { broadside: Math.random() * 0.5, bow: Math.random() * 0.5, musket: Math.random() * 0.5 },
         mastDown: false, flash: 0, ramCd: 0, locked: new Map(), wakeT: 0, sprayT: 0,
         roll: 0, rollPhase: Math.random() * Math.PI * 2, turnVel: 0, kx: 0, ky: 0,
         px: x, py: y, vx: 0, vy: 0, way: 0, baulkT: 0, foul: false, // where she was, and the ground she truly made
@@ -2256,7 +2264,8 @@ export default function App() {
         const out = Math.hypot(s.x - cx, s.y - cy) > g.stormR;
         if (!out) { s.exposure = Math.max(0, s.exposure - dt * STORM_RECOVER); continue; }
         s.exposure = Math.min(STORM_RAMP, s.exposure + dt);
-        const bite = STORM_DPS_MIN + (STORM_DPS_MAX - STORM_DPS_MIN) * (s.exposure / STORM_RAMP);
+        // a share of her full complement, not of what is left, so the last hands go as fast as the first
+        const bite = STORM_BITE * s.maxCrew;
         s.crew = Math.max(0, s.crew - bite * dt);
         if (s.isPlayer) {
           // a steady tint that deepens with the exposure, rather than the jolt a hit gives
@@ -5999,7 +6008,7 @@ function EndOverlay({ title, titleColor, result, stats, mode, place, hold, banke
   // went. It is drawn in the same red as a sunk ship, and it is only shown when there is one.
   const payRows = [["From fighting", `+${fmtCoins(stats.coins)}`, null]];
   // A winner is paid for a whole round however early she ended it, and the row has to say so: a
-  // captain who read "For time at sea" beside a clock showing 1:12 and a purse of 205 would be
+  // captain who read "For time at sea" beside a clock showing 1:12 and a purse of 175 would be
   // owed an explanation the screen was not giving her.
   if (rules.timeCoins > 0) {
     payRows.push([stats.paidInFull ? "For a full round at sea" : "For time at sea", `+${fmtCoins(stats.timePay)}`, null]);
