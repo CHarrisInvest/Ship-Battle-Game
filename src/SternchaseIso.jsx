@@ -3377,7 +3377,7 @@ export default function App() {
       const g = gameRef.current;
       // Placed against the HUD's own figures, inside the safe area the DOM controls sit in, so
       // sideways it lands to the left of the fire buttons rather than under them.
-      const size = HUD.radar, rx = Wd - safe.r - radarRight(Wd > Hd, g.rules.guns) - size, ry = safe.t + HUD.pad;
+      const size = HUD.radar, rx = Wd - safe.r - radarRight(Wd - safe.l - safe.r, Hd - safe.t - safe.b, g.rules.guns) - size, ry = safe.t + HUD.pad;
       ctx.save();
       ctx.fillStyle = "rgba(11,51,49,0.92)";
       ctx.strokeStyle = C.hair;
@@ -3520,7 +3520,8 @@ export default function App() {
   };
   const holdBtn = (key, val) => (e) => { e.preventDefault(); inputRef.current[key] = val; };
   const rules = modeOf(mode);
-  const wide = useLandscape();
+  const box = useBox(hudRef);
+  const wide = box.w > box.h;
 
   // The counters: her purse, the field, and the weather. One set of pills, placed by the layout.
   const pills = (
@@ -3601,7 +3602,7 @@ export default function App() {
             // Sideways: the rank and the bars in the top left, and beside them, in the room
             // between the bars and the radar, a column of two rows: the counters, wrapping if the
             // screen is narrow, and the repair rail under them filling the same width.
-            <div style={{ position: "absolute", top: 8, left: HUD.pad, right: radarRight(true, rules.guns) + HUD.radar + HUD.pad, display: "flex", gap: 6, alignItems: "flex-start" }}>
+            <div style={{ position: "absolute", top: 8, left: HUD.pad, right: radarRight(box.w, box.h, rules.guns) + HUD.radar + HUD.pad, display: "flex", gap: 6, alignItems: "flex-start" }}>
               <div style={{ flex: "0 0 auto", display: "flex", gap: 6, alignItems: "stretch", pointerEvents: "auto" }}>
                 {rules.ranked && <RankBadge rank={rank.rank} total={rank.total} />}
                 <div style={{ width: 180 }}>
@@ -3860,33 +3861,50 @@ function HealthPanel({ ph, phMax }) {
  * have to agree on the figures without seeing each other. They are named once here: the canvas
  * places the radar off them and the HUD keeps its top row clear of where the radar will be.
  *
- * The screen has two layouts, chosen on its orientation. Upright, the counters sit over the bars in
- * the top left, the repair rail runs the width of the screen under them, and the radar takes the
- * top right corner. Sideways there is no width to spare and no height to lose: a rail the width of
- * the screen ran straight across the middle of the sea, and a radar in the corner sat on top of the
- * fire buttons. So the top row becomes one line, rank, bars and counters, with the radar to the
- * right of them and just inboard of the fire buttons, and the repair rail sits under the counters
- * at the width it had upright rather than at the width of the screen.
+ * The screen has two layouts, chosen on its shape. Upright, the counters sit over the bars in the
+ * top left, the repair rail runs the width of the screen under them, and the radar takes the top
+ * right corner. Sideways there is no width to spare and no height to lose: a rail the width of the
+ * screen ran straight across the middle of the sea. So the rank and bars stay in the top left, and
+ * beside them the counters and the repair rail stack in the room before the radar.
  *
- * `(orientation: landscape)` is true when the viewport is wider than it is tall, and `Wd > Hd` on
- * the canvas is the same test, so the two never disagree about which layout is up.
+ * The radar keeps its corner unless the fire buttons would reach up into it. Three buttons stacked
+ * from the bottom edge stand 188 tall, so on a phone in Safari, where the address bar and tabs
+ * leave under 300 of height, their top is inside the radar's square and the radar steps inboard of
+ * them; from the home screen, with the whole height, the two clear each other and it stays put.
+ * That is a test of height rather than of orientation, worked out in `radarRight`.
+ *
+ * Both sides measure the same box: the DOM its safe-area wrapper, the canvas its own size less the
+ * insets read off that wrapper, so the two never disagree about where the radar is.
  */
-const HUD = { pad: 10, radar: 96, fireW: 66, fireRight: 20, fireBottom: 26, fireGap: 10 };
-// How far in from the right edge the radar's right side sits. Upright, or with no fire buttons to
-// clear, it is the ordinary margin; sideways with guns it clears the fire column and a gap.
-const radarRight = (wide, guns) => (wide && guns ? HUD.fireRight + HUD.fireW + HUD.fireGap : HUD.pad);
+const HUD = { pad: 10, radar: 96, fireW: 66, fireH: 56, fireRight: 20, fireBottom: 26, fireGap: 10 };
+// How far in from the right edge the radar's right side sits, for a safe-area box w by h. The
+// ordinary margin, unless there are fire buttons and their column's top would land inside the
+// radar's square plus one gap; then it clears the column.
+const radarRight = (w, h, guns) => {
+  if (!guns) return HUD.pad;
+  const fireTop = h - HUD.fireBottom - (3 * HUD.fireH + 2 * HUD.fireGap);
+  return fireTop < HUD.pad + HUD.radar + HUD.fireGap ? HUD.fireRight + HUD.fireW + HUD.fireGap : HUD.pad;
+};
 
-function useLandscape() {
-  const query = "(orientation: landscape)";
-  const [wide, setWide] = useState(() => !!window.matchMedia?.(query).matches);
+// The size of an element, kept current as it is resized: the HUD's safe-area box, which is what
+// the layout is chosen on. Wider than tall is sideways, the same test `(orientation: landscape)`
+// makes of the viewport, taken off the box the controls actually sit in.
+function useBox(ref) {
+  const [box, setBox] = useState({ w: window.innerWidth, h: window.innerHeight });
   useEffect(() => {
-    const mq = window.matchMedia?.(query);
-    if (!mq) return;
-    const on = () => setWide(mq.matches);
-    mq.addEventListener("change", on);
-    return () => mq.removeEventListener("change", on);
-  }, []);
-  return wide;
+    const el = ref.current;
+    if (!el) return;
+    const read = () => setBox((b) => (b.w === el.clientWidth && b.h === el.clientHeight ? b : { w: el.clientWidth, h: el.clientHeight }));
+    read();
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", read);
+      return () => window.removeEventListener("resize", read);
+    }
+    const ro = new ResizeObserver(read);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [ref]);
+  return box;
 }
 
 function FireButton({ refEl, name, sub, color, onDown, onUp }) {
@@ -3897,7 +3915,7 @@ function FireButton({ refEl, name, sub, color, onDown, onUp }) {
       onPointerUp={onUp}
       onPointerLeave={onUp}
       onPointerCancel={onUp}
-      style={{ position: "relative", width: HUD.fireW, height: 56, borderRadius: 10, border: `1px solid ${color}`, background: "rgba(13,58,56,0.88)", color: C.ink, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 1, overflow: "hidden", touchAction: "none", WebkitTapHighlightColor: "transparent", cursor: "pointer" }}
+      style={{ position: "relative", width: HUD.fireW, height: HUD.fireH, borderRadius: 10, border: `1px solid ${color}`, background: "rgba(13,58,56,0.88)", color: C.ink, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 1, overflow: "hidden", touchAction: "none", WebkitTapHighlightColor: "transparent", cursor: "pointer" }}
     >
       <span style={{ fontSize: 12, fontWeight: 700 }}>{name}</span>
       {/* the system it hits, set as the health panel sets the same word, so HULL on the button and
