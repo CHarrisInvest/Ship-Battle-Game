@@ -240,7 +240,7 @@ const FLEET = [
     guns: [19, 2, 3], masts: ["bowsprit/large/headsails", "fore/heavy/square", "main/heavy/square", "mizzen/large/spanker"],
   },
   {
-    id: "heavyFrigate", name: "Heavy frigate", price: 48000,
+    id: "heavyFrigate", name: "Frigate heavy", price: 48000,
     blurb: "Live oak frames set close enough that round shot comes off her sides.",
     hull: 1721, crew: 420, speed: 1.03, hand: 0.74, canvas: 3.8, tons: 135,
     guns: [25, 2, 3], masts: ["bowsprit/large/headsails", "fore/heavy/square", "main/heavy/square", "mizzen/large/spanker"],
