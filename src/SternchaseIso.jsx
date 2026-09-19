@@ -1132,13 +1132,12 @@ const musketDmg = (s) => s.rating.musketDamage;
 // would quietly make every rival captain a better shot.
 const musketArc = (s) => s.rating.musketSpread;
 // An AI captain's own aim, in radians of error either side, added to whatever scatter her guns
-// carry of their own. Her cannon are laid as well as the player's: they used to carry 0.14 the
-// player's never did, so the same battery threw a straight bank of iron for the player and a
-// ragged fan for a rival, and the one thing that made a rival's broadside worse was a rule nobody
-// could see. Her small arms keep it, since a musket volley is a spread by nature and the rail's
-// own arc is already hers. Put a figure back in the first if rivals ever need handicapping.
+// carry of their own. Both are nought: a rival lays her guns as well as the player does. Every
+// mount used to carry 0.14 the player's never did, so the same battery threw a straight bank of
+// iron for the player and a ragged fan for a rival, and the one thing that made a rival's fire
+// worse was a rule nobody could see. Put a figure in either if rivals ever need handicapping.
 const AI_CANNON_AIM = 0;
-const AI_MUSKET_AIM = 0.14;
+const AI_MUSKET_AIM = 0;
 /**
  * A ram is worth a quarter of the hull BEHIND it, so what she does with her bow scales with the ship
  * she is driving. A flat 26 was right when every hull afloat had a hundred points; against a first
@@ -1340,8 +1339,10 @@ export default function App() {
         byPlayer: { hull: 0, mast: 0, crew: 0, ram: 0 },
         maxHull: rating.hull, maxMast: rating.mast, maxCrew: rating.crew,
         hull: rating.hull, mast: rating.mast, crew: rating.crew,
-        // her guns are loaded at the drop; a rival's are not, or ten of them would fire as one
-        cd: opts.isPlayer ? { broadside: 0, bow: 0, musket: 0 } : { broadside: Math.random() * 0.5, bow: Math.random() * 0.5, musket: Math.random() * 0.5 },
+        // every gun aboard is loaded at the drop, the player's and a rival's alike. A rival's used
+        // to start on a random reload of up to half a second so ten of them would not fire as one;
+        // the trigger discipline in `serveGuns` and their own spread of positions do that now.
+        cd: { broadside: 0, bow: 0, musket: 0 },
         mastDown: false, flash: 0, ramCd: 0, locked: new Map(), wakeT: 0, sprayT: 0,
         roll: 0, rollPhase: Math.random() * Math.PI * 2, turnVel: 0, kx: 0, ky: 0,
         px: x, py: y, vx: 0, vy: 0, way: 0, baulkT: 0, foul: false, // where she was, and the ground she truly made
