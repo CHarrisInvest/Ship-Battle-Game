@@ -275,12 +275,14 @@ Buttons take size over tracking. Wide letterspacing makes every control read as 
   would make the player learn two marks for one idea.
 - **The HUD has two layouts, and the canvas and the DOM place the radar off the same figures.**
   Upright, the counters sit over the bars, the repair rail runs the width of the screen under them,
-  and the radar takes the top right corner. Sideways, `(orientation: landscape)` in `useLandscape`
-  and `Wd > Hd` on the canvas, which is the same test, the rank, bars and counters make one line, the
-  radar sits just inboard of the fire buttons, and the rail keeps its upright width under the
-  counters, because a rail the width of a sideways screen ran across the middle of the sea. `HUD` and
-  `radarRight` in `SternchaseIso.jsx` are the one statement of where the fixed pieces sit; do not
-  put a second copy of the fire button's width in the radar's code.
+  and the radar takes the top right corner. Sideways, which is the safe-area box being wider than
+  tall (`useBox` in the DOM, the canvas less its insets on the other side), the rank and bars stay in
+  the top left and the counters and the rail stack beside them, because a rail the width of a
+  sideways screen ran across the middle of the sea. **The radar keeps its corner unless the fire
+  buttons would reach up into it**, which is a test of height rather than of orientation: in Safari
+  sideways they do and it steps inboard of them, from the home screen they do not and it stays.
+  `HUD` and `radarRight` in `SternchaseIso.jsx` are the one statement of where the fixed pieces sit
+  and of that test; do not put a second copy of a fire button's size in the radar's code.
 - **Every control sits inside the safe area.** The viewport is `viewport-fit=cover`, so the sea runs
   under a phone's notch and home bar, and the HUD's wrapper and the menu shell are inset by
   `env(safe-area-inset-*)`. The canvas reads the wrapper's insets on resize to place the radar by the
@@ -297,8 +299,13 @@ Buttons take size over tracking. Wide letterspacing makes every control read as 
   spares the shell an accidental pinch, but iOS Safari ignores it on purpose, so it is not the fix
   and never was on an iPhone. The canvas,
   the joystick and the fire buttons override it with `none` inline, which is the play surface and
-  belongs there. Nothing that is an ancestor of a shop or menu screen may carry `none`: a `none` up
-  the chain can stop the screen under a finger from scrolling.
+  belongs there, and so does the HUD's safe-area wrapper, which holds the fight's controls and
+  nothing else, so every pill and rail button inherits `none`. Nothing that is an ancestor of a shop
+  or menu screen may carry `none`: a `none` up the chain can stop the screen under a finger from
+  scrolling. While a round is running there is a second line besides, in `App`: a `touchend` inside
+  a double-tap's window is cancelled and a `gesturestart` refused, because iOS Safari has zoomed on
+  a double tap with `touch-action` set, and sideways the counters sit where the thumbs drum.
+  Nothing in the fight is driven by a click, so nothing is lost; the listener is off outside play.
 - **Check a new colour against every ground it lands on.** HUD colours sit on the enemy bar's
   50%-black backing, on the player panel, on button grounds, and against open water. The mast bar
   was a teal that scored 1.41 against the sea and vanished into it; the obvious fix, a navy, scored
