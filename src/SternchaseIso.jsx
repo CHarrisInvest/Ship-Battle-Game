@@ -1229,6 +1229,29 @@ export default function App() {
 
   useEffect(() => subscribeHold(setHold), []);
 
+  // The second line against the zoom, for the fight only. `touch-action` is the rule every element
+  // carries, but iOS Safari has had versions that zoomed on a double tap regardless, and sideways
+  // the counters sit exactly where a thumb drums. While a round is running, a second tap inside a
+  // double-tap's window is cancelled at the touch, which is what stops the zoom, and a pinch is
+  // refused outright. Nothing in the fight is driven by a click or wants zooming, so nothing is
+  // lost; the menus and the yard are left alone, because a reader may pinch the small print there.
+  useEffect(() => {
+    if (phase !== "playing") return;
+    let lastTap = 0;
+    const onTouchEnd = (e) => {
+      const now = e.timeStamp;
+      if (now - lastTap < 350) e.preventDefault();
+      lastTap = now;
+    };
+    const onGesture = (e) => e.preventDefault();
+    document.addEventListener("touchend", onTouchEnd, { passive: false });
+    document.addEventListener("gesturestart", onGesture, { passive: false });
+    return () => {
+      document.removeEventListener("touchend", onTouchEnd);
+      document.removeEventListener("gesturestart", onGesture);
+    };
+  }, [phase]);
+
   const syncHUD = useCallback(() => {
     const g = gameRef.current;
     if (!g) return;
@@ -3566,22 +3589,29 @@ export default function App() {
           screen. It is always mounted, empty between rounds, because the canvas reads its insets
           on resize to place the radar by the same edges. The box lets touches through to the sea,
           and each group of controls turns them back on for itself. */}
-      <div ref={hudRef} style={{ position: "absolute", top: "env(safe-area-inset-top, 0px)", right: "env(safe-area-inset-right, 0px)", bottom: "env(safe-area-inset-bottom, 0px)", left: "env(safe-area-inset-left, 0px)", pointerEvents: "none" }}>
+      {/* `touch-action: none` here rather than `manipulation`, and it is allowed here: this box holds
+          the fight's controls and nothing else, so no menu is under it to lose its scroll. Every
+          pill, bar and rail button inherits the intersection, which is `none`, and so a thumb
+          landing twice on the counters, which sideways sit where the thumbs are, is two taps and
+          never a zoom. The canvas, the joystick and the fire buttons already said so for themselves. */}
+      <div ref={hudRef} style={{ position: "absolute", top: "env(safe-area-inset-top, 0px)", right: "env(safe-area-inset-right, 0px)", bottom: "env(safe-area-inset-bottom, 0px)", left: "env(safe-area-inset-left, 0px)", pointerEvents: "none", touchAction: "none" }}>
       {phase === "playing" && (
         <>
           {wide ? (
-            // Sideways: one column in the top left, kept clear of the radar. Its first row is the
-            // rank, the bars and the counters on one line, the counters wrapping if the screen is
-            // narrow; the repair rail sits under them at the width it has upright.
-            <div style={{ position: "absolute", top: 8, left: HUD.pad, right: radarRight(true, rules.guns) + HUD.radar + HUD.pad, display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-start" }}>
-              <div style={{ alignSelf: "stretch", display: "flex", gap: 6, alignItems: "stretch", pointerEvents: "auto" }}>
+            // Sideways: the rank and the bars in the top left, and beside them, in the room
+            // between the bars and the radar, a column of two rows: the counters, wrapping if the
+            // screen is narrow, and the repair rail under them filling the same width.
+            <div style={{ position: "absolute", top: 8, left: HUD.pad, right: radarRight(true, rules.guns) + HUD.radar + HUD.pad, display: "flex", gap: 6, alignItems: "flex-start" }}>
+              <div style={{ flex: "0 0 auto", display: "flex", gap: 6, alignItems: "stretch", pointerEvents: "auto" }}>
                 {rules.ranked && <RankBadge rank={rank.rank} total={rank.total} />}
-                <div style={{ width: 180, flex: "0 0 auto" }}>
+                <div style={{ width: 180 }}>
                   <HealthPanel ph={ph} phMax={phMax} />
                 </div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignContent: "flex-start", minWidth: 0 }}>{pills}</div>
               </div>
-              {rules.repairs && <div style={{ width: "min(360px, 100%)", display: "flex", gap: 6, pointerEvents: "auto" }}>{rail}</div>}
+              <div style={{ flex: "1 1 0", minWidth: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, pointerEvents: "auto" }}>{pills}</div>
+                {rules.repairs && <div style={{ display: "flex", gap: 6, pointerEvents: "auto" }}>{rail}</div>}
+              </div>
             </div>
           ) : (
             <>

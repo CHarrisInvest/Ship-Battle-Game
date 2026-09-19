@@ -297,8 +297,13 @@ Buttons take size over tracking. Wide letterspacing makes every control read as 
   spares the shell an accidental pinch, but iOS Safari ignores it on purpose, so it is not the fix
   and never was on an iPhone. The canvas,
   the joystick and the fire buttons override it with `none` inline, which is the play surface and
-  belongs there. Nothing that is an ancestor of a shop or menu screen may carry `none`: a `none` up
-  the chain can stop the screen under a finger from scrolling.
+  belongs there, and so does the HUD's safe-area wrapper, which holds the fight's controls and
+  nothing else, so every pill and rail button inherits `none`. Nothing that is an ancestor of a shop
+  or menu screen may carry `none`: a `none` up the chain can stop the screen under a finger from
+  scrolling. While a round is running there is a second line besides, in `App`: a `touchend` inside
+  a double-tap's window is cancelled and a `gesturestart` refused, because iOS Safari has zoomed on
+  a double tap with `touch-action` set, and sideways the counters sit where the thumbs drum.
+  Nothing in the fight is driven by a click, so nothing is lost; the listener is off outside play.
 - **Check a new colour against every ground it lands on.** HUD colours sit on the enemy bar's
   50%-black backing, on the player panel, on button grounds, and against open water. The mast bar
   was a teal that scored 1.41 against the sea and vanished into it; the obvious fix, a navy, scored
