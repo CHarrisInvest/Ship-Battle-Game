@@ -42,6 +42,15 @@ const ZUP = Math.sqrt(1 - TILT * TILT); // how world-height maps to screen-up
 const FFA_AI = 10;
 const ISLAND_COUNT = 4;
 const MIDDLE_CLEAR = 320; // no island closer than this to the middle, in any mode
+// How an AI captain sails round an island. She keeps this much water between her beach and the
+// point `moveShip` grounds her at, looks this far ahead for one plus what she will cover in
+// ISLAND_LOOK_SECS at her present speed, and once on a beach runs along it leaning off by this
+// much, which is what takes her off it. Two islands are never closer than 170 to each other, so
+// a first rate clearing each by the margin still has a channel between them.
+const ISLAND_CLEAR = 22;
+const ISLAND_LOOK = 90;
+const ISLAND_LOOK_SECS = 1.6;
+const ISLAND_LEAN = 0.35;
 const RING_CLEAR = 130; // ...and none within this of a closing ring's working size
 const OPENING_WINDOW = 30; // seconds the ffa AI weights range over reputation when picking prey
 // How much a rival's strength against her own weighs when an AI captain picks prey, at full weight
@@ -1122,6 +1131,14 @@ const musketDmg = (s) => s.rating.musketDamage;
 // error is added separately in `fire()` and must stay separate, or better swivels aboard the player
 // would quietly make every rival captain a better shot.
 const musketArc = (s) => s.rating.musketSpread;
+// An AI captain's own aim, in radians of error either side, added to whatever scatter her guns
+// carry of their own. Her cannon are laid as well as the player's: they used to carry 0.14 the
+// player's never did, so the same battery threw a straight bank of iron for the player and a
+// ragged fan for a rival, and the one thing that made a rival's broadside worse was a rule nobody
+// could see. Her small arms keep it, since a musket volley is a spread by nature and the rail's
+// own arc is already hers. Put a figure back in the first if rivals ever need handicapping.
+const AI_CANNON_AIM = 0;
+const AI_MUSKET_AIM = 0.14;
 /**
  * A ram is worth a quarter of the hull BEHIND it, so what she does with her bow scales with the ship
  * she is driving. A flat 26 was right when every hull afloat had a hundred points; against a first
@@ -1340,6 +1357,8 @@ export default function App() {
         s.baffled = 0; // how long she has been getting nowhere with the hull she is engaged with
         s.sheerT = 0; // time left on a deliberate break-off
         s.sheerHeading = 0; // and the course out of the heap she picked when she began it
+        s.avoidIsl = null; // the island she is sailing round, and which side she chose to pass it
+        s.avoidSide = 0;
         s.retargetT = 0;
         s.target = null;
       }
@@ -1388,20 +1407,50 @@ export default function App() {
       g.islands = isl;
     }
 
+    /**
+     * Bend an AI captain's course round any island it would run her onto.
+     *
+     * The rule this replaced looked at the nearest island only, within a fixed 130 paces, and when
+     * the course pointed at it pushed the course sideways by a fixed amount. That is what left a
+     * rival pinned on a beach for so long. The push for a course dead at the island was less than
+     * the quarter turn that runs along a shore, so a ship already touching was steered back into
+     * the sand every frame and lost half her way for it every frame; and the push changed sides as
+     * her bearing on the island crossed nought, so a captain with her quarry straight across an
+     * island dithered between going round one way and the other and went round neither.
+     *
+     * This one steers for the tangent. Of the islands she can see, the nearest whose beach the
+     * course would pass within `clear` of has the course swung onto the tangent to the circle
+     * `clear` off her beach, on whichever side the course was already nearer to. She remembers the
+     * side she picked for that island until she is past it, so having chosen to go round to port
+     * she goes round to port. A ship already inside that circle, on the beach or nearly, runs along
+     * the shore leaning outward, which is the one course that takes her off it however she came to
+     * be there; and a course that already points off the island is left alone.
+     */
     function avoidIslands(s, desired) {
       const g = gameRef.current;
       if (!g.islands) return desired;
-      let near = null, nd = 1e9;
-      for (const isl of g.islands) {
-        const d = Math.hypot(isl.x - s.x, isl.y - s.y) - isl.r;
-        if (d < nd) { nd = d; near = isl; }
-      }
-      if (near && nd < 130) {
-        const toI = Math.atan2(near.y - s.y, near.x - s.x);
+      const clear = s.hullA * 0.76 + ISLAND_CLEAR; // moveShip grounds her at the first term
+      const look = ISLAND_LOOK + s.spdCur * ISLAND_LOOK_SECS;
+      let isl = null, id = 1e9, iTo = 0, iRel = 0;
+      for (const o of g.islands) {
+        const dx = o.x - s.x, dy = o.y - s.y;
+        const d = Math.hypot(dx, dy);
+        const R = o.r + clear;
+        if (d - R > look) continue; // beyond where she looks
+        const toI = Math.atan2(dy, dx);
         const rel = norm(toI - desired);
-        if (Math.abs(rel) < 1.0) desired += (rel > 0 ? -1 : 1) * (1.0 - Math.abs(rel) + 0.3);
+        // Clear of her if the course points off the island, or passes her wider than R at its
+        // nearest. A ship inside R is only clear on a course that already leans off the shore.
+        const off = Math.abs(rel) > Math.PI / 2 + (d > R ? 0 : ISLAND_LEAN);
+        if (off || (d > R && Math.abs(Math.sin(rel)) * d > R)) continue;
+        if (d < id) { isl = o; id = d; iTo = toI; iRel = rel; }
       }
-      return desired;
+      if (!isl) { s.avoidIsl = null; return desired; }
+      const R = isl.r + clear;
+      if (s.avoidIsl !== isl) { s.avoidIsl = isl; s.avoidSide = iRel > 0 ? -1 : 1; }
+      const side = s.avoidSide;
+      if (id <= R) return iTo + side * (Math.PI / 2 + ISLAND_LEAN); // along the shore, leaning off it
+      return iTo + side * Math.asin(Math.min(1, R / id)); // the tangent
     }
 
     function splash(x, y) {
@@ -1768,7 +1817,7 @@ export default function App() {
       const dmg = weapon === "broadside" ? sideDmg(s) : weapon === "bow" ? frontDmg(s) : musketDmg(s);
       const bx = s.x + Math.cos(h) * s.hullA;
       const by = s.y + Math.sin(h) * s.hullA;
-      const noise = s.isPlayer ? 0 : 0.14;
+      const noise = s.isPlayer ? 0 : weapon === "musket" ? AI_MUSKET_AIM : AI_CANNON_AIM;
       const push = (px, py, ang) =>
         g.shots.push({ x: px, y: py, vx: Math.cos(ang) * w.speed, vy: Math.sin(ang) * w.speed, life: w.life, r: w.r, bar: w.bar, dmg, owner: s, kind: weapon });
       if (weapon === "broadside") {
@@ -2126,6 +2175,11 @@ export default function App() {
         // is bent back the same way everyone else's course is.
         const run = weatherCourse(s, away, 0.95);
         moveShip(s, dt, avoidIslands(s, run.desired), run.throttle);
+        // A captain running is still a captain with guns. She used to return here without firing
+        // a shot, so a pursuer who came up on her beam, which is the one place a running ship can
+        // hit without turning, was handed the whole exchange. She looses whatever bears and keeps
+        // running; she never alters course to bring a gun on.
+        serveGuns(s, tgt);
         return;
       }
 
@@ -2143,7 +2197,12 @@ export default function App() {
       else { const sign = bearing >= 0 ? 1 : -1; desired = toT - (sign * Math.PI) / 2; throttle = 0.5; }
       ({ desired, throttle } = weatherCourse(s, desired, throttle));
       moveShip(s, dt, avoidIslands(s, desired), throttle);
+      serveGuns(s, tgt);
+    }
 
+    // Every mount that is loaded and has a hull in its arc fires, at the ship she is hunting for
+    // choice. Fighting or running, this is the whole of an AI captain's gunnery.
+    function serveGuns(s, tgt) {
       for (const wk of ["broadside", "bow", "musket"]) {
         if (s.cd[wk] > 0 || !canFire(s, wk)) continue;
         const shot = linedUp(s, wk, tgt);
