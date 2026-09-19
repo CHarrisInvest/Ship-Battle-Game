@@ -2,8 +2,22 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+    <!-- viewport-fit=cover lets the sea run edge to edge, under a phone's notch and home bar; the
+         HUD and the menus keep clear of them with env(safe-area-inset-*). -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
     <title>Sternchase</title>
+    <!-- Full screen on a phone: iPhone Safari cannot be asked to hide its address bar and tabs,
+         but a page saved to the home screen opens without them. These say the game is such a page.
+         The manifest does the same for Android and desktop Chrome, and the touch icon is what iOS
+         puts on the home screen; `npm run icon` redraws it from the menu's own galleon. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Sternchase" />
+    <meta name="theme-color" content="#0b3331" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
   </head>
   <body>
     <div id="root"></div>

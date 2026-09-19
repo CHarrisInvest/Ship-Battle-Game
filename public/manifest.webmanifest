@@ -1,0 +1,15 @@
+{
+  "name": "Sternchase",
+  "short_name": "Sternchase",
+  "description": "An isometric age-of-sail combat game.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "background_color": "#2a8f8b",
+  "theme_color": "#0b3331",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

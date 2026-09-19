@@ -1196,6 +1196,7 @@ export default function App() {
   const inputRef = useRef({ joyMag: 0, joyAng: 0, broadside: false, bow: false, musket: false });
 
   const knobRef = useRef(null);
+  const hudRef = useRef(null); // the safe-area box every control sits in; the canvas reads its insets
   const joyState = useRef({ id: null, cx: 0, cy: 0, R: 34 });
   const btnRefs = { broadside: useRef(null), bow: useRef(null), musket: useRef(null) };
 
@@ -1274,7 +1275,10 @@ export default function App() {
       Vsq = 0, // the side of the square, in view space
       raf = 0,
       last = 0,
-      clock = 0;
+      clock = 0,
+      // the phone's notch, corners and home bar, as the distance in from each edge of the canvas
+      // that the HUD keeps clear; read off the HUD's wrapper, which is inset by the same amounts
+      safe = { l: 0, t: 0, r: 0, b: 0 };
 
     // View space is world space seen from the camera: across is one to one, and down is squashed by
     // TILT. `zoom` is the only thing between it and the screen, so every distance the sea is drawn
@@ -1290,6 +1294,8 @@ export default function App() {
       Hd = rect.height;
       canvas.width = Math.round(Wd * dpr);
       canvas.height = Math.round(Hd * dpr);
+      const hr = hudRef.current?.getBoundingClientRect();
+      if (hr) safe = { l: Math.max(0, hr.left - rect.left), t: Math.max(0, hr.top - rect.top), r: Math.max(0, rect.right - hr.right), b: Math.max(0, rect.bottom - hr.bottom) };
       zoom = Math.min(Math.min(Wd, Hd) / VIEW, MAX_ZOOM);
       Vw = Wd / zoom;
       Vh = Hd / zoom;
@@ -3346,7 +3352,9 @@ export default function App() {
 
     function drawRadar() {
       const g = gameRef.current;
-      const size = 96, rx = Wd - size - 10, ry = 10;
+      // Placed against the HUD's own figures, inside the safe area the DOM controls sit in, so
+      // sideways it lands to the left of the fire buttons rather than under them.
+      const size = HUD.radar, rx = Wd - safe.r - radarRight(Wd > Hd, g.rules.guns) - size, ry = safe.t + HUD.pad;
       ctx.save();
       ctx.fillStyle = "rgba(11,51,49,0.92)";
       ctx.strokeStyle = C.hair;
@@ -3489,6 +3497,57 @@ export default function App() {
   };
   const holdBtn = (key, val) => (e) => { e.preventDefault(); inputRef.current[key] = val; };
   const rules = modeOf(mode);
+  const wide = useLandscape();
+
+  // The counters: her purse, the field, and the weather. One set of pills, placed by the layout.
+  const pills = (
+    <>
+      <Pill label={`${fmtCoins(coins)} coins`}><CoinIcon /><span>{fmtCoins(coins)}</span></Pill>
+      {rules.reinforcements ? (
+        <>
+          <Pill label={`${sunk} sunk`}><SunkIcon /><span>{sunk}</span></Pill>
+          <Pill label={`${left} hunting you`}><ShipIcon /><span>{left} hunting</span></Pill>
+        </>
+      ) : (
+        <Pill label={`${left} rivals left`}><ShipIcon /><span>{left} left</span></Pill>
+      )}
+      {rules.storm && <StormPill storm={storm} />}
+    </>
+  );
+
+  // The repair rail, where the upgrade rail used to be. Two buttons, and each prices the work she
+  // would get this second rather than a list price. The hull can be part paid, so it shows what her
+  // purse actually buys; the mast cannot, so it shows the whole price whether she has it or not,
+  // because a figure she is saving towards is more use than the word "no". A button with nothing to
+  // do says which of the two reasons it is.
+  const rail = rules.repairs && REPAIRS.map((t) => {
+    const q = mend[t.key] || { whole: true, afford: 0, cost: 0, part: false };
+    const can = !q.whole && q.afford > 0;
+    const part = can && q.part && q.afford < q.cost; // her purse buys some of this bill, not all
+    const price = can ? q.afford : q.cost; // what she would pay now, or what she is saving for
+    return (
+      // A dimmed button keeps its own ground and dims only what is written on it. Fading the whole
+      // control put a half-transparent panel over a 50%-alpha ground, which came to a quarter
+      // opaque: the sea showed straight through, and 8px of label landed on an island and stopped
+      // being readable. The border goes neutral to say it is dead.
+      <button
+        key={t.key}
+        disabled={!can}
+        onPointerDown={(e) => { e.preventDefault(); mendNow(t.key); }}
+        style={{ flex: "1 1 0", minWidth: 0, borderRadius: 10, border: `1px solid ${can ? t.color : C.hair}`, background: C.panel, color: C.ink, padding: "5px 4px", cursor: can ? "pointer" : "default", WebkitTapHighlightColor: "transparent" }}
+      >
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 1, opacity: can ? 1 : 0.6 }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: t.color }}>{t.label}</span>
+          <span style={{ fontSize: 8, color: "rgba(238,244,242,0.55)", textAlign: "center", lineHeight: 1.25 }}>{t.sub}</span>
+          <span style={{ fontSize: 9, color: q.whole ? "rgba(238,244,242,0.6)" : can ? C.gold : "rgba(232,200,119,0.5)", display: "inline-flex", alignItems: "center", gap: 3 }}>
+            {/* A part payment names the whole bill beside it. "18 part" left a captain to work out
+                what part of what; "18 of 79" is the same width and answers it. */}
+            {q.whole ? q.label || t.whole : <><CoinIcon size={9} />{part ? `${fmtCoins(price)} of ${fmtCoins(q.cost)}` : fmtCoins(price)}</>}
+          </span>
+        </div>
+      </button>
+    );
+  });
 
   return (
     // `manipulation` rather than `none`, and the difference matters: this div is the ancestor of every
@@ -3502,64 +3561,41 @@ export default function App() {
           is steering or it is nothing, and a gesture landing here mid-fight is never what was meant. */}
       <canvas ref={canvasRef} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", display: "block", touchAction: "none" }} />
 
+      {/* Every control sits inside this box, which is the screen less the phone's notch, corners
+          and home bar, so nothing lands under them when the game runs full screen from the home
+          screen. It is always mounted, empty between rounds, because the canvas reads its insets
+          on resize to place the radar by the same edges. The box lets touches through to the sea,
+          and each group of controls turns them back on for itself. */}
+      <div ref={hudRef} style={{ position: "absolute", top: "env(safe-area-inset-top, 0px)", right: "env(safe-area-inset-right, 0px)", bottom: "env(safe-area-inset-bottom, 0px)", left: "env(safe-area-inset-left, 0px)", pointerEvents: "none" }}>
       {phase === "playing" && (
         <>
-          <div style={{ position: "absolute", top: 8, left: 10, display: "flex", gap: 8 }}>
-            <Pill label={`${fmtCoins(coins)} coins`}><CoinIcon /><span>{fmtCoins(coins)}</span></Pill>
-            {rules.reinforcements ? (
-              <>
-                <Pill label={`${sunk} sunk`}><SunkIcon /><span>{sunk}</span></Pill>
-                <Pill label={`${left} hunting you`}><ShipIcon /><span>{left} hunting</span></Pill>
-              </>
-            ) : (
-              <Pill label={`${left} rivals left`}><ShipIcon /><span>{left} left</span></Pill>
-            )}
-            {rules.storm && <StormPill storm={storm} />}
-          </div>
-
-          <div style={{ position: "absolute", top: 36, left: 10, display: "flex", gap: 6, alignItems: "stretch", width: "min(236px, 72%)" }}>
-            {rules.ranked && <RankBadge rank={rank.rank} total={rank.total} />}
-            <div style={{ flex: 1 }}>
-              <HealthPanel ph={ph} phMax={phMax} />
+          {wide ? (
+            // Sideways: one column in the top left, kept clear of the radar. Its first row is the
+            // rank, the bars and the counters on one line, the counters wrapping if the screen is
+            // narrow; the repair rail sits under them at the width it has upright.
+            <div style={{ position: "absolute", top: 8, left: HUD.pad, right: radarRight(true, rules.guns) + HUD.radar + HUD.pad, display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-start" }}>
+              <div style={{ alignSelf: "stretch", display: "flex", gap: 6, alignItems: "stretch", pointerEvents: "auto" }}>
+                {rules.ranked && <RankBadge rank={rank.rank} total={rank.total} />}
+                <div style={{ width: 180, flex: "0 0 auto" }}>
+                  <HealthPanel ph={ph} phMax={phMax} />
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignContent: "flex-start", minWidth: 0 }}>{pills}</div>
+              </div>
+              {rules.repairs && <div style={{ width: "min(360px, 100%)", display: "flex", gap: 6, pointerEvents: "auto" }}>{rail}</div>}
             </div>
-          </div>
+          ) : (
+            <>
+              <div style={{ position: "absolute", top: 8, left: HUD.pad, display: "flex", gap: 8, pointerEvents: "auto" }}>{pills}</div>
 
-          {/* The repair rail, where the upgrade rail used to be. Two buttons, and each prices the
-              work she would get this second rather than a list price. The hull can be part paid, so
-              it shows what her purse actually buys; the mast cannot, so it shows the whole price
-              whether she has it or not, because a figure she is saving towards is more use than the
-              word "no". A button with nothing to do says which of the two reasons it is. */}
-          {rules.repairs && (
-          <div style={{ position: "absolute", top: 110, left: 8, right: 8, display: "flex", gap: 6, paddingBottom: 2 }}>
-            {REPAIRS.map((t) => {
-              const q = mend[t.key] || { whole: true, afford: 0, cost: 0, part: false };
-              const can = !q.whole && q.afford > 0;
-              const part = can && q.part && q.afford < q.cost; // her purse buys some of this bill, not all
-              const price = can ? q.afford : q.cost; // what she would pay now, or what she is saving for
-              return (
-                // A dimmed button keeps its own ground and dims only what is written on it. Fading
-                // the whole control put a half-transparent panel over a 50%-alpha ground, which came
-                // to a quarter opaque: the sea showed straight through, and 8px of label landed on an
-                // island and stopped being readable. The border goes neutral to say it is dead.
-                <button
-                  key={t.key}
-                  disabled={!can}
-                  onPointerDown={(e) => { e.preventDefault(); mendNow(t.key); }}
-                  style={{ flex: "1 1 0", minWidth: 0, borderRadius: 10, border: `1px solid ${can ? t.color : C.hair}`, background: C.panel, color: C.ink, padding: "5px 4px", cursor: can ? "pointer" : "default", WebkitTapHighlightColor: "transparent" }}
-                >
-                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 1, opacity: can ? 1 : 0.6 }}>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: t.color }}>{t.label}</span>
-                    <span style={{ fontSize: 8, color: "rgba(238,244,242,0.55)", textAlign: "center", lineHeight: 1.25 }}>{t.sub}</span>
-                    <span style={{ fontSize: 9, color: q.whole ? "rgba(238,244,242,0.6)" : can ? C.gold : "rgba(232,200,119,0.5)", display: "inline-flex", alignItems: "center", gap: 3 }}>
-                      {/* A part payment names the whole bill beside it. "18 part" left a captain to
-                          work out what part of what; "18 of 79" is the same width and answers it. */}
-                      {q.whole ? q.label || t.whole : <><CoinIcon size={9} />{part ? `${fmtCoins(price)} of ${fmtCoins(q.cost)}` : fmtCoins(price)}</>}
-                    </span>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
+              <div style={{ position: "absolute", top: 36, left: HUD.pad, display: "flex", gap: 6, alignItems: "stretch", width: "min(236px, 72%)", pointerEvents: "auto" }}>
+                {rules.ranked && <RankBadge rank={rank.rank} total={rank.total} />}
+                <div style={{ flex: 1 }}>
+                  <HealthPanel ph={ph} phMax={phMax} />
+                </div>
+              </div>
+
+              {rules.repairs && <div style={{ position: "absolute", top: 110, left: 8, right: 8, display: "flex", gap: 6, paddingBottom: 2, pointerEvents: "auto" }}>{rail}</div>}
+            </>
           )}
 
           <div
@@ -3567,13 +3603,13 @@ export default function App() {
             onPointerMove={joyMove}
             onPointerUp={joyUp}
             onPointerCancel={joyUp}
-            style={{ position: "absolute", left: 24, bottom: 28, width: 120, height: 120, borderRadius: "50%", border: `1px solid ${C.hair}`, background: "rgba(13,58,56,0.55)", touchAction: "none" }}
+            style={{ position: "absolute", left: 24, bottom: 28, width: 120, height: 120, borderRadius: "50%", border: `1px solid ${C.hair}`, background: "rgba(13,58,56,0.55)", touchAction: "none", pointerEvents: "auto" }}
           >
             <div ref={knobRef} style={{ position: "absolute", left: "50%", top: "50%", width: 52, height: 52, marginLeft: -26, marginTop: -26, borderRadius: "50%", background: "rgba(236,226,204,0.9)", boxShadow: "0 2px 6px rgba(0,0,0,0.4)", pointerEvents: "none" }} />
           </div>
 
           {rules.guns && (
-          <div style={{ position: "absolute", right: 20, bottom: 26, display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ position: "absolute", right: HUD.fireRight, bottom: HUD.fireBottom, display: "flex", flexDirection: "column", gap: HUD.fireGap, pointerEvents: "auto" }}>
             <FireButton refEl={btnRefs.broadside} name="SIDE" sub="hull" color={C.hull} onDown={holdBtn("broadside", true)} onUp={holdBtn("broadside", false)} />
             <FireButton refEl={btnRefs.bow} name="FRONT" sub="mast" color={C.mast} onDown={holdBtn("bow", true)} onUp={holdBtn("bow", false)} />
             <FireButton refEl={btnRefs.musket} name="MUSKET" sub="crew" color={C.crew} onDown={holdBtn("musket", true)} onUp={holdBtn("musket", false)} />
@@ -3581,6 +3617,7 @@ export default function App() {
           )}
         </>
       )}
+      </div>
 
       {phase === "start" && (
         <StartOverlay
@@ -3786,6 +3823,42 @@ function HealthPanel({ ph, phMax }) {
   );
 }
 
+/**
+ * WHERE THE FIXED PIECES OF THE HUD SIT.
+ *
+ * The fire buttons and the joystick are DOM, and the radar is drawn on the canvas, so the two sides
+ * have to agree on the figures without seeing each other. They are named once here: the canvas
+ * places the radar off them and the HUD keeps its top row clear of where the radar will be.
+ *
+ * The screen has two layouts, chosen on its orientation. Upright, the counters sit over the bars in
+ * the top left, the repair rail runs the width of the screen under them, and the radar takes the
+ * top right corner. Sideways there is no width to spare and no height to lose: a rail the width of
+ * the screen ran straight across the middle of the sea, and a radar in the corner sat on top of the
+ * fire buttons. So the top row becomes one line, rank, bars and counters, with the radar to the
+ * right of them and just inboard of the fire buttons, and the repair rail sits under the counters
+ * at the width it had upright rather than at the width of the screen.
+ *
+ * `(orientation: landscape)` is true when the viewport is wider than it is tall, and `Wd > Hd` on
+ * the canvas is the same test, so the two never disagree about which layout is up.
+ */
+const HUD = { pad: 10, radar: 96, fireW: 66, fireRight: 20, fireBottom: 26, fireGap: 10 };
+// How far in from the right edge the radar's right side sits. Upright, or with no fire buttons to
+// clear, it is the ordinary margin; sideways with guns it clears the fire column and a gap.
+const radarRight = (wide, guns) => (wide && guns ? HUD.fireRight + HUD.fireW + HUD.fireGap : HUD.pad);
+
+function useLandscape() {
+  const query = "(orientation: landscape)";
+  const [wide, setWide] = useState(() => !!window.matchMedia?.(query).matches);
+  useEffect(() => {
+    const mq = window.matchMedia?.(query);
+    if (!mq) return;
+    const on = () => setWide(mq.matches);
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
+  return wide;
+}
+
 function FireButton({ refEl, name, sub, color, onDown, onUp }) {
   return (
     <button
@@ -3794,7 +3867,7 @@ function FireButton({ refEl, name, sub, color, onDown, onUp }) {
       onPointerUp={onUp}
       onPointerLeave={onUp}
       onPointerCancel={onUp}
-      style={{ position: "relative", width: 66, height: 56, borderRadius: 10, border: `1px solid ${color}`, background: "rgba(13,58,56,0.88)", color: C.ink, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 1, overflow: "hidden", touchAction: "none", WebkitTapHighlightColor: "transparent", cursor: "pointer" }}
+      style={{ position: "relative", width: HUD.fireW, height: 56, borderRadius: 10, border: `1px solid ${color}`, background: "rgba(13,58,56,0.88)", color: C.ink, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 1, overflow: "hidden", touchAction: "none", WebkitTapHighlightColor: "transparent", cursor: "pointer" }}
     >
       <span style={{ fontSize: 12, fontWeight: 700 }}>{name}</span>
       {/* the system it hits, set as the health panel sets the same word, so HULL on the button and
@@ -3815,7 +3888,9 @@ function Shell({ children }) {
     // It takes no touch-action of its own on purpose. The `manipulation` every element gets in
     // `index.css` is what this screen wants: it scrolls under a finger, a reader who wants the small
     // print bigger can still pinch it, and a double tap on a shop row is two taps rather than a zoom.
-    <div style={{ position: "absolute", inset: 0, display: "flex", overflowY: "auto", padding: 24, background: "rgba(8,38,37,0.80)", backdropFilter: "blur(4px)" }}>
+    // The padding grows by the phone's safe-area insets, so a menu run full screen from the home
+    // screen keeps its edges clear of the notch and the home bar the way the HUD does.
+    <div style={{ position: "absolute", inset: 0, display: "flex", overflowY: "auto", padding: "calc(24px + env(safe-area-inset-top, 0px)) calc(24px + env(safe-area-inset-right, 0px)) calc(24px + env(safe-area-inset-bottom, 0px)) calc(24px + env(safe-area-inset-left, 0px))", background: "rgba(8,38,37,0.80)", backdropFilter: "blur(4px)" }}>
       <div style={{ margin: "auto", maxWidth: 360, textAlign: "center" }}>{children}</div>
     </div>
   );
@@ -6027,8 +6102,42 @@ function StartOverlay({ onStart, onEdit, onOutfit, onRecords, hold, onScuttle })
         Stick to sail. Your side guns hit the hull, the bow gun brings down the mast, muskets clear
         the crew. Rams can pack a punch.
       </div>
+      <FullScreenButton />
       {hold.lifetime.runs > 0 && <ScuttleHold onScuttle={onScuttle} />}
     </Shell>
+  );
+}
+
+/**
+ * Full screen, where the browser allows it. Android Chrome and every desktop browser take the
+ * request and drop their own bars; iPhone Safari does not offer it to a page at all, so there the
+ * button never shows and the way to a full screen is Share, then Add to Home Screen, which the
+ * manifest and the meta tags in `index.html` make open without the address bar. A game already
+ * opened from the home screen has nothing to ask for either, so the button stays off there too.
+ */
+function FullScreenButton() {
+  const [on, setOn] = useState(() => !!document.fullscreenElement);
+  const can = !!document.fullscreenEnabled && !!document.documentElement.requestFullscreen
+    && !window.matchMedia?.("(display-mode: standalone), (display-mode: fullscreen)").matches
+    && !navigator.standalone;
+  useEffect(() => {
+    if (!can) return;
+    const sync = () => setOn(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", sync);
+    return () => document.removeEventListener("fullscreenchange", sync);
+  }, [can]);
+  if (!can) return null;
+  const toggle = () => {
+    if (document.fullscreenElement) document.exitFullscreen?.();
+    else document.documentElement.requestFullscreen({ navigationUI: "hide" }).catch(() => {});
+  };
+  return (
+    <button
+      onClick={toggle}
+      style={{ marginTop: 14, fontFamily: UI, fontSize: 10, color: "rgba(238,244,242,0.5)", background: "transparent", border: `1px solid ${C.hair}`, borderRadius: 10, padding: "6px 12px", cursor: "pointer", WebkitTapHighlightColor: "transparent" }}
+    >
+      {on ? "Leave full screen" : "Play full screen"}
+    </button>
   );
 }
 

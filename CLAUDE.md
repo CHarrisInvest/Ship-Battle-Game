@@ -273,6 +273,20 @@ Buttons take size over tracking. Wide letterspacing makes every control read as 
 - **Counters that count the same thing should share a shape.** The purse and the sunk counter carry
   the same skull, once struck on a coin and once flying over crossed bones. Two unrelated drawings
   would make the player learn two marks for one idea.
+- **The HUD has two layouts, and the canvas and the DOM place the radar off the same figures.**
+  Upright, the counters sit over the bars, the repair rail runs the width of the screen under them,
+  and the radar takes the top right corner. Sideways, `(orientation: landscape)` in `useLandscape`
+  and `Wd > Hd` on the canvas, which is the same test, the rank, bars and counters make one line, the
+  radar sits just inboard of the fire buttons, and the rail keeps its upright width under the
+  counters, because a rail the width of a sideways screen ran across the middle of the sea. `HUD` and
+  `radarRight` in `SternchaseIso.jsx` are the one statement of where the fixed pieces sit; do not
+  put a second copy of the fire button's width in the radar's code.
+- **Every control sits inside the safe area.** The viewport is `viewport-fit=cover`, so the sea runs
+  under a phone's notch and home bar, and the HUD's wrapper and the menu shell are inset by
+  `env(safe-area-inset-*)`. The canvas reads the wrapper's insets on resize to place the radar by the
+  same edges. The game is a home-screen app (`public/manifest.webmanifest` and the meta tags in
+  `index.html`), which is the only way to a full screen on an iPhone; `npm run icon` draws the icons
+  from the menu's galleon, so they are generated and never edited by hand.
 - **Border radius comes from a small set:** 3 for hairline bar fills, 10 for cards and buttons, 20
   for full-round pills. Do not invent a new one per component.
 - **A double tap is a tap twice, and every element says so itself.** This is a game played with the
