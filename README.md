@@ -30,6 +30,20 @@ column does not add up to what reached the hold, or a runtime error in any round
 every screen's picture and text to a folder it names. It says nothing about balance or feel; those
 are read off `npm run catalogue` and played.
 
+```bash
+npm run icon       # redraw the home-screen icons in public/ from the menu's galleon
+```
+
+## Playing full screen
+
+A phone browser keeps its address bar and tabs over the top of the sea. The game is set up as a
+home-screen app so it can run without them: on an iPhone, open it in Safari, tap Share, then
+**Add to Home Screen**, and the icon it puts there opens the game full screen. Android Chrome
+offers the same from its menu (**Add to Home screen** or **Install app**), and the menu carries a
+**Play full screen** button on browsers that let a page ask for it, which iPhone Safari does not.
+The icons come from `npm run icon`, which draws the menu's galleon with the same Chromium the smoke
+test uses.
+
 ## Deploying
 
 Pushing to `main` builds the site and publishes it to GitHub Pages via
