@@ -6143,7 +6143,8 @@ function ShipPlate({ hold, onEdit, onOutfit }) {
           for the three abreast, her name to the left of her and her figures to the right, which
           spends width the screen has on height it does not. */}
       {wide ? (
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        // her name and her figures hold the top of the plate, as they do upright; only she is tall
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
           <div style={{ flex: "1 1 0", minWidth: 0 }}>{info}</div>
           {ship}
           <div style={{ flex: "1 1 0", minWidth: 0, display: "flex", justifyContent: "flex-end" }}><QuickStats stats={stats} /></div>
