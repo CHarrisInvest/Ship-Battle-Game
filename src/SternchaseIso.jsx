@@ -1237,6 +1237,24 @@ export default function App() {
 
   useEffect(() => subscribeHold(setHold), []);
 
+  // What the browser paints around the page: the strip behind a phone's clock and the bars Safari
+  // tints to match a site, and the ground shown when a scroll rubber-bands past the edge. It is
+  // the sea while a round runs and the menu's own dark ground everywhere else, because every
+  // screen but the fight is that ground over the sea, and a sea-coloured band over a dark menu
+  // read as a browser that had not caught up. Safari follows a change to the meta as it happens.
+  useEffect(() => {
+    const tint = phase === "playing" ? C.water : MENU_TINT;
+    let meta = document.querySelector('meta[name="theme-color"]');
+    if (!meta) {
+      meta = document.createElement("meta");
+      meta.name = "theme-color";
+      document.head.appendChild(meta);
+    }
+    meta.content = tint;
+    document.documentElement.style.background = tint;
+    document.body.style.background = tint;
+  }, [phase]);
+
   // The second line against the zoom, for the fight only. `touch-action` is the rule every element
   // carries, but iOS Safari has had versions that zoomed on a double tap regardless, and sideways
   // the counters sit exactly where a thumb drums. While a round is running, a second tap inside a
@@ -3989,6 +4007,9 @@ function FireButton({ refEl, name, sub, color, onDown, onUp }) {
 // figures either side of her and for a mode card's description to run to four lines rather than
 // eight, since a sideways phone has the width to spare and none of the height.
 const SHELL_W = 360, SHELL_W_WIDE = 600;
+// The shell's ground as it lands on open water: its rgba(8,38,37,0.80) over the sea, worked out
+// flat, so the browser's own bars can be painted the same tone while a menu is up.
+const MENU_TINT = "#0f3b39";
 
 function Shell({ children }) {
   const wide = useWideViewport();
