@@ -4004,9 +4004,10 @@ function FireButton({ refEl, name, sub, color, onDown, onUp }) {
 }
 
 // How wide a menu runs: a phone's width upright, and sideways enough for the ship plate to carry her
-// figures either side of her and for a mode card's description to run to four lines rather than
-// eight, since a sideways phone has the width to spare and none of the height.
-const SHELL_W = 360, SHELL_W_WIDE = 600;
+// figures either side of her, with her centred and the longest class name on one line beside her,
+// and for a mode card's description to run to three lines rather than eight, since a sideways phone
+// has the width to spare and none of the height.
+const SHELL_W = 360, SHELL_W_WIDE = 640;
 // The shell's ground as it lands on open water: its rgba(8,38,37,0.80) over the sea, worked out
 // flat, so the browser's own bars can be painted the same tone while a menu is up.
 const MENU_TINT = "#0f3b39";
@@ -6144,14 +6145,14 @@ function ShipPlate({ hold, onEdit, onOutfit }) {
           spends width the screen has on height it does not. */}
       {wide ? (
         // her name and her figures hold the top of the plate, as they do upright; only she is tall
-        // The figures take only their own width and the name's column takes the rest, so a class
-        // name like "Bermuda Sloop light" stays on one line; the two columns shared the width
-        // equally before and broke it. A name longer than the room still wraps rather than
-        // pushing her off the plate.
-        <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-          <div style={{ flex: "1 1 auto", minWidth: 0 }}>{info}</div>
+        // Three columns with the two beside her equal, so she sits on the plate's centre line. The
+        // shell is set wide enough sideways for a class name like "Bermuda Sloop light" to hold one
+        // line in that column; a name longer than the room still wraps rather than pushing her off
+        // centre or off the plate.
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto minmax(0, 1fr)", alignItems: "start", gap: 10 }}>
+          {info}
           {ship}
-          <div style={{ flex: "0 0 auto" }}><QuickStats stats={stats} /></div>
+          <div style={{ display: "flex", justifyContent: "flex-end" }}><QuickStats stats={stats} /></div>
         </div>
       ) : (
         <>
