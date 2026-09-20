@@ -34,8 +34,13 @@
  * `unit` says how the figure prints: a plain count unless it says `time`, which is seconds in the
  * record and minutes or hours on the card, or `coins`.
  *
- * `mode` names a game mode when the achievement belongs to one, which shows as a tag on the card. Most
- * do not: sinking a ship counts wherever it happens.
+ * `mode` names a game mode when the achievement belongs to one, which shows as a tag on the card, or
+ * `arenas` for one that counts the wave arena and the ladder arena together. Most name nothing:
+ * sinking a ship counts wherever it happens.
+ *
+ * An id is the key the paid ledger is kept under, so renaming one is a migration in `hold.js` and
+ * not a rename here. `arenaSunk` kept its id when the arena split in two and it began counting both
+ * halves; `arenaVoyage` became `waveStreak` and the ledger followed it.
  *
  * `rewards` is what each rung pays into the hold, in coins, one figure a rung, or `reward` for a
  * single goal. The figures are a table rather than a formula so a card can be read against them. They
@@ -54,6 +59,8 @@ const FIRST_PAY = 50;
 const WIN_PAY = 100;
 
 const modeCount = (h, mode, key) => (h.modes[mode] ? h.modes[mode][key] || 0 : 0);
+// the two arenas together, for the counters that do not care which of them a ship went down in
+const arenaCount = (h, key) => modeCount(h, "wave", key) + modeCount(h, "ladder", key);
 const plural = (n, one, many) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
 // "a ship" for one rather than "1 ship", which reads as a number dropped into a slot
 const ships = (n) => (n === 1 ? "a ship" : plural(n, "ship", "ships"));
@@ -133,22 +140,42 @@ export const ACHIEVEMENTS = [
     count: (h) => h.lifetime.earned,
   },
   {
-    id: "arenaVoyage",
-    name: "Arena streak",
-    blurb: (g) => `Sink ${ships(g)} in a single arena voyage.`,
+    id: "waveStreak",
+    name: "Wave streak",
+    blurb: (g) => `Sink ${ships(g)} in a single wave arena voyage.`,
     goals: [1, 3, 5, 10, 15, 20, 30],
     rewards: [10, 25, 50, 100, 200, 300, 500],
-    mode: "arena",
-    count: (h) => modeCount(h, "arena", "bestSunk"),
+    mode: "wave",
+    count: (h) => modeCount(h, "wave", "bestSunk"),
+  },
+  {
+    id: "ladderClimb",
+    name: "Ladder climbed",
+    // a sinking on the ladder is a rung, so the figure is rungs and the top rung is the whole fleet;
+    // the last goal stops a class short of the top because the top has a card of its own below
+    blurb: (g) => (g === 1 ? "Sink the first ship on the ladder." : `Climb ${g} rungs of the ladder in one voyage.`),
+    goals: [1, 3, 6, 12, 18, 24, 36],
+    rewards: [10, 25, 50, 100, 200, 300, 500],
+    mode: "ladder",
+    count: (h) => modeCount(h, "ladder", "bestSunk"),
   },
   {
     id: "arenaSunk",
     name: "Arena total",
-    blurb: (g) => `Sink ${ships(g)} in the arena, across all voyages.`,
+    blurb: (g) => `Sink ${ships(g)} in the arenas, wave or ladder, across all voyages.`,
     goals: [5, 25, 50, 100, 250, 500],
     rewards: [25, 50, 100, 200, 500, 1000],
-    mode: "arena",
-    count: (h) => modeCount(h, "arena", "sunk"),
+    mode: "arenas",
+    count: (h) => arenaCount(h, "sunk"),
+  },
+  {
+    id: "arenaRuns",
+    name: "Arena voyages",
+    blurb: (g) => (g === 1 ? "Sail one voyage in either arena." : `Sail ${g} voyages in the arenas, wave or ladder.`),
+    goals: [1, 5, 10, 25, 50, 100],
+    rewards: [10, 25, 50, 100, 200, 400],
+    mode: "arenas",
+    count: (h) => arenaCount(h, "runs"),
   },
   {
     id: "sunkByRam",
@@ -181,7 +208,7 @@ export const ACHIEVEMENTS = [
     goal: 1,
     reward: FIRST_PAY,
     // the derby is left out because it would be true of every sinking there: there are no guns in it
-    count: (h) => modeCount(h, "arena", "rammedWhole") + modeCount(h, "ffa", "rammedWhole"),
+    count: (h) => arenaCount(h, "rammedWhole") + modeCount(h, "ffa", "rammedWhole"),
   },
   {
     id: "wornDown",
@@ -208,6 +235,16 @@ export const ACHIEVEMENTS = [
     reward: WIN_PAY,
     mode: "derby",
     count: (h) => modeCount(h, "derby", "wins"),
+  },
+  {
+    id: "ladderTop",
+    name: "Top of the ladder",
+    blurb: "Sink every ship on the ladder in one voyage.",
+    goal: 1,
+    // three times a win elsewhere: the whole fleet in order is the longest round in the game
+    reward: 300,
+    mode: "ladder",
+    count: (h) => modeCount(h, "ladder", "wins"),
   },
   {
     id: "christened",

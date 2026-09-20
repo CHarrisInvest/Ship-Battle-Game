@@ -51,7 +51,10 @@ function run(cmd, args, opts = {}) {
 const env = { ...process.env, BASE_PATH: "/" };
 say("building into", dist);
 await run("npx", ["vite", "build", "--outDir", dist], { env });
-const server = spawn("npx", ["vite", "preview", "--outDir", dist, "--port", String(PORT), "--strictPort", "--host", "127.0.0.1"], { cwd: root, stdio: "ignore", env });
+// Spawned as its own process group and killed as one at the end, because `npx` starts vite as a
+// child and killing `npx` alone left the preview serving this run's build to the next run, which
+// then tested a bundle it had not built.
+const server = spawn("npx", ["vite", "preview", "--outDir", dist, "--port", String(PORT), "--strictPort", "--host", "127.0.0.1"], { cwd: root, stdio: "ignore", env, detached: true });
 const up = async () => { try { return (await fetch(SITE)).ok; } catch { return false; } };
 for (let i = 0; i < 60 && !(await up()); i++) await new Promise((r) => setTimeout(r, 500));
 if (!(await up())) { server.kill(); throw new Error(`nothing answered at ${SITE}`); }
@@ -185,13 +188,13 @@ async function round(modeTitle, key, drive) {
 try {
   await tour().catch((e) => fail(`tour: ${e.message.split("\n")[0]}`));
   await Promise.all([
-    ...[["FREE-FOR-ALL", "ffa"], ["DEMOLITION DERBY", "derby"], ["ARENA", "arena"]].flatMap(([title, key]) =>
+    ...[["FREE-FOR-ALL", "ffa"], ["DEMOLITION DERBY", "derby"], ["WAVE ARENA", "wave"], ["LADDER ARENA", "ladder"]].flatMap(([title, key]) =>
       [false, true].map((drive) => round(title, key, drive).catch((e) => fail(`${key}-${drive ? "drive" : "idle"}: ${e.message.split("\n")[0]}`))),
     ),
   ]);
 } finally {
   await browser.close();
-  server.kill();
+  try { process.kill(-server.pid); } catch { server.kill(); }
 }
 
 console.log(`\nscreens and text in ${out}`);
