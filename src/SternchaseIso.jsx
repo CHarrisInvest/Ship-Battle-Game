@@ -666,6 +666,13 @@ const MAX_ZOOM = 1.5;
 // buoys, and a strip of the water beyond, and no more. It is the whole of the camera's give on a
 // side, so it is also how far off centre a ship ends up when she runs right up on that boundary.
 const EDGE_PEEK = 40; // screen pixels
+// The most the boundary is let in on a side where the screen runs longer than the square. Held
+// upright that is the top and bottom, where the strip past the square is the buttons' and the
+// panels', and the boundary may come as far as the square's edge. Sideways the strips are the
+// left and right, and the square's edge there is a third of the screen: the boundary sat halfway
+// across the sea with the ship pinned beside it. This caps it at the joystick's own strip, so a ship
+// on the map's edge still sits clear of the stick and the rope still reads, and no more than that.
+const SIDE_PEEK = 150; // screen pixels
 
 // A ship's length, beam and collision ellipse are her own now, set per class by `hullform.js` and
 // carried on the ship as `hullA` and `hullB` (semi-length and semi-beam). The galleon anchors the
@@ -1197,6 +1204,7 @@ export default function App() {
 
   const knobRef = useRef(null);
   const hudRef = useRef(null); // the safe-area box every control sits in; the canvas reads its insets
+  const railRef = useRef(null); // the repair rail, faded by the loop when a ship sails under it
   const joyState = useRef({ id: null, cx: 0, cy: 0, R: 34 });
   const btnRefs = { broadside: useRef(null), bow: useRef(null), musket: useRef(null) };
 
@@ -1228,6 +1236,24 @@ export default function App() {
   const [bounty, setBounty] = useState(0); // ...and what the achievements it finished paid besides
 
   useEffect(() => subscribeHold(setHold), []);
+
+  // What the browser paints around the page: the strip behind a phone's clock and the bars Safari
+  // tints to match a site, and the ground shown when a scroll rubber-bands past the edge. It is
+  // the sea while a round runs and the menu's own dark ground everywhere else, because every
+  // screen but the fight is that ground over the sea, and a sea-coloured band over a dark menu
+  // read as a browser that had not caught up. Safari follows a change to the meta as it happens.
+  useEffect(() => {
+    const tint = phase === "playing" ? C.water : MENU_TINT;
+    let meta = document.querySelector('meta[name="theme-color"]');
+    if (!meta) {
+      meta = document.createElement("meta");
+      meta.name = "theme-color";
+      document.head.appendChild(meta);
+    }
+    meta.content = tint;
+    document.documentElement.style.background = tint;
+    document.body.style.background = tint;
+  }, [phase]);
 
   // The second line against the zoom, for the fight only. `touch-action` is the rule every element
   // carries, but iOS Safari has had versions that zoomed on a double tap regardless, and sideways
@@ -2593,7 +2619,9 @@ export default function App() {
       const g = gameRef.current;
       if (!g || !g.player) return;
       const spanX = Vw, spanY = Vh / TILT; // sea on the screen, in world units
-      const peekX = Math.max((spanX - Vsq) / 2, EDGE_PEEK / zoom);
+      // across, the give past the square is capped at SIDE_PEEK; up and down it is not, because
+      // that strip is the one the buttons and panels sit on and it is hers to spend
+      const peekX = Math.max(Math.min((spanX - Vsq) / 2, SIDE_PEEK / zoom), EDGE_PEEK / zoom);
       const peekY = Math.max((spanY - Vsq / TILT) / 2, EDGE_PEEK / (zoom * TILT));
       g.cam.x = camHold(g.player.x - spanX / 2, spanX, peekX);
       g.cam.y = camHold(g.player.y - spanY / 2, spanY, peekY);
@@ -3422,6 +3450,37 @@ export default function App() {
       ctx.restore();
     }
 
+    /**
+     * The repair rail is a panel over the sea, and sideways it sits where the sea is fought on. It
+     * fades when a ship sails under it, so what it is covering can be read, and comes back the
+     * moment she is clear. The rail is DOM and the ships are canvas, so this is the one place the
+     * two are compared: each ship is a circle of her own length on the screen, and the rail's box
+     * is read off the element, which is cheap for one element and true whatever layout is up. The
+     * opacity is written straight to the element, the way the joystick's knob is moved, because a
+     * fade sixty times a second is not a thing to send through React.
+     */
+    let railFaded = false;
+    function fadeRail() {
+      const el = railRef.current;
+      if (!el) { railFaded = false; return; } // a new round mounts a fresh rail, fully lit
+      const g = gameRef.current;
+      let under = false;
+      if (g && g.running) {
+        const r = el.getBoundingClientRect();
+        for (const s of g.ships) {
+          if (!s.alive) continue;
+          const sx = SX(s.x, g.cam) * zoom, sy = SY(s.y, g.cam) * zoom;
+          const rad = (s.hullA + 16) * zoom; // her half length, and a little of her rig
+          const nx = clamp(sx, r.left, r.right), ny = clamp(sy, r.top, r.bottom);
+          if ((nx - sx) ** 2 + (ny - sy) ** 2 < rad * rad) { under = true; break; }
+        }
+      }
+      if (under !== railFaded) {
+        railFaded = under;
+        el.style.opacity = under ? "0.3" : "1";
+      }
+    }
+
     function drawVignette() {
       const v = gameRef.current.vign;
       if (v <= 0) return;
@@ -3450,6 +3509,7 @@ export default function App() {
       screenSpace(); // the two that belong to the screen rather than to the sea
       drawVignette();
       drawRadar();
+      fadeRail();
     }
 
     function loop(ts) {
@@ -3611,7 +3671,7 @@ export default function App() {
               </div>
               <div style={{ flex: "1 1 0", minWidth: 0, display: "flex", flexDirection: "column", gap: 6 }}>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6, pointerEvents: "auto" }}>{pills}</div>
-                {rules.repairs && <div style={{ display: "flex", gap: 6, pointerEvents: "auto" }}>{rail}</div>}
+                {rules.repairs && <div ref={railRef} style={{ display: "flex", gap: 6, pointerEvents: "auto", transition: "opacity 0.25s" }}>{rail}</div>}
               </div>
             </div>
           ) : (
@@ -3625,7 +3685,7 @@ export default function App() {
                 </div>
               </div>
 
-              {rules.repairs && <div style={{ position: "absolute", top: 110, left: 8, right: 8, display: "flex", gap: 6, paddingBottom: 2, pointerEvents: "auto" }}>{rail}</div>}
+              {rules.repairs && <div ref={railRef} style={{ position: "absolute", top: 110, left: 8, right: 8, display: "flex", gap: 6, paddingBottom: 2, pointerEvents: "auto", transition: "opacity 0.25s" }}>{rail}</div>}
             </>
           )}
 
@@ -3802,7 +3862,7 @@ function Pill({ children, label }) {
 }
 
 function StormPill({ storm }) {
-  if (storm.out) return <div style={{ background: "rgba(70,18,18,0.85)", border: `1px solid ${C.crew}`, borderRadius: 20, padding: "5px 11px", fontSize: 12, color: "#ffd9d9", fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }} aria-label="You are in the storm"><SquallIcon /><span>In the storm</span></div>;
+  if (storm.out) return <div style={{ background: "rgba(70,18,18,0.85)", border: `1px solid ${C.crew}`, borderRadius: 20, padding: "5px 11px", fontSize: 12, color: "#ffd9d9", fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }} aria-label="You are in the storm"><SquallIcon /><span>In storm</span></div>;
   if (storm.closes > 0) return <Pill label={`Storm closes in ${fmtTime(storm.closes)}`}><SquallIcon /><span>{fmtTime(storm.closes)}</span></Pill>;
   // the word is the weather's phase off the clock: closing, holding at the ring, closing again
   // through the squeeze, and closed once the eye has shut
@@ -3886,6 +3946,21 @@ const radarRight = (w, h, guns) => {
   return fireTop < HUD.pad + HUD.radar + HUD.fireGap ? HUD.fireRight + HUD.fireW + HUD.fireGap : HUD.pad;
 };
 
+// Whether the viewport is wider than tall, for the menus, which are laid out on the viewport rather
+// than on the HUD's box: sideways the shell widens and the ship plate goes three abreast.
+function useWideViewport() {
+  const query = "(orientation: landscape)";
+  const [wide, setWide] = useState(() => !!window.matchMedia?.(query).matches);
+  useEffect(() => {
+    const mq = window.matchMedia?.(query);
+    if (!mq) return;
+    const on = () => setWide(mq.matches);
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
+  return wide;
+}
+
 // The size of an element, kept current as it is resized: the HUD's safe-area box, which is what
 // the layout is chosen on. Wider than tall is sideways, the same test `(orientation: landscape)`
 // makes of the viewport, taken off the box the controls actually sit in.
@@ -3928,7 +4003,16 @@ function FireButton({ refEl, name, sub, color, onDown, onUp }) {
   );
 }
 
+// How wide a menu runs: a phone's width upright, and sideways enough for the ship plate to carry her
+// figures either side of her and for a mode card's description to run to four lines rather than
+// eight, since a sideways phone has the width to spare and none of the height.
+const SHELL_W = 360, SHELL_W_WIDE = 600;
+// The shell's ground as it lands on open water: its rgba(8,38,37,0.80) over the sea, worked out
+// flat, so the browser's own bars can be painted the same tone while a menu is up.
+const MENU_TINT = "#0f3b39";
+
 function Shell({ children }) {
+  const wide = useWideViewport();
   return (
     // `margin:auto` rather than `align-items:center` so a tall menu on a short
     // screen scrolls from the top instead of having its head clipped off.
@@ -3939,7 +4023,7 @@ function Shell({ children }) {
     // The padding grows by the phone's safe-area insets, so a menu run full screen from the home
     // screen keeps its edges clear of the notch and the home bar the way the HUD does.
     <div style={{ position: "absolute", inset: 0, display: "flex", overflowY: "auto", padding: "calc(24px + env(safe-area-inset-top, 0px)) calc(24px + env(safe-area-inset-right, 0px)) calc(24px + env(safe-area-inset-bottom, 0px)) calc(24px + env(safe-area-inset-left, 0px))", background: "rgba(8,38,37,0.80)", backdropFilter: "blur(4px)" }}>
-      <div style={{ margin: "auto", maxWidth: 360, textAlign: "center" }}>{children}</div>
+      <div style={{ margin: "auto", maxWidth: wide ? SHELL_W_WIDE : SHELL_W, textAlign: "center" }}>{children}</div>
     </div>
   );
 }
@@ -5972,6 +6056,7 @@ const Coins = ({ n }) => (
  */
 function ShipPlate({ hold, onEdit, onOutfit }) {
   const [lit, setLit] = useState(false);
+  const wide = useWideViewport();
   const fleet = ownedShips(hold);
   // The plate turns any of her ships, not only the one she sails. It starts on that one, and comes
   // back to it if the ship it was showing is gone, which only a scuttled hold can do.
@@ -5991,6 +6076,62 @@ function ShipPlate({ hold, onEdit, onOutfit }) {
     stats.broadside.count + stats.bow.count > 0 ? null : "She has no gun aboard, so she cannot fire.",
   ].filter(Boolean);
 
+  // Her name over her class, and the ways off the plate. The name is what the captain called her,
+  // or her class until she has one, and it is set in the display face because it is the name of a
+  // ship. The class line under it is ordinary text: it is information, not a name.
+  const info = (
+    <div style={{ minWidth: 0, lineHeight: 1.15, textAlign: "left" }}>
+      <div style={{ fontFamily: DISPLAY, fontSize: 17, color: C.gold, letterSpacing: 0.4, overflowWrap: "anywhere" }}>{shipName(hold, id)}</div>
+      {/* Her class and her rate under the name, and never the same words twice on one plate: an
+          unnamed ship goes by her class, so only the rate is news, and a class named for her rate,
+          "6th rate", is said once. The yard's line keeps both on purpose; this is a plate, not a
+          description, and it has two lines to say what she is. */}
+      <div style={{ fontSize: 10, color: "rgba(238,244,242,0.55)", marginTop: 3 }}>
+        {(() => {
+          const rated = rateOf(loadout.hull).name;
+          if (!hold.yard.ships[id].name || loadout.hull.name === rated) return rated;
+          return `${loadout.hull.name}, ${rated}`;
+        })()}
+      </div>
+      {/* Two ways off the plate besides the ship herself: sail this one, and go straight to her
+          rigging. "Outfit her" is here because the outfitter is where most visits to the yard end
+          up, and the yard is a scroll away from it. Sideways the column beside her is narrow, so
+          the two take a row each rather than wrapping as the words happen to fall. */}
+      <div style={{ display: "flex", flexWrap: "wrap", flexDirection: wide ? "column" : "row", alignItems: wide ? "flex-start" : "center", gap: 6, marginTop: 8 }}>
+        {sailing ? (
+          <span style={{ fontSize: 10, color: "rgba(238,244,242,0.5)" }}>The ship you sail</span>
+        ) : (
+          <TinyButton label="Sail her" onClick={() => setActiveShip(id)} />
+        )}
+        <TinyButton label="Outfit her" onClick={() => onOutfit(id)} />
+      </div>
+      {unfit.length > 0 && (
+        <div style={{ fontSize: 10, color: C.crew, marginTop: 6, lineHeight: 1.5 }}>
+          {unfit.map((line) => <div key={line}>{line}</div>)}
+        </div>
+      )}
+    </div>
+  );
+
+  // The ship herself is the way into the yard. She is the only picture of the captain's own ship in
+  // the game, and a turning ship that does nothing when tapped is a worse answer than a still one.
+  const ship = (
+    <button
+      onClick={() => onEdit(id)}
+      onPointerEnter={() => setLit(true)}
+      onPointerLeave={() => setLit(false)}
+      aria-label={`Open the yard for ${shipName(hold, id)}`}
+      style={{ display: "block", width: wide ? GALLEON_W : "100%", flex: "0 0 auto", padding: 0, background: "transparent", border: "none", color: C.ink, cursor: "pointer", WebkitTapHighlightColor: "transparent" }}
+    >
+      <MenuGalleon rig={rig} />
+      {/* MenuGalleon carries a -6px bottom margin to tuck itself up under whatever follows, so this
+          pays that back before spacing itself off her keel. */}
+      <div style={{ textAlign: "center", paddingTop: 14, fontSize: 10, letterSpacing: 0.5, color: lit ? C.gold : "rgba(232,200,119,0.72)" }}>
+        Tap the ship to edit
+      </div>
+    </button>
+  );
+
   return (
     <div
       style={{
@@ -5998,60 +6139,24 @@ function ShipPlate({ hold, onEdit, onOutfit }) {
         borderRadius: 10, border: `1px solid ${lit ? C.gold : C.hair}`, background: C.panel, color: C.ink,
       }}
     >
-      {/* Her name over her class on the left, her figures on the right. The name is what the captain
-          called her, or her class until she has one, and it is set in the display face because it is
-          the name of a ship. The class line under it is ordinary text: it is information, not a name. */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, textAlign: "left" }}>
-        <div style={{ minWidth: 0, lineHeight: 1.15 }}>
-          <div style={{ fontFamily: DISPLAY, fontSize: 17, color: C.gold, letterSpacing: 0.4, overflowWrap: "anywhere" }}>{shipName(hold, id)}</div>
-          {/* Her class and her rate under the name, and never the same words twice on one plate:
-              an unnamed ship goes by her class, so only the rate is news, and a class named for
-              her rate, "6th rate", is said once. The yard's line keeps both on purpose; this is a
-              plate, not a description, and it has two lines to say what she is. */}
-          <div style={{ fontSize: 10, color: "rgba(238,244,242,0.55)", marginTop: 3 }}>
-            {(() => {
-              const rated = rateOf(loadout.hull).name;
-              if (!hold.yard.ships[id].name || loadout.hull.name === rated) return rated;
-              return `${loadout.hull.name}, ${rated}`;
-            })()}
-          </div>
-          {/* Two ways off the plate besides the ship herself: sail this one, and go straight to
-              her rigging. "Outfit her" is here because the outfitter is where most visits to the
-              yard end up, and the yard is a scroll away from it. */}
-          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, marginTop: 8 }}>
-            {sailing ? (
-              <span style={{ fontSize: 10, color: "rgba(238,244,242,0.5)" }}>The ship you sail</span>
-            ) : (
-              <TinyButton label="Sail her" onClick={() => setActiveShip(id)} />
-            )}
-            <TinyButton label="Outfit her" onClick={() => onOutfit(id)} />
-          </div>
-          {unfit.length > 0 && (
-            <div style={{ fontSize: 10, color: C.crew, marginTop: 6, lineHeight: 1.5 }}>
-              {unfit.map((line) => <div key={line}>{line}</div>)}
-            </div>
-          )}
+      {/* Upright: her name and figures in a row over her picture. Sideways the shell is wide enough
+          for the three abreast, her name to the left of her and her figures to the right, which
+          spends width the screen has on height it does not. */}
+      {wide ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ flex: "1 1 0", minWidth: 0 }}>{info}</div>
+          {ship}
+          <div style={{ flex: "1 1 0", minWidth: 0, display: "flex", justifyContent: "flex-end" }}><QuickStats stats={stats} /></div>
         </div>
-        <QuickStats stats={stats} />
-      </div>
-
-      {/* The ship herself is the way into the yard. She is the only picture of the captain's own
-          ship in the game, and a turning ship that does nothing when tapped is a worse answer than a
-          still one. */}
-      <button
-        onClick={() => onEdit(id)}
-        onPointerEnter={() => setLit(true)}
-        onPointerLeave={() => setLit(false)}
-        aria-label={`Open the yard for ${shipName(hold, id)}`}
-        style={{ display: "block", width: "100%", padding: 0, background: "transparent", border: "none", color: C.ink, cursor: "pointer", WebkitTapHighlightColor: "transparent" }}
-      >
-        <MenuGalleon rig={rig} />
-        {/* MenuGalleon carries a -6px bottom margin to tuck itself up under whatever follows, so this
-            pays that back before spacing itself off her keel. */}
-        <div style={{ textAlign: "center", paddingTop: 14, fontSize: 10, letterSpacing: 0.5, color: lit ? C.gold : "rgba(232,200,119,0.72)" }}>
-          Tap the ship to edit
-        </div>
-      </button>
+      ) : (
+        <>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
+            {info}
+            <QuickStats stats={stats} />
+          </div>
+          {ship}
+        </>
+      )}
 
       {/* The arrows, only once there is somewhere to turn to. They step through her ships in the
           order she bought them and wrap at either end, and the count between them says where in

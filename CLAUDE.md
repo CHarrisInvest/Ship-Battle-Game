@@ -282,7 +282,13 @@ Buttons take size over tracking. Wide letterspacing makes every control read as 
   buttons would reach up into it**, which is a test of height rather than of orientation: in Safari
   sideways they do and it steps inboard of them, from the home screen they do not and it stays.
   `HUD` and `radarRight` in `SternchaseIso.jsx` are the one statement of where the fixed pieces sit
-  and of that test; do not put a second copy of a fire button's size in the radar's code.
+  and of that test; do not put a second copy of a fire button's size in the radar's code. The
+  repair rail fades while a ship is under it (`fadeRail`, written straight to the element each
+  frame like the joystick's knob), because sideways it sits where the sea is fought on. The menus
+  widen sideways as well (`SHELL_W_WIDE` in `Shell`, off the viewport), and the ship plate goes
+  three abreast, her name to the left of her and her figures to the right. Sideways the camera
+  also lets the map's boundary in only as far as `SIDE_PEEK`, the joystick's strip, where upright
+  the long sides come as far as the square's edge.
 - **Every control sits inside the safe area.** The viewport is `viewport-fit=cover`, so the sea runs
   under a phone's notch and home bar, and the HUD's wrapper and the menu shell are inset by
   `env(safe-area-inset-*)`. The canvas reads the wrapper's insets on resize to place the radar by the
