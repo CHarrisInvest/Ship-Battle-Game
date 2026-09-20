@@ -162,7 +162,7 @@ export const ACHIEVEMENTS = [
   {
     id: "arenaSunk",
     name: "Arena total",
-    blurb: (g) => `Sink ${ships(g)} in the arenas, wave or ladder, across all voyages.`,
+    blurb: (g) => `Sink ${ships(g)} in the arenas, across all voyages.`,
     goals: [5, 25, 50, 100, 250, 500],
     rewards: [25, 50, 100, 200, 500, 1000],
     mode: "arenas",
@@ -171,7 +171,7 @@ export const ACHIEVEMENTS = [
   {
     id: "arenaRuns",
     name: "Arena voyages",
-    blurb: (g) => (g === 1 ? "Sail one voyage in either arena." : `Sail ${g} voyages in the arenas, wave or ladder.`),
+    blurb: (g) => (g === 1 ? "Sail one voyage in an arena." : `Sail ${g} voyages in the arenas.`),
     goals: [1, 5, 10, 25, 50, 100],
     rewards: [10, 25, 50, 100, 200, 400],
     mode: "arenas",

@@ -763,13 +763,11 @@ is a count of ports, and ports do not move when a formula does.
   putting more of them on it after. `ladder()` is that list, in ascending strength, and
   `arenaHunter(strength, kills)` is the walk up it; the bench prints the climb for a handful of
   starting ships and fails if the cap does not hold.
-- **Ladder arena** walks the whole fleet, one ship at a time and not matched to her at all. The
-  order is `classLadder()`: classes by their plain fit, each plain to fully found, so every step is
-  the same ship better found or the next class at her plainest, and the rungs dip in strength
-  wherever a full fit outguns the next plain one. That is the shape a captain can read, which the
-  strength-sorted ladder is not: on it the walk stepped off one class, on to another and back.
-  `ladderRung(kills)` is the ship after her nth sinking, nothing once she has sunk the lot, and
-  sinking the lot wins the round.
+- **Ladder arena** walks the whole ladder from the bottom, one ship at a time and not matched to
+  her at all. The order is `ladder()` itself, by strength, so the classes interleave as their fits
+  overlap and every rung is a new ship a shade harder than the last; a walk a class at a time was
+  tried and met the same hull three times running. `ladderRung(kills)` is the ship after her nth
+  sinking, nothing once she has sunk the lot, and sinking the lot wins the round.
 - **Demolition derby** fields ships of similar stats, matched on `ram` rather than on rate, because a
   rate is a count of guns and nobody in that mode has one aboard. `peers(strength, tol, "ram")`.
 - **Free-for-all** fields stock ships of her own rate: `stockOfRate(rung)`. Ships of her own sort of

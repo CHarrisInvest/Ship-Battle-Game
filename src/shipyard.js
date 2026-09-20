@@ -2139,9 +2139,9 @@ export function stockStats(id) {
 }
 
 /**
- * The stock fleet in ascending order of strength. This is the wave arena's ladder: open a shade under
- * her and work up, so the mode escalates by putting harder ships on the water rather than more of the
- * same one, until they have caught her up. Free-for-all and the derby read it too, for a band of it.
+ * The stock fleet in ascending order of strength. This is the ladder both arenas climb: the wave
+ * arena opens a shade under her and works up until the hunters have caught her up, and the ladder
+ * arena walks the whole of it from the bottom. Free-for-all and the derby read it too, for a band.
  */
 let rungs = null;
 export function ladder() {
@@ -2201,35 +2201,25 @@ export function arenaHunter(strength, kills) {
 }
 
 /**
- * THE LADDER ARENA'S CLIMB: the stock fleet a class at a time.
+ * THE LADDER ARENA'S CLIMB: the stock ladder itself, from the bottom.
  *
- * The other ladder is sorted on strength alone, which is right for matching a hunter to her and
- * wrong for a climb a captain is meant to read: a full sloop sits above a plain clipper on it, so the
- * walk up would step off one class, on to another, and back. This one is classes in order of their
- * plain fit, and inside a class her three standards plain to full, so every step is "the same ship,
- * better found" or "the next class up, at her plainest". The rungs are not monotonic in strength for
- * exactly that reason, and the bench marks where they dip; that is the shape of the walk rather than
- * a fault in it.
+ * The ladder is sorted on strength alone, so the walk up it steps between classes as their fits
+ * overlap: a well found sloop, then a plain clipper, then the sloop fully found. That is the point.
+ * A walk a class at a time, plain to full and then the next class, was tried first and reads
+ * tidily on paper, but a captain met the same hull three times running and the fleet's variety
+ * only showed at every third rung; on the strength ladder every rung is a new ship and the next is
+ * always a shade harder than the last.
  *
  * The bottom rung is the plain gundalow whatever the captain sails, because the mode is the whole
  * fleet in order and not a fight matched to her. The top is the fully found first rate, and sinking
  * her is the end of the ladder and the round.
  */
-let classRungs = null;
-export function classLadder() {
-  if (!classRungs) {
-    const byClass = HULL_LIST.map((h) => STANDARDS.map((s) => stockStats(`${h.id}_${s.key}`)));
-    byClass.sort((a, b) => a[0].measure.overall - b[0].measure.overall);
-    classRungs = byClass.flat();
-  }
-  return classRungs;
-}
 
 /** How many rungs the ladder arena has: every class at every standard. */
-export const ladderHeight = () => classLadder().length;
+export const ladderHeight = () => ladder().length;
 
 /** The ship the ladder arena sends after `kills` sinkings, or nothing once she has sunk the lot. */
-export const ladderRung = (kills) => classLadder()[kills] || null;
+export const ladderRung = (kills) => ladder()[kills] || null;
 
 /**
  * Stock ships within `tolerance` of a given strength, by whichever measure the mode fights on.

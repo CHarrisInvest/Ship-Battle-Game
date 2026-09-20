@@ -23,7 +23,7 @@ import {
   bestHandling, handlingScore, HANDLING_TOP,
   RATES, rateOf, gunsBorne, ladder, stockOfRate, resolve, STARTER, STOCK, STANDARDS, riggingValue, mastRebuildCost,
   squareLevel, RIG_FAMILIES, SIZES, mastFitsSocket, KNOTS_PER_RATING, knots,
-  ironAboard, gunTons, TONS_SLACK, arenaHunter, ARENA_OPEN, ARENA_STEP, ARENA_HOLD, ARENA_CAP, classLadder,
+  ironAboard, gunTons, TONS_SLACK, arenaHunter, ARENA_OPEN, ARENA_STEP, ARENA_HOLD, ARENA_CAP, ladderRung, ladderHeight,
 } from "../src/shipyard.js";
 import { RIG_STATIONS, RIG_KINDS, RIG_BERTHS, rigBands } from "../src/galleon.js";
 import { hullForm, DEFAULT_FORM, DRAWN_FIELDS, GALLEON_REF, parseBattery, portZ } from "../src/hullform.js";
@@ -492,23 +492,19 @@ for (const h of HULL_LIST) {
   }
 }
 
-/* THE LADDER ARENA, the fleet in the order she meets it: a class at a time, plain to fully found,
-   classes by their plain fit. A dip is a rung weaker than the one before it, which the order
-   produces on purpose wherever a full fit of one class outguns the plain fit of the next; it is
-   marked so the shape of the walk can be read, not because it is a fault. */
+/* THE LADDER ARENA walks the stock ladder below from the bottom, one rung a sinking, so the table
+   is the mode's whole script. The checks are that every rung has a ship on it, that the count is
+   the fleet at every standard, and that the walk ends: a rung past the top must come back empty,
+   because that is what wins the round. */
 {
-  const rungs = classLadder();
-  console.log(`\nTHE LADDER ARENA  (${rungs.length} rungs, a class at a time)`);
-  rungs.forEach((s, i) => {
-    const prev = rungs[i - 1];
-    const dip = prev && s.measure.overall < prev.measure.overall ? `  dips ${n1(prev.measure.overall - s.measure.overall)} from the rung before` : "";
-    console.log("  " + num(i + 1, 3) + "  " + pad(s.name, 34) + pad(s.rate.name, 15) + num(n1(s.measure.overall), 8) + dip);
-    if (!s.loadout) fault("ladder arena", `rung ${i + 1} has no ship on it`);
-  });
-  if (rungs.length !== HULL_LIST.length * STANDARDS.length) fault("ladder arena", `${rungs.length} rungs for ${HULL_LIST.length} classes at ${STANDARDS.length} standards`);
+  const height = ladderHeight();
+  console.log(`\nTHE LADDER ARENA  (${height} rungs, the stock ladder from the bottom; rung 1 is ${ladderRung(0).name}, rung ${height} is ${ladderRung(height - 1).name})`);
+  for (let i = 0; i < height; i++) if (!ladderRung(i) || !ladderRung(i).loadout) fault("ladder arena", `rung ${i + 1} has no ship on it`);
+  if (height !== HULL_LIST.length * STANDARDS.length) fault("ladder arena", `${height} rungs for ${HULL_LIST.length} classes at ${STANDARDS.length} standards`);
+  if (ladderRung(height) !== null) fault("ladder arena", "a rung past the top still sends a ship, so the ladder never ends");
 }
 
-console.log("\nTHE STOCK LADDER  (what the modes issue, in ascending strength)");
+console.log("\nTHE STOCK LADDER  (what the modes issue, in ascending strength; the ladder arena's rungs, first to last)");
 console.log("  " + pad("ship", 32) + pad("rated", 15) + num("overall", 8) + num("ram", 7) + num("throw", 7) + num("endurance", 10) + num("mobility", 9) + num("value", 8) + num("rigging", 9) + num("rebuild", 8));
 for (const s of ladder()) {
   console.log(

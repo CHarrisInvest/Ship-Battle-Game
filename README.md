@@ -72,14 +72,13 @@ serves from the domain root instead — Netlify, Vercel, a plain static host —
   opening hunter for `ARENA_HOLD` kills before the climb starts and climbs through her own class
   before the cap holds her. `arenaHunter` in `shipyard.js` is the rule and `npm run catalogue`
   prints the climb. Score by ships sunk.
-- **Ladder arena** — one ship at a time, the whole stock fleet in order, whatever you sail. The
-  bottom rung is the plain gundalow and the top is the fully found first rate; classes come in order
-  of their plain fit, each plain, then well found, then fully found, so every step is the same ship
-  better found or the next class up at her plainest. Sink one and the next sails in from the horizon;
-  sink the last and the round is won, with a purse for it (`winBonus`). Repairs are bought between
-  rungs out of what you have taken, as in the wave arena. `classLadder` in `shipyard.js` is the order
-  and `npm run catalogue` prints it, marking where a rung dips under the one before, which the
-  class-at-a-time order produces on purpose. Score by rungs climbed.
+- **Ladder arena** — one ship at a time, the whole stock ladder from the bottom, whatever you sail.
+  The bottom rung is the plain gundalow and the top is the fully found first rate, and the rungs
+  between are every stock ship in order of strength, so the classes interleave as their fits overlap
+  and every rung is a new ship a shade harder than the last. Sink one and the next sails in from the
+  horizon; sink the last and the round is won, with a purse for it (`winBonus`). Repairs are bought
+  between rungs out of what you have taken, as in the wave arena. `ladderRung` in `shipyard.js` is
+  the rule, `ladder()` is the order and `npm run catalogue` prints it. Score by rungs climbed.
 - **Demolition derby** — ten captains and not a gun between them. Hulls are broken open by ramming
   alone, there is nothing to buy, and a squall closes on the middle of the sea. Last afloat wins.
 - **Free-for-all** — last afloat wins, out of up to 10 rival captains in ships of your own rate at
@@ -337,7 +336,7 @@ guns, spares) as its two doors. `docs/SHIPYARD.md` is the design note; the short
   throw weight, endurance and mobility and blends them into one figure, which orders the stock
   ladder. Free-for-all fields her own rate (her own class, in the starter gundalow), the wave arena
   climbs the ladder from a shade under her strength to a fifth over it, the ladder arena walks the
-  whole fleet a class at a time from the bottom, and the derby matches on `ram`, which counts
+  whole ladder from the bottom, and the derby matches on `ram`, which counts
   endurance and mobility and ignores guns nobody has aboard.
 - **The hull table is one terse row per class**, expanded by `buildHull` with defaults, with masts
   written `station/size/family+family` and `order` defaulting to position. It holds 54 rows, 16 of
@@ -355,8 +354,9 @@ guns, spares) as its two doors. `docs/SHIPYARD.md` is the design note; the short
   side: stat bands, what each rates bare and fully found, the same hull at rising quality, and the
   stock ladder. A socket no mast fits, a berth no sail fits or a station the renderer cannot draw all
   fail quietly at runtime, so the bench fails loudly instead and exits non-zero.
-- **`STOCK` is the fleet the modes issue**, in the same id-shaped form as a stored ship. The wave
-  arena climbs `ladder()` and the ladder arena walks `classLadder()`; free-for-all fields
+- **`STOCK` is the fleet the modes issue**, in the same id-shaped form as a stored ship. Both
+  arenas climb `ladder()`, the wave arena from a shade under her and the ladder arena from the
+  bottom; free-for-all fields
   `stockOfRate(n)`; the derby fields `peers(strength, tol, "ram")`. Nothing in the table declares a
   rate, so changing a fit moves that ship up or down the ladder on its own and cannot disagree with
   its own stat line.
@@ -549,7 +549,7 @@ Arena pacing has its own block: `ARENA_START` (hunters at the opening, in both a
 `ARENA_SPAWN_CLEAR` (minimum distance a respawn keeps from the player), `ARENA_MAX_ENEMIES` (ceiling
 on the swarm), and `ARENA_SPAWN_GAP` (how long the second ship of a wave holds off). What each arena
 sends is on its mode row: `reinforce` and `fleetCap` say how many, `hunter` says which stock ship, and
-the ladder arena's are one at a time off `classLadder`. The climb's own knobs, `ARENA_OPEN`,
+the ladder arena's are one at a time off `ladderRung`. The climb's own knobs, `ARENA_OPEN`,
 `ARENA_STEP`, `ARENA_HOLD` and `ARENA_CAP`, sit in `src/shipyard.js` beside `arenaHunter`. `OPENING_WINDOW`
 sets how long free-for-all captains fight whoever is nearest before they start picking their prey.
 `HOLD_SHARE` in `src/hold.js` is the one knob on the economy that outlives a round.

@@ -1012,7 +1012,7 @@ const MODES = {
   wave: {
     key: "wave",
     title: "WAVE ARENA",
-    short: "wave arena",
+    short: "wave",
     color: C.side,
     desc: "Endless survival. One hunter to start, a little weaker than your ship. Each ship you sink brings more in from the horizon. They catch up to your ship in strength, and then it is their numbers that grow. Patch her up between waves, out of what you have taken. Score by ships sunk.",
     unsailed: "No wave has come for you here yet.", // the log, where a mode has no voyages in it
@@ -1036,11 +1036,11 @@ const MODES = {
   ladder: {
     key: "ladder",
     title: "LADDER ARENA",
-    short: "ladder arena",
+    short: "ladder",
     // The hull bar's amber, which the menu's dark grounds carry at better than 5 to 1; it sits
     // between the wave arena's gold and the derby's red, and the two arenas read as a pair.
     color: C.hull,
-    desc: "One ship at a time. Start against the weakest ship in the fleet and work up through every class, from a plain fit to a full one, to the fully found first rate. Sink one and the next sails in. Patch her up between rungs, out of what you have taken. Score by rungs climbed.",
+    desc: "One ship at a time. Start against the weakest ship in the fleet and work up through every ship in it, each a little stronger than the last, to the fully found first rate. Sink one and the next sails in. Patch her up between rungs, out of what you have taken. Score by rungs climbed.",
     unsailed: "You have not set foot on the ladder.",
     rivals: ARENA_START,
     guns: true,
@@ -1141,7 +1141,7 @@ const modeOf = (m) => MODES[m] || MODES.wave;
 // A row in `achievements.js` says `mode: "arenas"` and the card reads it from here rather than
 // from `MODES`, because the pair is not a mode a captain can sail. Sand rather than either arena's
 // own colour, so the tag does not claim one of them; it carries the dark grounds at 6 to 1.
-const TAGS = { ...MODES, arenas: { short: "both arenas", color: C.sand } };
+const TAGS = { ...MODES, arenas: { short: "all arenas", color: C.sand } };
 
 function norm(a) {
   while (a > Math.PI) a -= Math.PI * 2;
@@ -1613,9 +1613,9 @@ export default function App() {
      *                every second sinking brings the next rung out of the horizon until the rungs
      *                have caught her up, and the numbers do the rest. `arenaHunter` in the
      *                catalogue is the rule, and the bench prints it.
-     *   ladder arena is the one mode not matched to her at all: the stock fleet in order, a class
-     *                at a time from the plain gundalow up, and her `kills` say which rung is next.
-     *                `ladderRung` is the rule. Both arenas carry theirs on the mode row as `hunter`.
+     *   ladder arena is the one mode not matched to her at all: the stock ladder from the bottom,
+     *                by strength, and her `kills` say which rung is next. `ladderRung` is the rule.
+     *                Both arenas carry theirs on the mode row as `hunter`.
      *   free-for-all fields her own rate: ships of her own class of ship, at every standard of
      *                fitting out, which is equal without being identical. In the first ship it
      *                fields her own class instead: the lowest rate holds four classes, and a
