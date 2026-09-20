@@ -6144,10 +6144,14 @@ function ShipPlate({ hold, onEdit, onOutfit }) {
           spends width the screen has on height it does not. */}
       {wide ? (
         // her name and her figures hold the top of the plate, as they do upright; only she is tall
+        // The figures take only their own width and the name's column takes the rest, so a class
+        // name like "Bermuda Sloop light" stays on one line; the two columns shared the width
+        // equally before and broke it. A name longer than the room still wraps rather than
+        // pushing her off the plate.
         <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-          <div style={{ flex: "1 1 0", minWidth: 0 }}>{info}</div>
+          <div style={{ flex: "1 1 auto", minWidth: 0 }}>{info}</div>
           {ship}
-          <div style={{ flex: "1 1 0", minWidth: 0, display: "flex", justifyContent: "flex-end" }}><QuickStats stats={stats} /></div>
+          <div style={{ flex: "0 0 auto" }}><QuickStats stats={stats} /></div>
         </div>
       ) : (
         <>
