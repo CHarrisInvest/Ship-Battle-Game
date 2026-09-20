@@ -229,7 +229,7 @@ Caps and letterspacing stopped meaning anything when everything had them. The sp
 text *is*, not by where it sits:
 
 - **Caps** for the game's proper nouns: the title, both lines of it (`STERNCHASE` over
-  `HELM & HULL`), the three mode names, and the six
+  `HELM & HULL`), the four mode names, and the six
   fight controls and what they hit (`MAST` `HULL` `CREW` `SIDE` `FRONT` `MUSKET`). Outcome headlines
   set in the display face at title size count here too, so `SUNK` and `LAST AFLOAT` keep their caps;
   they name the moment rather than instruct. **Screen titles and section titles are caps as well**,

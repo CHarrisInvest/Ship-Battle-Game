@@ -757,10 +757,17 @@ is a count of ports, and ports do not move when a formula does.
 
 ### What each mode is to do with it
 
-- **Arena** climbs the ladder. Open a shade under her and work up through the stock fleet a rung
-  every second sinking, so the mode escalates by putting harder ships on the water rather than more
-  of the same one. `ladder()` is that list, in ascending strength, and `arenaHunter(strength, kills)`
-  is the walk up it; the bench prints the climb for a handful of starting ships.
+- **Wave arena** climbs the ladder. Open a shade under her and work up through the stock fleet a
+  rung every second sinking, until the rungs are a fifth over her (`ARENA_CAP`) and the climb stops:
+  the mode escalates by putting harder ships on the water until they have caught her up, and by
+  putting more of them on it after. `ladder()` is that list, in ascending strength, and
+  `arenaHunter(strength, kills)` is the walk up it; the bench prints the climb for a handful of
+  starting ships and fails if the cap does not hold.
+- **Ladder arena** walks the whole ladder from the bottom, one ship at a time and not matched to
+  her at all. The order is `ladder()` itself, by strength, so the classes interleave as their fits
+  overlap and every rung is a new ship a shade harder than the last; a walk a class at a time was
+  tried and met the same hull three times running. `ladderRung(kills)` is the ship after her nth
+  sinking, nothing once she has sunk the lot, and sinking the lot wins the round.
 - **Demolition derby** fields ships of similar stats, matched on `ram` rather than on rate, because a
   rate is a count of guns and nobody in that mode has one aboard. `peers(strength, tol, "ram")`.
 - **Free-for-all** fields stock ships of her own rate: `stockOfRate(rung)`. Ships of her own sort of
@@ -1085,9 +1092,11 @@ with it is as cheap as changing it.
    field is matched to her instead, which is what the measures were built to make possible, and being
    beaten in a ship you chose is the point of choosing one. Free-for-all fields her own tier, so the
    fight is equal without being identical; the derby matches on `ram`, because `overall` counts guns
-   nobody in that mode has aboard; arena opens a shade under her and climbs the ladder a rung every
-   second sinking (`arenaHunter`), holding the opening hunter a few kills for a ship with nothing
-   under her, which is the first ship.
+   nobody in that mode has aboard; the wave arena opens a shade under her and climbs the ladder a
+   rung every second sinking (`arenaHunter`) until it is a fifth over her, holding the opening hunter
+   a few kills for a ship with nothing under her, which is the first ship. The ladder arena is the
+   one exception to the matching, on purpose: it is the fleet in order, and her ship is what she
+   climbs it in.
 4. ~~**How big should the classes actually get?**~~ **Settled, with the compression the worry asked
    for.** Real lengths run a factor of nearly nine and the sea is 2000 across, so both views raise
    the size ratio to a power below one, anchored on the galleon: at sea the fleet runs from a 16-unit

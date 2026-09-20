@@ -100,6 +100,28 @@ function blankDeeds() {
 }
 const DEEDS = Object.keys(blankDeeds());
 
+/**
+ * What the record used to call things. The arena became the wave arena the day the ladder arena
+ * arrived, and a voyage banked under the old name is a wave voyage: `sanitize` folds it on load,
+ * totals added and bests kept, so a captain's record carries over instead of starting a second one
+ * under the new name and leaving the first to be summed by nothing. The paid ledger follows the one
+ * achievement that moved with it; the others kept their ids. Both tables are read once, on load, and
+ * the record that comes out carries only the new names, so the fold runs once and then finds nothing.
+ */
+const MODE_RENAMED = { arena: "wave" };
+const PAID_RENAMED = { arenaVoyage: "waveStreak" };
+
+/** Fold one stored mode record onto another: totals add, bests keep the better. */
+function foldMode(dest, m) {
+  for (const k of Object.keys(dest)) {
+    const v = num(m[k]);
+    if (k === "bestRank") dest[k] = dest[k] === 0 ? v : v === 0 ? dest[k] : Math.min(dest[k], v); // counts down; 0 is unplaced
+    else if (k.startsWith("best")) dest[k] = Math.max(dest[k], v);
+    else dest[k] += v;
+  }
+  return dest;
+}
+
 function blank() {
   return {
     v: VERSION,
@@ -145,15 +167,18 @@ function sanitize(raw) {
   rec.spent = num(raw.spent);
   rec.bounties = num(raw.bounties);
   const paid = raw.paid && typeof raw.paid === "object" ? raw.paid : {};
-  for (const [id, n] of Object.entries(paid)) if (num(n) > 0) rec.paid[id] = Math.floor(num(n));
+  for (const [id, n] of Object.entries(paid)) {
+    if (num(n) <= 0) continue;
+    const key = PAID_RENAMED[id] || id;
+    rec.paid[key] = Math.max(rec.paid[key] || 0, Math.floor(num(n)));
+  }
   const lt = raw.lifetime && typeof raw.lifetime === "object" ? raw.lifetime : {};
   for (const k of Object.keys(rec.lifetime)) rec.lifetime[k] = num(lt[k]);
   const modes = raw.modes && typeof raw.modes === "object" ? raw.modes : {};
   for (const [name, m] of Object.entries(modes)) {
     if (!m || typeof m !== "object") continue;
-    const dest = blankMode();
-    for (const k of Object.keys(dest)) dest[k] = num(m[k]);
-    rec.modes[name] = dest;
+    const key = MODE_RENAMED[name] || name;
+    rec.modes[key] = foldMode(rec.modes[key] || blankMode(), m);
   }
   rec.yard = sanitizeYard(raw.yard);
   return rec;
