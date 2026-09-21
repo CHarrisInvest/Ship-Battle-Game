@@ -1104,7 +1104,7 @@ const MODES = {
     title: "DEMOLITION DERBY",
     short: "derby",
     color: C.crew,
-    desc: "Only one hand needed. Last afloat wins. 10 captains in ships that rival yours. No guns, no repairs. Sink ships by ramming. Drive into enemy sides, face charging ships. Time afloat is paid and a storm closes in that takes the crew of any ship caught.",
+    desc: "Only one hand needed. Last afloat wins. 10 captains with similar ships. No guns, no repairs. Sink ships by ramming. Drive into enemy sides, face charging ships. Time afloat is paid and a storm closes in that takes the crew of any ship caught.",
     unsailed: "Untried. Nothing in there but iron and weather.",
     rivals: DERBY_AI,
     guns: false,
