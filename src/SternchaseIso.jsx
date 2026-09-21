@@ -6326,7 +6326,7 @@ function StartOverlay({ onStart, onEdit, onOutfit, onRecords, hold, onScuttle })
       <div className="mode-head" style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, margin: "18px 0 10px" }}>
         {/* Neither side ever breaks. Where the row is too narrow for the whole note beside the
             heading, `index.css` swaps the long wording for the short one on the row's own width. */}
-        <div style={{ fontFamily: DISPLAY, fontSize: 20, color: C.gold, letterSpacing: 1, whiteSpace: "nowrap" }}>GAME MODES</div>
+        <div style={{ fontFamily: DISPLAY, fontSize: MODE_HEAD_PX, color: C.gold, letterSpacing: 1, whiteSpace: "nowrap" }}>GAME MODES</div>
         <div style={{ fontSize: 11, color: "rgba(238,244,242,0.6)", whiteSpace: "nowrap" }}>
           <span className="earn-long">Enter to earn</span>
           <span className="earn-short">Earn</span>{" "}
@@ -6380,10 +6380,16 @@ function FullScreenButton() {
   );
 }
 
+// The GAME MODES heading and every mode's name on its card are set at this one size, upright and
+// sideways alike, so the cards read as the section the heading announces. One figure rather than
+// two copies of 20, because the two drifted apart once on a sideways phone and it took a while to
+// see that the source had not moved (`index.css` says what had).
+const MODE_HEAD_PX = 20;
+
 function ModeCard({ color, title, desc, onClick }) {
   return (
     <button onClick={onClick} style={{ display: "block", width: "100%", textAlign: "left", borderRadius: 10, border: `1px solid ${color}`, background: "rgba(13,58,56,0.85)", color: C.ink, padding: "14px 16px", marginBottom: 12, cursor: "pointer", WebkitTapHighlightColor: "transparent" }}>
-      <div style={{ fontFamily: DISPLAY, fontSize: 20, color, marginBottom: 4 }}>{title}</div>
+      <div style={{ fontFamily: DISPLAY, fontSize: MODE_HEAD_PX, color, marginBottom: 4 }}>{title}</div>
       <div style={{ fontSize: 12, color: "rgba(238,244,242,0.78)", lineHeight: 1.5 }}>{desc}</div>
     </button>
   );

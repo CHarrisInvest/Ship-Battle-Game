@@ -10,6 +10,20 @@ body,
 }
 
 /*
+ * TEXT IS THE SIZE THE SOURCE SAYS, IN BOTH ORIENTATIONS.
+ *
+ * iOS Safari boosts the text in ordinary blocks when a phone turns sideways and leaves form
+ * controls alone, so on the menu held sideways the GAME MODES heading and every mode's description
+ * came up larger than the mode's name on the card beside them, which is a button, though all three
+ * are set at the same size. The boost is a reading aid for pages that were never laid out for a
+ * phone; this one is, so it is switched off and a figure in the source is the figure on the screen.
+ */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+/*
  * A DOUBLE TAP IS A TAP TWICE, NEVER A ZOOM, AND EVERY ELEMENT HAS TO SAY SO ITSELF.
  *
  * This is a game played with the thumbs: fire, patch, fire again. Two of those taps landing inside a

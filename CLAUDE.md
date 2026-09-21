@@ -295,6 +295,11 @@ Buttons take size over tracking. Wide letterspacing makes every control read as 
   same edges. The game is a home-screen app (`public/manifest.webmanifest` and the meta tags in
   `index.html`), which is the only way to a full screen on an iPhone; `npm run icon` draws the icons
   from the menu's galleon, so they are generated and never edited by hand.
+- **Text is the size the source says, sideways as well as upright.** `index.css` sets
+  `text-size-adjust: 100%`, because iOS Safari boosts the text in ordinary blocks when a phone turns
+  sideways and leaves buttons alone: the GAME MODES heading and the descriptions grew while the mode
+  names on the cards, which are buttons, did not, with all three set at one size. A size that looks
+  wrong in one orientation only is that boost, not the source.
 - **Border radius comes from a small set:** 3 for hairline bar fills, 10 for cards and buttons, 20
   for full-round pills. Do not invent a new one per component.
 - **A double tap is a tap twice, and every element says so itself.** This is a game played with the
