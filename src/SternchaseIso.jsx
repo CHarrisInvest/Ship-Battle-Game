@@ -1014,7 +1014,7 @@ const MODES = {
     title: "WAVE ARENA",
     short: "wave",
     color: C.side,
-    desc: "Endless survival. One hunter to start, a little weaker than your ship. Each ship you sink brings more in from the horizon. They catch up to your ship in strength, and then it is their numbers that grow. Patch her up between waves, out of what you have taken. Score by ships sunk.",
+    desc: "Endless survival. One hunter to start but their numbers grow. Each ship you sink brings more in from the horizon. Patch up between waves, out of what you have taken. Score by ships sunk.",
     unsailed: "No wave has come for you here yet.", // the log, where a mode has no voyages in it
     rivals: ARENA_START, // hulls on the water at the drop, besides the player
     guns: true, // cannons and muskets aboard
@@ -1040,7 +1040,7 @@ const MODES = {
     // The hull bar's amber, which the menu's dark grounds carry at better than 5 to 1; it sits
     // between the wave arena's gold and the derby's red, and the two arenas read as a pair.
     color: C.hull,
-    desc: "One ship at a time. Start against the weakest ship in the fleet and work up through every ship in it, each a little stronger than the last, to the fully found first rate. Sink one and the next sails in. Patch her up between rungs, out of what you have taken. Score by rungs climbed.",
+    desc: "One ship at a time. Start with the weakest ships and work up through ranks. Sink one and the next sails in. Patch up between rungs, out of what you have taken. Score by rungs climbed.",
     unsailed: "You have not set foot on the ladder.",
     rivals: ARENA_START,
     guns: true,
