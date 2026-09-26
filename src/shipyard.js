@@ -1747,24 +1747,22 @@ export function loadoutValue(loadout) {
 }
 
 /**
- * What it costs to step a new mast at sea: seven coins in every hundred her rigging is worth.
+ * What it costs to step a new mast at sea: a coin a point of the rig it puts back.
  *
- * There is no base and no per-point charge. A mast is stepped or it is not, so the price is flat
- * whether she lost the whole thing or sprung it, and what sets it is the rig she is carrying rather
- * than the damage she took. A captain who has spent two thousand coins getting a topgallant aloft
- * pays to put it back; one sailing a free pole and a single topsail pays almost nothing, which is
- * right, because that is nearly all a new rig would cost her anyway.
+ * A jury rig restores nine tenths of her mast, so it costs nine tenths of her mast's health, the same
+ * coin a point the hull is patched at. The price is flat, because a mast is stepped or it is not, and
+ * what sets it is how much mast she carries rather than how much of it she lost.
  *
- * It was a tenth while the work put her rig back whole. What she buys at sea is a jury rig, a spare
- * spar and what the sail locker holds, and it leaves her a tenth short of the ship she sailed, so the
- * price came down with it: a little over two thirds of the old figure for nine tenths of a rig. She
- * is paying the boatswain rather than the yard.
+ * It was a share of what her rigging cost in the shop, and that broke on any ship whose rig was dear
+ * against its strength: a fully found corvette paid 1,340 coins to step a mast worth a few hundred
+ * points, more than every point of it was worth. Pricing the mast by the mast keeps the two bars in one
+ * currency, so a captain can read either as a bill.
  *
- * It lives here rather than in the fight because it is a fact about the catalogue: it is derived from
- * shop prices, and it moves the moment a price does.
+ * It lives here rather than in the fight because the mast's health is `rate()`'s figure: it moves the
+ * moment the catalogue does.
  */
-export const RIG_REBUILD_SHARE = 0.07;
-export const mastRebuildCost = (loadout) => Math.ceil(RIG_REBUILD_SHARE * riggingValue(loadout));
+export const MAST_REBUILD_SHARE = 0.9;
+export const mastRebuildCost = (loadout) => Math.ceil(MAST_REBUILD_SHARE * rate(loadout).mast);
 
 /* ---------------------------------------------------------------------------------------------- */
 /* Stat ranges                                                                                     */

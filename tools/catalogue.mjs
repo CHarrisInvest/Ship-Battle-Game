@@ -505,7 +505,7 @@ for (const h of HULL_LIST) {
 }
 
 console.log("\nTHE STOCK LADDER  (what the modes issue, in ascending strength; the ladder arena's rungs, first to last)");
-console.log("  " + pad("ship", 32) + pad("rated", 15) + num("overall", 8) + num("ram", 7) + num("throw", 7) + num("endurance", 10) + num("mobility", 9) + num("value", 8) + num("rigging", 9) + num("rebuild", 8));
+console.log("  " + pad("ship", 32) + pad("rated", 15) + num("overall", 8) + num("ram", 7) + num("throw", 7) + num("endurance", 10) + num("mobility", 9) + num("value", 8) + num("rigging", 9) + num("mast", 6) + num("rebuild", 8));
 for (const s of ladder()) {
   console.log(
     "  " + pad(s.name, 32),
@@ -517,6 +517,7 @@ for (const s of ladder()) {
     num(n2(s.measure.mobility), 9),
     num(loadoutValue(s.loadout), 8),
     num(riggingValue(s.loadout), 9),
+    num(Math.round(rate(s.loadout).mast), 6),
     num(mastRebuildCost(s.loadout), 8),
   );
 }
@@ -536,7 +537,7 @@ for (const r of RATES) {
 const first = resolve(STARTER);
 const start = measure(rate(first));
 console.log(`\nTHE FIRST SHIP  ${rateOf(first.hull).name}, overall ${n1(start.overall)}, ram ${n1(start.ram)}`);
-console.log(`  her rigging is worth ${riggingValue(first)}, so a new mast at sea costs her ${mastRebuildCost(first)}.`);
+console.log(`  her mast is worth ${Math.round(rate(first).mast)} points, so a new mast at sea costs her ${mastRebuildCost(first)}.`);
 console.log("  Every hull in a fight brings her own rig, so that is what a rebuild costs HER and nobody else.");
 
 /* ---- verdict --------------------------------------------------------------------------------- */
