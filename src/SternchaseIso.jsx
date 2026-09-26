@@ -900,9 +900,9 @@ const shotHitsCircle = (cx, cy, r, x0, y0, x1, y1) => {
  *
  * MAST is flat, and it is a jury rig. A mast is stepped or it is not: there is no half a mast, so
  * there is no half price and no part payment, and the charge is the same whether she lost the whole
- * thing or sprung it. What sets the price is the rig she carries rather than the damage she took, at
- * `RIG_REBUILD_SHARE` of what her whole rigging is worth, which is the shipyard's figure and not the
- * fight's.
+ * thing or sprung it. What sets the price is the mast she carries rather than the damage she took: a
+ * coin a point of the rig the jury mast puts back, `MAST_REBUILD_SHARE` of her mast's health, which is
+ * the shipyard's figure and not the fight's.
  *
  * What goes up is a spare spar swayed up with what the sail locker holds, not the suit she sailed
  * with, so it stops at `MAST_JURY_CAP` the way the hull stops at its own. Because speed and helm both
@@ -938,19 +938,18 @@ const patchCap = (s) => s.maxHull * HULL_PATCH_CAP;
  * A spare spar fished and swayed up carries sail again, but it is not the mast that came out of her
  * and the canvas on it is whatever the locker held. She is nine tenths of a ship, which `speedCap`
  * and `turnCap` read as nineteen twentieths of her way and a little over nine tenths of her helm.
- * `RIG_REBUILD_SHARE` is priced for that rather than for a proper rebuild, so a captain is not paying
- * the yard's figure for the sailmaker's shortcut.
+ * `MAST_REBUILD_SHARE` in the shipyard is priced for exactly that nine tenths, a coin a point, so a
+ * captain pays for the rig she gets back and never more than her mast is worth.
  */
 const MAST_JURY_CAP = 0.9;
 /** The most rig a purse can reach on this ship. The last tenth is stepped in a yard, not at sea. */
 const juryCap = (s) => s.maxMast * MAST_JURY_CAP;
 
 /**
- * What a new mast costs at sea: a share of the rig she is actually carrying.
+ * What a new mast costs at sea: nine tenths of her own mast's health, a coin a point.
  *
- * Every ship afloat brings her own loadout now, so a captain who has spent thousands getting a
- * skysail mast aloft pays to put it back, and one under a free pole and a single sail pays almost
- * nothing. The starter's rig is the fallback for a hull that somehow reaches the water without one,
+ * Every ship afloat brings her own loadout, so the bill is hers: a first rate's mast is a first
+ * rate's mast to put back, and a gundalow's costs a gundalow's. The starter's rig is the fallback for a hull that somehow reaches the water without one,
  * which nothing should do.
  */
 const STOCK_LOADOUT = resolve(STARTER);

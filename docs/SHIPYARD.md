@@ -587,9 +587,10 @@ goes dead for two different reasons and says which: `Sound` where she has taken 
 
 **Mast** is flat and it is a jury rig. A mast is stepped or it is not: no half a mast, so no half
 price and no part payment, and the charge is the same whether she lost the whole thing or sprung it.
-What sets it is the rig she carries rather than the damage she took, at `RIG_REBUILD_SHARE` of what
-her whole rigging is worth. That figure lives in `shipyard.js` rather than in the fight, because it is
-derived from shop prices and moves the moment one of them does: `mastRebuildCost(loadout)`.
+What sets it is the mast she carries rather than the damage she took: `MAST_REBUILD_SHARE`, nine
+tenths, of her mast's health, a coin a point of the rig the jury mast puts back and the same currency
+the hull is patched in. That figure lives in `shipyard.js` rather than in the fight, because the mast's
+health is `rate()`'s and moves the moment the catalogue does: `mastRebuildCost(loadout)`.
 
 It stops at `MAST_JURY_CAP`, nine tenths, because what goes up at sea is a spare spar swayed up with
 whatever the sail locker holds and not the suit she sailed with. Since `speedCap` and `turnCap` both
@@ -598,11 +599,11 @@ was, but sailing again, and that is what makes it worth the money. Losing a mast
 takes a ship out of a fight while leaving her afloat, and the jury rig is the difference between
 limping and drifting.
 
-The price came down with the promise. It was a tenth of her rigging while the work put her back
-whole, and it is 7% now, a little over two thirds of the old figure for nine tenths of a rig: she is
-paying the boatswain rather than the yard. Every hull in a fight brings her own rig, so the bill is
-hers: 24 coins for the starter's sprit mast and one sail, 23 for a plain gundalow, and 1,977 for a
-fully found third rate.
+It used to be a share of what her rigging cost in the shop, a tenth and then 7%, and that broke on
+any ship whose rig was dear against its strength: a fully found corvette paid 1,340 coins for a jury
+mast on a 277-point mast, far more than every point of it was worth. Priced by the mast, the bill is
+hers and never more than her mast: 50 coins for a gundalow or the starter, 250 for a corvette, 898 for
+a third rate and 1,336 for a first rate, however she is rigged.
 
 **Crew cannot be bought back at all.** Hands lost over the rail are lost, so the crew bar is a clock
 that only runs one way for the length of a round. It is why musket fire and a spell in the weather are

@@ -393,9 +393,9 @@ screen under a finger from scrolling at all.
   seams are a slipway's work, so the last fifth is unbuyable rather than dear and a hairline on the
   hull bar marks where the work ends.
   **MAST** is flat and it is a jury rig, because a mast is stepped or it is not: no half a mast, no
-  half price, no part payment. What sets the price is the rig she carries rather than the damage she
-  took, at `RIG_REBUILD_SHARE` of what her whole rigging is worth, which runs from 23 coins for a
-  plain gundalow to 1,977 for a fully found third rate. What goes up is a spare spar and whatever
+  half price, no part payment. What sets the price is the mast she carries rather than the damage she
+  took: a coin a point of the nine tenths a jury mast puts back, `MAST_REBUILD_SHARE` of her mast's
+  health, which runs from 50 coins for a gundalow to 1,336 for a first rate. What goes up is a spare spar and whatever
   canvas the locker holds, so it stops at nine tenths, and since speed and helm both read how much of
   her rig is standing that is 95% of her way and 92% of her helm: not the ship she was, but sailing
   again, with the same hairline on the mast bar saying where the work ends.
@@ -538,8 +538,8 @@ camera, `VIEW`/`MAX_ZOOM` for how much sea the square view holds and `EDGE_PEEK`
 boundary is let inside it, `BASE`/`HP_GAIN` for the health
 pools, `WP` for per-weapon cooldown, projectile speed, and lifetime, `RAM_*` for ramming, and
 `HULL_RATE` for what a point of hull damage costs to put right (deliberately 1), and
-`RIG_REBUILD_SHARE` in `src/shipyard.js` for the flat price of a new mast as a share of what her
-rigging is worth. `BASE_SPEED` is a whole
+`MAST_REBUILD_SHARE` in `src/shipyard.js` for the flat price of a new mast as a share of her mast's
+health. `BASE_SPEED` is a whole
 ship's top speed and the yardstick the heavy rudder measures against; `RUDDER_HEAVY` is how much
 rudder she loses at it and `RUDDER_CURVE` how late in the range the loss starts to bite — raising the
 curve keeps more of her handling until she is truly running.
