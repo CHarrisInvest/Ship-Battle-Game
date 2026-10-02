@@ -65,8 +65,13 @@ say("serving", SITE);
 const executablePath = process.env.SMOKE_CHROME || undefined;
 const browser = await chromium.launch({ executablePath, headless: true, args: ["--no-sandbox"] });
 
-async function open(tag) {
+async function open(tag, { asked = true } = {}) {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
+  // Answer the cookie prompt before the page loads, so its sheet is not lying over the controls the
+  // tour taps. The prompt itself is checked once, on a context of its own, in `cookies()`.
+  if (asked) await ctx.addInitScript(() => {
+    if (!localStorage.getItem("sternchase.consent")) localStorage.setItem("sternchase.consent", JSON.stringify({ status: "rejected", analytics: false, advertising: false, functionality: true }));
+  });
   const page = await ctx.newPage();
   const errs = [];
   // a missing favicon is not a fault of the game
@@ -116,6 +121,34 @@ async function tour() {
   await page.locator("button", { hasText: /^Achievements/ }).first().click();
   await expect("06-achievements", "ACHIEVEMENTS");
   if (page.errs.length) fail(`tour: ${page.errs.join(" | ")}`); else ok("tour: no runtime errors");
+  await page.context().close();
+}
+
+/* ---- the cookie prompt ----------------------------------------------------------------------- */
+
+// A first visit is asked, rejecting everything leaves the hold alone, and the menu brings it back.
+async function cookies() {
+  const page = await open("cookies", { asked: false });
+  const sheet = page.locator("[role=dialog][aria-labelledby=cookie-title]");
+  await sheet.waitFor({ timeout: 3000 });
+  await snap(page, "01-prompt");
+  ok("cookies: a first visit is asked");
+  const before = JSON.stringify(await hold(page));
+  await sheet.locator("button", { hasText: "Reject all" }).click();
+  const kept = JSON.parse(await page.evaluate(() => localStorage.getItem("sternchase.consent")) || "null");
+  if (kept?.status === "rejected" && !kept.analytics && !kept.advertising) ok("cookies: Reject all is kept");
+  else fail(`cookies: Reject all kept ${JSON.stringify(kept)}`);
+  if (JSON.stringify(await hold(page)) === before) ok("cookies: rejecting leaves the hold alone");
+  else fail("cookies: rejecting changed the hold");
+  await page.reload({ waitUntil: "networkidle" });
+  await page.waitForTimeout(900);
+  if (await sheet.count()) fail("cookies: asked again after answering"); else ok("cookies: not asked again");
+  await page.locator("button", { hasText: "Cookie settings" }).click();
+  await sheet.locator("button", { hasText: "Choose" }).click();
+  const switches = await sheet.locator("[role=switch]").count();
+  if (switches === 3) ok("cookies: Choose shows 3 categories"); else fail(`cookies: Choose shows ${switches} switches`);
+  await snap(page, "02-choose");
+  if (page.errs.length) fail(`cookies: ${page.errs.join(" | ")}`);
   await page.context().close();
 }
 
@@ -187,6 +220,7 @@ async function round(modeTitle, key, drive) {
 
 try {
   await tour().catch((e) => fail(`tour: ${e.message.split("\n")[0]}`));
+  await cookies().catch((e) => fail(`cookies: ${e.message.split("\n")[0]}`));
   await Promise.all([
     ...[["FREE-FOR-ALL", "ffa"], ["DEMOLITION DERBY", "derby"], ["WAVE ARENA", "wave"], ["LADDER ARENA", "ladder"]].flatMap(([title, key]) =>
       [false, true].map((drive) => round(title, key, drive).catch((e) => fail(`${key}-${drive ? "drive" : "idle"}: ${e.message.split("\n")[0]}`))),

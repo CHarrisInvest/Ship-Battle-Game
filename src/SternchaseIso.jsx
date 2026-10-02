@@ -14,6 +14,7 @@ import {
   knots, berthEffect, familyOf, gunTons, gunFits, gunEffect, cheapestCanvas, handlingScore, handlingPoints,
 } from "./shipyard.js";
 import { roll, tally, progressParts } from "./achievements.js";
+import { getStoredConsent, hasConsentDecision, acceptAllCookies, rejectNonEssential, setCustomConsent } from "./consent.js";
 
 /**
  * STERNCHASE: HELM & HULL — pirate battles at sea, on a tilted (isometric-ish) sea with tall wooden
@@ -1263,6 +1264,12 @@ export default function App() {
   const btnRefs = { broadside: useRef(null), bow: useRef(null), musket: useRef(null) };
 
   const [phase, setPhase] = useState("start");
+  const [cookieAsk, setCookieAsk] = useState(false);
+  useEffect(() => {
+    if (hasConsentDecision()) return;
+    const t = setTimeout(() => setCookieAsk(true), 500);
+    return () => clearTimeout(t);
+  }, []);
   // Which of her ships the yard screens are looking at, and where the outfitter opens. The yard is
   // not bound to the ship she sails: the plate's arrows and the strip at the head of the yard turn
   // it to any hull she owns, and "Sail her" is a separate act. `null` follows the active ship.
@@ -3793,6 +3800,7 @@ export default function App() {
           onEdit={(id) => { setYardShip(id || null); setPhase("yard"); }}
           onOutfit={(id) => { setYardShip(id || null); setOutfitStart(null); setPhase("outfitter"); }}
           onRecords={() => setPhase("records")}
+          onCookies={() => setCookieAsk(true)}
           hold={hold}
           onScuttle={() => { setYardShip(null); resetHold(); }}
         />
@@ -3813,6 +3821,10 @@ export default function App() {
       {phase === "outfitter" && (
         <OutfitterScreen hold={hold} shipId={yardShip} onView={setYardShip} start={outfitStart} onBack={() => setPhase("yard")} />
       )}
+      {/* Asked on the menu only. A first visit sees it once the menu has settled; answered, it stays
+          away until "Cookie settings" brings it back. Unanswered, it waits out a voyage and is
+          there again on the way back to the menu. */}
+      {phase === "start" && cookieAsk && <CookieConsent onClose={() => setCookieAsk(false)} />}
       {phase === "records" && <RecordsScreen hold={hold} onBack={() => setPhase("start")} onAchievements={() => setPhase("achievements")} />}
       {phase === "achievements" && <AchievementsScreen hold={hold} onBack={() => setPhase("records")} />}
       {phase === "won" && <EndOverlay title={rules.ladder ? "LADDER CLIMBED" : "LAST AFLOAT"} titleColor={C.gold} result={result} stats={stats} mode={mode} place={place} hold={hold} banked={banked} bounty={bounty} onAgain={() => startRef.current(mode)} onMenu={() => setPhase("start")} />}
@@ -6310,7 +6322,7 @@ function ArrowButton({ back, label, onClick }) {
 // would let a captain think a gun fits when it does not.
 const fmtTons = (t) => t.toFixed(1);
 
-function StartOverlay({ onStart, onEdit, onOutfit, onRecords, hold, onScuttle }) {
+function StartOverlay({ onStart, onEdit, onOutfit, onRecords, onCookies, hold, onScuttle }) {
   return (
     <Shell>
       {/* The name is a lockup of two lines, and the first one carries it. STERNCHASE is the word a
@@ -6346,8 +6358,105 @@ function StartOverlay({ onStart, onEdit, onOutfit, onRecords, hold, onScuttle })
         the crew. Rams can pack a punch.
       </div>
       <FullScreenButton />
+      <div>
+        <button
+          onClick={onCookies}
+          style={{ marginTop: 10, fontFamily: UI, fontSize: 10, color: "rgba(238,244,242,0.5)", background: "transparent", border: "none", padding: 4, cursor: "pointer", WebkitTapHighlightColor: "transparent" }}
+        >
+          Cookie settings
+        </button>
+      </div>
       {hold.lifetime.runs > 0 && <ScuttleHold onScuttle={onScuttle} />}
     </Shell>
+  );
+}
+
+/**
+ * The cookie prompt: essential, analytics and advertising, with the answer kept by `consent.js`. It rides over the foot of the menu as a sheet rather than blocking the
+ * screen, and the App only shows it on the menu, so a captain is never asked mid-fight.
+ *
+ * The copy says plainly what is true. Saved progress is the essential row and always on, and the
+ * two optional rows are off until allowed. Nothing optional is loaded today, so the prompt does not
+ * claim it is; when analytics or ads arrive they read the answer already given here.
+ *
+ * A cookie prompt usually links to a privacy policy and this one links to nothing, because there is
+ * no such page yet. It is a known gap in `CLAUDE.md`: the link goes in the body here when the page does.
+ */
+function CookieConsent({ onClose }) {
+  const [choosing, setChoosing] = useState(false);
+  const [prefs, setPrefs] = useState(() => {
+    const c = getStoredConsent();
+    return { analytics: c.analytics, advertising: c.advertising };
+  });
+  const done = (act) => () => { act(); onClose(); };
+
+  return (
+    <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, zIndex: 20, display: "flex", justifyContent: "center", padding: "0 calc(12px + env(safe-area-inset-right, 0px)) calc(12px + env(safe-area-inset-bottom, 0px)) calc(12px + env(safe-area-inset-left, 0px))", pointerEvents: "none" }}>
+      <div
+        role="dialog" aria-labelledby="cookie-title" aria-describedby="cookie-body"
+        style={{ pointerEvents: "auto", width: "100%", maxWidth: SHELL_W_WIDE, maxHeight: "calc(100vh - 24px - env(safe-area-inset-top, 0px))", overflowY: "auto", background: "#0c3533", border: `1px solid ${C.hair}`, borderRadius: 10, padding: "12px 14px 14px", fontFamily: UI, color: C.ink, textAlign: "left", boxShadow: "0 -6px 24px rgba(0,0,0,0.35)" }}
+      >
+        <div id="cookie-title" style={{ fontSize: 10, letterSpacing: 1, color: "rgba(238,244,242,0.55)", textTransform: "uppercase", marginBottom: 6 }}>Cookie preferences</div>
+        <div id="cookie-body" style={{ fontSize: 11, color: "rgba(238,244,242,0.78)", lineHeight: 1.6 }}>
+          Your progress is saved on this device so it is here next time you play. That storage is
+          essential and always on. Analytics and advertising cookies stay off unless you allow them,
+          and the game does not use any yet.
+        </div>
+
+        {choosing && (
+          <div style={{ marginTop: 10 }}>
+            <ConsentRow title="Essential" note="Saves your coins, ships and records on this device. Always on." on locked />
+            <ConsentRow title="Analytics" note="Anonymous figures on how the game is played, to help improve it."
+              on={prefs.analytics} onToggle={() => setPrefs((p) => ({ ...p, analytics: !p.analytics }))} />
+            <ConsentRow title="Advertising" note="Lets ads be shown and measured, and tailored to you."
+              on={prefs.advertising} onToggle={() => setPrefs((p) => ({ ...p, advertising: !p.advertising }))} />
+          </div>
+        )}
+
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "flex-end", marginTop: 12 }}>
+          {choosing ? (
+            <>
+              <ConsentButton label="Back" ghost onClick={() => setChoosing(false)} />
+              <ConsentButton label="Save choices" onClick={done(() => setCustomConsent(prefs.analytics, prefs.advertising))} />
+            </>
+          ) : (
+            <>
+              <ConsentButton label="Choose" ghost onClick={() => setChoosing(true)} />
+              <ConsentButton label="Reject all" ghost onClick={done(rejectNonEssential)} />
+              <ConsentButton label="Accept all" onClick={done(acceptAllCookies)} />
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// One category: what it is and what it does on the left, its switch on the right.
+function ConsentRow({ title, note, on, locked, onToggle }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, padding: "8px 0", borderTop: "1px solid rgba(160,224,210,0.14)" }}>
+      <div>
+        <div style={{ fontSize: 11, color: C.ink }}>{title}</div>
+        <div style={{ fontSize: 10, color: "rgba(238,244,242,0.5)", lineHeight: 1.5, marginTop: 2 }}>{note}</div>
+      </div>
+      <button
+        role="switch" aria-checked={!!on} aria-label={locked ? `${title}, always on` : title}
+        disabled={locked} onClick={onToggle}
+        style={{ flexShrink: 0, position: "relative", width: 38, height: 22, borderRadius: 20, border: `1px solid ${on ? C.gold : C.hair}`, background: on ? (locked ? "rgba(232,200,119,0.45)" : C.gold) : "rgba(8,38,37,0.9)", padding: 0, cursor: locked ? "default" : "pointer", WebkitTapHighlightColor: "transparent" }}
+      >
+        <span style={{ position: "absolute", top: 2, left: on ? 18 : 2, width: 16, height: 16, borderRadius: 20, background: on ? C.deep : "rgba(238,244,242,0.55)", transition: "left 120ms" }} />
+      </button>
+    </div>
+  );
+}
+
+// The menu's own gold button, a size down so three fit across a phone.
+function ConsentButton({ label, ghost, onClick }) {
+  return (
+    <button onClick={onClick} style={{ fontFamily: UI, fontSize: 12, fontWeight: 700, color: ghost ? C.gold : C.deep, background: ghost ? "transparent" : C.gold, border: `1px solid ${C.gold}`, borderRadius: 10, padding: "9px 14px", cursor: "pointer", WebkitTapHighlightColor: "transparent" }}>
+      {label}
+    </button>
   );
 }
 
