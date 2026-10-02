@@ -1,11 +1,17 @@
 /**
- * THE HOME-SCREEN ICON — `npm run icon`
+ * THE HOME-SCREEN ICON AND THE SHARE CARD — `npm run icon`
  *
- * Draws the menu's galleon into the icons a phone shows when the game is saved to the home screen,
- * and writes them into `public/`: the touch icon iOS reads, the two sizes the web manifest lists for
- * Android and desktop Chrome, and a maskable one with the ship held inside the circle Android may
- * cut the icon to. It is the real `drawGalleon`, run in a headless Chromium against the dev server,
- * so the icon is the ship on the menu at her three-quarter view and follows her art when it changes.
+ * Draws the game's mark into the images a phone shows when the game is saved to the home screen,
+ * and the card a search result or a shared link shows, and writes them all into `public/`: the
+ * touch icon iOS reads, the two sizes the web manifest lists for Android and desktop Chrome, a
+ * maskable one with the ship held inside the circle Android may cut the icon to, a favicon, and a
+ * 1200 x 630 share card. It is the real `drawGalleon`, run in a headless Chromium against the dev
+ * server, so the mark follows the ship's art when it changes.
+ *
+ * The mark is a Cutter light, fully found: two cut gaff mainsails on a gaff mast and two cut jibs
+ * on a jibboom, seen off her port bow. A single mast and its canvas read at 32 pixels where a
+ * galleon's three masts turn to a smudge. The rig is built through `resolve` and `rigSpec` like any ship in the yard, so a part
+ * renamed in the catalogue fails here loudly rather than drawing a bare hull.
  *
  * Needs `playwright-core` (a dev dependency) and a Chromium: `npx playwright install chromium`
  * fetches one, or point SMOKE_CHROME at an executable, as the smoke test does.
@@ -20,10 +26,18 @@ import { chromium } from "playwright-core";
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const PORT = Number(process.env.ICON_PORT || 4183);
 const SITE = `http://127.0.0.1:${PORT}/`;
-// Her bearing: from her starboard quarter, sails filling towards the viewer, which is the view that
-// shows the most of her. The three-quarter view the menu holds under reduced motion foreshortens
-// her to a third of the box.
-const DEG = 150;
+
+// The ship: her class, and what is stepped and bent on, socket by socket from the bow.
+const MARK = {
+  hull: "cutter",
+  rig: [
+    { mast: "jibboom", sails: ["jibFine", "jibFine"] },
+    { mast: "gaffMast", sails: ["gaffMainFine", "gaffMainFine"] },
+  ],
+};
+// Her bearing: bow towards the viewer's right, sails filling towards us, which spreads the jib
+// clear of the mainsail rather than laying one over the other.
+const DEG = 345;
 
 // served from the root so the module is at /src/galleon.js whatever the Pages base is
 const env = { ...process.env, BASE_PATH: "/" };
@@ -36,34 +50,74 @@ const browser = await chromium.launch({ executablePath: process.env.SMOKE_CHROME
 try {
   const page = await browser.newPage();
   await page.goto(SITE, { waitUntil: "networkidle" });
-  // name, pixel size, and how wide the ship's 1 : 0.62 frame is drawn against the box. The frame
-  // is wider than the box because the frame holds room for her to turn in and at this bearing she
-  // uses the middle of it: 1.3 keeps her flag and bowsprit clear of the edges. A maskable icon
-  // keeps everything inside the middle 80%, which is the safe zone of the mask.
-  const icons = [
-    ["apple-touch-icon.png", 180, 1.3],
-    ["icon-192.png", 192, 1.3],
-    ["icon-512.png", 512, 1.3],
-    ["icon-maskable-512.png", 512, 1.0],
+  // name, width, height, and the share of the box the ship may fill. The ship is drawn once, large,
+  // on a clear canvas, trimmed to what she actually covers and then fitted, so she sits in the
+  // middle of every box whatever her rig's shape. A maskable icon keeps her inside the middle 80%,
+  // the circle the mask may cut to, which a box of 0.58 a side clears at the corners.
+  const images = [
+    ["apple-touch-icon.png", 180, 180, 0.84],
+    ["icon-192.png", 192, 192, 0.84],
+    ["icon-512.png", 512, 512, 0.84],
+    ["icon-maskable-512.png", 512, 512, 0.58],
+    ["favicon-32.png", 32, 32, 0.96],
+    ["og-image.png", 1200, 630, 0.8],
   ];
-  for (const [name, size, span] of icons) {
-    const url = await page.evaluate(async ({ size, span, deg }) => {
+  for (const [name, W, H, fill] of images) {
+    const url = await page.evaluate(async ({ W, H, fill, deg, mark }) => {
       const { drawGalleon } = await import("/src/galleon.js");
+      const Y = await import("/src/shipyard.js");
+      const hull = Y.HULLS[mark.hull];
+      if (!hull) throw new Error(`no hull ${mark.hull}`);
+      const rig = Object.fromEntries(hull.sockets.map((s, i) => [s.id, mark.rig[i] || null]));
+      const lo = Y.resolve({ hull: hull.id, rig, guns: { broadside: Array(hull.guns.broadside).fill("gun3"), bow: [], swivel: [] } });
+      const spec = Y.rigSpec(lo);
+      const sails = spec.masts.reduce((n, m) => n + m.sails.length, 0);
+      if (sails !== mark.rig.reduce((n, m) => n + m.sails.length, 0)) throw new Error("the mark's rig no longer fits her");
+
+      // her, large and alone, then the box she covers
+      const S = 1600, ship = document.createElement("canvas");
+      ship.width = S; ship.height = Math.round(S * 0.62);
+      drawGalleon(ship.getContext("2d"), ship.width, ship.height, deg, spec);
+      const px = ship.getContext("2d").getImageData(0, 0, ship.width, ship.height).data;
+      let x0 = ship.width, y0 = ship.height, x1 = 0, y1 = 0;
+      for (let y = 0; y < ship.height; y++) for (let x = 0; x < ship.width; x++) {
+        if (px[(y * ship.width + x) * 4 + 3] > 8) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+      }
+      const bw = x1 - x0 + 1, bh = y1 - y0 + 1;
+
       const c = document.createElement("canvas");
-      c.width = size; c.height = size;
+      c.width = W; c.height = H;
       const ctx = c.getContext("2d");
-      // the menu's own ground: dark water under the plate, a little lighter where the ship sits
-      const g = ctx.createRadialGradient(size / 2, size * 0.55, size * 0.1, size / 2, size * 0.55, size * 0.75);
+      // the menu's own ground: dark water, a little lighter where the ship sits
+      const r = Math.max(W, H);
+      const card = W > H;
+      const cx = card ? W * 0.75 : W / 2;
+      const g = ctx.createRadialGradient(cx, H * 0.55, r * 0.1, cx, H * 0.55, r * 0.75);
       g.addColorStop(0, "#155450");
       g.addColorStop(1, "#0b3331");
       ctx.fillStyle = g;
-      ctx.fillRect(0, 0, size, size);
-      // her waterline sits at 0.71 of the frame, so the frame rides a little high to centre her
-      const w = size * span, h = w * 0.62;
-      ctx.translate((size - w) / 2, (size - h) / 2 - size * 0.03);
-      drawGalleon(ctx, w, h, deg, null);
+      ctx.fillRect(0, 0, W, H);
+
+      // the share card puts her on the right and the title on the left, the way the menu stacks it
+      const room = card ? H : Math.min(W, H);
+      const k = Math.min((room * fill) / bw, (room * fill) / bh);
+      const dw = bw * k, dh = bh * k;
+      ctx.imageSmoothingQuality = "high";
+      ctx.drawImage(ship, x0, y0, bw, bh, cx - dw / 2, (H - dh) / 2, dw, dh);
+
+      if (card) {
+        const DISPLAY = 'Georgia, "Iowan Old Style", "Times New Roman", serif';
+        ctx.textAlign = "center";
+        ctx.textBaseline = "alphabetic";
+        ctx.fillStyle = "#e8c877";
+        ctx.font = `86px ${DISPLAY}`;
+        ctx.fillText("STERNCHASE", W * 0.28, H * 0.5);
+        ctx.fillStyle = "rgba(238,244,242,0.82)";
+        ctx.font = `44px ${DISPLAY}`;
+        ctx.fillText("HELM & HULL", W * 0.28, H * 0.5 + 66);
+      }
       return c.toDataURL("image/png");
-    }, { size, span, deg: DEG });
+    }, { W, H, fill, deg: DEG, mark: MARK });
     writeFileSync(join(root, "public", name), Buffer.from(url.split(",")[1], "base64"));
     console.log("wrote public/" + name);
   }
