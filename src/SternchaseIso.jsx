@@ -6408,7 +6408,7 @@ function CookieConsent({ onClose }) {
             <ConsentRow title="Essential" note="Saves your coins, ships and records on this device. Always on." on locked />
             <ConsentRow title="Analytics" note="Anonymous figures on how the game is played, to help improve it."
               on={prefs.analytics} onToggle={() => setPrefs((p) => ({ ...p, analytics: !p.analytics }))} />
-            <ConsentRow title="Advertising" note="Lets ads be shown and measured, and tailored to you."
+            <ConsentRow title="Advertising" note="Lets ads be tailored to you and measured. With this off, any ads shown are not personalized."
               on={prefs.advertising} onToggle={() => setPrefs((p) => ({ ...p, advertising: !p.advertising }))} />
           </div>
         )}
