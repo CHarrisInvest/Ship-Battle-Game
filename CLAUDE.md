@@ -293,8 +293,9 @@ Buttons take size over tracking. Wide letterspacing makes every control read as 
   under a phone's notch and home bar, and the HUD's wrapper and the menu shell are inset by
   `env(safe-area-inset-*)`. The canvas reads the wrapper's insets on resize to place the radar by the
   same edges. The game is a home-screen app (`public/manifest.webmanifest` and the meta tags in
-  `index.html`), which is the only way to a full screen on an iPhone; `npm run icon` draws the icons
-  from the menu's galleon, so they are generated and never edited by hand.
+  `index.html`), which is the only way to a full screen on an iPhone; `npm run icon` draws the icons,
+  the favicon and the share card from a gaff-rigged sloop through the menu's own `drawGalleon`, so
+  they are generated and never edited by hand.
 - **Text is the size the source says, sideways as well as upright.** `index.css` sets
   `text-size-adjust: 100%`, because iOS Safari boosts the text in ordinary blocks when a phone turns
   sideways and leaves buttons alone: the GAME MODES heading and the descriptions grew while the mode

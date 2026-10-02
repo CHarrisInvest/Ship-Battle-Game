@@ -9,7 +9,7 @@
     <!-- Full screen on a phone: iPhone Safari cannot be asked to hide its address bar and tabs,
          but a page saved to the home screen opens without them. These say the game is such a page.
          The manifest does the same for Android and desktop Chrome, and the touch icon is what iOS
-         puts on the home screen; `npm run icon` redraws it from the menu's own galleon. -->
+         puts on the home screen; `npm run icon` redraws it with the menu's own renderer. -->
     <link rel="manifest" href="/manifest.webmanifest" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -18,7 +18,19 @@
     <!-- the menu's ground, for the first paint; the game moves it to the sea while a round runs -->
     <meta name="theme-color" content="#0f3b39" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
     <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+    <!-- What a search result or a shared link shows. A link preview needs the card's full address,
+         so these name the Pages site outright; `npm run icon` draws the card with the icons. -->
+    <meta name="description" content="Sternchase: Helm & Hull. An age-of-sail combat game. Fit out a ship in the yard, then fight her broadside to broadside." />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Sternchase: Helm & Hull" />
+    <meta property="og:description" content="An age-of-sail combat game. Fit out a ship in the yard, then fight her broadside to broadside." />
+    <meta property="og:url" content="https://charrisinvest.github.io/Ship-Battle-Game/" />
+    <meta property="og:image" content="https://charrisinvest.github.io/Ship-Battle-Game/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
   </head>
   <body>
     <div id="root"></div>
