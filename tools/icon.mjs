@@ -8,9 +8,9 @@
  * 1200 x 630 share card. It is the real `drawGalleon`, run in a headless Chromium against the dev
  * server, so the mark follows the ship's art when it changes.
  *
- * The mark is a Sloop light under a gaff mainsail, a gaff topsail and one jib, seen off her port
- * bow: a single mast and three sails read at 32 pixels where a galleon's three masts turn to a
- * smudge. The rig is built through `resolve` and `rigSpec` like any ship in the yard, so a part
+ * The mark is a Cutter light, fully found: two cut gaff mainsails on a gaff mast and two cut jibs
+ * on a jibboom, seen off her port bow. A single mast and its canvas read at 32 pixels where a
+ * galleon's three masts turn to a smudge. The rig is built through `resolve` and `rigSpec` like any ship in the yard, so a part
  * renamed in the catalogue fails here loudly rather than drawing a bare hull.
  *
  * Needs `playwright-core` (a dev dependency) and a Chromium: `npx playwright install chromium`
@@ -29,10 +29,10 @@ const SITE = `http://127.0.0.1:${PORT}/`;
 
 // The ship: her class, and what is stepped and bent on, socket by socket from the bow.
 const MARK = {
-  hull: "sloop",
+  hull: "cutter",
   rig: [
-    { mast: "standingBowsprit", sails: ["jib"] },
-    { mast: "gaffMast", sails: ["gaffMain", "gaffTopsail"] },
+    { mast: "jibboom", sails: ["jibFine", "jibFine"] },
+    { mast: "gaffMast", sails: ["gaffMainFine", "gaffMainFine"] },
   ],
 };
 // Her bearing: bow towards the viewer's right, sails filling towards us, which spreads the jib
