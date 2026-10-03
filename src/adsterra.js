@@ -4,7 +4,8 @@
  * Only the main menu carries them. A match never does, and neither do the yard, the shops, the
  * records or the end-of-voyage screens. Each banner is created when the main menu appears and
  * thrown away when it goes, so coming back to the menu, from a voyage or from the yard, loads a
- * fresh ad. Nothing refreshes on a timer: a new ad only ever follows a captain's own move.
+ * fresh ad. Nothing refreshes on a timer: a new ad only ever follows a captain's own move, and a
+ * slot loads one ad a visit, keeping its size through a resize for as long as it still fits.
  *
  * Each size is its own Adsterra zone with its own key, read off the zone's code in the Adsterra
  * dashboard: the string in `atOptions.key`, which is also the folder in the `invoke.js` address.

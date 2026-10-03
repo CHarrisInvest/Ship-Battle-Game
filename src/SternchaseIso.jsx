@@ -6336,7 +6336,11 @@ function AdBanner({ foot }) {
     window.addEventListener("resize", on);
     return () => window.removeEventListener("resize", on);
   }, []);
-  const size = allowed ? pickBanner(view.w, view.h) : null;
+  // One ad a slot a visit: the size picked on arrival is kept while it still fits the screen, so
+  // turning a tablet or dragging a window wider does not load a second ad into the same slot.
+  const kept = useRef(null);
+  if (allowed && !(kept.current && view.w >= kept.current.w)) kept.current = pickBanner(view.w, view.h);
+  const size = allowed ? kept.current : null;
   const doc = useMemo(() => size && bannerDoc(size), [size?.id]);
   if (!size) return null;
   return (
