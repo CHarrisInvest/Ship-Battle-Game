@@ -43,9 +43,31 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   worlds and islands are generated fresh every match.
 - `src/consent.js` is the cookie prompt's answer: essential, analytics and advertising, kept
   under its own key. **The hold is the essential category and is never gated on
-  it**: "Reject all" must not touch a captain's progress. Nothing optional is loaded today; analytics
-  or ads added later load only behind `isAnalyticsAllowed` / `isAdvertisingAllowed`, and the prompt's
-  copy stops saying "the game does not use any yet" the same day.
+  it**: "Reject all" must not touch a captain's progress.
+- `src/ads.js` puts AdSense on the page and decides **whose prompt asks first**. **Everyone sees ads;
+  consent decides only whether they are personalized.** In the EEA, the UK and Switzerland the asking
+  is Google's own consent message (AdSense Privacy & messaging, a certified TCF tool), which the
+  script itself shows, so there it loads with ad requests paused until Google has answered; a no
+  there gets Google's limited ads, the game's prompt is never shown, and "Cookie settings" reopens
+  Google's. Everywhere else the script loads at once asking for non-personalized ads, and
+  `isAdvertisingAllowed` (the "Personalized ads" switch) lifts that. Non-personalized ads still set
+  cookies, so the prompt says so in its body and never files them under essential: they are not
+  strictly necessary, and in Europe calling them that is exactly what the law forbids. The region is
+  guessed from the time zone and settled by Google's `gdprApplies`, and every wrong guess still ends
+  asked. Ads load from `main.jsx` only, so the privacy page carries none.
+- `src/analytics.js` is Google Analytics 4 for those who opted in, and nothing at all until `GA_ID`
+  holds a measurement ID: `analyticsLive` is what the prompt and the privacy policy read, so filling
+  the ID in is the one change that turns analytics on and the copy follows. **Where the game's prompt
+  asks, analytics are on until the switch turns them off**, because measuring one's own site needs no
+  prior consent there; Brazil, told by its time zones, waits for a yes instead, and
+  `analyticsByDefault` is the one statement of which is which, read by the switch and the policy.
+  Where Google's message asks, its TCF record (purposes 1 and 8, vendor 755) is the answer and
+  gtag.js is not fetched before a yes. Game events go through `track`, which does nothing without
+  consent.
+- `src/privacy.jsx` is the privacy policy, read by the in-game screen (off the menu and the cookie
+  prompt) and by the page at `/privacy/`, a second Vite entry, because AdSense and Google's message
+  need it at an address. **It must stay true of the code**: anything new stored or loaded changes it
+  the same day, with `PRIVACY_UPDATED` moved.
 - **A ship's name is the captain's, and her class is the catalogue's.** A ship record carries a
   `name`, empty until she is given one, and `shipName(rec, id)` is the one reader: the name if she
   has one, her class if not. Every screen that prints a ship's name reads it from there, so she is
@@ -352,9 +374,3 @@ Rules above that the code does not yet satisfy. Tracked cleanups, not exceptions
   figures the shops print, but the shelves say what a part *does* rather than quoting its blurb, and
   the 38 hull rows have no blurb at all. So no line of one has been seen at a real width. Check them
   before anything starts showing them.
-- **There is no privacy policy yet, so the cookie prompt links to none.** A cookie prompt is expected
-  to say where the details are, and the game has no page to point at. It needs one, a
-  screen off the menu reached from the cookie prompt's body and from beside "Cookie settings",
-  saying what the hold stores, that it never leaves the device, and what each optional category
-  would load. Build it before analytics or ads go in, not after: a consent prompt for tracking that
-  cannot say where the details are is the one the law asks about.
