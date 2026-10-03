@@ -27,7 +27,7 @@
 
 import { isAdvertisingAllowed, onConsentChange } from "./consent.js";
 
-const CLIENT = "ca-pub-5961011900507264";
+const CLIENT = "ca-pub-1929910138338917";
 const SRC = `https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${CLIENT}`;
 // How long Google's consent tool has to answer before the game's prompt is shown instead.
 const TCF_WAIT_MS = 6000;
