@@ -43,9 +43,20 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   worlds and islands are generated fresh every match.
 - `src/consent.js` is the cookie prompt's answer: essential, analytics and advertising, kept
   under its own key. **The hold is the essential category and is never gated on
-  it**: "Reject all" must not touch a captain's progress. Nothing optional is loaded today; analytics
-  or ads added later load only behind `isAnalyticsAllowed` / `isAdvertisingAllowed`, and the prompt's
-  copy stops saying "the game does not use any yet" the same day.
+  it**: "Reject all" must not touch a captain's progress. No analytics are loaded; any added later
+  load only behind `isAnalyticsAllowed`, and the prompt and the privacy policy say so the same day.
+- `src/ads.js` decides when the AdSense script goes on the page and **whose prompt asks first**. In
+  the EEA, the UK and Switzerland it is Google's own consent message (AdSense Privacy & messaging, a
+  certified TCF tool), which the script itself shows, so there it loads with ad requests paused and
+  Google's answer rules; the game's prompt is never shown and "Cookie settings" reopens Google's.
+  Everywhere else the game's prompt asks and the script is not on the page until
+  `isAdvertisingAllowed` says yes; "Reject all" means no ads, not non-personalized ones. The region
+  is guessed from the time zone and settled by Google's `gdprApplies`, and every wrong guess still
+  ends asked. Ads load from `main.jsx` only, so the privacy page carries none.
+- `src/privacy.jsx` is the privacy policy, read by the in-game screen (off the menu and the cookie
+  prompt) and by the page at `/privacy/`, a second Vite entry, because AdSense and Google's message
+  need it at an address. **It must stay true of the code**: anything new stored or loaded changes it
+  the same day, with `PRIVACY_UPDATED` moved.
 - **A ship's name is the captain's, and her class is the catalogue's.** A ship record carries a
   `name`, empty until she is given one, and `shipName(rec, id)` is the one reader: the name if she
   has one, her class if not. Every screen that prints a ship's name reads it from there, so she is
@@ -352,9 +363,3 @@ Rules above that the code does not yet satisfy. Tracked cleanups, not exceptions
   figures the shops print, but the shelves say what a part *does* rather than quoting its blurb, and
   the 38 hull rows have no blurb at all. So no line of one has been seen at a real width. Check them
   before anything starts showing them.
-- **There is no privacy policy yet, so the cookie prompt links to none.** A cookie prompt is expected
-  to say where the details are, and the game has no page to point at. It needs one, a
-  screen off the menu reached from the cookie prompt's body and from beside "Cookie settings",
-  saying what the hold stores, that it never leaves the device, and what each optional category
-  would load. Build it before analytics or ads go in, not after: a consent prompt for tracking that
-  cannot say where the details are is the one the law asks about.

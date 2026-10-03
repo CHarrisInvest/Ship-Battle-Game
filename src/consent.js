@@ -7,11 +7,12 @@
  * everything must never touch it. A "Reject all" that wiped a captain's yard would be a consent prompt doing the opposite
  * of its job.
  *
- * Sternchase loads no analytics or advertising today, so the two optional categories switch nothing
- * on or off yet. The answer is still asked and kept, so that the day either is added it is loaded
- * only behind `isAnalyticsAllowed` / `isAdvertisingAllowed`, and a player who said no on the first
- * visit has already been heard. `updateGoogleConsent` is the Google Consent Mode v2 call and does
- * nothing while there is no `gtag` on the page.
+ * Advertising is read by `ads.js`, which puts the AdSense script on the page only once
+ * `isAdvertisingAllowed` says yes, except in the regions where Google's own consent message asks
+ * instead and this answer is never sought. No analytics are loaded, so that switch turns nothing on
+ * yet; the day they are added they load only behind `isAnalyticsAllowed`, and a player who said no
+ * has already been heard. `updateGoogleConsent` is the Google Consent Mode v2 call and does nothing
+ * while there is no `gtag` on the page.
  *
  * The answer is kept in localStorage under its own key, apart from the hold, so scuttling the hold
  * does not ask the question again and answering it never rewrites the hold.

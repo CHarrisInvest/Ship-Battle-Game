@@ -66,7 +66,9 @@ const executablePath = process.env.SMOKE_CHROME || undefined;
 const browser = await chromium.launch({ executablePath, headless: true, args: ["--no-sandbox"] });
 
 async function open(tag, { asked = true } = {}) {
-  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
+  // A time zone outside Europe, so the game's own cookie prompt is the one in charge wherever the
+  // test is run from (`ads.js` hands Europe to Google's consent message), and no ad script is fetched.
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true, timezoneId: "America/New_York" });
   // Answer the cookie prompt before the page loads, so its sheet is not lying over the controls the
   // tour taps. The prompt itself is checked once, on a context of its own, in `cookies()`.
   if (asked) await ctx.addInitScript(() => {
@@ -148,6 +150,11 @@ async function cookies() {
   const switches = await sheet.locator("[role=switch]").count();
   if (switches === 3) ok("cookies: Choose shows 3 categories"); else fail(`cookies: Choose shows ${switches} switches`);
   await snap(page, "02-choose");
+  await sheet.locator("button", { hasText: "privacy policy" }).click();
+  if (await page.locator("text=PRIVACY POLICY").count()) ok("cookies: the prompt opens the privacy policy"); else fail("cookies: no privacy policy screen");
+  await snap(page, "03-privacy");
+  await page.locator("button", { hasText: "Back to the sea" }).first().click();
+  if (await sheet.count()) ok("cookies: the prompt is still there after reading it"); else fail("cookies: the prompt went away with the policy");
   if (page.errs.length) fail(`cookies: ${page.errs.join(" | ")}`);
   await page.context().close();
 }

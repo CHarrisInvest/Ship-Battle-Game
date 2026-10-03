@@ -15,6 +15,8 @@ import {
 } from "./shipyard.js";
 import { roll, tally, progressParts } from "./achievements.js";
 import { getStoredConsent, hasConsentDecision, acceptAllCookies, rejectNonEssential, setCustomConsent } from "./consent.js";
+import { getAdRegion, onAdRegion, openGoogleChoices } from "./ads.js";
+import { PrivacyPolicy } from "./privacy.jsx";
 
 /**
  * STERNCHASE: HELM & HULL — pirate battles at sea, on a tilted (isometric-ish) sea with tall wooden
@@ -1265,11 +1267,17 @@ export default function App() {
 
   const [phase, setPhase] = useState("start");
   const [cookieAsk, setCookieAsk] = useState(false);
+  // Whose prompt asks: the game's, or Google's consent message in the regions that need a certified
+  // one (`ads.js`). Google's shows itself, so the game's waits until the region settles on "game".
+  const [adRegion, setAdRegion] = useState(getAdRegion);
+  useEffect(() => onAdRegion(setAdRegion), []);
   useEffect(() => {
-    if (hasConsentDecision()) return;
+    if (adRegion !== "game" || hasConsentDecision()) return;
     const t = setTimeout(() => setCookieAsk(true), 500);
     return () => clearTimeout(t);
-  }, []);
+  }, [adRegion]);
+  // Where Google's message is in charge, "Cookie settings" reopens it rather than the game's prompt.
+  const openCookies = () => (adRegion === "google" ? openGoogleChoices() : setCookieAsk(true));
   // Which of her ships the yard screens are looking at, and where the outfitter opens. The yard is
   // not bound to the ship she sails: the plate's arrows and the strip at the head of the yard turn
   // it to any hull she owns, and "Sail her" is a separate act. `null` follows the active ship.
@@ -3800,7 +3808,8 @@ export default function App() {
           onEdit={(id) => { setYardShip(id || null); setPhase("yard"); }}
           onOutfit={(id) => { setYardShip(id || null); setOutfitStart(null); setPhase("outfitter"); }}
           onRecords={() => setPhase("records")}
-          onCookies={() => setCookieAsk(true)}
+          onCookies={openCookies}
+          onPrivacy={() => setPhase("privacy")}
           hold={hold}
           onScuttle={() => { setYardShip(null); resetHold(); }}
         />
@@ -3824,7 +3833,8 @@ export default function App() {
       {/* Asked on the menu only. A first visit sees it once the menu has settled; answered, it stays
           away until "Cookie settings" brings it back. Unanswered, it waits out a voyage and is
           there again on the way back to the menu. */}
-      {phase === "start" && cookieAsk && <CookieConsent onClose={() => setCookieAsk(false)} />}
+      {phase === "start" && cookieAsk && <CookieConsent onClose={() => setCookieAsk(false)} onPrivacy={() => setPhase("privacy")} />}
+      {phase === "privacy" && <PrivacyScreen onBack={() => setPhase("start")} />}
       {phase === "records" && <RecordsScreen hold={hold} onBack={() => setPhase("start")} onAchievements={() => setPhase("achievements")} />}
       {phase === "achievements" && <AchievementsScreen hold={hold} onBack={() => setPhase("records")} />}
       {phase === "won" && <EndOverlay title={rules.ladder ? "LADDER CLIMBED" : "LAST AFLOAT"} titleColor={C.gold} result={result} stats={stats} mode={mode} place={place} hold={hold} banked={banked} bounty={bounty} onAgain={() => startRef.current(mode)} onMenu={() => setPhase("start")} />}
@@ -6322,7 +6332,7 @@ function ArrowButton({ back, label, onClick }) {
 // would let a captain think a gun fits when it does not.
 const fmtTons = (t) => t.toFixed(1);
 
-function StartOverlay({ onStart, onEdit, onOutfit, onRecords, onCookies, hold, onScuttle }) {
+function StartOverlay({ onStart, onEdit, onOutfit, onRecords, onCookies, onPrivacy, hold, onScuttle }) {
   return (
     <Shell>
       {/* The name is a lockup of two lines, and the first one carries it. STERNCHASE is the word a
@@ -6358,13 +6368,9 @@ function StartOverlay({ onStart, onEdit, onOutfit, onRecords, onCookies, hold, o
         the crew. Rams can pack a punch.
       </div>
       <FullScreenButton />
-      <div>
-        <button
-          onClick={onCookies}
-          style={{ marginTop: 10, fontFamily: UI, fontSize: 10, color: "rgba(238,244,242,0.5)", background: "transparent", border: "none", padding: 4, cursor: "pointer", WebkitTapHighlightColor: "transparent" }}
-        >
-          Cookie settings
-        </button>
+      <div style={{ marginTop: 10, display: "flex", justifyContent: "center", gap: 8 }}>
+        <FootLink label="Cookie settings" onClick={onCookies} />
+        <FootLink label="Privacy policy" onClick={onPrivacy} />
       </div>
       {hold.lifetime.runs > 0 && <ScuttleHold onScuttle={onScuttle} />}
     </Shell>
@@ -6376,13 +6382,13 @@ function StartOverlay({ onStart, onEdit, onOutfit, onRecords, onCookies, hold, o
  * screen, and the App only shows it on the menu, so a captain is never asked mid-fight.
  *
  * The copy says plainly what is true. Saved progress is the essential row and always on, and the
- * two optional rows are off until allowed. Nothing optional is loaded today, so the prompt does not
- * claim it is; when analytics or ads arrive they read the answer already given here.
+ * two optional rows are off until allowed. Ads load only once advertising is allowed (`ads.js`), and
+ * analytics are not used at all, so the prompt says both. In the regions where Google's own consent
+ * message asks instead, this prompt is never shown.
  *
- * A cookie prompt usually links to a privacy policy and this one links to nothing, because there is
- * no such page yet. It is a known gap in `CLAUDE.md`: the link goes in the body here when the page does.
+ * The privacy policy is linked from the body, and opens as a screen of its own off the menu.
  */
-function CookieConsent({ onClose }) {
+function CookieConsent({ onClose, onPrivacy }) {
   const [choosing, setChoosing] = useState(false);
   const [prefs, setPrefs] = useState(() => {
     const c = getStoredConsent();
@@ -6399,8 +6405,12 @@ function CookieConsent({ onClose }) {
         <div id="cookie-title" style={{ fontSize: 10, letterSpacing: 1, color: "rgba(238,244,242,0.55)", textTransform: "uppercase", marginBottom: 6 }}>Cookie preferences</div>
         <div id="cookie-body" style={{ fontSize: 11, color: "rgba(238,244,242,0.78)", lineHeight: 1.6 }}>
           Your progress is saved on this device so it is here next time you play. That storage is
-          essential and always on. Analytics and advertising cookies stay off unless you allow them,
-          and the game does not use any yet.
+          essential and always on. Ads are loaded only if you allow advertising, and the game does not
+          use analytics. Read the{" "}
+          <button onClick={onPrivacy} style={{ font: "inherit", color: C.gold, background: "transparent", border: "none", padding: 0, textDecoration: "underline", cursor: "pointer", WebkitTapHighlightColor: "transparent" }}>
+            privacy policy
+          </button>{" "}
+          for the details.
         </div>
 
         {choosing && (
@@ -6408,7 +6418,7 @@ function CookieConsent({ onClose }) {
             <ConsentRow title="Essential" note="Saves your coins, ships and records on this device. Always on." on locked />
             <ConsentRow title="Analytics" note="Anonymous figures on how the game is played, to help improve it."
               on={prefs.analytics} onToggle={() => setPrefs((p) => ({ ...p, analytics: !p.analytics }))} />
-            <ConsentRow title="Advertising" note="Lets ads be tailored to you and measured. With this off, any ads shown are not personalized."
+            <ConsentRow title="Advertising" note="Loads ads from Google, which uses cookies to choose and measure them. With this off, no ads are loaded."
               on={prefs.advertising} onToggle={() => setPrefs((p) => ({ ...p, advertising: !p.advertising }))} />
           </div>
         )}
@@ -6429,6 +6439,33 @@ function CookieConsent({ onClose }) {
         </div>
       </div>
     </div>
+  );
+}
+
+// One of the small links at the foot of the menu.
+function FootLink({ label, onClick }) {
+  return (
+    <button onClick={onClick} style={{ fontFamily: UI, fontSize: 10, color: "rgba(238,244,242,0.5)", background: "transparent", border: "none", padding: 4, cursor: "pointer", WebkitTapHighlightColor: "transparent" }}>
+      {label}
+    </button>
+  );
+}
+
+/**
+ * The privacy policy, as a screen off the menu. The words are `privacy.jsx`, which the page at
+ * /privacy/ reads as well; this dresses them in the menu's slabs.
+ */
+function PrivacyScreen({ onBack }) {
+  const P = ({ children }) => <p style={{ fontSize: 11, color: "rgba(238,244,242,0.78)", lineHeight: 1.6, margin: "6px 0", textAlign: "left" }}>{children}</p>;
+  return (
+    <Shell>
+      <BackLink label="Back to the sea" onClick={onBack} />
+      <div style={{ fontFamily: DISPLAY, fontSize: "clamp(19px, 6.2vw, 24px)", color: C.gold, letterSpacing: 0.5 }}>PRIVACY POLICY</div>
+      <div style={{ marginTop: 8 }}>
+        <PrivacyPolicy Section={Slab} P={P} linkColor={C.gold} />
+      </div>
+      <StartButton onClick={onBack} label="Back to the sea" />
+    </Shell>
   );
 }
 
