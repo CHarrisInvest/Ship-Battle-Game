@@ -413,8 +413,10 @@ function rigFromSpec(spec, form) {
   }
   // `guns` is her fitted broadside a side, and it decides which of her ports have a gun in them and
   // which are shut. A spec that names no count is a ship fully armed, which is what the galleon and
-  // anything drawn without a loadout has always been.
-  return { bowsprit: spec.bowsprit !== false, masts, spars, form, guns: spec.guns };
+  // anything drawn without a loadout has always been. `gunScale` enlarges every gun she shows and
+  // the opening it stands in. Nothing in the game sets it; it is there for the promotional art, where
+  // a cutter's guns at their true size are too small to see at an advertisement's scale.
+  return { bowsprit: spec.bowsprit !== false, masts, spars, form, guns: spec.guns, gunScale: spec.gunScale || 1 };
 }
 
 /** The ship this file has always drawn, and what it falls back to when asked for no rig in particular. */
@@ -575,6 +577,7 @@ function buildShip(rig){
      bounds the bare stretch at four, while the hash still puts two guns side by
      side here and none for a few ports there. */
   const armed=rig&&rig.guns!=null?Math.max(0,Math.min(borne,rig.guns)):borne;
+  const GS=rig&&rig.gunScale||1;
   const runsOut=(i)=>{
    if(fine)return true;
    let h=Math.imul(Math.floor(i/3)+1,0x9e3779b1)>>>0;
@@ -586,7 +589,7 @@ function buildShip(rig){
    const n=portN++;
    const open=n<armed;
    const runOut=open&&runsOut(n);
-   const PW=row.hw, PH=row.hh, gk=row.gun;
+   const PW=row.hw*GS, PH=row.hh*GS, gk=row.gun*GS;
    /* A port that would sit at or under her waterline is not drawn. Nothing should
       reach this now: a tier hangs a constant drop under her sheer and the drops are
       solved against the shallowest side under the battery, so the sill stands clear
@@ -679,8 +682,8 @@ function buildShip(rig){
    const deck=row.deck==="aft"?form.aft:row.deck==="fore"?form.fore:null;
    if(row.deck!=="rail"&&!deck)continue;
    const tag=deck?"castle":"hull";
-   const oh=BULWARK*(row.main?0.34:0.30), ow=BULWARK*(row.main?0.46:0.42);
-   const len=BULWARK*(row.main?1.1:0.75), rad=BULWARK*(row.main?0.22:0.19);
+   const oh=BULWARK*(row.main?0.34:0.30)*GS, ow=BULWARK*(row.main?0.46:0.42)*GS;
+   const len=BULWARK*(row.main?1.1:0.75)*GS, rad=BULWARK*(row.main?0.22:0.19)*GS;
    for(const px of row.xs){
     const z=(deck?deck.z:stationAt(px).sheer)+BULWARK*0.5;
     const w=railAt(px);

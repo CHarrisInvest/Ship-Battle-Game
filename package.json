@@ -10,6 +10,7 @@
     "catalogue": "node tools/catalogue.mjs",
     "smoke": "node tools/smoke.mjs",
     "icon": "node tools/icon.mjs",
+    "promo": "node tools/promo.mjs",
     "import": "node tools/import.mjs",
     "workbook": "node tools/workbook.mjs",
     "workbook:read": "node tools/workbook.mjs --read"
