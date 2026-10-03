@@ -168,6 +168,10 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   of square canvas it extends rather than by berth number, its drive a share of its host's, and it
   comes loose the moment the host sail does. Only square and schooner rig carry the booms for one
   (`STUDDING_FAMILIES`): a boat's pole and a lateen yard have nothing to boom a sail out from.
+  **They are laid up for now** (`STUDDING_ON` is false): they read as overdone, so no mast takes
+  one, the shop, stock ships, the drawing and `rate()` all see none, and any a captain bought come
+  off her ships on load and wait among her spares. The rows and every rule above stand, so bringing
+  them back is that one line, plus refitting `KNOTS_PER_RATING` off `npm run catalogue`, which moves when they do.
 - **Knots are a label on the speed rating, and the fight never reads them.** `rate().speed` stays a
   multiplier around 1 and `BASE_SPEED` stays what it is; `KNOTS_PER_RATING` turns the rating into a
   figure a captain can hold against something, fitted so a fully found ship lands near the `topSpeed`

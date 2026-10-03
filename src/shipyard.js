@@ -106,6 +106,17 @@ export const familyOf = (id) => RIG_FAMILIES[id] || null;
 export const STUDDING_FAMILIES = new Set(["square", "schooner"]);
 
 /**
+ * STUDDINGSAILS ARE LAID UP. Their rows stay in `sails.tsv` and every rule for them stands, but with
+ * this off no mast takes one: the outfitter offers none, a stock ship flies none, the drawing shows
+ * none, and `rate()` counts none. One a captain already bought comes off her ships on load, since
+ * `sanitizeYard` checks it with `studFitsSail`, and waits among her spares, where it sells back like
+ * any part. They read as overdone at three to seven percent of a big ship's speed, and this
+ * is the one line that brings them back. Turning it on moves the fully found fleet's speeds, so run
+ * `npm run catalogue` and refit `KNOTS_PER_RATING` the same day.
+ */
+export const STUDDING_ON = false;
+
+/**
  * THE SAIL CATEGORIES, and the only thing that decides whether a sail goes in a berth.
  *
  * A berth names one of these and a sail belongs to one, and that is the whole of the fitting rule.
@@ -1290,8 +1301,11 @@ export function squareLevel(mast, berthIndex) {
   return level;
 }
 
-/** Whether a mast's yards are rigged to boom a studdingsail out at all. See `STUDDING_FAMILIES`. */
-export const mastTakesStuds = (mast) => !!mast && STUDDING_FAMILIES.has(mast.family);
+/**
+ * Whether a mast's yards are rigged to boom a studdingsail out at all. See `STUDDING_FAMILIES`, and
+ * `STUDDING_ON`, which says no for every mast while they are laid up.
+ */
+export const mastTakesStuds = (mast) => STUDDING_ON && !!mast && STUDDING_FAMILIES.has(mast.family);
 
 /**
  * Whether this studdingsail booms out from the sail in that berth: a stud of the berth's own level,
@@ -1382,9 +1396,10 @@ function sailsOn(entry) {
   return entry.mast.berths.map((_, i) => entry.sails[i] || null);
 }
 
-/** The studdingsails boomed out from those sails, padded the same way. */
+/** The studdingsails boomed out from those sails, padded the same way. None while they are laid up. */
 function studsOn(entry) {
   if (!entry || !entry.mast) return [];
+  if (!mastTakesStuds(entry.mast)) return entry.mast.berths.map(() => null);
   return entry.mast.berths.map((_, i) => (entry.studs || [])[i] || null);
 }
 
@@ -1665,7 +1680,7 @@ export function rate(loadout) {
  * figure. Nothing about how a ship moves changes when this number does, and `measure()` never sees
  * it.
  */
-export const KNOTS_PER_RATING = 11.4;
+export const KNOTS_PER_RATING = 11.7;
 export const knots = (speedRating) => speedRating * KNOTS_PER_RATING;
 
 /**
