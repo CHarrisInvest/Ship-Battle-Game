@@ -5,11 +5,13 @@
  * thumbnail, a share card, square and story posts for social feeds, the standard display-ad sizes,
  * and a line-up of the fleet. Like `npm run icon` it is the real `drawGalleon` run in a headless
  * Chromium against the dev server, so the art follows the ship's when it changes and no ship here is
- * a picture of something the game does not draw. The ships are rigged by `maximumLoadout`, which is
- * what "fully found" means everywhere else.
+ * a picture of something the game does not draw. The hero is the game's mark from `mark.mjs`, the
+ * cutter the home-screen icon is drawn from, so an advertisement and the icon a player then taps are
+ * the same ship. The fleet line-up is rigged by `maximumLoadout`, which is what "fully found" means
+ * everywhere else.
  *
  * `npm run promo -- --play` also plays a round of Free-for-all in a phone held sideways and upright,
- * sailing a fully found first rate, and writes a burst of real frames to a temporary folder, printed
+ * sailing the mark, and writes a burst of real frames to a temporary folder, printed
  * at the end. A round is not repeatable, so those are a contact sheet to choose from rather than
  * outputs: the ones worth keeping are copied into `promo/screens/` by hand. `--clean` hides the DOM
  * HUD in that burst too, for frames of the sea and nothing else.
@@ -26,6 +28,7 @@ import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
+import { MARK, MARK_DEG } from "./mark.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const out = join(root, "promo");
@@ -34,9 +37,6 @@ const SITE = `http://127.0.0.1:${PORT}/`;
 const PLAY = process.argv.includes("--play");
 const CLEAN = process.argv.includes("--clean");
 
-// The hero, and her bearing: off her starboard bow with every square sail filling towards us.
-const HERO = "firstRate";
-const HERO_DEG = 2;
 // The line-up, smallest to largest, all at one bearing and one scale so their sizes compare.
 const LINEUP = ["cutter", "brigantine", "corvette", "fifthRate", "thirdRate", "firstRate"];
 
@@ -72,7 +72,7 @@ try {
     // Display ads go up as JPEG, because Google Ads refuses an upload over 150 KB and the larger
     // banners come out of the canvas well over that as PNG.
     const type = name.endsWith(".jpg") ? "image/jpeg" : "image/png";
-    const url = await page.evaluate(compose, { W, H, layout, hero: HERO, deg: HERO_DEG, lineup: LINEUP, type });
+    const url = await page.evaluate(compose, { W, H, layout, mark: MARK, deg: MARK_DEG, lineup: LINEUP, type });
     writeFileSync(join(out, name), Buffer.from(url.split(",")[1], "base64"));
     console.log("wrote promo/" + name);
   }
@@ -84,7 +84,7 @@ try {
 
 /* ---- the art, drawn in the page ---------------------------------------------------------------- */
 
-async function compose({ W, H, layout, hero, deg, lineup, type }) {
+async function compose({ W, H, layout, mark, deg, lineup, type }) {
   const { drawGalleon } = await import("/src/galleon.js");
   const Y = await import("/src/shipyard.js");
   const DISPLAY = 'Georgia, "Iowan Old Style", "Times New Roman", serif';
@@ -93,12 +93,27 @@ async function compose({ W, H, layout, hero, deg, lineup, type }) {
   const classes = Y.HULL_LIST.length;
   const smallest = Y.HULL_LIST[0].name, largest = Y.HULL_LIST[Y.HULL_LIST.length - 1].name;
 
+  // The mark rigged as the icon rigs her, through `resolve` like any ship in the yard, so a part
+  // renamed in the catalogue fails here loudly rather than drawing a bare hull.
+  const markHull = Y.HULLS[mark.hull];
+  if (!markHull) throw new Error(`no hull ${mark.hull}`);
+  const markSpec = Y.rigSpec(Y.resolve({
+    hull: markHull.id,
+    rig: Object.fromEntries(markHull.sockets.map((s, i) => [s.id, mark.rig[i] || null])),
+    guns: { broadside: Array(markHull.guns.broadside).fill(mark.gun), bow: [], swivel: [] },
+  }));
+  if (markSpec.masts.reduce((n, m) => n + m.sails.length, 0) !== mark.rig.reduce((n, m) => n + m.sails.length, 0)) {
+    throw new Error("the mark's rig no longer fits her");
+  }
+  const hero = "mark";
+  const specOf = (id) => (id === "mark" ? markSpec : Y.rigSpec(Y.maximumLoadout(id)));
+
   // A ship drawn large and alone, then trimmed to what she covers. `span` fixes the drawing box so
   // ships drawn with the same span keep their sizes relative to one another.
   const drawn = (id, bearing, span = 2400) => {
     const c = document.createElement("canvas");
     c.width = span; c.height = Math.round(span * 0.7);
-    drawGalleon(c.getContext("2d"), c.width, c.height, bearing, Y.rigSpec(Y.maximumLoadout(id)));
+    drawGalleon(c.getContext("2d"), c.width, c.height, bearing, specOf(id));
     const px = c.getContext("2d").getImageData(0, 0, c.width, c.height).data;
     let x0 = c.width, y0 = c.height, x1 = 0, y1 = 0;
     for (let y = 0; y < c.height; y++) for (let x = 0; x < c.width; x++) {
@@ -302,24 +317,24 @@ async function play() {
     await ctx.route(/googlesyndication\.com|googletagmanager\.com|google-analytics\.com|fundingchoicesmessages\.google\.com/, (r) => r.fulfill({ contentType: "text/javascript", body: "" }));
     const page = await ctx.newPage();
     await page.goto(SITE, { waitUntil: "networkidle" });
-    await page.evaluate(async (hullId) => {
+    await page.evaluate(async (mark) => {
       const H = await import("/src/hold.js");
       const Y = await import("/src/shipyard.js");
-      const { ship } = H.buyShip(hullId);
-      const lo = Y.maximumLoadout(hullId);
-      for (const s of lo.hull.sockets) {
-        const e = lo.rig[s.id];
-        if (!e?.mast) continue;
-        H.buyPart(e.mast.id);
-        for (const p of [...(e.sails || []), ...(e.studs || [])]) if (p) H.buyPart(p.id);
-      }
-      for (const m of ["broadside", "bow", "swivel"]) for (const g of lo.guns[m] || []) if (g) H.buyPart(g.id);
-      H.fitOwned(ship);
+      const { ship } = H.buyShip(mark.hull);
+      const hull = Y.HULLS[mark.hull];
+      // her rig socket by socket, as the mark says, then her broadside
+      hull.sockets.forEach((socket, i) => {
+        const r = mark.rig[i];
+        if (!r) return;
+        H.fitMast(ship, socket.id, H.buyPart(r.mast).part);
+        r.sails.forEach((sail, berth) => H.fitSail(ship, socket.id, berth, H.buyPart(sail).part));
+      });
+      for (let i = 0; i < hull.guns.broadside; i++) H.fitGun(ship, "broadside", H.buyPart(mark.gun).part);
       H.setActiveShip(ship);
       const rec = JSON.parse(localStorage.getItem("sternchase.hold"));
       rec.coins = 4820;
       localStorage.setItem("sternchase.hold", JSON.stringify(rec));
-    }, HERO);
+    }, MARK);
     await page.reload({ waitUntil: "networkidle" });
     await page.waitForTimeout(1500);
     await page.screenshot({ path: join(dir, `${tag}-menu.png`) });
