@@ -12,7 +12,7 @@
  */
 
 import { analyticsLive } from "./analytics.js";
-import { adsterraLive, ADSTERRA_TCF_VENDOR } from "./adsterra.js";
+import { adsterraLive } from "./adsterra.js";
 
 export const PRIVACY_UPDATED = "3 October 2026";
 
@@ -88,12 +88,8 @@ export function PrivacyPolicy({ Section, P, linkColor }) {
               about you, and Adsterra does not receive your personalized ads choice.
             </P>
             <P>
-              In the European Economic Area, the UK and Switzerland, Adsterra's banners are shown only if
-              you agree to them: {ADSTERRA_TCF_VENDOR != null
-                ? "in Google's consent message, where Adsterra is listed as an ad partner, or"
-                : "where Google's consent message asks you, they are not shown at all, and"} where the
-              game's prompt asks you instead, only with personalized ads turned on. Everywhere else they
-              are shown to everyone.
+              Adsterra's banners are not shown in the European Economic Area, the UK or Switzerland.
+              Everywhere else they are shown to everyone.
             </P>
             <P>
               Adsterra explains how it handles the data in

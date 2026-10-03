@@ -62,9 +62,10 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   viewport's width and height, so a sideways phone gets the 320. Nothing loads until `BANNER_KEYS`
   holds a zone key; `adsterraLive` is what the prompt and the policy read, so filling a key in turns
   the copy on with it, and that is the day `PRIVACY_UPDATED` moves and Adsterra's line goes into
-  `public/ads.txt`. Adsterra takes no non-personalized signal, so where consent comes first it waits
-  for one: behind the advertising switch in a European time zone, and where Google's message asks,
-  behind Adsterra's own consent in it (`ADSTERRA_TCF_VENDOR`), which while null means never.
+  `public/ads.txt`. **Adsterra never shows in the EEA, the UK or Switzerland**: it takes no
+  non-personalized signal and is not an ad partner Google's message can ask about, so nothing there
+  could consent to it. Any sign of those regions keeps it off: a European time zone, Google's message
+  in charge, or Google's consent tool reporting that the GDPR applies.
 - `src/analytics.js` is Google Analytics 4 for those who opted in, and nothing at all until `GA_ID`
   holds a measurement ID: `analyticsLive` is what the prompt and the privacy policy read, so filling
   the ID in is the one change that turns analytics on and the copy follows. **Where the game's prompt

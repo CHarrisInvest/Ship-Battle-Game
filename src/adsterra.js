@@ -16,18 +16,14 @@
  * a React page can neither re-run nor hold two of at once. So each banner is that code exactly as
  * Adsterra issues it, inside a frame of its own (`bannerDoc`), and a new frame is a new ad.
  *
- * Who may see one depends on whose prompt asks (`ads.js`). Adsterra takes no signal for
- * non-personalized ads, so it is shown where consent is not needed first, and only behind a yes
- * where it is:
- *   - where the game's prompt asks and the time zone is not a European one, to everyone, the way
- *     Google's non-personalized ads are;
- *   - where the game's prompt asks but the time zone is European (Google did not say its message
- *     applies), only with the advertising switch on;
- *   - where Google's message asks, only if Adsterra is a vendor in that message
- *     (`ADSTERRA_TCF_VENDOR`) and the visitor agreed to it there. While that is null, never.
+ * Adsterra is shown only outside the EEA, the UK and Switzerland. It takes no signal for
+ * non-personalized ads and is not an ad partner Google's consent message can ask about, so there is
+ * no consent there that could cover it. A visitor is kept out on any sign of being in those regions:
+ * a European time zone (`guessRegulated`), Google's message being the one in charge, or Google's
+ * consent tool saying the GDPR applies, which can arrive after the time zone guessed otherwise.
+ * Everywhere else everyone sees the banners, the way Google's non-personalized ads are seen.
  */
 
-import { isAdvertisingAllowed, onConsentChange } from "./consent.js";
 import { getAdRegion, onAdRegion, onTcf, guessRegulated } from "./ads.js";
 
 // One zone per size. Empty, that size is never served and the next smaller one that fits is used.
@@ -39,10 +35,6 @@ export const BANNER_KEYS = {
 
 // The host in the zone's code, `//<host>/<key>/invoke.js`. Change it if the dashboard's code differs.
 const HOST = "www.highperformanceformat.com";
-
-// Adsterra's ID on the IAB's Global Vendor List, once it is added as an ad partner in Google's
-// consent message (AdSense, Privacy & messaging). Null, no banner is shown where that message asks.
-export const ADSTERRA_TCF_VENDOR = null;
 
 // Largest first, with the viewport each one needs. A 90px leaderboard on a sideways phone would take
 // a quarter of the screen before the menu starts, so the larger two want height as well as width.
@@ -72,25 +64,18 @@ export function bannerDoc({ w, h, key }) {
   );
 }
 
-let tcf = null;
-onTcf((tc) => { tcf = tc; });
-
-function tcfAllows() {
-  if (ADSTERRA_TCF_VENDOR == null || !tcf) return false;
-  return !!(tcf.purpose?.consents?.[1] && tcf.vendor?.consents?.[ADSTERRA_TCF_VENDOR]);
-}
+// Set once Google's consent tool reports a record, which it only does where the GDPR applies.
+let gdpr = false;
+onTcf(() => { gdpr = true; });
 
 /** Whether this visitor may be shown an Adsterra banner now. */
 export function adsterraAllowed() {
-  if (!adsterraLive()) return false;
-  const region = getAdRegion();
-  if (region === "google") return tcfAllows();
-  if (region === "game") return !guessRegulated() || isAdvertisingAllowed();
-  return false; // still waiting to hear whether Google's message applies
+  if (!adsterraLive() || gdpr || guessRegulated()) return false;
+  return getAdRegion() === "game"; // "pending" is still waiting on Google, "google" is Europe
 }
 
 /** Hears anything that could change `adsterraAllowed`. Returns the unsubscribe. */
 export function onAdsterraChange(fn) {
-  const offs = [onAdRegion(fn), onConsentChange(fn), onTcf(fn)];
+  const offs = [onAdRegion(fn), onTcf(fn)];
   return () => offs.forEach((off) => off());
 }

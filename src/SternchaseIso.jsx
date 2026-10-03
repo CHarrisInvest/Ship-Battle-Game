@@ -6415,6 +6415,8 @@ function CookieConsent({ onClose, onPrivacy }) {
     return { analytics, advertising: c.advertising };
   });
   const done = (act) => () => { act(); onClose(); };
+  // Adsterra is named only where its banners can show, which a European time zone rules out.
+  const adsterra = adsterraLive() && !guessRegulated();
 
   return (
     <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, zIndex: 20, display: "flex", justifyContent: "center", padding: "0 calc(12px + env(safe-area-inset-right, 0px)) calc(12px + env(safe-area-inset-bottom, 0px)) calc(12px + env(safe-area-inset-left, 0px))", pointerEvents: "none" }}>
@@ -6425,9 +6427,9 @@ function CookieConsent({ onClose, onPrivacy }) {
         <div id="cookie-title" style={{ fontSize: 10, letterSpacing: 1, color: "rgba(238,244,242,0.55)", textTransform: "uppercase", marginBottom: 6 }}>Cookie preferences</div>
         <div id="cookie-body" style={{ fontSize: 11, color: "rgba(238,244,242,0.78)", lineHeight: 1.6 }}>
           Your progress is saved on this device so it is here next time you play. That is essential
-          and always on. The game is free because it shows ads from {adsterraLive() ? "Google and Adsterra, which use" : "Google, which uses"} cookies
+          and always on. The game is free because it shows ads from {adsterra ? "Google and Adsterra, which use" : "Google, which uses"} cookies
           to limit how often you see an ad, to measure ads and to stop fraud. You choose whether
-          {adsterraLive() ? " Google's ads are" : " those ads are"} personalized.{analyticsLive() && (analyticsByDefault()
+          {adsterra ? " Google's ads are" : " those ads are"} personalized.{analyticsLive() && (analyticsByDefault()
             ? " The game also counts how it is played, with Google Analytics, unless you turn that off."
             : " You also choose whether the game may count how it is played.")} Read the{" "}
           <button onClick={onPrivacy} style={{ font: "inherit", color: C.gold, background: "transparent", border: "none", padding: 0, textDecoration: "underline", cursor: "pointer", WebkitTapHighlightColor: "transparent" }}>
@@ -6439,10 +6441,7 @@ function CookieConsent({ onClose, onPrivacy }) {
         {choosing && (
           <div style={{ marginTop: 10 }}>
             <ConsentRow title="Essential" note="Saves your coins, ships and records on this device. Always on." on locked />
-            <ConsentRow title="Personalized ads"
-              note={adsterraLive() && guessRegulated()
-                ? "Lets Google choose ads based on your interests, and lets Adsterra show its banners on the menu. With this off you still see Google's ads, but they are not based on your interests, and you see no Adsterra banners."
-                : "Lets Google choose ads based on your interests. With this off you still see ads, but they are not based on your interests."}
+            <ConsentRow title="Personalized ads" note="Lets Google choose ads based on your interests. With this off you still see ads, but they are not based on your interests."
               on={prefs.advertising} onToggle={() => setPrefs((p) => ({ ...p, advertising: !p.advertising }))} />
             <ConsentRow title="Analytics"
               note={analyticsLive()
