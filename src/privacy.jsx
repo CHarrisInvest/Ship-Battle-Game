@@ -37,8 +37,8 @@ export function PrivacyPolicy({ Section, P, linkColor }) {
         </P>
         <P>Your cookie choices are saved the same way, kept apart from your progress, so you are not asked on every visit.</P>
         <P>
-          To delete your progress, use Scuttle the hold on the menu. To delete everything, clear this
-          site's data in your browser's settings.
+          To delete your progress and your cookie choices, clear this site's data in your browser's
+          settings.
         </P>
       </Section>
 

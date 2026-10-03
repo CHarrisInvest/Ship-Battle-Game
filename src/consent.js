@@ -14,8 +14,8 @@
  * has already been heard. `updateGoogleConsent` is the Google Consent Mode v2 call and does nothing
  * while there is no `gtag` on the page.
  *
- * The answer is kept in localStorage under its own key, apart from the hold, so scuttling the hold
- * does not ask the question again and answering it never rewrites the hold.
+ * The answer is kept in localStorage under its own key, apart from the hold, so answering it never
+ * rewrites the hold and the hold never rewrites it.
  */
 
 const KEY = "sternchase.consent";

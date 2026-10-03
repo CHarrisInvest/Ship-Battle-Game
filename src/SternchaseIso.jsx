@@ -2,7 +2,7 @@ import React, { Fragment, useRef, useState, useEffect, useCallback, useMemo } fr
 import { drawGalleon } from "./galleon.js";
 import { hullForm, tintTimber } from "./hullform.js";
 import {
-  getHold, bankVoyage, resetHold, subscribeHold, modeRecord, shipLoadout, shortfall,
+  getHold, bankVoyage, subscribeHold, modeRecord, shipLoadout, shortfall,
   buyShip, buyPart, fitMast, fitSail, fitStud, fitGun, unfitGun, setActiveShip, spareParts, ownedShips, partOf,
   shipName, nameShip, fitOwned, ownedFill, NAME_LIMIT, readiness, sellPart, refundOf,
 } from "./hold.js";
@@ -3811,7 +3811,6 @@ export default function App() {
           onCookies={openCookies}
           onPrivacy={() => setPhase("privacy")}
           hold={hold}
-          onScuttle={() => { setYardShip(null); resetHold(); }}
         />
       )}
       {phase === "yard" && (
@@ -4652,19 +4651,6 @@ function Rows({ rows }) {
 function Empty({ children }) {
   return (
     <div style={{ fontSize: 11, color: "rgba(238,244,242,0.6)", padding: "6px 0", lineHeight: 1.6 }}>{children}</div>
-  );
-}
-
-function ScuttleHold({ onScuttle }) {
-  const [armed, setArmed] = useState(false);
-  return (
-    <button
-      onClick={() => (armed ? (onScuttle(), setArmed(false)) : setArmed(true))}
-      onBlur={() => setArmed(false)}
-      style={{ marginTop: 14, fontFamily: UI, fontSize: 10, color: armed ? C.crew : "rgba(238,244,242,0.35)", background: "transparent", border: "none", padding: 4, cursor: "pointer", WebkitTapHighlightColor: "transparent" }}
-    >
-      {armed ? "Tap again to scuttle the hold" : "Scuttle the hold"}
-    </button>
   );
 }
 
@@ -6166,7 +6152,7 @@ function ShipPlate({ hold, onEdit, onOutfit }) {
   const wide = useWideViewport();
   const fleet = ownedShips(hold);
   // The plate turns any of her ships, not only the one she sails. It starts on that one, and comes
-  // back to it if the ship it was showing is gone, which only a scuttled hold can do.
+  // back to it if the ship it was showing is gone, as when the site's data is cleared in another tab.
   const [viewing, setViewing] = useState(hold.yard.active);
   const id = hold.yard.ships[viewing] ? viewing : hold.yard.active;
   const loadout = useMemo(() => shipLoadout(hold, id), [hold, id]);
@@ -6332,7 +6318,7 @@ function ArrowButton({ back, label, onClick }) {
 // would let a captain think a gun fits when it does not.
 const fmtTons = (t) => t.toFixed(1);
 
-function StartOverlay({ onStart, onEdit, onOutfit, onRecords, onCookies, onPrivacy, hold, onScuttle }) {
+function StartOverlay({ onStart, onEdit, onOutfit, onRecords, onCookies, onPrivacy, hold }) {
   return (
     <Shell>
       {/* The name is a lockup of two lines, and the first one carries it. STERNCHASE is the word a
@@ -6372,7 +6358,6 @@ function StartOverlay({ onStart, onEdit, onOutfit, onRecords, onCookies, onPriva
         <FootLink label="Cookie settings" onClick={onCookies} />
         <FootLink label="Privacy policy" onClick={onPrivacy} />
       </div>
-      {hold.lifetime.runs > 0 && <ScuttleHold onScuttle={onScuttle} />}
     </Shell>
   );
 }

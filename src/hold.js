@@ -142,7 +142,7 @@ function blank() {
   };
 }
 
-// A captain always has a ship, including the moment after she scuttles the hold. There is no state
+// A captain always has a ship, from her first visit on. There is no state
 // in which the menu has nothing to turn.
 function starterYard() {
   const yard = blankYard();
@@ -517,11 +517,6 @@ export function spendFromHold(amount) {
   const cost = Math.max(0, Math.round(num(amount)));
   if (cost > rec.coins) return null;
   return commit({ ...rec, coins: rec.coins - cost, spent: rec.spent + cost });
-}
-
-/** Scuttle the hold: back to a captain's first day at sea, first ship and all. */
-export function resetHold() {
-  return commit(blank());
 }
 
 /* ---------------------------------------------------------------------------------------------- */
