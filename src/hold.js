@@ -36,7 +36,7 @@
 
 import {
   HULLS, PARTS, STARTER, gunsForMount, mastFitsSocket, mastsForSocket, resolve, sailFitsBerth,
-  sailsForBerth, socketOf, studFitsSail, gunTons, gunFits, TONS_SLACK, STUDDING_ON,
+  sailsForBerth, socketOf, studFitsSail, gunTons, gunFits, TONS_SLACK,
 } from "./shipyard.js";
 import { ACHIEVEMENTS, progressOf, rewardOf } from "./achievements.js";
 
@@ -181,20 +181,6 @@ function sanitize(raw) {
     rec.modes[key] = foldMode(rec.modes[key] || blankMode(), m);
   }
   rec.yard = sanitizeYard(raw.yard);
-  // While studdingsails are laid up (`STUDDING_ON`) a captain who bought one is sold it back in full,
-  // the way `sellPart` would: `sanitizeYard` has already taken it off her ships, and a part that
-  // can be fitted nowhere is coins she should have. Until the next save it is worked again off the
-  // same stored record on every load, so it comes to the same sum and is never paid twice.
-  if (!STUDDING_ON) {
-    for (const [id, p] of Object.entries(rec.yard.parts)) {
-      const type = PARTS[p.type];
-      if (type.kind !== "STU") continue;
-      delete rec.yard.parts[id];
-      const refund = refundOf(type);
-      rec.coins += refund;
-      rec.spent = Math.max(0, rec.spent - refund);
-    }
-  }
   return rec;
 }
 

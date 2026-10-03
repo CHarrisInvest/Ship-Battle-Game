@@ -108,8 +108,9 @@ export const STUDDING_FAMILIES = new Set(["square", "schooner"]);
 /**
  * STUDDINGSAILS ARE LAID UP. Their rows stay in `sails.tsv` and every rule for them stands, but with
  * this off no mast takes one: the outfitter offers none, a stock ship flies none, the drawing shows
- * none, `rate()` counts none, and `hold.js` takes any a captain bought off her ships and refunds them
- * in full on load. They read as overdone at three to seven percent of a big ship's speed, and this
+ * none, and `rate()` counts none. One a captain already bought comes off her ships on load, since
+ * `sanitizeYard` checks it with `studFitsSail`, and waits among her spares, where it sells back like
+ * any part. They read as overdone at three to seven percent of a big ship's speed, and this
  * is the one line that brings them back. Turning it on moves the fully found fleet's speeds, so run
  * `npm run catalogue` and refit `KNOTS_PER_RATING` the same day.
  */
