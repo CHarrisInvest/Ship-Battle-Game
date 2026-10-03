@@ -74,8 +74,10 @@ export function updateGoogleConsent(consent) {
   if (typeof window === "undefined" || typeof window.gtag !== "function") return;
   window.gtag("consent", "update", {
     analytics_storage: consent.analytics ? "granted" : "denied",
-    ad_storage: consent.advertising ? "granted" : "denied",
-    ad_user_data: consent.advertising ? "granted" : "denied",
+    // The Google Ads conversion tag rides the analytics answer and needs ad storage for it, which
+    // `analytics.js` writes by the same rule.
+    ad_storage: consent.analytics || consent.advertising ? "granted" : "denied",
+    ad_user_data: consent.analytics || consent.advertising ? "granted" : "denied",
     ad_personalization: consent.advertising ? "granted" : "denied",
     functionality_storage: "granted",
     security_storage: "granted",
