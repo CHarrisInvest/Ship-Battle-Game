@@ -38,6 +38,8 @@ const PLAY = process.argv.includes("--play");
 const CLEAN = process.argv.includes("--clean");
 
 // The line-up, smallest to largest, all at one bearing and one scale so their sizes compare.
+// How much larger than life the mark's guns are drawn in the art. The fleet line-up keeps true size.
+const GUN_SCALE = 2.5;
 const LINEUP = ["cutter", "brigantine", "corvette", "fifthRate", "thirdRate", "firstRate"];
 
 // name, width, height, layout
@@ -72,7 +74,7 @@ try {
     // Display ads go up as JPEG, because Google Ads refuses an upload over 150 KB and the larger
     // banners come out of the canvas well over that as PNG.
     const type = name.endsWith(".jpg") ? "image/jpeg" : "image/png";
-    const url = await page.evaluate(compose, { W, H, layout, mark: MARK, deg: MARK_DEG, lineup: LINEUP, type });
+    const url = await page.evaluate(compose, { W, H, layout, mark: MARK, deg: MARK_DEG, lineup: LINEUP, type, GUN_SCALE });
     writeFileSync(join(out, name), Buffer.from(url.split(",")[1], "base64"));
     console.log("wrote promo/" + name);
   }
@@ -84,14 +86,12 @@ try {
 
 /* ---- the art, drawn in the page ---------------------------------------------------------------- */
 
-async function compose({ W, H, layout, mark, deg, lineup, type }) {
+async function compose({ W, H, layout, mark, deg, lineup, type, GUN_SCALE }) {
   const { drawGalleon } = await import("/src/galleon.js");
   const Y = await import("/src/shipyard.js");
   const DISPLAY = 'Georgia, "Iowan Old Style", "Times New Roman", serif';
   const UI = '-apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
   const GOLD = "#e8c877", INK = "rgba(238,244,242,0.86)", DIM = "rgba(238,244,242,0.62)";
-  const classes = Y.HULL_LIST.length;
-  const smallest = Y.HULL_LIST[0].name, largest = Y.HULL_LIST[Y.HULL_LIST.length - 1].name;
 
   // The mark rigged as the icon rigs her, through `resolve` like any ship in the yard, so a part
   // renamed in the catalogue fails here loudly rather than drawing a bare hull.
@@ -105,6 +105,9 @@ async function compose({ W, H, layout, mark, deg, lineup, type }) {
   if (markSpec.masts.reduce((n, m) => n + m.sails.length, 0) !== mark.rig.reduce((n, m) => n + m.sails.length, 0)) {
     throw new Error("the mark's rig no longer fits her");
   }
+  // Her guns drawn larger than they were. A cutter's battery at its true size is a few grey specks
+  // at an advertisement's scale, and guns are half of what the game is; the icon keeps true size.
+  markSpec.gunScale = GUN_SCALE;
   const hero = "mark";
   const specOf = (id) => (id === "mark" ? markSpec : Y.rigSpec(Y.maximumLoadout(id)));
 
@@ -154,16 +157,10 @@ async function compose({ W, H, layout, mark, deg, lineup, type }) {
     }
   };
 
-  // Her on the water: a shadow and a little white at the waterline, so she sits rather than floats.
+  // Her, scaled to a width and centred on a point. No shadow under her: the menu draws none either.
   const ship = (s, cx, cy, dw) => {
     const k = dw / s.w, dh = s.h * k;
-    const top = cy - dh / 2, foot = top + dh * 0.93;
-    ctx.save();
-    ctx.fillStyle = "rgba(0,20,18,0.35)";
-    ctx.beginPath(); ctx.ellipse(cx + dw * 0.02, foot, dw * 0.42, dh * 0.07, -0.12, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = "rgba(230,245,240,0.10)";
-    ctx.beginPath(); ctx.ellipse(cx, foot - dh * 0.01, dw * 0.36, dh * 0.04, -0.12, 0, Math.PI * 2); ctx.fill();
-    ctx.restore();
+    const top = cy - dh / 2;
     ctx.drawImage(s.c, s.x0, s.y0, s.w, s.h, cx - dw / 2, top, dw, dh);
     return { top, bottom: top + dh, h: dh };
   };
@@ -193,8 +190,10 @@ async function compose({ W, H, layout, mark, deg, lineup, type }) {
   };
   ctx.textBaseline = "alphabetic";
 
-  const TAG = "Fit out a ship. Fight her broadside to broadside.";
-  const FLEET = `${classes} classes of sail, from a ${smallest} to a ${largest}.`;
+  // No count of ships anywhere: the fleet grows, and an ad that names a number goes out of date.
+  const TAG1 = "Outfit the ship.", TAG2 = "Battle rival captains.";
+  const TAG = `${TAG1} ${TAG2}`;
+  const LADDER = "Start as an unrated ship, upgrade to a 1st rate.";
   const CTA = "Play free in your browser";
   const SITE = "sternchase.org";
 
@@ -210,7 +209,7 @@ async function compose({ W, H, layout, mark, deg, lineup, type }) {
     text("HELM & HULL", lx, H * 0.40 + big * 0.72, big * 0.46, DISPLAY, INK, tw, "center", 0.12);
     if (H >= 300) {
       text(TAG, lx, H * 0.40 + big * 1.5, big * 0.29, UI, INK, tw);
-      text(FLEET, lx, H * 0.40 + big * 1.95, big * 0.23, UI, DIM, tw);
+      text(LADDER, lx, H * 0.40 + big * 1.95, big * 0.23, UI, DIM, tw);
       button(CTA, lx, H * 0.40 + big * 2.85, big * 0.62, tw);
       text(SITE, lx, H * 0.40 + big * 3.55, big * 0.24, UI, DIM, tw);
     } else {
@@ -232,8 +231,8 @@ async function compose({ W, H, layout, mark, deg, lineup, type }) {
     const ctaH = Math.max(unit * 1.7, 22);
     const small = W < 400;
     const lines = small
-      ? [[TAG.split(". ")[0] + ".", unit * 0.95, INK], ["Fight her broadside to broadside.", unit * 0.95, INK]]
-      : [[TAG, unit, INK], [FLEET, unit * 0.78, DIM]];
+      ? [[TAG1, unit * 0.95, INK], [TAG2, unit * 0.95, INK]]
+      : [[TAG, unit, INK], [LADDER, unit * 0.78, DIM]];
     const footGap = unit * 0.7;
     let y = H - pad * 0.9 - (small ? 0 : unit * 1.2);
     const siteY = y;
@@ -264,13 +263,13 @@ async function compose({ W, H, layout, mark, deg, lineup, type }) {
       const big = text("STERNCHASE", left, H * 0.36, H * 0.32, DISPLAY, GOLD, (right - left) * 0.42, "left", 0.04);
       text("HELM & HULL", left, H * 0.36 + big * 0.82, big * 0.42, DISPLAY, INK, (right - left) * 0.42, "left", 0.12);
       const tx = left + (right - left) * 0.47, tw2 = (right - left) * 0.53;
-      text("Fit out a ship.", tx, H * 0.37, H * 0.2, UI, INK, tw2, "left");
-      text("Fight her broadside to broadside.", tx, H * 0.63, H * 0.2, UI, INK, tw2, "left");
+      text(TAG1, tx, H * 0.37, H * 0.2, UI, INK, tw2, "left");
+      text(TAG2, tx, H * 0.63, H * 0.2, UI, INK, tw2, "left");
     } else if (H >= 80) {
       const big = text("STERNCHASE", left, H * 0.3, H * 0.27, DISPLAY, GOLD, right - left, "left", 0.04);
       text("HELM & HULL", left, H * 0.3 + big * 0.8, big * 0.42, DISPLAY, INK, right - left, "left", 0.12);
-      text("Fight her broadside", left, H * 0.3 + big * 1.65, big * 0.44, UI, DIM, right - left, "left");
-      text("to broadside.", left, H * 0.3 + big * 2.15, big * 0.44, UI, DIM, right - left, "left");
+      text(TAG1, left, H * 0.3 + big * 1.65, big * 0.44, UI, DIM, right - left, "left");
+      text(TAG2, left, H * 0.3 + big * 2.15, big * 0.44, UI, DIM, right - left, "left");
     } else {
       const big = text("STERNCHASE", left, H * 0.4, H * 0.34, DISPLAY, GOLD, right - left, "left", 0.04);
       text("HELM & HULL", left, H * 0.4 + big * 0.85, big * 0.42, DISPLAY, INK, right - left, "left", 0.12);
@@ -296,7 +295,7 @@ async function compose({ W, H, layout, mark, deg, lineup, type }) {
       x += dw + gap;
     }
     const big = text("STERNCHASE", W / 2, H * 0.17, H * 0.085, DISPLAY, GOLD, W * 0.8, "center", 0.04);
-    text(`${classes} classes of sail. Fit any of them out in the yard.`, W / 2, H * 0.17 + big * 0.85, H * 0.034, UI, INK, W * 0.8);
+    text(LADDER, W / 2, H * 0.17 + big * 0.85, H * 0.034, UI, INK, W * 0.8);
     text(`${CTA} at ${SITE}`, W / 2, H * 0.94, H * 0.03, UI, DIM, W * 0.8);
   }
   return c.toDataURL(type, 0.9);
