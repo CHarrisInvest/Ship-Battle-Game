@@ -45,9 +45,9 @@ function run(cmd, args, opts = {}) {
   });
 }
 
-// Built and served from the root rather than from the Pages base path, and the preview has to be
-// told the same thing as the build: it reads `vite.config.js` too, and with the base left at
-// `/Ship-Battle-Game/` it redirected the root to a folder the build had not written.
+// Built and served from the root, which is the default base now that the site has its own domain,
+// but pinned here all the same: the preview reads `vite.config.js` too, and a `BASE_PATH` left in
+// the environment would send the build and the preview to a folder this run does not serve.
 const env = { ...process.env, BASE_PATH: "/" };
 say("building into", dist);
 await run("npx", ["vite", "build", "--outDir", dist], { env });
