@@ -2,13 +2,12 @@
  * THE PROMOTIONAL IMAGES — `npm run promo`
  *
  * Draws the art an advertisement or a store listing needs and writes it into `promo/`: a video
- * thumbnail, a share card, square and story posts for social feeds, the standard display-ad sizes,
- * and a line-up of the fleet. Like `npm run icon` it is the real `drawGalleon` run in a headless
+ * thumbnail, a share card, square and story posts for social feeds, and the standard display-ad
+ * sizes. Like `npm run icon` it is the real `drawGalleon` run in a headless
  * Chromium against the dev server, so the art follows the ship's when it changes and no ship here is
  * a picture of something the game does not draw. The hero is the game's mark from `mark.mjs`, the
  * cutter the home-screen icon is drawn from, so an advertisement and the icon a player then taps are
- * the same ship. The fleet line-up is rigged by `maximumLoadout`, which is what "fully found" means
- * everywhere else.
+ * the same ship.
  *
  * `npm run promo -- --play` also plays a round of Free-for-all in a phone held sideways and upright,
  * sailing the mark, and writes a burst of real frames to a temporary folder, printed
@@ -17,7 +16,7 @@
  * HUD in that burst too, for frames of the sea and nothing else.
  *
  * Copy here is player-facing and follows the rules in CLAUDE.md: no em dashes, numerals, the title
- * in caps and everything a player is told in sentence case. Counts are read off the catalogue.
+ * in caps and everything a player is told in sentence case.
  *
  * Needs `playwright-core` (a dev dependency) and a Chromium: point SMOKE_CHROME at an executable.
  */
@@ -38,9 +37,8 @@ const PLAY = process.argv.includes("--play");
 const CLEAN = process.argv.includes("--clean");
 
 // The line-up, smallest to largest, all at one bearing and one scale so their sizes compare.
-// How much larger than life the mark's guns are drawn in the art. The fleet line-up keeps true size.
-const GUN_SCALE = 2.5;
-const LINEUP = ["cutter", "brigantine", "corvette", "fifthRate", "thirdRate", "firstRate"];
+// How much larger than life the mark's guns are drawn in the art.
+const GUN_SCALE = 1.5;
 
 // name, width, height, layout
 const ART = [
@@ -49,7 +47,6 @@ const ART = [
   ["square-1080x1080.png", 1080, 1080, "tall"],
   ["portrait-1080x1350.png", 1080, 1350, "tall"],
   ["story-1080x1920.png", 1080, 1920, "tall"],
-  ["fleet-1920x1080.png", 1920, 1080, "fleet"],
   ["ad-leaderboard-728x90.jpg", 728, 90, "strip"],
   ["ad-billboard-970x250.jpg", 970, 250, "card"],
   ["ad-mobile-banner-320x50.jpg", 320, 50, "strip"],
@@ -74,7 +71,7 @@ try {
     // Display ads go up as JPEG, because Google Ads refuses an upload over 150 KB and the larger
     // banners come out of the canvas well over that as PNG.
     const type = name.endsWith(".jpg") ? "image/jpeg" : "image/png";
-    const url = await page.evaluate(compose, { W, H, layout, mark: MARK, deg: MARK_DEG, lineup: LINEUP, type, GUN_SCALE });
+    const url = await page.evaluate(compose, { W, H, layout, mark: MARK, deg: MARK_DEG, type, GUN_SCALE });
     writeFileSync(join(out, name), Buffer.from(url.split(",")[1], "base64"));
     console.log("wrote promo/" + name);
   }
@@ -86,7 +83,7 @@ try {
 
 /* ---- the art, drawn in the page ---------------------------------------------------------------- */
 
-async function compose({ W, H, layout, mark, deg, lineup, type, GUN_SCALE }) {
+async function compose({ W, H, layout, mark, deg, type, GUN_SCALE }) {
   const { drawGalleon } = await import("/src/galleon.js");
   const Y = await import("/src/shipyard.js");
   const DISPLAY = 'Georgia, "Iowan Old Style", "Times New Roman", serif';
@@ -108,15 +105,12 @@ async function compose({ W, H, layout, mark, deg, lineup, type, GUN_SCALE }) {
   // Her guns drawn larger than they were. A cutter's battery at its true size is a few grey specks
   // at an advertisement's scale, and guns are half of what the game is; the icon keeps true size.
   markSpec.gunScale = GUN_SCALE;
-  const hero = "mark";
-  const specOf = (id) => (id === "mark" ? markSpec : Y.rigSpec(Y.maximumLoadout(id)));
 
-  // A ship drawn large and alone, then trimmed to what she covers. `span` fixes the drawing box so
-  // ships drawn with the same span keep their sizes relative to one another.
-  const drawn = (id, bearing, span = 2400) => {
+  // A ship drawn large and alone, then trimmed to what she covers.
+  const drawn = (bearing, span = 2400) => {
     const c = document.createElement("canvas");
     c.width = span; c.height = Math.round(span * 0.7);
-    drawGalleon(c.getContext("2d"), c.width, c.height, bearing, specOf(id));
+    drawGalleon(c.getContext("2d"), c.width, c.height, bearing, markSpec);
     const px = c.getContext("2d").getImageData(0, 0, c.width, c.height).data;
     let x0 = c.width, y0 = c.height, x1 = 0, y1 = 0;
     for (let y = 0; y < c.height; y++) for (let x = 0; x < c.width; x++) {
@@ -201,7 +195,7 @@ async function compose({ W, H, layout, mark, deg, lineup, type, GUN_SCALE }) {
     // ship right, words left, the way the share card has always stood
     const cx = W * 0.74;
     ground(cx, H * 0.55);
-    const s = drawn(hero, deg);
+    const s = drawn(deg);
     const room = Math.min(W * 0.44, (H * 0.84) * (s.w / s.h));
     ship(s, cx, H * 0.5, room);
     const lx = W * 0.27, tw = W * 0.46;
@@ -218,7 +212,7 @@ async function compose({ W, H, layout, mark, deg, lineup, type, GUN_SCALE }) {
     }
   } else if (layout === "tall") {
     ground(W / 2, H * 0.52);
-    const s = drawn(hero, deg);
+    const s = drawn(deg);
     const pad = W * 0.07, tw = W - pad * 2;
     const tall = H / W > 1.5;
     // title band at the top
@@ -252,7 +246,7 @@ async function compose({ W, H, layout, mark, deg, lineup, type, GUN_SCALE }) {
   } else if (layout === "strip") {
     // a banner too short for a line-up of words: ship, title, one line, button
     ground(W * 0.12, H / 2);
-    const s = drawn(hero, deg);
+    const s = drawn(deg);
     const sh = H * 0.84, dw = Math.min(W * 0.2, sh * (s.w / s.h));
     ship(s, dw / 2 + H * 0.12, H / 2, dw);
     const left = dw + H * 0.3;
@@ -276,27 +270,6 @@ async function compose({ W, H, layout, mark, deg, lineup, type, GUN_SCALE }) {
     }
     ctx.textBaseline = "alphabetic";
     button("Play free", W - btnW / 2 - H * 0.12, H / 2, Math.min(H * 0.56, 44), btnW);
-  } else if (layout === "fleet") {
-    ground(W / 2, H * 0.6);
-    const ships = lineup.map((id) => ({ id, s: drawn(id, 345, 1400) }));
-    const name = (id) => Y.HULLS[id].name;
-    // one scale for all of them, so a cutter stands beside a first rate at her own size
-    const gap = W * 0.012;
-    const totalW = ships.reduce((a, x) => a + x.s.w, 0);
-    const k = Math.min((W * 0.94 - gap * (ships.length - 1)) / totalW, (H * 0.56) / Math.max(...ships.map((x) => x.s.h)));
-    const used = totalW * k + gap * (ships.length - 1);
-    const base = H * 0.76;
-    let x = (W - used) / 2;
-    for (const { id, s } of ships) {
-      const dw = s.w * k, dh = s.h * k;
-      ship(s, x + dw / 2, base - dh / 2, dw);
-      ctx.textBaseline = "alphabetic";
-      text(name(id), x + dw / 2, base + u * 0.07, u * 0.028, UI, INK, dw + gap);
-      x += dw + gap;
-    }
-    const big = text("STERNCHASE", W / 2, H * 0.17, H * 0.085, DISPLAY, GOLD, W * 0.8, "center", 0.04);
-    text(LADDER, W / 2, H * 0.17 + big * 0.85, H * 0.034, UI, INK, W * 0.8);
-    text(`${CTA} at ${SITE}`, W / 2, H * 0.94, H * 0.03, UI, DIM, W * 0.8);
   }
   return c.toDataURL(type, 0.9);
 }
