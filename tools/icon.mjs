@@ -22,22 +22,14 @@ import { writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
+import { MARK, MARK_DEG } from "./mark.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const PORT = Number(process.env.ICON_PORT || 4183);
 const SITE = `http://127.0.0.1:${PORT}/`;
 
-// The ship: her class, and what is stepped and bent on, socket by socket from the bow.
-const MARK = {
-  hull: "cutter",
-  rig: [
-    { mast: "jibboom", sails: ["jibFine", "jibFine"] },
-    { mast: "gaffMast", sails: ["gaffMainFine", "gaffMainFine"] },
-  ],
-};
-// Her bearing: bow towards the viewer's right, sails filling towards us, which spreads the jib
-// clear of the mainsail rather than laying one over the other.
-const DEG = 345;
+// The ship and her bearing live in `mark.mjs`, which the promotional art reads as well.
+const DEG = MARK_DEG;
 
 // served from the root so the module is at /src/galleon.js whatever the Pages base is
 const env = { ...process.env, BASE_PATH: "/" };
@@ -69,7 +61,7 @@ try {
       const hull = Y.HULLS[mark.hull];
       if (!hull) throw new Error(`no hull ${mark.hull}`);
       const rig = Object.fromEntries(hull.sockets.map((s, i) => [s.id, mark.rig[i] || null]));
-      const lo = Y.resolve({ hull: hull.id, rig, guns: { broadside: Array(hull.guns.broadside).fill("gun3"), bow: [], swivel: [] } });
+      const lo = Y.resolve({ hull: hull.id, rig, guns: { broadside: Array(hull.guns.broadside).fill(mark.gun), bow: [], swivel: [] } });
       const spec = Y.rigSpec(lo);
       const sails = spec.masts.reduce((n, m) => n + m.sails.length, 0);
       if (sails !== mark.rig.reduce((n, m) => n + m.sails.length, 0)) throw new Error("the mark's rig no longer fits her");

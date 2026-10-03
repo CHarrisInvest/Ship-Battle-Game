@@ -242,6 +242,9 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   her ports as they come out drawn as well: a tier that overlaps itself, a port in her wales, or a
   class whose ports no longer add up to her guns are all faults, and all three were true of the
   fleet for as long as nothing counted them.
+- `tools/promo.mjs` (`npm run promo`) draws the ad and store art in `promo/` through the same
+  `drawGalleon` the icons use, and with `--play` plays a round for real frames to pick from. Its copy
+  is player-facing and follows the rules below; its counts are read off the catalogue.
 - `docs/SHIPYARD.md` is the design note for the shipyard: the model, what is deliberately not built
   yet, and the open questions. Read it before extending any of the above.
 
