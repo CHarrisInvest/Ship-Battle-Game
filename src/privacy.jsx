@@ -8,10 +8,11 @@
  * Everything here has to stay true of the code. The hold and the consent answer live in
  * localStorage (`hold.js`, `consent.js`); ads load as `ads.js` says; analytics as `analytics.js`
  * says, and the analytics section follows `analyticsLive` so it changes the day a measurement ID goes
- * in. Change any of those and this changes the same day, with `PRIVACY_UPDATED` moved.
+ * in; Adsterra's banners as `adsterra.js` says, following `adsterraLive` the same way. Change any of those and this changes the same day, with `PRIVACY_UPDATED` moved.
  */
 
 import { analyticsLive } from "./analytics.js";
+import { adsterraLive, ADSTERRA_TCF_VENDOR } from "./adsterra.js";
 
 export const PRIVACY_UPDATED = "3 October 2026";
 
@@ -25,6 +26,7 @@ const A = ({ href, children, color }) => (
 export function PrivacyPolicy({ Section, P, linkColor }) {
   const L = (props) => <A color={linkColor} {...props} />;
   const measured = analyticsLive();
+  const adsterra = adsterraLive();
   return (
     <>
       <P>
@@ -75,6 +77,30 @@ export function PrivacyPolicy({ Section, P, linkColor }) {
           information from sites like this one
           in <L href="https://policies.google.com/technologies/partner-sites">How Google uses information from sites or apps that use our services</L>.
         </P>
+        {adsterra && (
+          <>
+            <P>
+              The main menu also shows banner ads from Adsterra, one at the top and one at the bottom.
+              They are never shown during a match or on any other screen, and a new one loads each time
+              you return to the main menu. Adsterra's servers receive your IP address and details of your
+              browser and device when a banner loads, and may set cookies to count views and clicks, to
+              limit how often you see the same ad and to detect fraud. The game passes Adsterra nothing
+              about you, and Adsterra does not receive your personalized ads choice.
+            </P>
+            <P>
+              In the European Economic Area, the UK and Switzerland, Adsterra's banners are shown only if
+              you agree to them: {ADSTERRA_TCF_VENDOR != null
+                ? "in Google's consent message, where Adsterra is listed as an ad partner, or"
+                : "where Google's consent message asks you, they are not shown at all, and"} where the
+              game's prompt asks you instead, only with personalized ads turned on. Everywhere else they
+              are shown to everyone.
+            </P>
+            <P>
+              Adsterra explains how it handles the data in
+              the <L href="https://adsterra.com/privacy-policy/">Adsterra Privacy Policy</L>.
+            </P>
+          </>
+        )}
       </Section>
 
       <Section title="Analytics">

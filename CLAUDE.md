@@ -55,6 +55,16 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   strictly necessary, and in Europe calling them that is exactly what the law forbids. The region is
   guessed from the time zone and settled by Google's `gdprApplies`, and every wrong guess still ends
   asked. Ads load from `main.jsx` only, so the privacy page carries none.
+- `src/adsterra.js` is the Adsterra banners, **on the main menu only**: one at its head pushing the
+  title down and one at its foot, never in a match or on any other screen. Each is Adsterra's own
+  code in a frame of its own, new each time the main menu mounts, so a return to the menu from a
+  voyage or a sub-menu loads a fresh ad and nothing refreshes on a timer. The size is picked off the
+  viewport's width and height, so a sideways phone gets the 320. Nothing loads until `BANNER_KEYS`
+  holds a zone key; `adsterraLive` is what the prompt and the policy read, so filling a key in turns
+  the copy on with it, and that is the day `PRIVACY_UPDATED` moves and Adsterra's line goes into
+  `public/ads.txt`. Adsterra takes no non-personalized signal, so where consent comes first it waits
+  for one: behind the advertising switch in a European time zone, and where Google's message asks,
+  behind Adsterra's own consent in it (`ADSTERRA_TCF_VENDOR`), which while null means never.
 - `src/analytics.js` is Google Analytics 4 for those who opted in, and nothing at all until `GA_ID`
   holds a measurement ID: `analyticsLive` is what the prompt and the privacy policy read, so filling
   the ID in is the one change that turns analytics on and the copy follows. **Where the game's prompt
