@@ -6387,6 +6387,7 @@ function StartOverlay({ onStart, onEdit, onOutfit, onRecords, onCookies, onPriva
         the crew. Rams can pack a punch.
       </div>
       <FullScreenButton />
+      <HomeScreenHelp />
       <div style={{ marginTop: 10, display: "flex", justifyContent: "center", gap: 8 }}>
         <FootLink label="Cookie settings" onClick={onCookies} />
         <FootLink label="Privacy policy" onClick={onPrivacy} />
@@ -6570,6 +6571,55 @@ function FullScreenButton() {
     >
       {on ? "Leave full screen" : "Play full screen"}
     </button>
+  );
+}
+
+/**
+ * How to put the game on a phone's home screen, folded shut at the foot of the menu. It is the only
+ * way to a full screen on an iPhone, and the manifest makes it open without the address bar on both.
+ * The steps name the browser's own words (Share, Add to Home Screen, Install app) and where the
+ * menu hides them, never an icon's shape or a position on the bar, because those are what move
+ * between releases. A game already opened from the home screen has nothing to learn here, so it
+ * stays off there, by the same test as the full screen button.
+ */
+function HomeScreenHelp() {
+  const [open, setOpen] = useState(false);
+  const installed = window.matchMedia?.("(display-mode: standalone), (display-mode: fullscreen)").matches || navigator.standalone;
+  if (installed) return null;
+  const Step = ({ phone, children }) => (
+    <div style={{ marginTop: 8 }}>
+      <div style={{ fontSize: 11, color: C.ink }}>{phone}</div>
+      <div style={{ fontSize: 10, color: "rgba(238,244,242,0.6)", lineHeight: 1.6, marginTop: 2 }}>{children}</div>
+    </div>
+  );
+  return (
+    <div style={{ marginTop: 14, textAlign: "left", border: `1px solid ${C.hair}`, borderRadius: 10 }}>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, width: "100%", fontFamily: UI, fontSize: 11, color: "rgba(238,244,242,0.7)", background: "transparent", border: "none", padding: "9px 12px", cursor: "pointer", WebkitTapHighlightColor: "transparent" }}
+      >
+        <span>Add the game to your home screen</span>
+        <span style={{ display: "inline-flex", transform: open ? "rotate(90deg)" : "none", transition: "transform 120ms" }}>
+          <ChevronIcon size={12} />
+        </span>
+      </button>
+      {open && (
+        <div style={{ padding: "0 12px 12px" }}>
+          <div style={{ fontSize: 10, color: "rgba(238,244,242,0.6)", lineHeight: 1.6 }}>
+            From there it opens full screen like an app, with no address bar.
+          </div>
+          <Step phone="iPhone">
+            Open the game in Safari and tap Share. If Share is not on the bar, look in the menu
+            behind the three dots. Then tap Add to Home Screen.
+          </Step>
+          <Step phone="Android">
+            Open the game in Chrome and tap the menu behind the three dots. Then tap Add to home
+            screen, or Install app if that is what it offers.
+          </Step>
+        </div>
+      )}
+    </div>
   );
 }
 
