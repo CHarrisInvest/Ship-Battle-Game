@@ -81,9 +81,14 @@ export function PrivacyPolicy({ Section, P, linkColor }) {
         {measured ? (
           <>
             <P>
-              If you allow analytics, the game uses Google Analytics to count how it is played: which
-              modes are entered, how voyages end, and figures like those. It is off until you allow it,
-              and nothing is sent before then.
+              The game uses Google Analytics to count how it is played: which modes are entered, how
+              voyages end, and figures like those.
+            </P>
+            <P>
+              In the European Economic Area, the UK and Switzerland it is off unless you agree to it in
+              Google's consent message, and nothing is sent before then. In Brazil it is off until you
+              turn it on in the game's cookie prompt. Everywhere else it is on from your first visit, and
+              you can turn it off at any time with the Analytics switch under Cookie settings.
             </P>
             <P>
               Google Analytics sets cookies to tell one visit from the next. It is set up not to use the

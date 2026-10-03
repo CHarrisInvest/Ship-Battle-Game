@@ -16,7 +16,7 @@ import {
 import { roll, tally, progressParts } from "./achievements.js";
 import { getStoredConsent, hasConsentDecision, acceptAllCookies, rejectNonEssential, setCustomConsent } from "./consent.js";
 import { getAdRegion, onAdRegion, openGoogleChoices } from "./ads.js";
-import { analyticsLive } from "./analytics.js";
+import { analyticsLive, analyticsByDefault } from "./analytics.js";
 import { PrivacyPolicy } from "./privacy.jsx";
 
 /**
@@ -6370,8 +6370,9 @@ function StartOverlay({ onStart, onEdit, onOutfit, onRecords, onCookies, onPriva
  * The copy says plainly what is true. Saved progress is the essential row and always on. Ads run for
  * everyone (`ads.js`), and the advertising switch decides only whether they are personalized, so it is
  * labelled for that; the cookies non-personalized ads still use are said in the body rather than
- * filed under essential, which they are not. Analytics are off until allowed, and while the game has
- * no measurement ID (`analyticsLive`) the row says nothing is collected yet. In the regions where
+ * filed under essential, which they are not. Analytics run by default where `analyticsByDefault` says
+ * so, and then the switch starts on and the body says so; elsewhere they wait for the switch. While
+ * the game has no measurement ID (`analyticsLive`) the row says nothing is collected yet and starts off. In the regions where
  * Google's own consent message asks instead, this prompt is never shown.
  *
  * The privacy policy is linked from the body, and opens as a screen of its own off the menu.
@@ -6380,7 +6381,9 @@ function CookieConsent({ onClose, onPrivacy }) {
   const [choosing, setChoosing] = useState(false);
   const [prefs, setPrefs] = useState(() => {
     const c = getStoredConsent();
-    return { analytics: c.analytics, advertising: c.advertising };
+    // Unanswered, the analytics switch shows what is actually happening: on where analytics run by default.
+    const analytics = hasConsentDecision() ? c.analytics : analyticsLive() && analyticsByDefault();
+    return { analytics, advertising: c.advertising };
   });
   const done = (act) => () => { act(); onClose(); };
 
@@ -6395,7 +6398,9 @@ function CookieConsent({ onClose, onPrivacy }) {
           Your progress is saved on this device so it is here next time you play. That is essential
           and always on. The game is free because it shows ads from Google, which uses cookies to limit
           how often you see an ad, to measure ads and to stop fraud. You choose whether those ads are
-          personalized{analyticsLive() ? ", and whether the game may collect play statistics" : ""}. Read the{" "}
+          personalized.{analyticsLive() && (analyticsByDefault()
+            ? " The game also counts how it is played, with Google Analytics, unless you turn that off."
+            : " You also choose whether the game may count how it is played.")} Read the{" "}
           <button onClick={onPrivacy} style={{ font: "inherit", color: C.gold, background: "transparent", border: "none", padding: 0, textDecoration: "underline", cursor: "pointer", WebkitTapHighlightColor: "transparent" }}>
             privacy policy
           </button>{" "}
