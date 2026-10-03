@@ -6,14 +6,17 @@
  * own `Section` so the words are written once and dressed the way the place around them is.
  *
  * Everything here has to stay true of the code. The hold and the consent answer live in
- * localStorage (`hold.js`, `consent.js`); ads load only as `ads.js` says. Change one of those and
- * this changes the same day, with `PRIVACY_UPDATED` moved.
+ * localStorage (`hold.js`, `consent.js`); ads load as `ads.js` says; analytics as `analytics.js`
+ * says, and the analytics section follows `analyticsLive` so it changes the day a measurement ID goes
+ * in. Change any of those and this changes the same day, with `PRIVACY_UPDATED` moved.
  */
+
+import { analyticsLive } from "./analytics.js";
 
 export const PRIVACY_UPDATED = "3 October 2026";
 
 // Where a player writes about this policy. Empty, the line is left out rather than pointing nowhere.
-export const PRIVACY_CONTACT = "";
+export const PRIVACY_CONTACT = "sternchasegame@gmail.com";
 
 const A = ({ href, children, color }) => (
   <a href={href} target="_blank" rel="noopener noreferrer" style={{ color, textDecoration: "underline" }}>{children}</a>
@@ -21,6 +24,7 @@ const A = ({ href, children, color }) => (
 
 export function PrivacyPolicy({ Section, P, linkColor }) {
   const L = (props) => <A color={linkColor} {...props} />;
+  const measured = analyticsLive();
   return (
     <>
       <P>
@@ -44,15 +48,25 @@ export function PrivacyPolicy({ Section, P, linkColor }) {
 
       <Section title="Advertising">
         <P>
-          The game shows ads from Google AdSense. Ads load only after you have agreed to them, and how you
-          are asked depends on where you are. In the European Economic Area, the UK and Switzerland,
-          Google's own consent message asks you. Everywhere else the game's cookie prompt asks you, and
-          with advertising turned off there, no ads are loaded at all.
+          The game is free to play because it shows ads from Google AdSense, and everyone sees them. What
+          you choose is whether they are personalized, which means chosen from what Google knows of your
+          interests.
+        </P>
+        <P>
+          In the European Economic Area, the UK and Switzerland, Google's own consent message asks you. If
+          you agree, the ads can be personalized. If you do not, Google shows limited ads where it can,
+          which use no cookies and store nothing on your device.
+        </P>
+        <P>
+          Everywhere else, the game's cookie prompt asks you, and ads are not personalized until you turn
+          personalized ads on. Ads that are not personalized still use cookies, to limit how often you see
+          the same ad, to measure ads and to detect fraud.
         </P>
         <P>
           Third-party vendors, including Google, use cookies to serve ads based on your previous visits to
           this site or other sites. Google's use of advertising cookies lets it and its partners serve ads
-          to you based on your visits to this site and other sites on the internet.
+          to you based on your visits to this site and other sites on the internet. This applies to
+          personalized ads only.
         </P>
         <P>
           You can turn off personalized ads from Google in <L href="https://myadcenter.google.com/">My Ad Center</L>,
@@ -64,10 +78,26 @@ export function PrivacyPolicy({ Section, P, linkColor }) {
       </Section>
 
       <Section title="Analytics">
-        <P>
-          The game does not use any analytics. If that changes, analytics will load only with your
-          consent, and this page will say so first.
-        </P>
+        {measured ? (
+          <>
+            <P>
+              If you allow analytics, the game uses Google Analytics to count how it is played: which
+              modes are entered, how voyages end, and figures like those. It is off until you allow it,
+              and nothing is sent before then.
+            </P>
+            <P>
+              Google Analytics sets cookies to tell one visit from the next. It is set up not to use the
+              data for advertising, with Google signals and ad personalization turned off, and it does
+              not store your IP address. Google explains how it handles the data
+              in <L href="https://policies.google.com/privacy">Google's Privacy Policy</L>.
+            </P>
+          </>
+        ) : (
+          <P>
+            The game does not use any analytics yet. When it does, analytics will load only with your
+            consent, and this page will say so first.
+          </P>
+        )}
       </Section>
 
       <Section title="Hosting">
@@ -85,10 +115,13 @@ export function PrivacyPolicy({ Section, P, linkColor }) {
           European Economic Area, the UK and Switzerland it opens Google's consent message instead of the
           game's prompt.
         </P>
-        <P>If you turn advertising off after ads have loaded, no more are requested, and none load on your next visit.</P>
+        <P>
+          If you turn personalized ads off, the ads you see from then on are not personalized.
+          {measured && " If you turn analytics off, collection stops at once."}
+        </P>
       </Section>
 
-      <Section title="Changes to this policy">
+      <Section title="Changes and contact">
         <P>
           Last updated {PRIVACY_UPDATED}. When the game starts storing or loading anything new, this page
           changes first.

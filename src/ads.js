@@ -1,24 +1,28 @@
 /**
- * ADS — when the AdSense script is allowed onto the page, and whose prompt asks first.
+ * ADS — every visitor sees ads; what a consent answer decides is whether they are personalized.
  *
  * Two prompts, split by where the player is. In the European Economic Area, the UK and Switzerland
  * the asking is done by Google's own consent message (AdSense's Privacy & messaging), because Google
- * serves ads there only behind a certified TCF consent tool and the game's prompt is not one. That
- * message is shown by the AdSense script itself, so in those regions the script has to load before
- * anyone has been asked; it loads with ad requests paused, and Google's message decides what follows.
- * Everywhere else the game's own prompt (`consent.js`) asks, and the script is not put on the page
- * at all until it says advertising is allowed. "Reject all" there means no ad script, not
- * non-personalized ads, since those still set cookies the prompt said were off.
+ * serves ads there only behind a certified TCF consent tool and the game's prompt is not one. Google's
+ * message is shown by the AdSense script itself, so the script loads with ad requests paused until
+ * Google has said whether the message applies. A visitor who agrees there gets personalized ads, and
+ * one who declines gets Google's limited ads, which use no cookies or device storage: the law asks
+ * for a choice about tracking, not about seeing ads.
+ *
+ * Everywhere else the game's own prompt (`consent.js`) asks, and the script loads straight away
+ * asking for non-personalized ads, which stays the request until the advertising switch says yes.
+ * Non-personalized ads still use cookies for frequency capping, fraud and reporting; the prompt and
+ * the privacy policy say so, and do not call them essential, because they are not.
  *
  * Which region a visitor is in is first guessed from the browser's time zone, which needs no network,
  * and then settled by Google: once the script is up, its consent tool answers `gdprApplies`. A guess
  * that was wrong in either direction still ends asked: a European time zone outside the regulated
- * regions falls back to the game's prompt with ads still paused, and a regulated visitor with a
- * far-off time zone answers the game's prompt first and then Google's message as well. A script
- * that never arrives (a blocker, no network) settles on the game's prompt, which then loads nothing.
+ * regions falls back to the game's prompt, and a regulated visitor with a far-off time zone gets
+ * non-personalized ads until both the game's prompt and Google's message have been answered.
  *
  * `region` is what the menu reads: "pending" while Google is being asked, "google" when its message is
- * the one in charge, and "game" when the cookie prompt is.
+ * the one in charge, and "game" when the cookie prompt is. `onTcf` passes on Google's consent record,
+ * which `analytics.js` reads in the regions where the game's prompt never asks.
  */
 
 import { isAdvertisingAllowed, onConsentChange } from "./consent.js";
@@ -35,7 +39,9 @@ const REGULATED_ZONES = /^(Europe\/|Atlantic\/(Azores|Madeira|Canary|Reykjavik|F
 let region = "pending";
 let started = false;
 let loaded = false;
+let tcf = null;
 const listeners = new Set();
+const tcfListeners = new Set();
 
 function setRegion(r) {
   if (region === r) return;
@@ -51,7 +57,14 @@ export function onAdRegion(fn) {
   return () => listeners.delete(fn);
 }
 
-function guessRegulated() {
+/** Hears Google's consent record each time it changes, and at once if there is one. Returns the unsubscribe. */
+export function onTcf(fn) {
+  tcfListeners.add(fn);
+  if (tcf) fn(tcf);
+  return () => tcfListeners.delete(fn);
+}
+
+export function guessRegulated() {
   try {
     return REGULATED_ZONES.test(Intl.DateTimeFormat().resolvedOptions().timeZone || "");
   } catch (e) {
@@ -62,6 +75,7 @@ function guessRegulated() {
 const queue = () => (window.adsbygoogle = window.adsbygoogle || []);
 const pause = () => { queue().pauseAdRequests = 1; };
 const resume = () => { queue().pauseAdRequests = 0; };
+const personalize = (yes) => { queue().requestNonPersonalizedAds = yes ? 0 : 1; };
 
 function load(onFail) {
   if (loaded) return;
@@ -74,25 +88,25 @@ function load(onFail) {
   document.head.appendChild(s);
 }
 
-// Asks Google's consent tool whether the GDPR applies to this visitor, once it is on the page.
+// Listens to Google's consent tool once it is on the page: the first answer says whether the GDPR
+// applies, and every record after it goes to `onTcf`.
 function askGoogle(answer) {
   let done = false;
   const settle = (v) => { if (!done) { done = true; answer(v); } };
   const t0 = Date.now();
   (function poll() {
-    if (done) return;
     if (typeof window.__tcfapi === "function") {
       window.__tcfapi("addEventListener", 2, (tc, ok) => {
-        if (ok && tc && typeof tc.gdprApplies === "boolean") settle(tc.gdprApplies);
+        if (!ok || !tc) return;
+        if (typeof tc.gdprApplies === "boolean") settle(tc.gdprApplies);
+        if (tc.gdprApplies) { tcf = tc; tcfListeners.forEach((fn) => fn(tc)); }
       });
+      setTimeout(() => settle(false), TCF_WAIT_MS);
     } else if (Date.now() - t0 > TCF_WAIT_MS) {
       settle(false);
-      return;
     } else {
       setTimeout(poll, 200);
-      return;
     }
-    setTimeout(() => settle(false), TCF_WAIT_MS);
   })();
 }
 
@@ -101,23 +115,29 @@ export function startAds() {
   if (started || typeof window === "undefined") return;
   started = true;
 
-  // The game's prompt is in charge: the script waits for its yes, and a later no stops new requests.
+  // The game's prompt is in charge: ads run from the start, personalized only once it says so.
+  let gameRuled = false;
   const gameRules = () => {
+    if (gameRuled) return;
+    gameRuled = true;
     setRegion("game");
-    const apply = () => {
-      if (isAdvertisingAllowed()) { resume(); load(); } else if (loaded) pause();
-    };
-    apply();
-    onConsentChange(apply);
+    personalize(isAdvertisingAllowed());
+    onConsentChange((c) => personalize(c.advertising));
+    resume();
   };
 
-  if (!guessRegulated()) { gameRules(); return; }
-
-  pause();
+  const regulated = guessRegulated();
+  if (regulated) pause(); else gameRules();
   load(() => gameRules());
   askGoogle((applies) => {
-    if (region !== "pending") return;
-    if (applies) { setRegion("google"); resume(); } else gameRules();
+    if (region === "pending" && applies) {
+      // Google's message decides from here, so the game's own answer no longer shapes the request.
+      queue().requestNonPersonalizedAds = 0;
+      setRegion("google");
+      resume();
+    } else if (region === "pending") {
+      gameRules();
+    }
   });
 }
 

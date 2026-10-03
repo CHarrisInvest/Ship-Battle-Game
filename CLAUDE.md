@@ -43,16 +43,24 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   worlds and islands are generated fresh every match.
 - `src/consent.js` is the cookie prompt's answer: essential, analytics and advertising, kept
   under its own key. **The hold is the essential category and is never gated on
-  it**: "Reject all" must not touch a captain's progress. No analytics are loaded; any added later
-  load only behind `isAnalyticsAllowed`, and the prompt and the privacy policy say so the same day.
-- `src/ads.js` decides when the AdSense script goes on the page and **whose prompt asks first**. In
-  the EEA, the UK and Switzerland it is Google's own consent message (AdSense Privacy & messaging, a
-  certified TCF tool), which the script itself shows, so there it loads with ad requests paused and
-  Google's answer rules; the game's prompt is never shown and "Cookie settings" reopens Google's.
-  Everywhere else the game's prompt asks and the script is not on the page until
-  `isAdvertisingAllowed` says yes; "Reject all" means no ads, not non-personalized ones. The region
-  is guessed from the time zone and settled by Google's `gdprApplies`, and every wrong guess still
-  ends asked. Ads load from `main.jsx` only, so the privacy page carries none.
+  it**: "Reject all" must not touch a captain's progress.
+- `src/ads.js` puts AdSense on the page and decides **whose prompt asks first**. **Everyone sees ads;
+  consent decides only whether they are personalized.** In the EEA, the UK and Switzerland the asking
+  is Google's own consent message (AdSense Privacy & messaging, a certified TCF tool), which the
+  script itself shows, so there it loads with ad requests paused until Google has answered; a no
+  there gets Google's limited ads, the game's prompt is never shown, and "Cookie settings" reopens
+  Google's. Everywhere else the script loads at once asking for non-personalized ads, and
+  `isAdvertisingAllowed` (the "Personalized ads" switch) lifts that. Non-personalized ads still set
+  cookies, so the prompt says so in its body and never files them under essential: they are not
+  strictly necessary, and in Europe calling them that is exactly what the law forbids. The region is
+  guessed from the time zone and settled by Google's `gdprApplies`, and every wrong guess still ends
+  asked. Ads load from `main.jsx` only, so the privacy page carries none.
+- `src/analytics.js` is Google Analytics 4 for those who opted in, and nothing at all until `GA_ID`
+  holds a measurement ID: `analyticsLive` is what the prompt and the privacy policy read, so filling
+  the ID in is the one change that turns analytics on and the copy follows. The answer is the
+  analytics switch where the game's prompt asks and Google's TCF record (purposes 1 and 8, vendor
+  755) where its message does; gtag.js is not fetched before a yes. Game events go through `track`,
+  which does nothing without consent.
 - `src/privacy.jsx` is the privacy policy, read by the in-game screen (off the menu and the cookie
   prompt) and by the page at `/privacy/`, a second Vite entry, because AdSense and Google's message
   need it at an address. **It must stay true of the code**: anything new stored or loaded changes it

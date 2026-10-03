@@ -74,6 +74,9 @@ async function open(tag, { asked = true } = {}) {
   if (asked) await ctx.addInitScript(() => {
     if (!localStorage.getItem("sternchase.consent")) localStorage.setItem("sternchase.consent", JSON.stringify({ status: "rejected", analytics: false, advertising: false, functionality: true }));
   });
+  // Ads and analytics are Google's scripts, not the game's: answered empty here, so a run neither
+  // depends on Google's servers nor counts their console noise against the game.
+  await ctx.route(/googlesyndication\.com|googletagmanager\.com|google-analytics\.com|fundingchoicesmessages\.google\.com/, (r) => r.fulfill({ contentType: "text/javascript", body: "" }));
   const page = await ctx.newPage();
   const errs = [];
   // a missing favicon is not a fault of the game

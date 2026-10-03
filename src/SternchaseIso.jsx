@@ -16,6 +16,7 @@ import {
 import { roll, tally, progressParts } from "./achievements.js";
 import { getStoredConsent, hasConsentDecision, acceptAllCookies, rejectNonEssential, setCustomConsent } from "./consent.js";
 import { getAdRegion, onAdRegion, openGoogleChoices } from "./ads.js";
+import { analyticsLive } from "./analytics.js";
 import { PrivacyPolicy } from "./privacy.jsx";
 
 /**
@@ -6366,10 +6367,12 @@ function StartOverlay({ onStart, onEdit, onOutfit, onRecords, onCookies, onPriva
  * The cookie prompt: essential, analytics and advertising, with the answer kept by `consent.js`. It rides over the foot of the menu as a sheet rather than blocking the
  * screen, and the App only shows it on the menu, so a captain is never asked mid-fight.
  *
- * The copy says plainly what is true. Saved progress is the essential row and always on, and the
- * two optional rows are off until allowed. Ads load only once advertising is allowed (`ads.js`), and
- * analytics are not used at all, so the prompt says both. In the regions where Google's own consent
- * message asks instead, this prompt is never shown.
+ * The copy says plainly what is true. Saved progress is the essential row and always on. Ads run for
+ * everyone (`ads.js`), and the advertising switch decides only whether they are personalized, so it is
+ * labelled for that; the cookies non-personalized ads still use are said in the body rather than
+ * filed under essential, which they are not. Analytics are off until allowed, and while the game has
+ * no measurement ID (`analyticsLive`) the row says nothing is collected yet. In the regions where
+ * Google's own consent message asks instead, this prompt is never shown.
  *
  * The privacy policy is linked from the body, and opens as a screen of its own off the menu.
  */
@@ -6389,9 +6392,10 @@ function CookieConsent({ onClose, onPrivacy }) {
       >
         <div id="cookie-title" style={{ fontSize: 10, letterSpacing: 1, color: "rgba(238,244,242,0.55)", textTransform: "uppercase", marginBottom: 6 }}>Cookie preferences</div>
         <div id="cookie-body" style={{ fontSize: 11, color: "rgba(238,244,242,0.78)", lineHeight: 1.6 }}>
-          Your progress is saved on this device so it is here next time you play. That storage is
-          essential and always on. Ads are loaded only if you allow advertising, and the game does not
-          use analytics. Read the{" "}
+          Your progress is saved on this device so it is here next time you play. That is essential
+          and always on. The game is free because it shows ads from Google, which uses cookies to limit
+          how often you see an ad, to measure ads and to stop fraud. You choose whether those ads are
+          personalized{analyticsLive() ? ", and whether the game may collect play statistics" : ""}. Read the{" "}
           <button onClick={onPrivacy} style={{ font: "inherit", color: C.gold, background: "transparent", border: "none", padding: 0, textDecoration: "underline", cursor: "pointer", WebkitTapHighlightColor: "transparent" }}>
             privacy policy
           </button>{" "}
@@ -6401,10 +6405,13 @@ function CookieConsent({ onClose, onPrivacy }) {
         {choosing && (
           <div style={{ marginTop: 10 }}>
             <ConsentRow title="Essential" note="Saves your coins, ships and records on this device. Always on." on locked />
-            <ConsentRow title="Analytics" note="Anonymous figures on how the game is played, to help improve it."
-              on={prefs.analytics} onToggle={() => setPrefs((p) => ({ ...p, analytics: !p.analytics }))} />
-            <ConsentRow title="Advertising" note="Loads ads from Google, which uses cookies to choose and measure them. With this off, no ads are loaded."
+            <ConsentRow title="Personalized ads" note="Lets Google choose ads based on your interests. With this off you still see ads, but they are not based on your interests."
               on={prefs.advertising} onToggle={() => setPrefs((p) => ({ ...p, advertising: !p.advertising }))} />
+            <ConsentRow title="Analytics"
+              note={analyticsLive()
+                ? "Lets the game count how it is played, such as which modes you enter and how voyages end, using Google Analytics."
+                : "The game collects no play statistics yet. Your answer is kept for when it does."}
+              on={prefs.analytics} onToggle={() => setPrefs((p) => ({ ...p, analytics: !p.analytics }))} />
           </div>
         )}
 
