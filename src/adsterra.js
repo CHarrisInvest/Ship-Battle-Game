@@ -8,7 +8,7 @@
  * slot loads one ad a visit, keeping its size through a resize for as long as it still fits.
  *
  * Each size is its own Adsterra zone with its own key, read off the zone's code in the Adsterra
- * dashboard: the string in `atOptions.key`, which is also the folder in the `invoke.js` address.
+ * dashboard: the string in `atOptions.key`, which is also the end of its script's address.
  * While every key is empty nothing loads, and the cookie prompt and the privacy policy say nothing
  * of Adsterra, because both read `adsterraLive` rather than assuming. Filling a key in is the one
  * change that turns that size on.
@@ -29,13 +29,14 @@ import { getAdRegion, onAdRegion, onTcf, guessRegulated } from "./ads.js";
 
 // One zone per size. Empty, that size is never served and the next smaller one that fits is used.
 export const BANNER_KEYS = {
-  "728x90": "",
-  "468x60": "",
-  "320x50": "",
+  "728x90": "e075e0082411628213043a4216913643",
+  "468x60": "357df691de71402870eb16e75433a612",
+  "320x50": "15db20d46e2637edc3f3cd48fda00938",
 };
 
-// The host in the zone's code, `//<host>/<key>/invoke.js`. Change it if the dashboard's code differs.
-const HOST = "www.highperformanceformat.com";
+// Where the zone's code loads its script from, the key going on the end: `<SCRIPT_BASE><key>`.
+// Change it if the dashboard's code moves.
+const SCRIPT_BASE = "https://bauval.org/22/";
 
 // Largest first, with the viewport each one needs. A 90px leaderboard on a sideways phone would take
 // a quarter of the screen before the menu starts, so the larger two want height as well as width.
@@ -60,7 +61,7 @@ export function bannerDoc({ w, h, key }) {
     "<!doctype html><html><head><meta charset=\"utf-8\">" +
     "<style>html,body{margin:0;padding:0;overflow:hidden;background:transparent}</style></head><body>" +
     `<script>atOptions = ${opts};</script>` +
-    `<script src="https://${HOST}/${encodeURIComponent(key)}/invoke.js"></script>` +
+    `<script src="${SCRIPT_BASE}${encodeURIComponent(key)}"></script>` +
     "</body></html>"
   );
 }

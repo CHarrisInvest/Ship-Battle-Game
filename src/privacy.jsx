@@ -8,10 +8,10 @@
  * Everything here has to stay true of the code. The hold and the consent answer live in
  * localStorage (`hold.js`, `consent.js`); ads load as `ads.js` says; analytics as `analytics.js`
  * says, and the analytics section follows `analyticsLive` so it changes the day a measurement ID goes
- * in; Adsterra's banners as `adsterra.js` says, following `adsterraLive` the same way. Change any of those and this changes the same day, with `PRIVACY_UPDATED` moved.
+ * in, and the Google Ads tag beside it following `conversionsLive`; Adsterra's banners as `adsterra.js` says, following `adsterraLive` the same way. Change any of those and this changes the same day, with `PRIVACY_UPDATED` moved.
  */
 
-import { analyticsLive } from "./analytics.js";
+import { analyticsLive, conversionsLive } from "./analytics.js";
 import { adsterraLive } from "./adsterra.js";
 
 export const PRIVACY_UPDATED = "3 October 2026";
@@ -26,6 +26,9 @@ const A = ({ href, children, color }) => (
 export function PrivacyPolicy({ Section, P, linkColor }) {
   const L = (props) => <A color={linkColor} {...props} />;
   const measured = analyticsLive();
+  const credited = conversionsLive();
+  // The switch that controls both, named as the cookie prompt names it.
+  const switchName = measured || !credited ? "Analytics" : "Ad measurement";
   const adsterra = adsterraLive();
   return (
     <>
@@ -100,22 +103,38 @@ export function PrivacyPolicy({ Section, P, linkColor }) {
       </Section>
 
       <Section title="Analytics">
-        {measured ? (
+        {measured && (
           <>
             <P>
               The game uses Google Analytics to count how it is played: which modes are entered, how
               voyages end, and figures like those.
             </P>
             <P>
-              In the European Economic Area, the UK and Switzerland it is off unless you agree to it in
-              Google's consent message, and nothing is sent before then. In Brazil it is off until you
-              turn it on in the game's cookie prompt. Everywhere else it is on from your first visit, and
-              you can turn it off at any time with the Analytics switch under Cookie settings.
-            </P>
-            <P>
               Google Analytics sets cookies to tell one visit from the next. It is set up not to use the
               data for advertising, with Google signals and ad personalization turned off, and it does
-              not store your IP address. Google explains how it handles the data
+              not store your IP address.
+            </P>
+          </>
+        )}
+        {credited && (
+          <P>
+            The game advertises itself on Google, and uses the Google Ads tag to learn which of those
+            ads bring players in. If you arrived by tapping one of them, the tag stores a cookie with an
+            ID for that click, so the visit can be counted for the ad. It is not used to choose ads for
+            you, and the game does not use it to follow you onto other sites.
+          </P>
+        )}
+        {(measured || credited) ? (
+          <>
+            <P>
+              In the European Economic Area, the UK, Switzerland and Brazil {measured && credited ? "both are" : "it is"} off
+              until you agree, in Google's consent message or the game's cookie prompt, whichever asks
+              you, and nothing is sent before then. Everywhere else {measured && credited ? "both are" : "it is"} on
+              from your first visit, and you can turn {measured && credited ? "them" : "it"} off at any
+              time with the {switchName} switch under Cookie settings.
+            </P>
+            <P>
+              Google explains how it handles the data
               in <L href="https://policies.google.com/privacy">Google's Privacy Policy</L>.
             </P>
           </>
@@ -144,7 +163,7 @@ export function PrivacyPolicy({ Section, P, linkColor }) {
         </P>
         <P>
           If you turn personalized ads off, the ads you see from then on are not personalized.
-          {measured && " If you turn analytics off, collection stops at once."}
+          {(measured || credited) && ` If you turn ${switchName.toLowerCase()} off, collection stops at once.`}
         </P>
       </Section>
 

@@ -70,11 +70,15 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   holds a measurement ID: `analyticsLive` is what the prompt and the privacy policy read, so filling
   the ID in is the one change that turns analytics on and the copy follows. **Where the game's prompt
   asks, analytics are on until the switch turns them off**, because measuring one's own site needs no
-  prior consent there; Brazil, told by its time zones, waits for a yes instead, and
+  prior consent there; Brazil, told by its time zones, waits for a yes instead, as does a European
+  time zone the game's prompt ends up asking when Google's message is silent, and
   `analyticsByDefault` is the one statement of which is which, read by the switch and the policy.
   Where Google's message asks, its TCF record (purposes 1 and 8, vendor 755) is the answer and
   gtag.js is not fetched before a yes. Game events go through `track`, which does nothing without
-  consent.
+  consent. **The Google Ads conversion tag (`ADS_ID`) is the same gtag.js and answers to the same
+  switch**, which the prompt names "Ad measurement" while GA is empty; under Google's message it needs
+  purpose 7 where Analytics needs 8. It credits a visit to the game's own campaign and is never used
+  to pick ads, so ad personalization stays denied on it, and `track` sends play events to GA alone.
 - `src/privacy.jsx` is the privacy policy, read by the in-game screen (off the menu and the cookie
   prompt) and by the page at `/privacy/`, a second Vite entry, because AdSense and Google's message
   need it at an address. **It must stay true of the code**: anything new stored or loaded changes it

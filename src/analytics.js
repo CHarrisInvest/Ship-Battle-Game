@@ -1,6 +1,12 @@
 /**
- * ANALYTICS — Google Analytics 4: on unless turned off in most of the world, off unless turned on
- * where the law asks for that.
+ * ANALYTICS — Google Analytics 4 and the Google Ads conversion tag: on unless turned off in most of
+ * the world, off unless turned on where the law asks for that.
+ *
+ * The two are one gtag.js and answer to one switch, the prompt's Analytics row. The ads tag
+ * (`ADS_ID`) measures conversions for the game's own campaigns on Google: it stores the ID of the ad
+ * click that brought a player in, so the visit can be credited to that ad. It is never used to pick
+ * ads for anyone, so remarketing and ad personalization stay off on it. Where Google's message asks,
+ * it needs measuring ads (purpose 7) where Analytics needs measuring content (purpose 8).
  *
  * `GA_ID` is the measurement ID from the GA4 property ("G-" and ten characters). While it is empty
  * nothing loads, `track` does nothing, and the cookie prompt and the privacy policy say the game
@@ -14,7 +20,8 @@
  * is not even fetched. Where the game's prompt asks, analytics are ON BY DEFAULT: measuring one's own
  * site needs no prior consent there, so they run from the first visit until the analytics switch is
  * turned off. Brazil is the exception, guessed from its time zones (`OPT_IN_ZONES`), because its law
- * leans toward consent for cookies that are not essential: there they wait for the switch like Europe.
+ * leans toward consent for cookies that are not essential: there they wait for the switch like Europe,
+ * and so does a European time zone the game's prompt ends up asking, when Google's message is silent.
  * `analyticsByDefault` is the one statement of that, and the prompt's switch and the privacy policy
  * both read it.
  *
@@ -23,11 +30,20 @@
  * stays out of the page on the next visit.
  */
 
-import { isAnalyticsAllowed, hasConsentDecision, onConsentChange } from "./consent.js";
-import { onTcf, onAdRegion, getAdRegion } from "./ads.js";
+import { isAnalyticsAllowed, isAdvertisingAllowed, hasConsentDecision, onConsentChange } from "./consent.js";
+import { onTcf, onAdRegion, getAdRegion, guessRegulated } from "./ads.js";
 
 export const GA_ID = "";
 export const analyticsLive = () => GA_ID !== "";
+
+// The Google Ads tag, which measures which of the game's own ads on Google brought a player here.
+// It is the same gtag.js as Analytics and rides the same answer: a player who turns analytics off
+// is measured by neither. Empty, it loads nothing.
+export const ADS_ID = "AW-18492440060";
+export const conversionsLive = () => ADS_ID !== "";
+
+/** Whether anything at all measures the game: what the prompt's switch and the policy read. */
+export const measurementLive = () => analyticsLive() || conversionsLive();
 
 const GOOGLE_VENDOR = 755;
 
@@ -37,6 +53,9 @@ const OPT_IN_ZONES = /^America\/(Sao_Paulo|Bahia|Fortaleza|Recife|Maceio|Belem|A
 
 /** Whether analytics run before the game's prompt has been answered, for this visitor. */
 export function analyticsByDefault() {
+  // A European time zone waits for a yes as well: there the game's prompt only asks when Google's
+  // message did not answer, and the law there is the same whoever's prompt it is.
+  if (guessRegulated()) return false;
   try {
     return !OPT_IN_ZONES.test(Intl.DateTimeFormat().resolvedOptions().timeZone || "");
   } catch (e) {
@@ -56,48 +75,82 @@ function gtag() {
   window.dataLayer.push(arguments);
 }
 
-function load() {
-  window[`ga-disable-${GA_ID}`] = false;
-  if (loaded) return;
+// Ad storage is granted for the ads tag, or for the personalized ads the game's own switch allowed,
+// the same rule `updateGoogleConsent` in consent.js writes, so neither undoes the other.
+const adStorage = (which) => (which.ads || (!tcfRules && isAdvertisingAllowed()) ? "granted" : "denied");
+
+// Each tag is configured once, the first time it is allowed, which may be after gtag.js is already up.
+const configured = { ga: false, ads: false };
+function configure(which) {
+  if (which.ga && !configured.ga) {
+    configured.ga = true;
+    gtag("config", GA_ID, { allow_google_signals: false, allow_ad_personalization_signals: false });
+  }
+  if (which.ads && !configured.ads) {
+    configured.ads = true;
+    gtag("config", ADS_ID, { allow_ad_personalization_signals: false });
+  }
+}
+
+// Which tags may run: { ga, ads }. Where the game's prompt asks both follow its one switch; where
+// Google's message asks each needs its own purpose in the record.
+function load(which) {
+  if (GA_ID) window[`ga-disable-${GA_ID}`] = !which.ga;
+  if (loaded) {
+    gtag("consent", "update", { analytics_storage: which.ga ? "granted" : "denied", ad_storage: adStorage(which), ad_user_data: adStorage(which) });
+    configure(which);
+    return;
+  }
   loaded = true;
   window.dataLayer = window.dataLayer || [];
   window.gtag = gtag;
-  gtag("consent", "default", { analytics_storage: "granted", ad_storage: "denied", ad_user_data: "denied", ad_personalization: "denied" });
+  // The ads tag stores a click's ID to tie a later visit to the ad that brought it, which needs
+  // ad storage. It is never used to pick ads for anyone, so ad personalization stays denied.
+  gtag("consent", "default", {
+    analytics_storage: which.ga ? "granted" : "denied",
+    ad_storage: adStorage(which),
+    ad_user_data: adStorage(which),
+    ad_personalization: "denied",
+  });
   gtag("js", new Date());
-  gtag("config", GA_ID, { allow_google_signals: false, allow_ad_personalization_signals: false });
+  configure(which);
   const s = document.createElement("script");
   s.async = true;
-  s.src = `https://www.googletagmanager.com/gtag/js?id=${GA_ID}`;
+  s.src = `https://www.googletagmanager.com/gtag/js?id=${which.ga ? GA_ID : ADS_ID}`;
   document.head.appendChild(s);
 }
 
-function set(yes) {
-  allowed = yes;
-  if (yes) load();
+function set(which) {
+  which = { ga: which.ga && analyticsLive(), ads: which.ads && conversionsLive() };
+  allowed = which.ga || which.ads;
+  if (allowed) load(which);
   else if (loaded) {
-    window[`ga-disable-${GA_ID}`] = true;
-    gtag("consent", "update", { analytics_storage: "denied" });
+    if (GA_ID) window[`ga-disable-${GA_ID}`] = true;
+    gtag("consent", "update", { analytics_storage: "denied", ad_storage: adStorage(which), ad_user_data: adStorage(which) });
   }
 }
 
 /** Once, from the game's entry point. */
 export function startAnalytics() {
-  if (started || !analyticsLive() || typeof window === "undefined") return;
+  if (started || !measurementLive() || typeof window === "undefined") return;
   started = true;
   // The game's switch counts only once the game's prompt is known to be the one asking, so a European
   // visitor is never measured on an answer given before Google's message was shown.
-  const gameAnswer = () => { if (!tcfRules && getAdRegion() === "game") set(gameAllows()); };
+  const gameAnswer = () => { if (!tcfRules && getAdRegion() === "game") { const yes = gameAllows(); set({ ga: yes, ads: yes }); } };
   gameAnswer();
   onAdRegion(gameAnswer);
   onConsentChange(gameAnswer);
   // Where Google's message applies, its record is the answer, and the game's switch no longer counts.
   onTcf((tc) => {
     tcfRules = true;
-    set(!!(tc.purpose?.consents?.[1] && tc.purpose?.consents?.[8] && tc.vendor?.consents?.[GOOGLE_VENDOR]));
+    const google = !!(tc.purpose?.consents?.[1] && tc.vendor?.consents?.[GOOGLE_VENDOR]);
+    // Purpose 8 is measuring content, which is Analytics; purpose 7 is measuring ads, which is the ads tag.
+    set({ ga: google && !!tc.purpose?.consents?.[8], ads: google && !!tc.purpose?.consents?.[7] });
   });
 }
 
 /** A game event, e.g. track("voyage_end", { mode: "wave", result: "sunk" }). Does nothing without consent. */
 export function track(name, params) {
-  if (allowed && loaded) gtag("event", name, params);
+  // Sent to Analytics alone, so play events never land in the ads account as conversions.
+  if (allowed && loaded && configured.ga) gtag("event", name, { ...params, send_to: GA_ID });
 }
