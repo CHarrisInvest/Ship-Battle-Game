@@ -3,8 +3,8 @@
 Pirate ship combat on a tilted (isometric-ish) sea, rendered to a single HTML canvas from React.
 `src/SternchaseIso.jsx` is the whole game and serves as the base for further development.
 
-The repository is still called `Ship-Battle-Game`, which is where the Pages URL and the Vite base
-path come from. "Broadside" appears throughout as the name of the side guns; that is the weapon,
+The repository is still called `Ship-Battle-Game`; the game is served at <https://sternchase.org/>.
+"Broadside" appears throughout as the name of the side guns; that is the weapon,
 not the game.
 
 ## Run it
@@ -49,15 +49,15 @@ test uses.
 Pushing to `main` builds the site and publishes it to GitHub Pages via
 `.github/workflows/deploy.yml`:
 
-<https://charrisinvest.github.io/Ship-Battle-Game/>
+<https://sternchase.org/>
 
 This requires Pages to be set to the **GitHub Actions** source once, under
-Settings → Pages.
+Settings → Pages. The custom domain is set on the same page rather than by a `CNAME` file, which
+an Actions deploy does not read.
 
-Because a project site is served from a subpath, `vite.config.js` sets
-`base: "/Ship-Battle-Game/"` so the built asset URLs resolve. Deploying anywhere that
-serves from the domain root instead — Netlify, Vercel, a plain static host — needs
-`BASE_PATH=/ npm run build`.
+The site is served from the domain root, so `vite.config.js` builds with `base: "/"`. Deploying
+somewhere that serves it from a subpath needs that path set at build time, for example
+`BASE_PATH=/Ship-Battle-Game/ npm run build` for the old project URL.
 
 ## Modes
 

@@ -3,8 +3,9 @@
 An isometric age-of-sail combat game. Canvas 2D, React shell, no engine.
 
 The game is Sternchase; `Helm & Hull` is the second line of the title and never stands alone. The
-repository keeps its old name, `Ship-Battle-Game`, which is what the Pages URL and the Vite base path
-are built from. `broadside` in the code is the side guns, not the old title, and stays.
+repository keeps its old name, `Ship-Battle-Game`, but the site is served from the root of
+`sternchase.org`, so the Vite base path is `/` and nothing in the build carries the repo's name.
+`broadside` in the code is the side guns, not the old title, and stays.
 
 - `src/SternchaseIso.jsx` is the game: state, AI, rendering, and the React HUD.
 - `src/galleon.js` draws the rotating ship on the menu. It draws a rig rather than *the* rig:
