@@ -43,8 +43,8 @@ export const HULL_REF = {
     cruise: 2,
     topSpeed: 4,
     manoeuvre: 40,
-    histGuns: 2,
-    battery: 2,
+    histGuns: 4,
+    battery: 4,
   },
   bermudaSloop: {
     era: "1700-1820",

@@ -1635,7 +1635,7 @@ export default function App() {
      *   free-for-all fields her own rate: ships of her own class of ship, at every standard of
      *                fitting out, which is equal without being identical. In the first ship it
      *                fields her own class instead: the lowest rate holds four classes, and a
-     *                gundalow with one gun a side against cutters with five is not an even fight.
+     *                gundalow with two guns a side against cutters with five is not an even fight.
      *   derby        matches on `ram` rather than on rate, because a rate is a count of guns and
      *                nobody in that mode has one aboard.
      *
