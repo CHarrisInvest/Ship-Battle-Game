@@ -186,9 +186,9 @@ export const kindOf = (id) => SAIL_KINDS[id] || null;
 const FLEET = [
   {
     id: "gundalow", name: "Gundalow", price: 0,
-    blurb: "A raft with a mast and one gun. She floats, she fires, and she is yours.",
-    hull: 100, crew: 30, speed: 0.55, hand: 0.65, canvas: 0.18, tons: 2,
-    guns: [1, 1, 1], masts: ["main/small/boat+lug+lateen"], bowsprit: false,
+    blurb: "A raft with a mast and two guns a side. She floats, she fires, and she is yours.",
+    hull: 100, crew: 30, speed: 0.62, hand: 0.65, canvas: 0.18, tons: 3.7,
+    guns: [2, 1, 1], masts: ["main/small/boat+lug+lateen"], bowsprit: false,
   },
   {
     id: "bermudaSloop", name: "Bermuda Sloop light", price: 900,
@@ -2251,9 +2251,9 @@ export function peers(strength, tolerance = 0.12, key = "overall") {
 
 /**
  * What a captain has on her first day: a gundalow, a sprit mast with one sail bent on, the lightest
- * gun in the shop each side and a chaser on the bow.
+ * gun in the shop in every port and a chaser on the bow.
  *
- * That is her broadside FULL. A gundalow bears one gun a side and she has it, so a captain can fight
+ * That is her broadside FULL. A gundalow bears two guns a side and she has both, so a captain can fight
  * the moment the game opens rather than working out why nothing happens when she fires abeam. What
  * she cannot do is fight anything much: every gap in this ship is a gap the shipyard fills, and her
  * rail is bare, because a swivel is the first thing worth buying and a first purchase a captain makes
@@ -2264,7 +2264,7 @@ export function peers(strength, tolerance = 0.12, key = "overall") {
 export const STARTER = {
   hull: "gundalow",
   rig: { main: { mast: "spritMast", sails: ["gaffMain"] } },
-  guns: { broadside: ["gun3"], bow: ["bow6"], swivel: [] },
+  guns: { broadside: ["gun3", "gun3"], bow: ["bow6"], swivel: [] },
 };
 
 /* ---------------------------------------------------------------------------------------------- */
