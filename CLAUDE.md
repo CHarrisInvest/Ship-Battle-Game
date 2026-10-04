@@ -62,7 +62,9 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   (`BANNER_SANDBOX`)**: scripts and click-through pop-ups only, never `allow-same-origin` or any
   `allow-top-navigation`, because an unsandboxed `srcdoc` frame runs as the game itself and could
   read the hold or redirect the tab, the likeliest reason Google Ads disapproved the site as
-  compromised. The size is picked off the
+  compromised. **It is switched off for now (`ADSTERRA_ON` is false)** while Google Ads and AdSense
+  review the site: the keys stay, nothing loads, and the prompt and the policy say nothing of it.
+  Turning it back on is that one line, with `PRIVACY_UPDATED` moved. The size is picked off the
   viewport's width and height, so a sideways phone gets the 320. Nothing loads until `BANNER_KEYS`
   holds a zone key; `adsterraLive` is what the prompt and the policy read, so filling a key in turns
   the copy on with it, and that is the day `PRIVACY_UPDATED` moves and Adsterra's line goes into
