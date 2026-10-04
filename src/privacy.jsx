@@ -14,7 +14,7 @@
 import { analyticsLive, conversionsLive } from "./analytics.js";
 import { adsterraLive } from "./adsterra.js";
 
-export const PRIVACY_UPDATED = "3 October 2026";
+export const PRIVACY_UPDATED = "4 October 2026";
 
 // Where a player writes about this policy. Empty, the line is left out rather than pointing nowhere.
 export const PRIVACY_CONTACT = "sternchasegame@gmail.com";

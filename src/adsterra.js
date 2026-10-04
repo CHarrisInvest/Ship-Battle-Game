@@ -46,7 +46,12 @@ const SIZES = [
   { id: "320x50", w: 320, h: 50, minW: 320, minH: 0 },
 ];
 
-export const adsterraLive = () => Object.values(BANNER_KEYS).some(Boolean);
+// Adsterra is switched off while Google Ads reviews the site, which it disapproved as compromised the
+// day the banners went live. The keys stay so turning it back on is this one line; while it is off
+// nothing loads, and the cookie prompt and the privacy policy drop Adsterra with it.
+export const ADSTERRA_ON = false;
+
+export const adsterraLive = () => ADSTERRA_ON && Object.values(BANNER_KEYS).some(Boolean);
 
 /** The banner for a viewport of this size: `{ id, w, h, key }`, or null when none fits. */
 export function pickBanner(vw, vh) {
