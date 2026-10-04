@@ -17,7 +17,7 @@ import { roll, tally, progressParts } from "./achievements.js";
 import { getStoredConsent, hasConsentDecision, acceptAllCookies, rejectNonEssential, setCustomConsent } from "./consent.js";
 import { getAdRegion, onAdRegion, openGoogleChoices, guessRegulated } from "./ads.js";
 import { analyticsLive, conversionsLive, measurementLive, analyticsByDefault } from "./analytics.js";
-import { adsterraLive, adsterraAllowed, onAdsterraChange, pickBanner, bannerDoc } from "./adsterra.js";
+import { adsterraLive, adsterraAllowed, onAdsterraChange, pickBanner, bannerDoc, BANNER_SANDBOX } from "./adsterra.js";
 import { PrivacyPolicy } from "./privacy.jsx";
 
 /**
@@ -6345,7 +6345,7 @@ function AdBanner({ foot }) {
   if (!size) return null;
   return (
     <div style={{ position: "relative", left: "50%", width: size.w, height: size.h, marginLeft: -size.w / 2, marginTop: foot ? 16 : 0, marginBottom: foot ? 0 : 16 }}>
-      <iframe key={size.id} title="Advertisement" srcDoc={doc} width={size.w} height={size.h} scrolling="no" style={{ display: "block", border: 0 }} />
+      <iframe key={size.id} title="Advertisement" srcDoc={doc} sandbox={BANNER_SANDBOX} width={size.w} height={size.h} scrolling="no" style={{ display: "block", border: 0 }} />
     </div>
   );
 }

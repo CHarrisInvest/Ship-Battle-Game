@@ -58,7 +58,11 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
 - `src/adsterra.js` is the Adsterra banners, **on the main menu only**: one at its head pushing the
   title down and one at its foot, never in a match or on any other screen. Each is Adsterra's own
   code in a frame of its own, new each time the main menu mounts, so a return to the menu from a
-  voyage or a sub-menu loads a fresh ad and nothing refreshes on a timer. The size is picked off the
+  voyage or a sub-menu loads a fresh ad and nothing refreshes on a timer. **The frame is sandboxed
+  (`BANNER_SANDBOX`)**: scripts and click-through pop-ups only, never `allow-same-origin` or any
+  `allow-top-navigation`, because an unsandboxed `srcdoc` frame runs as the game itself and could
+  read the hold or redirect the tab, the likeliest reason Google Ads disapproved the site as
+  compromised. The size is picked off the
   viewport's width and height, so a sideways phone gets the 320. Nothing loads until `BANNER_KEYS`
   holds a zone key; `adsterraLive` is what the prompt and the policy read, so filling a key in turns
   the copy on with it, and that is the day `PRIVACY_UPDATED` moves and Adsterra's line goes into

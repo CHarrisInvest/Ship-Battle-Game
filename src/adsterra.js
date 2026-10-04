@@ -54,6 +54,15 @@ export function pickBanner(vw, vh) {
   return s ? { id: s.id, w: s.w, h: s.h, key: BANNER_KEYS[s.id] } : null;
 }
 
+// The banner frame's sandbox. Without one, a `srcdoc` frame shares the game's origin, so the ad
+// network's script could read the hold in localStorage, reach into the page and send the whole tab
+// elsewhere, which is what Google calls a compromised site. Leaving out `allow-same-origin` gives
+// the frame an origin of its own, with no way into the page or its storage, and leaving out every
+// `allow-top-navigation` keeps it from redirecting the tab. A click on an ad may still open the
+// advertiser in a new tab, which is how a banner is meant to work; browsers refuse pop-ups that no
+// click asked for.
+export const BANNER_SANDBOX = "allow-scripts allow-popups allow-popups-to-escape-sandbox";
+
 /** Adsterra's own banner code for one zone, as a document for a frame of its own. */
 export function bannerDoc({ w, h, key }) {
   const opts = JSON.stringify({ key, format: "iframe", height: h, width: w, params: {} });
