@@ -16,7 +16,7 @@ import {
 import { roll, tally, progressParts } from "./achievements.js";
 import { getStoredConsent, hasConsentDecision, acceptAllCookies, rejectNonEssential, setCustomConsent } from "./consent.js";
 import { getAdRegion, onAdRegion, openGoogleChoices, guessRegulated } from "./ads.js";
-import { analyticsLive, conversionsLive, measurementLive, analyticsByDefault } from "./analytics.js";
+import { analyticsLive, conversionsLive, measurementLive, analyticsByDefault, track } from "./analytics.js";
 import { adsterraLive, adsterraAllowed, onAdsterraChange, pickBanner, bannerDoc, BANNER_SANDBOX } from "./adsterra.js";
 import { PrivacyPolicy } from "./privacy.jsx";
 
@@ -1776,6 +1776,8 @@ export default function App() {
       });
       setBanked(got);
       setBounty(paid);
+      // What the privacy policy says Analytics counts: how voyages end. Nothing is sent without consent.
+      track("voyage_end", { mode: g.mode, result: won ? "won" : "sunk", rank, kills: s.kills, seconds: Math.round(s.time) });
     }
 
     function endWin(line) {
@@ -3626,6 +3628,8 @@ export default function App() {
       setBounty(0);
       setMode(m);
       setPhase("playing");
+      // And which modes are entered.
+      track("voyage_start", { mode: m });
     }
     startRef.current = start;
 

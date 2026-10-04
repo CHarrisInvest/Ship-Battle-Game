@@ -33,7 +33,7 @@
 import { isAnalyticsAllowed, isAdvertisingAllowed, hasConsentDecision, onConsentChange } from "./consent.js";
 import { onTcf, onAdRegion, getAdRegion, guessRegulated } from "./ads.js";
 
-export const GA_ID = "";
+export const GA_ID = "G-SKDXWK6TYX";
 export const analyticsLive = () => GA_ID !== "";
 
 // The Google Ads tag, which measures which of the game's own ads on Google brought a player here.
