@@ -62,6 +62,11 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   network, a script loaded on a condition, or a feature switched off "while Google reviews": Google
   Ads suspended the account for circumventing systems after a third-party banner did all three, and
   the static text in `index.html` must say what the game shows, the same for everyone.
+- **What search engines read is in `index.html`**: the title, the meta and share descriptions, the
+  `VideoGame` structured data and the plain-HTML block in `#root`, all saying one thing in the same
+  words. It names modes as examples ("game modes such as ...") and never counts modes or ships, so a
+  new one does not make it false. `public/sitemap.xml` lists every page with an address of its own;
+  a new page goes in it the day it ships.
 - `src/analytics.js` is Google Analytics 4 for those who opted in, and nothing at all until `GA_ID`
   holds a measurement ID: `analyticsLive` is what the prompt and the privacy policy read, so filling
   the ID in is the one change that turns analytics on and the copy follows. **Where the game's prompt

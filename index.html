@@ -5,7 +5,7 @@
     <!-- viewport-fit=cover lets the sea run edge to edge, under a phone's notch and home bar; the
          HUD and the menus keep clear of them with env(safe-area-inset-*). -->
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
-    <title>Sternchase</title>
+    <title>Sternchase: Helm &amp; Hull, an age-of-sail ship combat game</title>
     <!-- Full screen on a phone: iPhone Safari cannot be asked to hide its address bar and tabs,
          but a page saved to the home screen opens without them. These say the game is such a page.
          The manifest does the same for Android and desktop Chrome, and the touch icon is what iOS
@@ -22,16 +22,36 @@
     <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
     <!-- What a search result or a shared link shows. A link preview needs the card's full address,
          so these name the Pages site outright; `npm run icon` draws the card with the icons. -->
-    <meta name="description" content="Sternchase: Helm & Hull. An age-of-sail combat game. Fit out a ship in the yard, then fight her broadside to broadside." />
+    <meta name="description" content="A free age-of-sail ship combat game you play in your browser, no download or signup required. Fit out ships in the yard, then enter game modes such as Wave Arena, Ladder Arena, Free-for-all and Demolition Derby." />
     <link rel="canonical" href="https://sternchase.org/" />
     <meta property="og:type" content="website" />
     <meta property="og:title" content="Sternchase: Helm & Hull" />
-    <meta property="og:description" content="An age-of-sail combat game. Fit out a ship in the yard, then fight her broadside to broadside." />
+    <meta property="og:description" content="A free age-of-sail ship combat game you play in your browser, no download or signup required. Fit out ships in the yard, then enter game modes such as Wave Arena, Ladder Arena, Free-for-all and Demolition Derby." />
     <meta property="og:url" content="https://sternchase.org/" />
     <meta property="og:image" content="https://sternchase.org/og-image.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta name="twitter:card" content="summary_large_image" />
+    <!-- The same facts for search engines, as structured data. It repeats what the page and the game
+         show and nothing else: no ratings, no counts of modes or ships, which change as the game grows. -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "VideoGame",
+        "name": "Sternchase: Helm & Hull",
+        "alternateName": "Sternchase",
+        "url": "https://sternchase.org/",
+        "image": "https://sternchase.org/og-image.png",
+        "description": "A free age-of-sail ship combat game you play in your browser, no download or signup required. Fit out ships in the yard, then enter game modes such as Wave Arena, Ladder Arena, Free-for-all and Demolition Derby.",
+        "genre": ["Naval combat", "Action"],
+        "gamePlatform": "Web browser",
+        "applicationCategory": "Game",
+        "operatingSystem": "Any",
+        "playMode": "SinglePlayer",
+        "isAccessibleForFree": true,
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+      }
+    </script>
     <!-- Proves to AdSense that the site is ours. It loads nothing: the ad script loads from
          src/ads.js, the same way for every visitor, and Google's own consent message decides who it
          asks. -->
@@ -46,13 +66,14 @@
       .boot { box-sizing: border-box; min-height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px 16px; background: #0f3b39; color: rgba(238, 244, 242, 0.78); font: 13px/1.6 ui-monospace, "SF Mono", Menlo, Consolas, monospace; text-align: center; }
       .boot h1 { margin: 0; font: 400 clamp(34px, 12vw, 44px)/1.05 Georgia, "Iowan Old Style", "Times New Roman", serif; letter-spacing: 2px; color: #e8c877; }
       .boot h1 span { display: block; margin-top: 4px; font-size: 15px; letter-spacing: 3px; color: rgba(232, 200, 119, 0.62); }
-      .boot p { max-width: 320px; margin: 14px 0 0; }
+      .boot p { max-width: 340px; margin: 14px 0 0; }
       .boot a { color: rgba(238, 244, 242, 0.5); font-size: 11px; }
     </style>
     <div id="root">
       <main class="boot">
         <h1>STERNCHASE <span>HELM &amp; HULL</span></h1>
-        <p>An age-of-sail combat game you play in your browser. Fit out a ship in the yard, then fight her broadside to broadside.</p>
+        <p>A free age-of-sail ship combat game you play in your browser, no download or signup required.</p>
+        <p>Fit out ships in the yard, then enter game modes such as WAVE ARENA, LADDER ARENA, FREE-FOR-ALL and DEMOLITION DERBY.</p>
         <noscript><p>Sternchase needs JavaScript to play.</p></noscript>
         <p><a href="/privacy/">Privacy policy</a></p>
       </main>
