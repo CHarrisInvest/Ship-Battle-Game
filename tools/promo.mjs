@@ -279,7 +279,7 @@ async function compose({ W, H, layout, mark, deg, type, GUN_SCALE }) {
 async function play() {
   const dir = mkdtempSync(join(tmpdir(), "sternchase-promo-"));
   for (const [tag, vw, vh] of [["sideways", 844, 390], ["upright", 390, 844]]) {
-    const ctx = await browser.newContext({ viewport: { width: vw, height: vh }, deviceScaleFactor: 3, hasTouch: true, isMobile: true, timezoneId: "America/New_York" });
+    const ctx = await browser.newContext({ viewport: { width: vw, height: vh }, deviceScaleFactor: 3, hasTouch: true, isMobile: true });
     // Answered and funded before the page loads: no cookie sheet over the frame, and enough in the
     // hold to buy her. The purse is set back to an ordinary figure before the frames are taken.
     await ctx.addInitScript(() => {

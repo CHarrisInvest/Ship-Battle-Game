@@ -15,9 +15,8 @@ import {
 } from "./shipyard.js";
 import { roll, tally, progressParts } from "./achievements.js";
 import { getStoredConsent, hasConsentDecision, acceptAllCookies, rejectNonEssential, setCustomConsent } from "./consent.js";
-import { getAdRegion, onAdRegion, openGoogleChoices, guessRegulated } from "./ads.js";
-import { analyticsLive, conversionsLive, measurementLive, analyticsByDefault, track } from "./analytics.js";
-import { adsterraLive, adsterraAllowed, onAdsterraChange, pickBanner, bannerDoc, BANNER_SANDBOX } from "./adsterra.js";
+import { getAdRegion, onAdRegion, openGoogleChoices } from "./ads.js";
+import { analyticsLive, conversionsLive, measurementLive, track } from "./analytics.js";
 import { PrivacyPolicy } from "./privacy.jsx";
 
 /**
@@ -6324,40 +6323,9 @@ function ArrowButton({ back, label, onClick }) {
 // would let a captain think a gun fits when it does not.
 const fmtTons = (t) => t.toFixed(1);
 
-/**
- * An Adsterra banner, in the menu's flow so the head one pushes the title down and the foot one is
- * met at the end of the scroll. It is centred on the column and allowed out past it, since a 320
- * banner is wider than a small phone's column and a 728 one is wider than a sideways one's; the
- * size is picked so it never runs past the screen itself. The frame is new each time the main menu
- * mounts, which is what loads a fresh ad on every return to it. See `adsterra.js`.
- */
-function AdBanner({ foot }) {
-  const [allowed, setAllowed] = useState(adsterraAllowed);
-  useEffect(() => onAdsterraChange(() => setAllowed(adsterraAllowed())), []);
-  const [view, setView] = useState(() => ({ w: window.innerWidth, h: window.innerHeight }));
-  useEffect(() => {
-    const on = () => setView({ w: window.innerWidth, h: window.innerHeight });
-    window.addEventListener("resize", on);
-    return () => window.removeEventListener("resize", on);
-  }, []);
-  // One ad a slot a visit: the size picked on arrival is kept while it still fits the screen, so
-  // turning a tablet or dragging a window wider does not load a second ad into the same slot.
-  const kept = useRef(null);
-  if (allowed && !(kept.current && view.w >= kept.current.w)) kept.current = pickBanner(view.w, view.h);
-  const size = allowed ? kept.current : null;
-  const doc = useMemo(() => size && bannerDoc(size), [size?.id]);
-  if (!size) return null;
-  return (
-    <div style={{ position: "relative", left: "50%", width: size.w, height: size.h, marginLeft: -size.w / 2, marginTop: foot ? 16 : 0, marginBottom: foot ? 0 : 16 }}>
-      <iframe key={size.id} title="Advertisement" srcDoc={doc} sandbox={BANNER_SANDBOX} width={size.w} height={size.h} scrolling="no" style={{ display: "block", border: 0 }} />
-    </div>
-  );
-}
-
 function StartOverlay({ onStart, onEdit, onOutfit, onRecords, onCookies, onPrivacy, hold }) {
   return (
     <Shell>
-      <AdBanner />
       {/* The name is a lockup of two lines, and the first one carries it. STERNCHASE is the word a
           captain says; HELM & HULL sits under it at a third the size, in the same gold run dim, so
           the pair reads as one title rather than as a title and a tagline competing for the eye. */}
@@ -6396,7 +6364,6 @@ function StartOverlay({ onStart, onEdit, onOutfit, onRecords, onCookies, onPriva
         <FootLink label="Cookie settings" onClick={onCookies} />
         <FootLink label="Privacy policy" onClick={onPrivacy} />
       </div>
-      <AdBanner foot />
     </Shell>
   );
 }
@@ -6408,8 +6375,8 @@ function StartOverlay({ onStart, onEdit, onOutfit, onRecords, onCookies, onPriva
  * The copy says plainly what is true. Saved progress is the essential row and always on. Ads run for
  * everyone (`ads.js`), and the advertising switch decides only whether they are personalized, so it is
  * labelled for that; the cookies non-personalized ads still use are said in the body rather than
- * filed under essential, which they are not. Analytics run by default where `analyticsByDefault` says
- * so, and then the switch starts on and the body says so; elsewhere they wait for the switch. While
+ * filed under essential, which they are not. Analytics run by default wherever this prompt asks, so
+ * the switch starts on and the body says so. While
  * the game has no measurement ID (`measurementLive`) the row says nothing is collected yet and starts off. The Google Ads
  * conversion tag answers to the same row, which is named for whichever of the two is running. In the regions where
  * Google's own consent message asks instead, this prompt is never shown.
@@ -6421,17 +6388,13 @@ function CookieConsent({ onClose, onPrivacy }) {
   const [prefs, setPrefs] = useState(() => {
     const c = getStoredConsent();
     // Unanswered, the analytics switch shows what is actually happening: on where analytics run by default.
-    const analytics = hasConsentDecision() ? c.analytics : measurementLive() && analyticsByDefault();
+    const analytics = hasConsentDecision() ? c.analytics : measurementLive();
     return { analytics, advertising: c.advertising };
   });
   const done = (act) => () => { act(); onClose(); };
-  // Adsterra is named only where its banners can show, which a European time zone rules out.
-  const adsterra = adsterraLive() && !guessRegulated();
   // What the measuring switch covers, said as what the game does: play, the game's own ads, or both.
-  // Each comes in two forms, "the game counts" and "whether the game may count".
   const said = (counts, credits) => [analyticsLive() && counts, conversionsLive() && credits].filter(Boolean).join(", and ");
   const measures = said("counts how it is played with Google Analytics", "notes which of its own ads on Google brought you here");
-  const mayMeasure = said("count how it is played", "note which of its own ads on Google brought you here");
 
   return (
     <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, zIndex: 20, display: "flex", justifyContent: "center", padding: "0 calc(12px + env(safe-area-inset-right, 0px)) calc(12px + env(safe-area-inset-bottom, 0px)) calc(12px + env(safe-area-inset-left, 0px))", pointerEvents: "none" }}>
@@ -6442,11 +6405,9 @@ function CookieConsent({ onClose, onPrivacy }) {
         <div id="cookie-title" style={{ fontSize: 10, letterSpacing: 1, color: "rgba(238,244,242,0.55)", textTransform: "uppercase", marginBottom: 6 }}>Cookie preferences</div>
         <div id="cookie-body" style={{ fontSize: 11, color: "rgba(238,244,242,0.78)", lineHeight: 1.6 }}>
           Your progress is saved on this device so it is here next time you play. That is essential
-          and always on. The game is free because it shows ads from {adsterra ? "Google and Adsterra, which use" : "Google, which uses"} cookies
+          and always on. The game is free because it shows ads from Google, which uses cookies
           to limit how often you see an ad, to measure ads and to stop fraud. You choose whether
-          {adsterra ? " Google's ads are" : " those ads are"} personalized.{measures && (analyticsByDefault()
-            ? ` The game also ${measures}, unless you turn that off.`
-            : ` You also choose whether the game may ${mayMeasure}.`)} Read the{" "}
+          those ads are personalized.{measures && ` The game also ${measures}, unless you turn that off.`} Read the{" "}
           <button onClick={onPrivacy} style={{ font: "inherit", color: C.gold, background: "transparent", border: "none", padding: 0, textDecoration: "underline", cursor: "pointer", WebkitTapHighlightColor: "transparent" }}>
             privacy policy
           </button>{" "}

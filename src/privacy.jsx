@@ -8,13 +8,12 @@
  * Everything here has to stay true of the code. The hold and the consent answer live in
  * localStorage (`hold.js`, `consent.js`); ads load as `ads.js` says; analytics as `analytics.js`
  * says, and the analytics section follows `analyticsLive` so it changes the day a measurement ID goes
- * in, and the Google Ads tag beside it following `conversionsLive`; Adsterra's banners as `adsterra.js` says, following `adsterraLive` the same way. Change any of those and this changes the same day, with `PRIVACY_UPDATED` moved.
+ * in, and the Google Ads tag beside it following `conversionsLive`. Change any of those and this changes the same day, with `PRIVACY_UPDATED` moved.
  */
 
 import { analyticsLive, conversionsLive } from "./analytics.js";
-import { adsterraLive } from "./adsterra.js";
 
-export const PRIVACY_UPDATED = "4 October 2026";
+export const PRIVACY_UPDATED = "5 October 2026";
 
 // Where a player writes about this policy. Empty, the line is left out rather than pointing nowhere.
 export const PRIVACY_CONTACT = "sternchasegame@gmail.com";
@@ -29,7 +28,6 @@ export function PrivacyPolicy({ Section, P, linkColor }) {
   const credited = conversionsLive();
   // The switch that controls both, named as the cookie prompt names it.
   const switchName = measured || !credited ? "Analytics" : "Ad measurement";
-  const adsterra = adsterraLive();
   return (
     <>
       <P>
@@ -53,14 +51,15 @@ export function PrivacyPolicy({ Section, P, linkColor }) {
 
       <Section title="Advertising">
         <P>
-          The game is free to play because it shows ads from Google AdSense, and everyone sees them. What
-          you choose is whether they are personalized, which means chosen from what Google knows of your
-          interests.
+          The game is free to play because it shows ads from Google AdSense, and everyone sees them. They
+          are the only ads on the site. What you choose is whether they are personalized, which means
+          chosen from what Google knows of your interests.
         </P>
         <P>
-          In the European Economic Area, the UK and Switzerland, Google's own consent message asks you. If
-          you agree, the ads can be personalized. If you do not, Google shows limited ads where it can,
-          which use no cookies and store nothing on your device.
+          In the European Economic Area, the UK and Switzerland, Google's own consent message asks you.
+          Google works out from your connection whether that applies; the game does not look up where
+          you are. If you agree, the ads can be personalized. If you do not, Google shows limited ads
+          where it can, which use no cookies and store nothing on your device.
         </P>
         <P>
           Everywhere else, the game's cookie prompt asks you, and ads are not personalized until you turn
@@ -80,26 +79,6 @@ export function PrivacyPolicy({ Section, P, linkColor }) {
           information from sites like this one
           in <L href="https://policies.google.com/technologies/partner-sites">How Google uses information from sites or apps that use our services</L>.
         </P>
-        {adsterra && (
-          <>
-            <P>
-              The main menu also shows banner ads from Adsterra, one at the top and one at the bottom.
-              They are never shown during a match or on any other screen, and a new one loads each time
-              you return to the main menu. Adsterra's servers receive your IP address and details of your
-              browser and device when a banner loads, and may set cookies to count views and clicks, to
-              limit how often you see the same ad and to detect fraud. The game passes Adsterra nothing
-              about you, and Adsterra does not receive your personalized ads choice.
-            </P>
-            <P>
-              Adsterra's banners are not shown in the European Economic Area, the UK or Switzerland.
-              Everywhere else they are shown to everyone.
-            </P>
-            <P>
-              Adsterra explains how it handles the data in
-              the <L href="https://adsterra.com/privacy-policy/">Adsterra Privacy Policy</L>.
-            </P>
-          </>
-        )}
       </Section>
 
       <Section title="Analytics">
@@ -127,9 +106,8 @@ export function PrivacyPolicy({ Section, P, linkColor }) {
         {(measured || credited) ? (
           <>
             <P>
-              In the European Economic Area, the UK, Switzerland and Brazil {measured && credited ? "both are" : "it is"} off
-              until you agree, in Google's consent message or the game's cookie prompt, whichever asks
-              you, and nothing is sent before then. Everywhere else {measured && credited ? "both are" : "it is"} on
+              In the European Economic Area, the UK and Switzerland {measured && credited ? "both are" : "it is"} off
+              until you agree in Google's consent message, and nothing is sent before then. Everywhere else {measured && credited ? "both are" : "it is"} on
               from your first visit, and you can turn {measured && credited ? "them" : "it"} off at any
               time with the {switchName} switch under Cookie settings.
             </P>
