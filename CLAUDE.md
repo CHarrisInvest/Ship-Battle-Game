@@ -44,41 +44,29 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
 - `src/consent.js` is the cookie prompt's answer: essential, analytics and advertising, kept
   under its own key. **The hold is the essential category and is never gated on
   it**: "Reject all" must not touch a captain's progress.
-- `src/ads.js` puts AdSense on the page and decides **whose prompt asks first**. **Everyone sees ads;
-  consent decides only whether they are personalized.** In the EEA, the UK and Switzerland the asking
-  is Google's own consent message (AdSense Privacy & messaging, a certified TCF tool), which the
-  script itself shows, so there it loads with ad requests paused until Google has answered; a no
-  there gets Google's limited ads, the game's prompt is never shown, and "Cookie settings" reopens
-  Google's. Everywhere else the script loads at once asking for non-personalized ads, and
-  `isAdvertisingAllowed` (the "Personalized ads" switch) lifts that. Non-personalized ads still set
-  cookies, so the prompt says so in its body and never files them under essential: they are not
-  strictly necessary, and in Europe calling them that is exactly what the law forbids. The region is
-  guessed from the time zone and settled by Google's `gdprApplies`, and every wrong guess still ends
-  asked. Ads load from `main.jsx` only, so the privacy page carries none.
-- `src/adsterra.js` is the Adsterra banners, **on the main menu only**: one at its head pushing the
-  title down and one at its foot, never in a match or on any other screen. Each is Adsterra's own
-  code in a frame of its own, new each time the main menu mounts, so a return to the menu from a
-  voyage or a sub-menu loads a fresh ad and nothing refreshes on a timer. **The frame is sandboxed
-  (`BANNER_SANDBOX`)**: scripts and click-through pop-ups only, never `allow-same-origin` or any
-  `allow-top-navigation`, because an unsandboxed `srcdoc` frame runs as the game itself and could
-  read the hold or redirect the tab, the likeliest reason Google Ads disapproved the site as
-  compromised. **It is switched off for now (`ADSTERRA_ON` is false)** while Google Ads and AdSense
-  review the site: the keys stay, nothing loads, and the prompt and the policy say nothing of it.
-  Turning it back on is that one line, with `PRIVACY_UPDATED` moved. The size is picked off the
-  viewport's width and height, so a sideways phone gets the 320. Nothing loads until `BANNER_KEYS`
-  holds a zone key; `adsterraLive` is what the prompt and the policy read, so filling a key in turns
-  the copy on with it, and that is the day `PRIVACY_UPDATED` moves and Adsterra's line goes into
-  `public/ads.txt`. **Adsterra never shows in the EEA, the UK or Switzerland**: it takes no
-  non-personalized signal and is not an ad partner Google's message can ask about, so nothing there
-  could consent to it. Any sign of those regions keeps it off: a European time zone, Google's message
-  in charge, or Google's consent tool reporting that the GDPR applies.
+- `src/ads.js` puts AdSense on the page and decides **whose prompt asks first**. **AdSense is the
+  only ad network, and everyone sees ads; consent decides only whether they are personalized.**
+  **Every visitor gets the same page and the same code path.** The script loads at once for everyone
+  with ad requests paused and non-personalized, and Google's own consent tool (AdSense Privacy &
+  messaging, a certified TCF tool the script brings) answers `gdprApplies`. Where it says yes (the
+  EEA, the UK and Switzerland) Google's message asks, a no there gets Google's limited ads, the
+  game's prompt is never shown, and "Cookie settings" reopens Google's. Everywhere else, including
+  Google not answering, the game's prompt asks and `isAdvertisingAllowed` (the "Personalized ads"
+  switch) lifts the non-personalized request. Non-personalized ads still set cookies, so the prompt
+  says so in its body and never files them under essential: they are not strictly necessary, and in
+  Europe calling them that is exactly what the law forbids. Ads load from `main.jsx` only, so the
+  privacy page carries none.
+- **No cloaking, ever.** The game does not guess where a visitor is (no time zones, no user agent,
+  no referrer) and shows nothing to one visitor that it hides from another; Google's consent answer
+  is the only thing that varies the asking, and it varies only the asking. Do not add a second ad
+  network, a script loaded on a condition, or a feature switched off "while Google reviews": Google
+  Ads suspended the account for circumventing systems after a third-party banner did all three, and
+  the static text in `index.html` must say what the game shows, the same for everyone.
 - `src/analytics.js` is Google Analytics 4 for those who opted in, and nothing at all until `GA_ID`
   holds a measurement ID: `analyticsLive` is what the prompt and the privacy policy read, so filling
   the ID in is the one change that turns analytics on and the copy follows. **Where the game's prompt
   asks, analytics are on until the switch turns them off**, because measuring one's own site needs no
-  prior consent there; Brazil, told by its time zones, waits for a yes instead, as does a European
-  time zone the game's prompt ends up asking when Google's message is silent, and
-  `analyticsByDefault` is the one statement of which is which, read by the switch and the policy.
+  prior consent there.
   Where Google's message asks, its TCF record (purposes 1 and 8, vendor 755) is the answer and
   gtag.js is not fetched before a yes. Game events go through `track`, which does nothing without
   consent. **The Google Ads conversion tag (`ADS_ID`) is the same gtag.js and answers to the same

@@ -66,9 +66,12 @@ const executablePath = process.env.SMOKE_CHROME || undefined;
 const browser = await chromium.launch({ executablePath, headless: true, args: ["--no-sandbox"] });
 
 async function open(tag, { asked = true } = {}) {
-  // A time zone outside Europe, so the game's own cookie prompt is the one in charge wherever the
-  // test is run from (`ads.js` hands Europe to Google's consent message), and no ad script is fetched.
-  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true, timezoneId: "America/New_York" });
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
+  // Google's consent tool answering that the GDPR does not apply, as it does outside Europe, so the
+  // game's own cookie prompt is the one in charge wherever the test is run from (`ads.js`).
+  await ctx.addInitScript(() => {
+    window.__tcfapi = (cmd, v, cb) => { if (cmd === "addEventListener") cb({ gdprApplies: false, eventStatus: "tcloaded" }, true); };
+  });
   // Answer the cookie prompt before the page loads, so its sheet is not lying over the controls the
   // tour taps. The prompt itself is checked once, on a context of its own, in `cookies()`.
   if (asked) await ctx.addInitScript(() => {

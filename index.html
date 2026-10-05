@@ -23,6 +23,7 @@
     <!-- What a search result or a shared link shows. A link preview needs the card's full address,
          so these name the Pages site outright; `npm run icon` draws the card with the icons. -->
     <meta name="description" content="Sternchase: Helm & Hull. An age-of-sail combat game. Fit out a ship in the yard, then fight her broadside to broadside." />
+    <link rel="canonical" href="https://sternchase.org/" />
     <meta property="og:type" content="website" />
     <meta property="og:title" content="Sternchase: Helm & Hull" />
     <meta property="og:description" content="An age-of-sail combat game. Fit out a ship in the yard, then fight her broadside to broadside." />
@@ -31,13 +32,31 @@
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta name="twitter:card" content="summary_large_image" />
-    <!-- Proves to AdSense that the site is ours. It loads nothing: the ad script itself is never
-         put here, because it would run before the cookie prompt is answered. It loads from code,
-         behind isAdvertisingAllowed in src/consent.js. -->
+    <!-- Proves to AdSense that the site is ours. It loads nothing: the ad script loads from
+         src/ads.js, the same way for every visitor, and Google's own consent message decides who it
+         asks. -->
     <meta name="google-adsense-account" content="ca-pub-1929910138338917" />
   </head>
   <body>
-    <div id="root"></div>
+    <!-- What the page is, in plain HTML: read by anything that does not run the script, and shown to
+         everyone for the moment before the game draws over it. It says what the menu says, and the
+         game replaces it on its first render. Keep it true of the game and the same for every visitor:
+         a page that tells a crawler one thing and a player another is cloaking. -->
+    <style>
+      .boot { box-sizing: border-box; min-height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px 16px; background: #0f3b39; color: rgba(238, 244, 242, 0.78); font: 13px/1.6 ui-monospace, "SF Mono", Menlo, Consolas, monospace; text-align: center; }
+      .boot h1 { margin: 0; font: 400 clamp(34px, 12vw, 44px)/1.05 Georgia, "Iowan Old Style", "Times New Roman", serif; letter-spacing: 2px; color: #e8c877; }
+      .boot h1 span { display: block; margin-top: 4px; font-size: 15px; letter-spacing: 3px; color: rgba(232, 200, 119, 0.62); }
+      .boot p { max-width: 320px; margin: 14px 0 0; }
+      .boot a { color: rgba(238, 244, 242, 0.5); font-size: 11px; }
+    </style>
+    <div id="root">
+      <main class="boot">
+        <h1>STERNCHASE <span>HELM &amp; HULL</span></h1>
+        <p>An age-of-sail combat game you play in your browser. Fit out a ship in the yard, then fight her broadside to broadside.</p>
+        <noscript><p>Sternchase needs JavaScript to play.</p></noscript>
+        <p><a href="/privacy/">Privacy policy</a></p>
+      </main>
+    </div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
