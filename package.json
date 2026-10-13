@@ -15,6 +15,7 @@
     "hold-test": "node tools/hold-test.mjs",
     "server": "node server/index.js",
     "server-test": "node server/test.mjs",
+    "client-test": "node server/client-test.mjs",
     "determinism": "node tools/determinism.mjs",
     "inputlog": "node tools/inputlog.mjs",
     "icon": "node tools/icon.mjs",

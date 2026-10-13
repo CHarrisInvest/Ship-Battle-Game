@@ -14,6 +14,7 @@
  *                        request. Every route but `/health` then refuses a request without it, so the
  *                        server cannot be reached around the proxy, and the visitor's address is
  *                        read from the proxy's `x-client-ip` rather than from the connection.
+ *   GUESTS_PER_MINUTE    optional: how many guest accounts one address may make a minute (10).
  *   PORT                 Railway sets it.
  */
 export function configFromEnv(env = process.env) {
@@ -29,6 +30,7 @@ export function configFromEnv(env = process.env) {
     cookieDomain: env.COOKIE_DOMAIN || null,
     prefix: env.API_PREFIX || "",
     proxySecret: env.PROXY_SECRET || null,
+    guestsPerMinute: Number(env.GUESTS_PER_MINUTE) || 10,
     port: Number(env.PORT) || 8787,
   };
 }

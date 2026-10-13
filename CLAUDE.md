@@ -83,8 +83,15 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   `null` rather than throwing, because from the server they come off the network. Banking is not a
   shop action. It imports only the catalogue and `achievements.js`, never edits the record it is
   handed, and `npm run purity` holds it to the engine's rules; `npm run hold-test` holds it to the
-  shipyard's. `src/hold.js` is the store: it keeps the record in this browser's localStorage, runs a
-  rule when the captain asks for something, and keeps the exports the screen has always read.
+  shipyard's. `src/hold.js` is this browser's copy of the server's record: a shop action is applied
+  here at once, shown and sent, the server's answer replaces the guess, a refusal rolls the screen
+  back, and a stale version (another tab) is tried again on the record the server sent. It keeps the
+  exports the screen has always read, adds `connect` and the connection's status for the menu, and
+  deletes the save this browser kept before the hold moved (a local record could have been edited).
+  `src/voyage.js` starts a voyage on the server's seed and loadout and records the controls it is
+  sailed with, in pieces, for the server's replay; the stick is rounded in `controls.js` before the
+  step sees it, so what is sailed is what is logged, and the end screen shows what the server banked.
+  `src/net.js` is the one line to `/api`. `npm run client-test` runs all three against a real server.
   Nothing else is saved; worlds and islands are generated fresh every match.
 - **`server/` is the game server, on Railway, and it believes nothing the browser computed.** Plain
   `node:http`, Better Auth at `/auth/*` (every visitor a guest through the anonymous plugin), and

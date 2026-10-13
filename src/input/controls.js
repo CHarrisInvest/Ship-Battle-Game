@@ -19,6 +19,10 @@ export function useControls(playerId) {
   return ref.current;
 }
 
+/** The stick's reach and bearing are rounded to this many steps, of its reach and of a turn. */
+export const STEPS = 1024;
+const ANGLE = (2 * Math.PI) / STEPS;
+
 function createControls(playerId) {
   let input = { ...NO_INPUT };
   const knobRef = { current: null }; // the stick's knob, moved straight on the element
@@ -62,9 +66,15 @@ function createControls(playerId) {
     hold: (key, val) => (e) => { e.preventDefault(); input[key] = val; },
     /** A repair asked for, "hull" or "mast", carried out by the next step. */
     ask: (system) => { input.repair = system; },
-    /** Her controls as they stand, for one step, keyed by her id. The repair is spent. */
+    /**
+     * Her controls as they stand, for one step, keyed by her id. The repair is spent. The stick is
+     * rounded to 1/1024 of its reach and of a turn here, before the step sees it, so the record the
+     * round is sailed with is the very one its log carries to the server, and the log stays short
+     * while she holds a course.
+     */
     read() {
-      const rec = { [playerId]: { ...input } };
+      // `+ 0` makes a rounded -0 a 0: JSON writes -0 as 0, and the server must replay what was sailed
+      const rec = { [playerId]: { ...input, joyMag: Math.round(input.joyMag * STEPS) / STEPS + 0, joyAng: Math.round(input.joyAng / ANGLE) * ANGLE + 0 } };
       input.repair = null;
       return rec;
     },
