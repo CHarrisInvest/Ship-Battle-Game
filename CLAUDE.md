@@ -100,6 +100,12 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   would bank what the captain never saw. Document columns are `json`, never `jsonb`, which reorders
   keys. `purge` keeps only what the privacy policy says is kept. `npm run server-test` runs it all
   against a real Postgres (a throwaway Docker container, or CI's service container).
+  **The browser never talks to Railway.** The game has no domain of its own, and a server on another
+  site sets a third-party cookie Safari refuses, so `api/[...path].js`, a Vercel edge function,
+  forwards `/api/*` on the game's address to the server, which answers under `API_PREFIX` (`/api`).
+  The function adds the `PROXY_SECRET` the server demands of every route but `/health`, and the
+  visitor's address as Vercel saw it (`x-client-ip`), which the server's limits count by; whatever a
+  visitor sends in either header is dropped first.
 - `src/consent.js` is the cookie prompt's answer: essential, analytics and advertising, kept
   under its own key. **The hold is the essential category and is never gated on
   it**: "Reject all" must not touch a captain's progress.

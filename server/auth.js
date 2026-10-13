@@ -13,7 +13,7 @@ export function authOptions({ pool, config }) {
     database: pool,
     secret: config.secret,
     baseURL: config.baseURL,
-    basePath: "/auth",
+    basePath: `${config.prefix || ""}/auth`,
     trustedOrigins: config.origins,
     telemetry: { enabled: false },
     plugins: [anonymous()],
@@ -29,8 +29,10 @@ export function authOptions({ pool, config }) {
       customRules: { "/sign-in/anonymous": { window: 60, max: config.guestsPerMinute || 10 } },
     },
     advanced: {
-      // the address a visitor is counted by: Railway's edge sets X-Real-IP to the client's own
-      ipAddress: { ipAddressHeaders: ["x-real-ip", "x-forwarded-for"] },
+      // the address a visitor is counted by. Behind the proxy, the one it passes on (Vercel sets it
+      // from the connection, and only the proxy can reach the server); reached directly, the one
+      // Railway's edge sets to the client's own.
+      ipAddress: { ipAddressHeaders: config.proxySecret ? ["x-client-ip"] : ["x-real-ip", "x-forwarded-for"] },
       // The game and the server are one site (sternchase.org and api.sternchase.org), so the cookie
       // is set on the game's domain and stays first-party; locally there is no domain to share.
       ...(config.cookieDomain ? { crossSubDomainCookies: { enabled: true, domain: config.cookieDomain } } : {}),
