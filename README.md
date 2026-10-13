@@ -46,6 +46,30 @@ test uses.
 
 ## Deploying
 
+### Vercel
+
+Import the repository in Vercel and leave the project settings at their defaults: `vercel.json`
+names the framework (Vite), the install and build commands and the `dist` output, so nothing needs
+entering by hand. The production branch is `main`; every other branch gets a preview deployment.
+
+- **Domain.** Add `sternchase.org` (and `www.sternchase.org`, redirecting to it) under Settings →
+  Domains and point the DNS records Vercel asks for at it. Only the apex is the canonical address;
+  `index.html`, `robots.txt` and `sitemap.xml` all name it.
+- **Trailing slash.** `vercel.json` sets `trailingSlash`, so `/privacy` redirects to `/privacy/`,
+  the address in the sitemap and the one AdSense and Google's consent message are given.
+- **Caching.** Vite's hashed bundles under `/assets/` are cached for a year; the pages and
+  everything in `public/` keep Vercel's default of revalidating on every load, so a deploy is seen
+  at once.
+- **Privacy policy.** Vercel sets `VERCEL=1` while it builds, and `vite.config.js` passes that to
+  the policy, so its hosting section names Vercel on a Vercel build and GitHub Pages on a Pages one.
+  Turning on Vercel Web Analytics or Speed Insights would load something new and needs the policy
+  changed the same day, so leave both off unless that is done.
+
+Once the domain points at Vercel, disable `.github/workflows/deploy.yml` (or delete it) so `main`
+is not published to two hosts.
+
+### GitHub Pages
+
 Pushing to `main` builds the site and publishes it to GitHub Pages via
 `.github/workflows/deploy.yml`:
 
