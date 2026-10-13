@@ -9,6 +9,7 @@ const config = configFromEnv();
 const pool = makePool(config.databaseUrl);
 const app = await createApp({ pool, config });
 const server = createServer(app.handler);
+server.on("upgrade", app.upgrade);
 server.listen(config.port, () => console.log(`sternchase server on :${config.port}, engine ${app.engine}`));
 
 // what the privacy policy says is kept, and no more: at boot and every six hours

@@ -24,6 +24,7 @@ import { cors, send, readJson, HttpError } from "./http.js";
 import { lockHold, parseAction, act } from "./hold.js";
 import { engineHash } from "./enginehash.js";
 import { replayer, startRound, addInputs, finishRound } from "./rounds.js";
+import { createOnline, makeTicket } from "./online.js";
 
 /**
  * How hard one captain may lean on the hold and round routes: a bucket of 60 requests refilled at
@@ -32,7 +33,7 @@ import { replayer, startRound, addInputs, finishRound } from "./rounds.js";
  */
 const BUCKET = 60, REFILL = 20;
 
-export async function createApp({ pool, config, now = () => Date.now() }) {
+export async function createApp({ pool, config, now = () => Date.now(), catchUp }) {
   // a pooled connection that drops (a database restart, a network blip) is logged and replaced, not
   // left to throw and take the process with it
   pool.on("error", (e) => console.error("database connection lost:", e.message));
@@ -42,6 +43,7 @@ export async function createApp({ pool, config, now = () => Date.now() }) {
   const authHandler = toNodeHandler(auth);
   const engine = engineHash();
   const replays = replayer();
+  const online = createOnline({ pool, engine, secret: config.secret, publicWs: config.publicWs || null, now, catchUp });
 
   const buckets = new Map();
   function spend(userId) {
@@ -78,6 +80,15 @@ export async function createApp({ pool, config, now = () => Date.now() }) {
       const user = await userOf(req);
       const body = parseAction(await readJson(req));
       return transaction(pool, (c) => act(c, user.id, body, now));
+    },
+    // a ticket for the online socket, which reaches the server directly and so cannot carry the cookie
+    "POST /online/ticket": async (req) => {
+      const user = await userOf(req);
+      const body = await readJson(req);
+      if (!body || typeof body.engine !== "string") throw new HttpError(400, "shape");
+      if (body.engine !== engine) return { status: 409, body: { error: "engine", engine } };
+      if (!config.publicWs) return { status: 503, body: { error: "online is not configured" } };
+      return { status: 200, body: { ticket: makeTicket(config.secret, user.id, engine, now()), ws: config.publicWs } };
     },
     "POST /rounds": async (req) => {
       const user = await userOf(req);
@@ -128,5 +139,13 @@ export async function createApp({ pool, config, now = () => Date.now() }) {
     }
   }
 
-  return { handler, auth, engine, close: async () => { clearInterval(sweep); await replays.close(); } };
+  /** WebSocket upgrades: the online socket at `/ws`, which authenticates by ticket rather than cookie. */
+  function upgrade(req, socket, head) {
+    const path = new URL(req.url, "http://x").pathname;
+    if (path === "/ws" || path === `${prefix}/ws`) return online.upgrade(req, socket, head);
+    socket.write("HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n");
+    socket.destroy();
+  }
+
+  return { handler, upgrade, online, auth, engine, close: async () => { clearInterval(sweep); online.close(); await replays.close(); } };
 }
