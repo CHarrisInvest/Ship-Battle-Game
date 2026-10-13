@@ -1,9 +1,15 @@
 /**
- * THE SHIPS: what a hull can do with the way and the rudder she has, read off her `rating`.
+ * THE SHIPS: a ship as the engine holds her, what she can do with the way and the rudder she has,
+ * read off her `rating`, and how a human captain's input record sails her.
  */
 
-import { STARTER, resolve, rate } from "../shipyard.js";
-import { clamp } from "./math.js";
+import { STARTER, measure, resolve, rate } from "../shipyard.js";
+import { hullForm } from "../hullform.js";
+import { clamp, norm } from "./math.js";
+import { random } from "./rng.js";
+import { WORLD } from "./tables.js";
+import { repair } from "./repairs.js";
+import { canFire, fire, reloadOf } from "./weapons.js";
 
 // A ship's length, beam and collision ellipse are her own now, set per class by `hullform.js` and
 // carried on the ship as `hullA` and `hullB` (semi-length and semi-beam). The galleon anchors the
@@ -49,3 +55,112 @@ export const shipOf = (world, playerId) => world.ships.find((s) => s.id === worl
 /** How far the nearest human ship lies from a point, or a very long way when there is none afloat. */
 export const humanRange = (world, x, y) =>
   world.ships.reduce((d, s) => (isHuman(s) && s.alive ? Math.min(d, Math.hypot(x - s.x, y - s.y)) : d), 1e9);
+
+export function makeShip(world, x, y, heading, opts) {
+  // She sails as what she was built: her loadout comes in from the hold if she is the player's,
+  // and from the stock fleet if she is not. `rate()` is asked once, here, because nothing about
+  // a ship changes at sea except her damage.
+  const loadout = opts.loadout || STOCK_LOADOUT;
+  const rating = rate(loadout);
+  // What she measures, on the scale the mode fights on: overall under gunfire, ram without it.
+  // A captain picking prey reads it against her own, so a plain sloop no longer charges a fully
+  // found one three times her strength as if the two were the same hull.
+  const measured = measure(rating);
+  const strength = !world.rules.guns ? measured.ram : measured.overall;
+  // Her hull's own size, from the class's form: what she draws as, and also what she collides
+  // as, because a first rate really is a bigger target than a yawl.
+  const sea = hullForm(loadout.hull.id).sea;
+  const s = {
+    // who she is, for the events that name her, and which colours she flies, which every
+    // viewer of the round has to agree on
+    id: world.nextId++, livery: opts.livery || 0,
+    x, y, heading, spdCur: 0, alive: true,
+    // a person or the engine, and which person: the input record she answers to
+    controller: opts.playerId ? "human" : "ai", playerId: opts.playerId || null,
+    loadout, rating, strength,
+    hullA: sea.L / 2, hullB: sea.W / 2,
+    coins: 0, earned: 0, repaired: 0, patches: 0, rank: 0, kills: 0, dmgDealt: 0, rams: 0, exposure: 0,
+    // What the record wants to know beyond the count of sinkings: how each one was done, and
+    // what the carpenter gave back. `sunkBy` is keyed by the cause `applyHit` is told.
+    dismasted: 0, healed: 0, sunkBy: { ram: 0, broadside: 0, musket: 0 }, rammedWhole: 0, wornDown: 0,
+    // What the PLAYER has done to this ship, bar by bar, and how much of her hull went to the
+    // player's bow. Rivals hit each other in a melee and the storm takes crew, so "you wore her
+    // down" and "you sank her by the bow alone" are judged on this and never on her bars.
+    byPlayer: { hull: 0, mast: 0, crew: 0, ram: 0 },
+    maxHull: rating.hull, maxMast: rating.mast, maxCrew: rating.crew,
+    hull: rating.hull, mast: rating.mast, crew: rating.crew,
+    // every gun aboard is loaded at the drop, the player's and a rival's alike. A rival's used
+    // to start on a random reload of up to half a second so ten of them would not fire as one;
+    // the trigger discipline in `serveGuns` and their own spread of positions do that now.
+    cd: { broadside: 0, bow: 0, musket: 0 },
+    mastDown: false, ramCd: 0, locked: new Map(), turnVel: 0, kx: 0, ky: 0,
+    px: x, py: y, vx: 0, vy: 0, way: 0, baulkT: 0, foul: false, // where she was, and the ground she truly made
+  };
+  if (!opts.playerId) {
+    s.wander = random(world) * Math.PI * 2;
+    s.wanderT = 0;
+    s.oppT = 0;
+    s.oppHold = 1.8 + random(world) * 2.6; // trigger discipline: some captains waste less powder
+    s.nerve = random(world); // how late she leaves it before turning to face a charge
+    s.baffled = 0; // how long she has been getting nowhere with the hull she is engaged with
+    s.sheerT = 0; // time left on a deliberate break-off
+    s.sheerHeading = 0; // and the course out of the heap she picked when she began it
+    s.avoidIsl = null; // the island she is sailing round, and which side she chose to pass it
+    s.avoidSide = 0;
+    s.retargetT = 0;
+    s.target = null;
+  }
+  return s;
+}
+
+export function moveShip(world, s, dt, desired, throttle) {
+  let dH = 0;
+  if (throttle > 0.03) {
+    const d = norm(desired - s.heading);
+    const step = turnCap(s) * dt;
+    dH = clamp(d, -step, step);
+    s.heading += dH;
+  }
+  s.turnVel = dt > 0 ? dH / dt : 0;
+  const tgt = throttle * speedCap(s);
+  s.spdCur += (tgt - s.spdCur) * Math.min(1, dt * 3);
+  s.x += Math.cos(s.heading) * s.spdCur * dt;
+  s.y += Math.sin(s.heading) * s.spdCur * dt;
+  s.x += s.kx * dt;
+  s.y += s.ky * dt;
+  const kf = Math.exp(-dt * 3.5);
+  s.kx *= kf;
+  s.ky *= kf;
+  s.x = clamp(s.x, 28, WORLD - 28);
+  s.y = clamp(s.y, 28, WORLD - 28);
+  if (world.islands)
+    for (const isl of world.islands) {
+      const dx = s.x - isl.x, dy = s.y - isl.y;
+      const d = Math.hypot(dx, dy) || 1;
+      // her own half-length, so a first rate grounds where her bow reaches the shallows and a
+      // launch can work right in under the beach
+      const minD = isl.r + s.hullA * 0.76;
+      if (d < minD) { s.x = isl.x + (dx / d) * minD; s.y = isl.y + (dy / d) * minD; s.spdCur *= 0.5; }
+    }
+}
+
+/**
+ * One human captain's step, off her input record: a repair she asked for since the last step,
+ * then the stick, then any fire button held over a loaded mount. A repair comes the same road as
+ * the wheel, so that it reaches the engine the same way wherever the engine is.
+ */
+export function stepHuman(world, p, inp, dt) {
+  if (!p.alive) return;
+  if (inp.repair && world.rules.repairs) {
+    const paid = repair(p, inp.repair);
+    if (paid > 0) world.events.push({ type: "repaired", shipId: p.id, system: inp.repair, coins: paid });
+  }
+  const desired = inp.joyMag > 0.08 ? inp.joyAng : p.heading;
+  moveShip(world, p, dt, desired, inp.joyMag);
+  p.ramCd = Math.max(0, p.ramCd - dt);
+  if (!world.rules.guns) return; // ram-only: nothing aboard to reload
+  for (const wk of ["broadside", "bow", "musket"]) {
+    p.cd[wk] = Math.max(0, p.cd[wk] - dt);
+    if (inp[wk] && p.cd[wk] <= 0 && canFire(p, wk)) { fire(world, p, wk); p.cd[wk] = reloadOf(p, wk); }
+  }
+}

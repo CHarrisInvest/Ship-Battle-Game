@@ -4,8 +4,9 @@
  * modes that carry them.
  */
 
-import { clamp } from "./math.js";
+import { clamp, norm } from "./math.js";
 import { STORM_R0, STORM_R2, WORLD } from "./tables.js";
+import { killShip } from "./round.js";
 
 // The weather takes this share of her FULL crew a second, every second she is out in it, whatever
 // class she is and however many hands she has left: ten seconds of exposure is the ship, for a
@@ -49,3 +50,53 @@ export const stormPhase = (t, w) => {
 /** Whether she is out in the weather: afloat, in a mode that has some, and outside the ring. */
 export const outInWeather = (world, s) =>
   !!world.rules.storm && s.alive && Math.hypot(s.x - WORLD / 2, s.y - WORLD / 2) > world.stormR;
+
+/**
+ * The weather bends whatever a captain meant to do, whichever mode she is sailing in.
+ *
+ * Well inside the ring it asks nothing; nearer the rail it leans on her course; once she is
+ * actually out in it her own exposure decides how hard, so a shove into the weather is something
+ * she rides out and a pinning is something she fights her way out of — or does not.
+ *
+ * Both AIs go through here, and they have to. A gun captain runs from a wound rather than from
+ * the ring, and a rival who has driven her to a third of her health is behind her, so the course
+ * she picks to save herself is the course that takes her out of the ring: without this she sails
+ * out of the round having beaten nobody. It is a lean, not a fence, so shouldering a wounded ship
+ * out into the weather and holding her there is still a way of finishing her.
+ */
+export function weatherCourse(world, s, desired, throttle) {
+  if (!world.rules.storm) return { desired, throttle };
+  const dc = Math.hypot(s.x - WORLD / 2, s.y - WORLD / 2);
+  const out = dc > world.stormR;
+  const lean = out
+    ? clamp(0.55 + 0.45 * (s.exposure / STORM_RAMP), 0, 1)
+    : STORM_PULL * clamp((dc / Math.max(1, world.stormR) - STORM_HOME) / (1 - STORM_HOME), 0, 1);
+  if (lean <= 0.01) return { desired, throttle };
+  const toMid = Math.atan2(WORLD / 2 - s.y, WORLD / 2 - s.x);
+  return {
+    desired: desired + norm(toMid - desired) * lean, // swing part of the way onto the course home
+    throttle: out ? Math.max(throttle, 0.9) : throttle,
+  };
+}
+
+// The squall is weather, not an attack: no captain is paid for it, so it does not run through
+// applyHit. It works on the crew, exposed on deck, and the longer they are out in it the harder
+// it works — a dash across the weather costs a few hands, living out there costs the ship.
+export function stepStorm(world, dt) {
+  const w = world.rules.storm;
+  if (!w) return;
+  world.stormR = stormRadius(world.time, w);
+  const cx = WORLD / 2, cy = WORLD / 2;
+  // walked backwards because a ship the weather finishes is spliced out from under us
+  for (let i = world.ships.length - 1; i >= 0; i--) {
+    const s = world.ships[i];
+    if (!s.alive) continue;
+    const out = Math.hypot(s.x - cx, s.y - cy) > world.stormR;
+    if (!out) { s.exposure = Math.max(0, s.exposure - dt * STORM_RECOVER); continue; }
+    s.exposure = Math.min(STORM_RAMP, s.exposure + dt);
+    // a share of her full complement, not of what is left, so the last hands go as fast as the first
+    const bite = STORM_BITE * s.maxCrew;
+    s.crew = Math.max(0, s.crew - bite * dt);
+    if (s.crew <= 0 && s.alive) { s._deathBar = "storm"; killShip(world, s, null, "storm"); }
+  }
+}

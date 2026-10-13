@@ -27,6 +27,8 @@ jobs:
       - run: npm ci
       # the engine imports nothing it must not and never reads the page, the clock or Math.random
       - run: npm run purity
+      # every mode played to its end in plain Node, twice from one seed, with no browser
+      - run: npm run sim-test
       - run: npm run build
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
