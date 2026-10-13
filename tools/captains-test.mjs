@@ -187,11 +187,44 @@ function credit() {
   }
 }
 
+/** The AI dropped around a full lobby keep off the captains and off the beaches, whatever the seed. */
+function rivalSpawns() {
+  let closest = Infinity, aground = 0;
+  for (let seed = 1; seed <= 40; seed++) {
+    for (const mode of ["ffa", "derby"]) {
+      const world = createWorld({ mode, seed, players: captains(8), rivals: 3 });
+      const humans = world.ships.filter(isHuman);
+      for (const s of world.ships.filter((x) => !isHuman(x))) {
+        for (const h of humans) closest = Math.min(closest, Math.hypot(s.x - h.x, s.y - h.y));
+        if (world.islands.some((isl) => Math.hypot(s.x - isl.x, s.y - isl.y) < isl.r + 55)) aground++;
+      }
+    }
+  }
+  if (closest < 200) fail(`rival spawns: an AI dropped ${closest.toFixed(0)} from a captain in a full lobby`);
+  else ok(`rival spawns: the nearest AI to a captain in a full lobby is ${closest.toFixed(0)} away`);
+  if (aground) fail(`rival spawns: ${aground} AI dropped on an island`);
+}
+
+/** A captain who sinks early is paid for the time she was afloat, not for the round's. */
+function timePay() {
+  const world = createWorld({ mode: "derby", seed: 5, players: captains(3), rivals: 4 });
+  for (let i = 0; i < 600; i++) step(world, {});
+  sink(world, "p1");
+  step(world, {});
+  const at = voyageStats(world, "p1");
+  while (!world.result.over && world.time < LIMIT) step(world, {});
+  const end = voyageStats(world, "p1");
+  if (end.time !== at.time || end.timePay !== at.timePay) fail(`time pay: p1 sank at ${at.time.toFixed(1)} s and was paid for ${end.time.toFixed(1)} s`);
+  else ok(`time pay: p1 is paid for her ${at.time.toFixed(1)} s afloat, however long the round ran`);
+}
+
 const t0 = Date.now();
 spawns();
 aiCount();
 placing();
 credit();
+rivalSpawns();
+timePay();
 rounds();
 console.log(`\n${((Date.now() - t0) / 1000).toFixed(1)} s`);
 if (failures.length) {

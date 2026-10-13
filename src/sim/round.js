@@ -17,7 +17,8 @@ export const KILL_SHARE = 0.25;
 export function voyageStats(world, playerId) {
   const p = shipOf(world, playerId), r = world.rules;
   const won = world.result.winners.some((w) => w.playerId === playerId);
-  const time = world.time || 0;
+  // a captain who has gone under is paid for the time she was afloat, not for the round's
+  const time = (p.placed ? p.sankAt : world.time) || 0;
   const paidInFull = !!(won && r.fullRound); // she ended it early; she is paid as though she had not
   const timePay = Math.round((paidInFull ? r.fullRound : time) * r.timeCoins);
   const winPay = won ? r.winBonus : 0;
@@ -65,6 +66,7 @@ export function judge(world) {
   for (const s of humans) {
     if (s.alive || s.placed) continue;
     s.placed = true;
+    s.sankAt = world.time;
     const out = { playerId: s.playerId, rank: world.rules.ranked ? standing + 1 : 0, cause: together ? "together" : s._deathBar || "hull" };
     world.out.push(out);
     world.events.push({ type: "player_out", ...out });

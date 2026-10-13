@@ -83,16 +83,22 @@ export const MIDDLE_CLEAR = 320; // no island closer than this to the middle, in
 export const RING_CLEAR = 130; // ...and none within this of a closing ring's working size
 
 export function farPos(world, minFromPlayer) {
-  let x, y, ok, tries = 0;
+  // A crowded sea, a full online lobby above all, may have no water that far from every captain.
+  // Then she takes the clear water furthest from any of them that the search turned up, never the
+  // last place it happened to try, which could be under a captain's bow or up on a beach.
+  let x, y, ok, tries = 0, best = null, bestD = -1;
   do {
     x = 180 + random(world) * (WORLD - 360);
     y = 180 + random(world) * (WORLD - 360);
     ok = true;
-    if (humanRange(world, x, y) < minFromPlayer) ok = false;
-    if (ok && world.islands) for (const isl of world.islands) if (Math.hypot(x - isl.x, y - isl.y) < isl.r + 55) { ok = false; break; }
+    const d = humanRange(world, x, y);
+    if (d < minFromPlayer) ok = false;
+    let aground = false;
+    if (world.islands) for (const isl of world.islands) if (Math.hypot(x - isl.x, y - isl.y) < isl.r + 55) { aground = true; ok = false; break; }
+    if (!aground && d > bestD) { bestD = d; best = { x, y }; }
     tries++;
   } while (!ok && tries < 40);
-  return { x, y };
+  return ok || !best ? { x, y } : best;
 }
 
 /**
