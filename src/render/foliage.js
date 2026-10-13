@@ -4,6 +4,7 @@
 
 import { TILT } from "./view.js";
 import { C } from "./palette.js";
+import { random } from "../sim/rng.js";
 
 // ---------------- island foliage ----------------
 // Two species built from one blade primitive. Every fraction below is of the plant's canopy radius,
@@ -298,7 +299,9 @@ export function inOutline(px, py, poly) {
 // Plants for one island. Positions are rejection-sampled so crowns cannot pile up: a candidate is
 // kept only if it clears every plant already placed by minGap x the two footprints summed. The
 // requirement relaxes every ten tries so a crowded island always terminates rather than hanging.
-export function genFoliage(r, verts) {
+// `dice` is the island's own generator, seeded from where it stands, so the same island always
+// grows the same plants.
+export function genFoliage(r, verts, dice) {
   const k = r / PLANT.countRefR;
   const count = Math.max(1, Math.round(PLANT.countRef * k * k));
   const Rs = r * PLANT.scatter;
@@ -310,9 +313,9 @@ export function genFoliage(r, verts) {
     for (let t = 0; t < 60; t++) {
       // sqrt spreads plants evenly over the disc. Uniform radius crowds the middle, which nothing
       // noticed at the old two-to-four plants but is obvious at twenty.
-      const a = Math.random() * Math.PI * 2, rr = Rs * Math.sqrt(Math.random());
-      const s = PLANT.scaleMin + Math.random() * span;
-      const isPalm = Math.random() < PLANT.palmRatio;
+      const a = random(dice) * Math.PI * 2, rr = Rs * Math.sqrt(random(dice));
+      const s = PLANT.scaleMin + random(dice) * span;
+      const isPalm = random(dice) < PLANT.palmRatio;
       const c = { x: Math.cos(a) * rr, y: Math.sin(a) * rr, s, isPalm };
       const fc = footprint(s, isPalm);
       let ok = true;
@@ -324,16 +327,16 @@ export function genFoliage(r, verts) {
       if (t % 10 === 9) relax *= 0.86;
     }
     if (!placed) {
-      const a = Math.random() * Math.PI * 2, rr = Rs * Math.sqrt(Math.random());
+      const a = random(dice) * Math.PI * 2, rr = Rs * Math.sqrt(random(dice));
       placed = { x: Math.cos(a) * rr, y: Math.sin(a) * rr,
-                 s: PLANT.scaleMin + Math.random() * span, isPalm: Math.random() < PLANT.palmRatio };
+                 s: PLANT.scaleMin + random(dice) * span, isPalm: random(dice) < PLANT.palmRatio };
     }
     plants.push({
       ...placed,
-      a: Math.random() * Math.PI * 2,   // crown rotation
-      k: Math.random() * 2 - 1,         // lean / bow direction
-      ph: Math.random() * Math.PI * 2,  // wind phase
-      nuts: Math.random(),
+      a: random(dice) * Math.PI * 2,   // crown rotation
+      k: random(dice) * 2 - 1,         // lean / bow direction
+      ph: random(dice) * Math.PI * 2,  // wind phase
+      nuts: random(dice),
     });
   }
 

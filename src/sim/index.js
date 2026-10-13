@@ -8,6 +8,7 @@
  */
 
 export * from "./math.js";
+export * from "./rng.js";
 export * from "./tables.js";
 export * from "./modes.js";
 export * from "./storm.js";

@@ -30,7 +30,7 @@ import {
   BAULK_TOL, BAULK_GRACE, BAULK_RATE, hullTouch, keelGap, ramDmg,
   HULL_PATCH_CAP, MAST_JURY_CAP, repairQuote, repair,
   STOCK_LOADOUT, barsOf, speedCap, turnCap, KILL_SHARE,
-  MODES as RULES, MODE_LIST, modeOf, hunterOf, reinforcementsOf, clamp, norm,
+  MODES as RULES, MODE_LIST, modeOf, hunterOf, reinforcementsOf, clamp, norm, random, seedOf, seedFrom,
 } from "./sim/index.js";
 import { C, AI_COLORS, UI } from "./render/palette.js";
 import { TILT, ZUP, VIEW, MAX_ZOOM, EDGE_PEEK, SIDE_PEEK, SHOT_DRAW, SHOT_LIT_MIN } from "./render/view.js";
@@ -118,6 +118,10 @@ const fmtTime = (sec) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60))
 // glance. `fmtCoins` is the same thing under the name the purse uses.
 const fmtNum = (n) => Math.round(n || 0).toLocaleString();
 const fmtCoins = fmtNum;
+
+// A fresh seed for each round's dice. The one place the game rolls them itself: the engine is handed
+// the seed and never reaches for `Math.random`, so the same seed always gives it the same round.
+const newSeed = () => (Math.random() * 2 ** 32) >>> 0;
 
 export default function App() {
   const canvasRef = useRef(null);
@@ -341,11 +345,11 @@ export default function App() {
         stroke: opts.isPlayer ? C.playerStroke : pal.stroke,
       };
       if (!opts.isPlayer) {
-        s.wander = Math.random() * Math.PI * 2;
+        s.wander = random(gameRef.current) * Math.PI * 2;
         s.wanderT = 0;
         s.oppT = 0;
-        s.oppHold = 1.8 + Math.random() * 2.6; // trigger discipline: some captains waste less powder
-        s.nerve = Math.random(); // how late she leaves it before turning to face a charge
+        s.oppHold = 1.8 + random(gameRef.current) * 2.6; // trigger discipline: some captains waste less powder
+        s.nerve = random(gameRef.current); // how late she leaves it before turning to face a charge
         s.baffled = 0; // how long she has been getting nowhere with the hull she is engaged with
         s.sheerT = 0; // time left on a deliberate break-off
         s.sheerHeading = 0; // and the course out of the heap she picked when she began it
@@ -360,8 +364,8 @@ export default function App() {
     function farPos(g, minFromPlayer) {
       let x, y, ok, tries = 0;
       do {
-        x = 180 + Math.random() * (WORLD - 360);
-        y = 180 + Math.random() * (WORLD - 360);
+        x = 180 + random(g) * (WORLD - 360);
+        y = 180 + random(g) * (WORLD - 360);
         ok = true;
         if (g.player && Math.hypot(x - g.player.x, y - g.player.y) < minFromPlayer) ok = false;
         if (ok && g.islands) for (const isl of g.islands) if (Math.hypot(x - isl.x, y - isl.y) < isl.r + 55) { ok = false; break; }
@@ -386,15 +390,17 @@ export default function App() {
       let tries = 0;
       while (isl.length < ISLAND_COUNT && tries < 400) {
         tries++;
-        const r = 58 + Math.random() * 66;
-        const x = r + 90 + Math.random() * (WORLD - 2 * (r + 90));
-        const y = r + 90 + Math.random() * (WORLD - 2 * (r + 90));
+        const r = 58 + random(g) * 66;
+        const x = r + 90 + random(g) * (WORLD - 2 * (r + 90));
+        const y = r + 90 + random(g) * (WORLD - 2 * (r + 90));
         if (Math.hypot(x - WORLD / 2, y - WORLD / 2) < clear) continue;
         if (isl.some((o) => Math.hypot(x - o.x, y - o.y) < r + o.r + 170)) continue;
         const n = 12;
         const verts = [];
-        for (let k = 0; k < n; k++) verts.push(0.78 + Math.random() * 0.3);
-        isl.push({ x, y, r, verts, foliage: genFoliage(r, verts) });
+        for (let k = 0; k < n; k++) verts.push(0.78 + random(g) * 0.3);
+        // its planting carries dice of its own, seeded from where it stands, so drawing palms never
+        // moves the round's dice on and every player sees the same palms on the same island
+        isl.push({ x, y, r, verts, foliage: genFoliage(r, verts, { rng: seedFrom(x, y, r) }) });
       }
       g.islands = isl;
     }
@@ -459,7 +465,7 @@ export default function App() {
       let best = null, bestD = -1;
       for (let t = 0; t < 60; t++) {
         const side = t % 4;
-        const u = 120 + Math.random() * (WORLD - 240);
+        const u = 120 + random(g) * (WORLD - 240);
         const x = side === 0 ? u : side === 1 ? u : side === 2 ? inset : WORLD - inset;
         const y = side === 0 ? inset : side === 1 ? WORLD - inset : u;
         let blocked = false;
@@ -476,11 +482,11 @@ export default function App() {
       const g = gameRef.current;
       const p = edgePos(g, ARENA_SPAWN_CLEAR);
       // bow pointed inland so a fresh hunter sails into the fight, not into the boundary
-      const heading = Math.atan2(WORLD / 2 - p.y, WORLD / 2 - p.x) + (Math.random() - 0.5) * 0.8;
+      const heading = Math.atan2(WORLD / 2 - p.y, WORLD / 2 - p.x) + (random(g) - 0.5) * 0.8;
       // Every hull she has put under moves the next one out of the horizon up its mode's ladder.
       return makeShip(p.x, p.y, heading, {
         ci: g.ships.length,
-        loadout: rivalLoadout(g.rules, g.playerStrength, g.sunk, g.playerLoadout.hull),
+        loadout: rivalLoadout(g, g.rules, g.playerStrength, g.sunk, g.playerLoadout.hull),
       });
     }
 
@@ -507,29 +513,30 @@ export default function App() {
      * Falls back to the nearest rung by the same measure when a band comes up empty, so a captain in
      * something the fleet has no answer to still gets a fight.
      */
-    function rivalLoadout(rules, strength, step, hull) {
+    function rivalLoadout(g, rules, strength, step, hull) {
       const key = rules.guns ? "overall" : "ram";
       const rungs = ladder();
       if (rules.hunter) return hunterOf(rules, strength, step).loadout;
       if (rules.guns) {
         const band = hull.id === STARTER.hull ? stockOfHull(hull.id) : stockOfRate(rateOf(hull).rung);
-        if (band.length) return band[Math.floor(Math.random() * band.length)].loadout;
+        if (band.length) return band[Math.floor(random(g) * band.length)].loadout;
       } else {
         const band = peers(strength.ram, 0.15, "ram");
-        if (band.length) return band[Math.floor(Math.random() * band.length)].loadout;
+        if (band.length) return band[Math.floor(random(g) * band.length)].loadout;
       }
       return nearestRung(rungs, key, strength[key]).loadout;
     }
     const nearestRung = (rungs, key, want) =>
       rungs.reduce((a, b) => (Math.abs(b.measure[key] - want) < Math.abs(a.measure[key] - want) ? b : a));
 
-    function reset(m) {
+    function reset(m, seed) {
       const rules = modeOf(m);
       gameRef.current = {
         mode: m, rules, player: null, ships: [], shots: [], volleys: [], parts: [], wakes: [], islands: [], texts: [],
         cam: { x: 0, y: 0 }, sunk: 0, fieldSize: 0, aliveCount: 0, leader: null, avgEarned: 0,
         _lastRank: 0, spawnT: 0, spawnQueue: 0, vign: 0, running: false, hudDirty: false, hudAcc: 0, time: 0,
         banked: false, stormR: STORM_R0, stormTick: -1, stormPhase: "", playerOut: false,
+        rng: seedOf(seed), // the round's dice: every random number the round uses comes off these
       };
       const g = gameRef.current;
       // Her own ship, read fresh out of the hold rather than off a closure, so a mast bought between
@@ -546,7 +553,7 @@ export default function App() {
         if (rules.reinforcements) g.ships.push(spawnArenaEnemy());
         else {
           const pos = farPos(g, 440);
-          g.ships.push(makeShip(pos.x, pos.y, Math.random() * Math.PI * 2, { ci: i, loadout: rivalLoadout(rules, g.playerStrength, 0, g.playerLoadout.hull) }));
+          g.ships.push(makeShip(pos.x, pos.y, random(g) * Math.PI * 2, { ci: i, loadout: rivalLoadout(g, rules, g.playerStrength, 0, g.playerLoadout.hull) }));
         }
       }
       g.fieldSize = g.ships.length;
@@ -833,7 +840,7 @@ export default function App() {
         g.volleys.push({
           s, dmg, noise, n: 0,
           guns: offs
-            .map((off) => ({ off, at: g.time + Math.random() * win }))
+            .map((off) => ({ off, at: g.time + random(g) * win }))
             .sort((a, b) => a.at - b.at),
           // where she lay when the order was given, which is what the guns are laid against
           x0: s.x, y0: s.y, h0: h,
@@ -842,14 +849,14 @@ export default function App() {
         // Her chasers, opened out by half what they were: they are round shot too, and a chase gun
         // that sprays is no use to anybody.
         const angs = spread(balls(s, "bow"), 0.045);
-        for (const o of angs) push(bx, by, h + o + (Math.random() - 0.5) * noise);
+        for (const o of angs) push(bx, by, h + o + (random(g) - 0.5) * noise);
         muzzle(bx, by, h);
         smoke(bx, by, h, 4, 0.92);
       } else {
         // The hands at the rail and the swivels on it, firing together. The count, the weight of
         // one ball and the scatter all come off the loadout now; only `noise`, an AI captain's own
         // aim, is the fight's to add.
-        for (let i = 0; i < s.rating.muskets; i++) push(bx, by, h + (Math.random() - 0.5) * (musketArc(s) + noise));
+        for (let i = 0; i < s.rating.muskets; i++) push(bx, by, h + (random(g) - 0.5) * (musketArc(s) + noise));
         muzzle(bx, by, h);
         smoke(bx, by, h, 2, 0.45); // muskets make little enough of it, and fire often
       }
@@ -1035,8 +1042,8 @@ export default function App() {
         if (d > SHEER_LOOK || d < 1) continue;
         cx += dx / d; cy += dy / d; n++;
       }
-      const away = n > 0 ? Math.atan2(-cy, -cx) : s.heading + (Math.random() < 0.5 ? 1 : -1) * SHEER_ANGLE;
-      return away + (Math.random() - 0.5) * 0.7;
+      const away = n > 0 ? Math.atan2(-cy, -cx) : s.heading + (random(g) < 0.5 ? 1 : -1) * SHEER_ANGLE;
+      return away + (random(g) - 0.5) * 0.7;
     }
 
     /**
@@ -1074,7 +1081,7 @@ export default function App() {
       s.retargetT -= dt;
       if (!s.target || !s.target.alive || s.retargetT <= 0) {
         s.target = pickRamTarget(s);
-        s.retargetT = 0.6 + Math.random() * 0.7;
+        s.retargetT = 0.6 + random(g) * 0.7;
       }
       const tgt = s.target;
       const threat = incomingRam(s);
@@ -1108,7 +1115,7 @@ export default function App() {
         s.baulkT = 0;
         s.baffled = 0;
         s.target = pickRamTarget(s, engaged);
-        s.retargetT = SHEER_TIME + Math.random() * 0.5; // let the new choice stand while she pulls out
+        s.retargetT = SHEER_TIME + random(g) * 0.5; // let the new choice stand while she pulls out
       }
 
       if (s.sheerT > 0) {
@@ -1120,7 +1127,7 @@ export default function App() {
         desired = Math.atan2(facing.y - s.y, facing.x - s.x);
       } else if (!tgt) {
         s.wanderT -= dt;
-        if (s.wanderT <= 0) { s.wander += (Math.random() - 0.5) * 1.2; s.wanderT = 1.5 + Math.random(); }
+        if (s.wanderT <= 0) { s.wander += (random(g) - 0.5) * 1.2; s.wanderT = 1.5 + random(g); }
         desired = s.wander;
         throttle = 0.5;
       } else if (s.baffled > patience(STALL_PATIENCE)) {
@@ -1150,7 +1157,7 @@ export default function App() {
       s.retargetT -= dt;
       if (!s.target || !s.target.alive || s.retargetT <= 0) {
         s.target = pickTarget(s);
-        s.retargetT = 0.7 + Math.random() * 0.6;
+        s.retargetT = 0.7 + random(g) * 0.6;
       }
       const tgt = s.target;
       for (const wk of ["broadside", "bow", "musket"]) s.cd[wk] = Math.max(0, s.cd[wk] - dt);
@@ -1160,7 +1167,7 @@ export default function App() {
 
       if (!tgt) {
         s.wanderT -= dt;
-        if (s.wanderT <= 0) { s.wander += (Math.random() - 0.5) * 1.2; s.wanderT = 1.5 + Math.random(); }
+        if (s.wanderT <= 0) { s.wander += (random(g) - 0.5) * 1.2; s.wanderT = 1.5 + random(g); }
         const idle = weatherCourse(s, nearWall ? Math.atan2(WORLD / 2 - s.y, WORLD / 2 - s.x) : s.wander, 0.4);
         moveShip(s, dt, avoidIslands(s, idle.desired), idle.throttle);
         return;
@@ -1196,7 +1203,7 @@ export default function App() {
       if (nearWall && dist > 260) { desired = Math.atan2(WORLD / 2 - s.y, WORLD / 2 - s.x); throttle = 0.7; }
       else if (dist > 900) {
         s.wanderT -= dt;
-        if (s.wanderT <= 0) { s.wander = toT + (Math.random() - 0.5) * 0.8; s.wanderT = 1.2 + Math.random(); }
+        if (s.wanderT <= 0) { s.wander = toT + (random(g) - 0.5) * 0.8; s.wanderT = 1.2 + random(g); }
         desired = s.wander; throttle = 0.6;
       } else if ((tgt.hull < tgt.maxHull * 0.4 || tgt.crew < tgt.maxCrew * 0.4) && dist < 520) {
         desired = toT; throttle = 1; // line up and charge a wounded ship to ram it down
@@ -1220,7 +1227,7 @@ export default function App() {
           // a hull that wandered into the arc is not who we came for: take the shot sometimes,
           // then hold fire a beat so nobody spends the whole match blasting bystanders
           if (s.oppT > 0) continue;
-          s.oppT = s.oppHold * (0.7 + Math.random() * 0.6);
+          s.oppT = s.oppHold * (0.7 + random(gameRef.current) * 0.6);
         }
         fire(s, wk);
         s.cd[wk] = reloadOf(s, wk); // AI reloads at the pace of its own battery, every mode
@@ -1424,7 +1431,7 @@ export default function App() {
       const lay = made / LAY_RANGE;
       for (const sd of [-1, 1]) {
         const dir = h + (sd * Math.PI) / 2;
-        const ang = dir + sd * lay - sd * FAN * off + (Math.random() - 0.5) * (0.05 + v.noise);
+        const ang = dir + sd * lay - sd * FAN * off + (random(g) - 0.5) * (0.05 + v.noise);
         g.shots.push({
           x: px, y: py, vx: Math.cos(ang) * w.speed, vy: Math.sin(ang) * w.speed,
           life: w.life, r: w.r, draw: w.draw, bar: w.bar, dmg: v.dmg, owner: s, kind: "broadside",
@@ -2480,7 +2487,7 @@ export default function App() {
     }
 
     function start(m) {
-      reset(m);
+      reset(m, newSeed());
       camUpdate();
       const g = gameRef.current;
       if (g.rules.ranked) computeMeta();
@@ -2499,7 +2506,7 @@ export default function App() {
     startRef.current = start;
 
     resize();
-    reset("wave");
+    reset("wave", newSeed());
     window.addEventListener("resize", resize);
     raf = requestAnimationFrame(loop);
     return () => {
