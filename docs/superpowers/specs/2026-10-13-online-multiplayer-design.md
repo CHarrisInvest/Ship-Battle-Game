@@ -13,8 +13,8 @@ browser or a Node server can run it unchanged, and this note covers the stages a
 | --- | --- |
 | Who it is for first | Friends, through private lobbies joined by code or link. A public lobby list follows once that works. |
 | Which modes go online | Free-for-all only, battle royale style: random spawns, last ship afloat wins, the storm ring closes the round. The derby, the wave arena and the ladder stay single player for now. |
-| AI ships | The host sets how many, from 0 up to the lobby cap. The default tops the lobby up to 8 ships. |
-| Lobby size | 8 ships, humans and AI together. |
+| AI ships | The host sets how many, from 0 up to the lobby cap. The default tops the lobby up to 11 ships. |
+| Lobby size | 11 ships, humans and AI together, which is the single-player free-for-all's field (her and 10 rivals). Up to 8 of them human. |
 | Which ship a captain sails | Her own, from her hold, as she has fitted her. The server trusts the loadout the browser sends. A rating cap or server accounts can come later. |
 | Coins earned online | Banked into her hold the same way a single-player voyage is. |
 | When she sinks | She sees her placement ("4th of 8"), may watch the rest of the round, and may leave for the lobby at any time. |
@@ -66,10 +66,11 @@ All of it is in `src/sim/`, and the single-player game must play exactly as it d
   other captain, falling back to the best spot found if the sea is crowded. A single captain
   keeps her place in the middle of the sea, as now.
 - **How many AI.** `createWorld` takes an optional `rivals` count that overrides the mode's own,
-  so the host's setting reaches the engine. The server clamps humans plus AI to 8.
+  so the host's setting reaches the engine. The server clamps humans plus AI to 11.
 - **Who the AI are matched against.** Today the field is matched against `players[0]`. With
-  several captains it is matched against the average strength of all of them, so the AI suit the
-  lobby rather than whoever joined first.
+  several captains it is matched against the captain whose ship measures nearest the lobby's
+  average, so the AI suit the lobby rather than whoever joined first, and are still a real class
+  from the catalogue.
 - **Whose round goes on.** `judge` stops ending the round on the first human sinking. A captain
   who sinks is placed then (ships still afloat, plus one), recorded as a loser with her cause, and
   a `player_out` event (`playerId, rank, cause`) says so at once. The round is over when one ship
@@ -80,8 +81,9 @@ All of it is in `src/sim/`, and the single-player game must play exactly as it d
 - **`voyageStats(world, playerId)`** already answers per captain; it is checked for each of them.
 - **Tests.** `sim-test` gains rounds with 2, 4 and 8 humans, idle and driven, played twice from
   one seed. It fails on two captains spawning too close, a round that ends while a human is
-  still afloat and more than one ship stands, a captain placed twice or not at all, or two
-  captains given the same rank.
+  still afloat and more than one ship stands, a captain placed twice or not at all, or a captain
+  who sank later placed below one who sank earlier. Two captains who sink on the same step share
+  a place.
 
 ## Stage C: the netcode
 
@@ -99,7 +101,7 @@ It does not know whether the other end is a WebSocket or a function call in the 
   the server applied for that browser, and the state of every ship and ball the screen and the
   prediction need (position, heading, way, the three bars, alive, coins and earnings, and each
   ball's position and velocity), plus the storm ring and every event since the last snapshot.
-  Snapshots are encoded compactly; the target is under 2 KB each for 8 ships.
+  Snapshots are encoded compactly; the target is under 2 KB each for 11 ships.
 - **Round over:** the result, and each captain's `voyageStats`, so the browser can bank her
   voyage without holding the whole world.
 
