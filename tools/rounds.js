@@ -52,12 +52,13 @@ export const ROUNDS = [
  * A world written out in full, the same way every time it is written: a ship or anything else met
  * a second time is written as a reference to where it was first met, and a Map as its entries. Two
  * worlds that write out the same are the same world down to the last bit of every float, because
- * JavaScript writes a number as the shortest text that reads back as exactly that number.
+ * JavaScript writes a number as the shortest text that reads back as exactly that number, and a
+ * negative zero, which JSON would write as 0, is written as "-0".
  */
 export function dump(value) {
   const seen = new Map();
   const walk = (v, path) => {
-    if (v === null || typeof v !== "object") return typeof v === "number" && !Number.isFinite(v) ? String(v) : v;
+    if (v === null || typeof v !== "object") return typeof v === "number" ? number(v) : v;
     if (seen.has(v)) return { ref: seen.get(v) };
     seen.set(v, path);
     if (v instanceof Map) return { map: [...v.entries()].map(([k, x], i) => [walk(k, `${path}.k${i}`), walk(x, `${path}.v${i}`)]) };
@@ -68,6 +69,9 @@ export function dump(value) {
   };
   return JSON.stringify(walk(value, "$"));
 }
+
+/** A number as `dump` keeps it: as itself, unless JSON would lose it (the infinities, NaN, and the sign of a zero). */
+const number = (v) => (Object.is(v, -0) ? "-0" : Number.isFinite(v) ? v : String(v));
 
 /** 32-bit FNV-1a of a string, as eight hex digits. Short enough to print, and any changed bit changes it. */
 export function fingerprint(text) {
@@ -102,7 +106,7 @@ export function vectors() {
     out.push(exact.sin(x), exact.cos(x), exact.atan2(y, x), exact.asin(u * 2 - 1), exact.exp(x / 3),
       exact.log(u * 1e4), exact.pow(u * 9, x / 400), exact.hypot(x, y));
   }
-  return fingerprint(out.join(","));
+  return fingerprint(out.map(number).join(","));
 }
 
 /** Everything `npm run determinism` compares between engines. */

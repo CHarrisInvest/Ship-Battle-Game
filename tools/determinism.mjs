@@ -17,7 +17,7 @@ import { readFile } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium, webkit, firefox } from "playwright-core";
-import { playAll } from "./rounds.js";
+import { playAll, dump } from "./rounds.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const ENGINES = { chromium, webkit, firefox };
@@ -66,6 +66,9 @@ console.log(`node ${process.version}: ${mine.rounds.length} rounds in ${((Date.n
 const tampered = structuredClone(mine);
 tampered.rounds[0].final = "00000000";
 if (!differences(mine, tampered).length) fail("the comparison cannot see a changed fingerprint");
+// and a world written out has to keep the sign of a zero, which JSON drops: an engine whose heading
+// came out -0 where Node's came out 0 has parted company, even if nothing shows it for a while.
+if (dump({ heading: -0 }) === dump({ heading: 0 })) fail("a world written out cannot tell -0 from 0");
 
 for (const [name, type] of Object.entries(ENGINES)) {
   if (asked.length && !asked.includes(name)) continue;
