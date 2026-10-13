@@ -1,6 +1,6 @@
 /**
  * THE GAME'S DOOR TO ITS SERVER — every request to `/api/*` on the game's own domain, sent on to the
- * game server on Railway.
+ * game server on Railway. `vercel.json` routes every `/api/*` path here.
  *
  * The game and its server have to look like one site to the browser, or the session cookie is a
  * third-party cookie and Safari refuses it. So the browser only ever talks to the game's domain, and
@@ -25,7 +25,13 @@ export default async function handler(request) {
   const secret = process.env.PROXY_SECRET;
   if (!upstream || !secret) return Response.json({ error: "the server is not configured" }, { status: 503 });
 
+  // `vercel.json` rewrites every `/api/<path>` here as `/api/proxy?__path=<path>`, because outside
+  // Next.js Vercel will not route a path of several segments to a catch-all file
   const url = new URL(request.url);
+  const routed = url.searchParams.get("__path");
+  if (routed === null) return Response.json({ error: "not found" }, { status: 404 });
+  url.searchParams.delete("__path");
+  const path = "/api/" + routed.split("/").map((seg) => encodeURIComponent(decodeURIComponent(seg))).join("/");
   const headers = new Headers(request.headers);
   for (const h of DROP_IN) headers.delete(h);
   headers.set("x-sternchase-proxy", secret);
@@ -35,7 +41,7 @@ export default async function handler(request) {
   const hasBody = !["GET", "HEAD"].includes(request.method);
   let res;
   try {
-    res = await fetch(upstream.replace(/\/$/, "") + url.pathname + url.search, {
+    res = await fetch(upstream.replace(/\/$/, "") + path + url.search, {
       method: request.method,
       headers,
       body: hasBody ? await request.arrayBuffer() : undefined,

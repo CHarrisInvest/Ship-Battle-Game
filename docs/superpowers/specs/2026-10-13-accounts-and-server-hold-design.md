@@ -65,7 +65,7 @@ leaves no cheat in the record.
 
 | Place | Holds |
 | --- | --- |
-| Vercel, `sternchase.vercel.app` | The game, built by Vite, and `api/[...path].js`: an edge function that forwards every request to `/api/*` to the server. |
+| Vercel, `sternchase.vercel.app` | The game, built by Vite, and `api/proxy.js`: an edge function that `vercel.json` routes every `/api/*` request to, which forwards it to the server. (Outside Next.js, Vercel does not route a path of several segments to a catch-all file, so the path travels as a query parameter.) |
 | Railway, `server` | One Node service: accounts, the hold API, round replay, and later the multiplayer server. Answers under `/api`, and only to the proxy. |
 | Railway Postgres | Accounts, sessions, holds, rounds. |
 | Resend | Sends the sign-in codes. One API key, and a sending domain verified with it. |

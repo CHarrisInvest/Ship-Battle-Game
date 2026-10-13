@@ -402,17 +402,19 @@ try {
       // the proxy itself, the Vercel function in api/, pointed at this server
       process.env.API_UPSTREAM = pbase;
       process.env.PROXY_SECRET = SECRET;
-      const { default: proxy } = await import("../api/[...path].js");
+      const { default: proxy } = await import("../api/proxy.js");
       const forged = { origin: pbase, "content-type": "application/json", "x-real-ip": "203.0.113.50", "x-sternchase-proxy": "forged", "x-client-ip": "1.1.1.1" };
-      const signedIn = await proxy(new Request("https://sternchase.vercel.app/api/auth/sign-in/anonymous", { method: "POST", headers: forged, body: "{}" }));
+      const signedIn = await proxy(new Request("https://sternchase.vercel.app/api/proxy?__path=auth/sign-in/anonymous", { method: "POST", headers: forged, body: "{}" }));
       const cookies = signedIn.headers.getSetCookie();
       check(signedIn.status === 200 && cookies.length > 0, "the proxy carries a sign-in through and its cookie back, over a forged secret");
       const cookie = cookies.map((c) => c.split(";")[0]).join("; ");
-      const read = await proxy(new Request("https://sternchase.vercel.app/api/hold?x=1", { headers: { origin: pbase, cookie, "x-real-ip": "203.0.113.50" } }));
+      const read = await proxy(new Request("https://sternchase.vercel.app/api/proxy?__path=hold&x=1", { headers: { origin: pbase, cookie, "x-real-ip": "203.0.113.50" } }));
       const body = await read.json();
       check(read.status === 200 && body.version === 1 && !read.headers.get("content-encoding"), "and her hold comes back through it, plain");
       const last = (await pool.query(`select "ipAddress" from session order by "createdAt" desc limit 1`)).rows[0].ipAddress;
       check(last === "203.0.113.50", `the visitor's address is the one Vercel saw, not one she sent (${last})`);
+      const bare = await proxy(new Request("https://sternchase.vercel.app/api/proxy"));
+      check(bare.status === 404, "the proxy's own address, reached without a path, forwards nothing");
     } finally {
       proxied.close();
       await papp.close();
