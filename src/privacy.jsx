@@ -41,24 +41,27 @@ export function PrivacyPolicy({ Section, P, linkColor }) {
       <Section title="What the game saves">
         <P>
           Your coins, ships, ship names and records are kept on the game's server, so they are there the
-          next time you play. The first time you play, the game makes you a guest account. It has no
-          name and no email, only a random identifier. Your browser keeps a cookie that says which
+          next time you play. The first time you play, the game makes you a guest account. It holds no
+          name or email of yours: only a random identifier, and a placeholder name and address the
+          account system fills in itself. Your browser keeps a cookie that says which
           account is yours. That cookie is essential to the game and is always on: without it the game
           could not find your progress.
         </P>
         <P>
           So that the server can check what a voyage earned, it keeps, for each voyage you sail, the
-          random number it started from, the controls you used (the stick, the fire buttons and the
-          repairs, and nothing else from your device) and how it ended.
+          random number it started from, the ship you sailed as she was fitted, the controls you used
+          (the stick, the fire buttons and the repairs, and nothing else from your device) and how it
+          ended.
         </P>
         <P>
-          With your session, the server records the IP address your requests come from and the name
-          your browser gives itself (its user agent). It uses them to stop one address making accounts
-          without end, and for nothing else.
+          With your session, the server records the IP address your requests came from and the name
+          your browser gives itself (its user agent), and keeps them as long as the session. Separately,
+          it counts requests by address, in memory only, to stop one address making accounts without end.
         </P>
         <P>
           A guest account that goes unused for 90 days is deleted, with its progress and its voyages.
-          The controls kept for a voyage are deleted 30 days after it ends.
+          The controls kept for a voyage are deleted 30 days after it ends; the rest of a voyage is
+          kept as long as the account.
         </P>
         <P>
           The server and its database run on Railway, in the United States. Your browser reaches them

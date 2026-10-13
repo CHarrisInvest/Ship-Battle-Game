@@ -158,8 +158,9 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   `name`, empty until she is given one, and `shipName(rec, id)` is the one reader: the name if she
   has one, her class if not. Every screen that prints a ship's name reads it from there, so she is
   called one thing everywhere and an unnamed ship reads exactly as she did before names existed.
-  `NAME_LIMIT` and `cleanName` are the whole of the rule; there is no filter, because the hold is
-  local and the only reader is the captain who wrote it.
+  `NAME_LIMIT` and `cleanName` are the whole of the rule. There is no filter, because until online
+  play the only reader was the captain who wrote it; sailing with friends shows a ship's name to
+  them, and those are people she chose to sail with.
 - **Her tonnage is a hard limit, and the rail refuses a gun she cannot bear.** `hull.tons` is the
   iron she carries, in the tons the guns are weighed in, and a broadside gun counts twice because it
   is mounted both sides. `gunTons` and `gunFits` in `shipyard.js` are the one statement of that rule;
