@@ -44,6 +44,25 @@ export function voyageStats(world, playerId) {
 }
 
 /**
+ * What a finished voyage banks: the summary `bank` in `holdrules.js` takes, read off the world as
+ * the end screen always read it. One statement of it, because the browser banks it today and the
+ * server will bank it off its own replay, and two hand-built copies would drift.
+ */
+export function voyageRun(world, playerId) {
+  const result = world.result;
+  const won = result.winners.some((w) => w.playerId === playerId);
+  const mine = (won ? result.winners : result.losers).find((r) => r.playerId === playerId) || { rank: 0 };
+  const s = voyageStats(world, playerId);
+  return {
+    mode: world.mode, earned: s.total, repaired: s.repaired, kills: s.kills, dmg: s.dmg,
+    time: s.time, rams: s.rams, patches: s.patches, won, rank: mine.rank,
+    dismasted: s.dismasted, healed: s.healed,
+    sunkByRam: s.sunkByRam, sunkByGuns: s.sunkByGuns, sunkByMuskets: s.sunkByMuskets,
+    rammedWhole: s.rammedWhole, wornDown: s.wornDown,
+  };
+}
+
+/**
  * THE ROUND ENDS ONCE, HERE, at the end of the step. Hits and the weather only mark ships dead;
  * nothing inside a hit handler ends the round, because a step is not over when a hull goes
  * under. A rival's ball already in the air can still find a captain after her last rival sank,
