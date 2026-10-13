@@ -15,6 +15,7 @@
  *   POST /rounds/:id/finish      the last piece; the server replays it and banks what it finds
  */
 
+import { timingSafeEqual } from "node:crypto";
 import { toNodeHandler, fromNodeHeaders } from "better-auth/node";
 import { betterAuth } from "better-auth";
 import { authOptions } from "./auth.js";
@@ -95,10 +96,23 @@ export async function createApp({ pool, config, now = () => Date.now() }) {
     return finishRound(pool, user.id, m[1], body, { engine, now, replays });
   }
 
+  const prefix = config.prefix || "";
+  const secret = config.proxySecret ? Buffer.from(config.proxySecret) : null;
+  /** Whether a request carries the proxy's secret, compared in constant time. */
+  const fromProxy = (req) => {
+    const given = Buffer.from(String(req.headers["x-sternchase-proxy"] || ""));
+    return given.length === secret.length && timingSafeEqual(given, secret);
+  };
+
   async function handler(req, res) {
     try {
       if (cors(req, res, config.origins)) return;
-      const path = new URL(req.url, "http://x").pathname;
+      const full = new URL(req.url, "http://x").pathname;
+      // Railway's own health check comes straight here, with no secret and no prefix
+      if (full === "/health" && req.method === "GET") return send(res, 200, { ok: true, engine });
+      if (secret && !fromProxy(req)) return send(res, 403, { error: "proxy only" });
+      if (prefix && full !== prefix && !full.startsWith(prefix + "/")) return send(res, 404, { error: "not found" });
+      const path = full.slice(prefix.length) || "/";
       if (path === "/auth" || path.startsWith("/auth/")) return await authHandler(req, res);
       const route = routes[`${req.method} ${path}`];
       const out = route ? await route(req, path) : await roundRoute(req, path);

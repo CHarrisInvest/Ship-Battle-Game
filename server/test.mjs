@@ -359,6 +359,66 @@ try {
     check((await captain()("GET", "/health")).status === 200, "a database connection dropping does not take the server down");
   }
 
+  // ---- behind the game's own domain ------------------------------------------------------------------
+
+  {
+    // as production runs it: under /api on the game's domain, reached only through the Vercel proxy,
+    // which carries a shared secret and the visitor's own address
+    const SECRET = "proxy-secret-for-the-test";
+    const proxied = createServer();
+    await new Promise((r) => proxied.listen(0, "127.0.0.1", r));
+    const pbase = `http://127.0.0.1:${proxied.address().port}`;
+    const papp = await createApp({
+      pool,
+      config: { secret: "test-secret-that-is-long-enough-for-better-auth-0123456789", baseURL: pbase, origins: [pbase], cookieDomain: null, prefix: "/api", proxySecret: SECRET },
+      now: () => clock.t,
+    });
+    proxied.on("request", papp.handler);
+    const jar = new Map();
+    const via = async (method, path, { secret = SECRET, client = "192.0.2.1", body } = {}) => {
+      const headers = { origin: pbase };
+      if (secret) headers["x-sternchase-proxy"] = secret;
+      if (client) headers["x-client-ip"] = client;
+      if (body !== undefined) headers["content-type"] = "application/json";
+      if (jar.size) headers.cookie = [...jar].map(([k, v]) => `${k}=${v}`).join("; ");
+      const res = await fetch(pbase + path, { method, headers, body: body === undefined ? undefined : json(body) });
+      for (const c of res.headers.getSetCookie()) { const [kv] = c.split(";"); const i = kv.indexOf("="); jar.set(kv.slice(0, i), kv.slice(i + 1)); }
+      return res.status;
+    };
+    try {
+      check((await fetch(pbase + "/health")).status === 200, "Railway's health check still reaches /health directly");
+      check(await via("GET", "/api/health") === 200, "the game reaches the server under /api");
+      check(await via("POST", "/api/auth/sign-in/anonymous", { body: {} }) === 200 && await via("GET", "/api/hold") === 200,
+        "a guest signs in and reads her hold through the proxy");
+      check(await via("GET", "/api/hold", { secret: null }) === 403 && await via("GET", "/api/hold", { secret: "wrong" }) === 403,
+        "a request that did not come through the proxy is refused");
+      check(await via("POST", "/api/auth/sign-in/anonymous", { secret: null, body: {} }) === 403, "and that includes signing in");
+      const one = [];
+      for (let n = 0; n < 12; n++) one.push(await via("POST", "/api/auth/sign-in/anonymous", { client: "198.51.100.7", body: {} }));
+      const many = [];
+      for (let n = 0; n < 12; n++) many.push(await via("POST", "/api/auth/sign-in/anonymous", { client: `198.51.100.${100 + n}`, body: {} }));
+      check(one.includes(429) && !many.includes(429), "the guest limit counts the visitor's address the proxy passed on, not the proxy's");
+
+      // the proxy itself, the Vercel function in api/, pointed at this server
+      process.env.API_UPSTREAM = pbase;
+      process.env.PROXY_SECRET = SECRET;
+      const { default: proxy } = await import("../api/[...path].js");
+      const forged = { origin: pbase, "content-type": "application/json", "x-real-ip": "203.0.113.50", "x-sternchase-proxy": "forged", "x-client-ip": "1.1.1.1" };
+      const signedIn = await proxy(new Request("https://sternchase.vercel.app/api/auth/sign-in/anonymous", { method: "POST", headers: forged, body: "{}" }));
+      const cookies = signedIn.headers.getSetCookie();
+      check(signedIn.status === 200 && cookies.length > 0, "the proxy carries a sign-in through and its cookie back, over a forged secret");
+      const cookie = cookies.map((c) => c.split(";")[0]).join("; ");
+      const read = await proxy(new Request("https://sternchase.vercel.app/api/hold?x=1", { headers: { origin: pbase, cookie, "x-real-ip": "203.0.113.50" } }));
+      const body = await read.json();
+      check(read.status === 200 && body.version === 1 && !read.headers.get("content-encoding"), "and her hold comes back through it, plain");
+      const last = (await pool.query(`select "ipAddress" from session order by "createdAt" desc limit 1`)).rows[0].ipAddress;
+      check(last === "203.0.113.50", `the visitor's address is the one Vercel saw, not one she sent (${last})`);
+    } finally {
+      proxied.close();
+      await papp.close();
+    }
+  }
+
   // ---- retention and rate limits --------------------------------------------------------------------
 
   {

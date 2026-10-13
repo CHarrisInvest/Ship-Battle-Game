@@ -22,7 +22,7 @@ get an account, a guest one at first and an email or Google one when they choose
 | Someone who has not signed in | Gets a guest account on the server the moment they arrive, and plays and earns at once. |
 | Signing in | A 6-digit code by email, or Google. Either attaches to the guest account already in use. |
 | Progress saved in browsers today | Not carried over. Everyone starts fresh, and the old key is deleted. |
-| Hosting | The game stays on GitHub Pages. The API and Postgres are on Railway, in the service multiplayer Stage D grows into. |
+| Hosting | The game is on Vercel at `sternchase.vercel.app`, and `/api/*` there is a Vercel edge function that forwards to the server on Railway, so the browser sees one site. The server and Postgres are on Railway, in the service multiplayer Stage D grows into. |
 
 ### Why the server decides, rather than storing what the browser says
 
@@ -65,17 +65,28 @@ leaves no cheat in the record.
 
 | Place | Holds |
 | --- | --- |
-| GitHub Pages, `sternchase.org` | The game, built by Vite as now. |
-| Railway, `api.sternchase.org` | One Node service: accounts, the hold API, round replay, and later the multiplayer server. |
+| Vercel, `sternchase.vercel.app` | The game, built by Vite, and `api/[...path].js`: an edge function that forwards every request to `/api/*` to the server. |
+| Railway, `server` | One Node service: accounts, the hold API, round replay, and later the multiplayer server. Answers under `/api`, and only to the proxy. |
 | Railway Postgres | Accounts, sessions, holds, rounds. |
-| Resend | Sends the sign-in codes. One API key, plus SPF and DKIM records on `sternchase.org`. |
+| Resend | Sends the sign-in codes. One API key, and a sending domain verified with it. |
 | Google Cloud | One OAuth client for Google sign-in. |
 | The browser | The session cookie, and the cookie prompt's answer (`consent.js`), which describes this browser and not the captain, and must be answerable before anyone has an account. Nothing else. |
 
-`api.sternchase.org` is a subdomain of the game's own domain, so the session cookie is first-party
-(`SameSite=Lax`, `Secure`, `HttpOnly`). On a `*.railway.app` address Safari would refuse it. The
-browser calls the API with `credentials: "include"`, and the API allows the origin
-`https://sternchase.org` and the Vite dev origin only.
+### One site, through a proxy
+
+The game has no domain of its own to give the server a subdomain of, and a server on a different
+site (`*.up.railway.app`) would set a third-party cookie, which Safari refuses outright. So the
+browser never talks to Railway. It calls `/api/*` on the game's own address, and the edge function
+there forwards the request to the server, path and query unchanged, and its answer back, cookies
+included. The session cookie is set by `sternchase.vercel.app` itself: first-party, `Secure`,
+`HttpOnly`, `SameSite=Lax`, host-only (`*.vercel.app` is a public suffix, so it could be nothing
+else). Requests are same-origin, so CORS never comes into it.
+
+The function adds two headers only it can: `x-sternchase-proxy`, a secret the server checks on
+every route but `/health` (so nobody reaches the server around the proxy), and `x-client-ip`, the
+visitor's address as Vercel saw it (so the server's limits count visitors, not the proxy). Whatever
+a visitor sends in either is dropped first. A preview deployment has another address, which the
+server does not trust, so previews play without saving.
 
 ## Accounts
 
@@ -102,14 +113,12 @@ Google sign-in has to be tried from the home-screen app on an iPhone before it s
 redirect out of a standalone web app is where that flow tends to break. If it fails there, email
 ships first and Google follows.
 
-### Safari's 7-day limit on the API's cookies
+### Safari and the session cookie
 
-Safari caps cookies set by a server that lives at a different address from the site (a CNAME to
-another host, or a different IP) at 7 days, and `api.sternchase.org` on Railway is that. The session
-is refreshed on every visit, so the effect is that a guest who stays away for more than 7 days in
-Safari comes back as a new guest. That is no worse than `localStorage` today, and a signed-in
-captain only has to sign in again. Serving the game from the same Railway service would remove the
-cap; see the open questions.
+The cookie is set by the game's own site through the proxy, so Safari treats it as first-party
+and keeps it like any other: no third-party block, and none of the 7-day cap Safari puts on cookies
+from a server at another address. A guest who stays away keeps her session for 90 days, renewed on
+each day she plays.
 
 ## The hold on the server
 
@@ -249,7 +258,7 @@ Copy follows `CLAUDE.md`'s rules for player-facing text. The lines here are star
 
 - what is stored on the server: the hold, an email or a Google account id, rounds' seeds, inputs
   and results, and sessions;
-- the session cookie on `api.sternchase.org`, which is essential: it is what keeps a captain's game,
+- the session cookie on the game's own site, which is essential: it is what keeps a captain's game,
   as the hold always was, and it is never gated on the cookie prompt;
 - Railway (hosting and database) and Resend (sign-in emails) as processors, and Google for those who
   choose Google sign-in;
@@ -311,8 +320,8 @@ Each step is merged on its own and leaves the game playable.
 
 ## Open questions
 
-- **Serve the game from Railway too?** One origin would lift Safari's 7-day cap on the session
-  cookie and remove CORS, at the cost of moving off GitHub Pages and its deploy workflow.
+- ~~**Serve the game from Railway too?**~~ Settled the other way: the game stays on Vercel, and
+  its edge function makes the server part of the same site.
 - **Railway region.** The same one multiplayer picks, and the Postgres beside it.
 - ~~**Input log size.**~~ Answered: measured with `npm run inputlog`, a 20-minute round under a
   captain who holds a course logs 520 entries, 4 KB gzipped; one who steers all the time, 16,832
