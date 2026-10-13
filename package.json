@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "catalogue": "node tools/catalogue.mjs",
     "smoke": "node tools/smoke.mjs",
+    "purity": "node tools/purity.mjs",
     "icon": "node tools/icon.mjs",
     "promo": "node tools/promo.mjs",
     "import": "node tools/import.mjs",

@@ -7,8 +7,8 @@ import {
   shipName, nameShip, fitOwned, ownedFill, NAME_LIMIT, readiness, sellPart, refundOf,
 } from "./hold.js";
 import {
-  STARTER, kindOf, mastRebuildCost, measure, rate, rateOf, resolve, rigSpec,
-  ladder, peers, stockOfRate, stockOfHull, arenaHunter, ladderRung, ladderHeight,
+  STARTER, kindOf, measure, rate, rateOf, rigSpec,
+  ladder, peers, stockOfRate, stockOfHull, ladderHeight,
   HULLS, HULL_LIST, PARTS, statBand, maximumLoadout, outfitCost,
   mastsForSocket, sailsForBerth, studsForBerth, gunsForMount,
   knots, berthEffect, familyOf, gunTons, gunFits, gunEffect, cheapestCanvas, handlingScore, handlingPoints,
@@ -18,6 +18,24 @@ import { getStoredConsent, hasConsentDecision, acceptAllCookies, rejectNonEssent
 import { getAdRegion, onAdRegion, openGoogleChoices } from "./ads.js";
 import { analyticsLive, conversionsLive, measurementLive, track } from "./analytics.js";
 import { PrivacyPolicy } from "./privacy.jsx";
+import {
+  WORLD, ISLAND_COUNT, MIDDLE_CLEAR, ISLAND_CLEAR, ISLAND_LOOK, ISLAND_LOOK_SECS, ISLAND_LEAN, RING_CLEAR,
+  OPENING_WINDOW, PREY_STRENGTH, ARENA_SPAWN_CLEAR, ARENA_SPAWN_GAP,
+  STORM_R0, STORM_BITE, STORM_RAMP, STORM_RECOVER, STORM_HOME, STORM_PULL, stormRadius, stormPhase,
+  STALL_PATIENCE, STALL_CUT, STALL_THROTTLE, SHEER_ANGLE, SHEER_LOOK, SHEER_TIME, SHEER_THROTTLE,
+  WP, volleyWindow, LAY_RANGE, shotHitsHull, shotHitsCircle, sideDmg, frontDmg, musketDmg, musketArc,
+  AI_CANNON_AIM, AI_MUSKET_AIM, reloadOf, canFire,
+  RAM_MIN_CLOSE, RAM_FULL_CLOSE, RAM_CURVE, RAM_MAX_FORCE, RAM_BEAM, RAM_FINE, RAM_GRAZE, RAM_MUTUAL_CAP,
+  RAM_KNOCK, RAM_RECOIL, RAM_DRIVE_LOSS, RAM_REARM_GAP, RAM_CD, HULL_NUDGE, RAM_LOCK_MAX, WAY_SMOOTH,
+  BAULK_TOL, BAULK_GRACE, BAULK_RATE, hullTouch, keelGap, ramDmg,
+  HULL_PATCH_CAP, MAST_JURY_CAP, repairQuote, repair,
+  STOCK_LOADOUT, barsOf, speedCap, turnCap, KILL_SHARE,
+  MODES as RULES, MODE_LIST, modeOf, hunterOf, reinforcementsOf, clamp, norm,
+} from "./sim/index.js";
+import { C, AI_COLORS, UI } from "./render/palette.js";
+import { TILT, ZUP, VIEW, MAX_ZOOM, EDGE_PEEK, SIDE_PEEK, SHOT_DRAW, SHOT_LIT_MIN } from "./render/view.js";
+import { genFoliage, drawShadows, drawPalm, drawBush } from "./render/foliage.js";
+import { SEA_FOREAFT, buildSeaRig } from "./render/searig.js";
 
 /**
  * STERNCHASE: HELM & HULL — pirate battles at sea, on a tilted (isometric-ish) sea with tall wooden
@@ -39,927 +57,11 @@ import { PrivacyPolicy } from "./privacy.jsx";
  * buys during a round is repairs and nothing else, and it buys them out of the voyage's own takings:
  * every coin spent patching her is a coin that does not reach the hold. Every mode opens her purse at
  * nothing, so the first patch of a round is always paid for by something she did in it. So the stat
- * functions below read only her damage, not any notion of a level, and their shape is the seam the
- * shipyard's `rate()` plugs into when the modes are reworked.
+ * functions in `sim/ships.js` read only her damage, not any notion of a level, and their shape is
+ * the seam the shipyard's `rate()` plugs into when the modes are reworked.
  */
-
-const WORLD = 2000;
-const TILT = 0.6; // vertical squash -> high-angle / isometric feel
-const ZUP = Math.sqrt(1 - TILT * TILT); // how world-height maps to screen-up
-const FFA_AI = 10;
-const ISLAND_COUNT = 4;
-const MIDDLE_CLEAR = 320; // no island closer than this to the middle, in any mode
-// How an AI captain sails round an island. She keeps this much water between her beach and the
-// point `moveShip` grounds her at, looks this far ahead for one plus what she will cover in
-// ISLAND_LOOK_SECS at her present speed, and once on a beach runs along it leaning off by this
-// much, which is what takes her off it. Two islands are never closer than 170 to each other, so
-// a first rate clearing each by the margin still has a channel between them.
-const ISLAND_CLEAR = 22;
-const ISLAND_LOOK = 90;
-const ISLAND_LOOK_SECS = 1.6;
-const ISLAND_LEAN = 0.35;
-const RING_CLEAR = 130; // ...and none within this of a closing ring's working size
-const OPENING_WINDOW = 30; // seconds the ffa AI weights range over reputation when picking prey
-// How much a rival's strength against her own weighs when an AI captain picks prey, at full weight
-// for a ship a factor of e weaker or stronger. Set beside the other terms: a runaway leader is worth
-// 130, a hull under half health up to 60, and a thousand paces of range 20 to 120.
-const PREY_STRENGTH = 60;
-
-// THE ARENAS: two modes that replace what she sinks from the horizon, and differ in what they send.
-// The wave arena grows the swarm rather than the ships: reinforcements sail in from the map edge,
-// and the hunters climb the stock ladder only until they have caught her up. The ladder arena sends
-// exactly one ship at a time, the whole stock fleet in order, and the ships are the whole of the
-// escalation. Both open with one hunter on the water.
-const ARENA_START = 1; // hunters afloat when the round opens
-const ARENA_RAMP = [1, 2, 1, 2]; // wave: reinforcements for the first four kills, then 2 every kill
-const ARENA_SPAWN_CLEAR = 620; // keep a respawn at least this far from the player
-const ARENA_MAX_ENEMIES = 14; // wave: ceiling so the fleet stays drawable
-const ARENA_SPAWN_GAP = 5; // the second ship of a wave holds off this long
-
-// nth kill (1-indexed) -> how many ships sail in to replace the one that sank
-const arenaReinforcements = (n) => ARENA_RAMP[n - 1] ?? 2;
-
-// DERBY: ten bows, no guns, nothing to buy, and a squall closing on the middle of the sea. Without
-// cannon nobody's mast can be brought down, so every hull holds the same top speed all match and a
-// runner could never be caught — the ring is what makes the fight happen.
-const DERBY_AI = 9; // rivals, so ten captains start
-
-/**
- * THE WEATHER: a ring closing on the middle of the sea, and why the two modes that carry one want
- * different rings.
- *
- * A ring opens wider than the map's own corners, so the grace period really is open water, and closes
- * onto the middle, which the island generator leaves clear to whatever size that mode's ring works at.
- * Outside it the crew works the deck in a gale: survivable for a dash across the weather, ruinous for
- * anyone who tries to live out there.
- *
- * ...and then, if the last of them are still circling one another, the eye itself shuts. A working
- * ring is not enough on its own: a ram needs closing speed to count for anything, and two ships penned
- * in a pool a hundred paces across can mill about forever without ever getting the run at each other
- * that would settle it — measured at better than two minutes of it. Weather asks nobody for a run-up,
- * so the ring goes to nothing instead, and the last hull afloat is the one with crew enough to outlast
- * the sea. However cagey the sailing, a round has an end.
- *
- * **The shape of it belongs to the mode, because what the ring has to leave room for is not the same
- * thing in both.** The derby is settled at the length of a bowsprit and its ring is the size of the
- * fight it is forcing. A free-for-all is settled by gunfire, and a broadside carries better than two
- * hundred: pen that fight into the derby's ring and every ship inside it lies under every other
- * ship's guns from the moment it closes, which is not a fight either, only a bonfire. So the
- * free-for-all works at a wider ring, and takes longer to get there, because ten captains with guns
- * thin themselves out long before the weather is what settles anything.
- */
-const STORM_R0 = 1400; // opening radius — just past the far corners of the map, so closing bites at once
-const STORM_R2 = 0; // ...and the eye shuts to nothing
-// The four times add up to how long a round runs when nobody settles it sooner: 168 seconds in the
-// derby, 200 in the free-for-all. The derby's `fullRound` purse sits a shade above its figure.
-const DERBY_WEATHER = { grace: 18, close: 95, ring: 190, hold: 20, squeeze: 35 };
-const FFA_WEATHER = { grace: 40, close: 100, ring: 300, hold: 25, squeeze: 35 };
-// The weather takes this share of her FULL crew a second, every second she is out in it, whatever
-// class she is and however many hands she has left: ten seconds of exposure is the ship, for a
-// gundalow and a first rate alike. It was an absolute figure of hands a second that ramped up over
-// STORM_RAMP, which cost a boat of thirty her whole crew in five seconds and a three-decker of eight
-// hundred nothing she would miss for most of a minute, so the same weather was a death sentence in
-// one hull and an inconvenience in another.
-const STORM_BITE = 0.1;
-// Exposure still builds and sheds, because it is what turns an AI captain's course home urgent and
-// what deepens the tint on the player's screen; it no longer sets how hard the weather bites.
-const STORM_RAMP = 12; // seconds out in it before her exposure is at its worst
-const STORM_RECOVER = 2.2; // exposure shed a second once she is back inside
-// An AI captain is drawn toward the middle rather than fenced away from the edge. Inside STORM_HOME
-// of the ring she fights as she pleases; past it the middle bends her course, hardest at the rail.
-// It is a preference, not an override, which is what leaves room to shoulder a rival out into the
-// weather and hold her there — and once she is out, her own exposure is what turns the pull urgent.
-const STORM_HOME = 0.45; // share of the ring she is content to fight anywhere within
-const STORM_PULL = 0.8; // how hard the middle bends her course at the very rail
-
-// Two hulls with the same top speed can fall into a mutual tail chase and orbit one another for as
-// long as they both keep the throttle down — lead pursuit holds the circle rather than closing it.
-// A captain who has gone this long without gaining takes the way off her instead: a slow hull turns
-// far inside a fast one, so easing the throttle is what lets her cut the corner and force the meeting.
-const STALL_PATIENCE = 5; // seconds of getting nowhere before she tries something else
-const STALL_CUT = 4.5; // and how long she holds the tighter, slower turn
-const STALL_THROTTLE = 0.5;
-
-// A captain gets out of a heap rather than grinding away in it. Being jammed against another hull is
-// not a fight — she is going nowhere and neither is anyone else — so once she has been stuck like
-// that a moment she peels out, gathers way in clear water, and comes back for a proper run, usually
-// at somebody other than whoever she was jammed against. What times it is `baulkT`, the plain fact of
-// being foul of a hull and making no ground: in a pile any reckoning of closing speed reads high one
-// frame and nothing the next, while being stuck is simply true or not. Her nerve scales how long she
-// will put up with it, so no two blink together — a pile that broke as one would only re-form.
-const SHEER_ANGLE = 1.35; // about 77 degrees off her bearing, when there is no heap to steer out of
-const SHEER_LOOK = 190; // hulls this close are what she counts as the heap she is peeling out of
-const SHEER_TIME = 2.4; // how long she holds the break before working back in
-const SHEER_THROTTLE = 0.7; // and she takes some way off to get the bow across
-
-/** Where the ring stands at `t` seconds, for one mode's weather. */
-const stormRadius = (t, w) => {
-  const closed = w.grace + w.close;
-  if (t <= closed) return STORM_R0 + (w.ring - STORM_R0) * clamp((t - w.grace) / w.close, 0, 1);
-  return w.ring + (STORM_R2 - w.ring) * clamp((t - closed - w.hold) / w.squeeze, 0, 1);
-};
-/**
- * What the weather is doing at `t`, in the word the HUD prints: `waiting` through the grace,
- * `closing` while the ring comes in, `holding` while it stands at the ring, `closing` again through
- * the squeeze, and `closed` once the eye has shut. Read off the clock rather than off the radius,
- * because the radius is below the ring for the whole of the squeeze, which is when the weather is
- * closing fastest and the pill used to say it had stopped.
- */
-const stormPhase = (t, w) => {
-  if (t < w.grace) return "waiting";
-  if (t < w.grace + w.close) return "closing";
-  if (t < w.grace + w.close + w.hold) return "holding";
-  if (t < w.grace + w.close + w.hold + w.squeeze) return "closing";
-  return "closed";
-};
-
-// The sea is three tones of one hue, laid down by depth: open water everywhere, the shallows banked
-// around each island, and a thin beach rim where the bottom comes up to meet the sand. Everything the
-// UI paints on top of the water — panels, scrims, the grid — is the same hue run down to near black,
-// so the chrome reads as the sea in shadow rather than as a second, unrelated colour scheme.
-const C = {
-  water: "#2a8f8b",      // open water — the main sea, and the page background behind it
-  shallows: "#45b39d",   // the bank of shallow water an island sits in
-  beachRim: "#7fd0bd",   // the thin band right where the water meets the sand
-  foam: "#f4fffc",       // a cap catching the light as it breaks
-  waterEdge: "#1c6663",  // outside the buoys: open water run deep, so the arena reads as the bright part
-  deep: "#0b3331",       // the sea at its darkest — panel grounds, and ink on a gold field
-  grid: "rgba(9,52,50,0.10)",
-  player: "#ece2cc",
-  playerStroke: "#b3a684",
-  // Round shot is cast iron, and going dark reads better than the gold it replaces almost
-  // everywhere, because every ground it crosses but one is lighter than it. Against the gold, by
-  // ground: open water 2.93 to 2.32, the shallows 4.44 to 1.53, grass 4.27 to 1.59, sand 5.88 to
-  // 1.15, the rim where the water meets the sand 6.32 to 1.07. A gold ball crossing an island was
-  // very nearly not there at all.
-  //
-  // The exception is dark water: 1.70 out past the buoys, and as little as 1.08 where the weather
-  // has the sea darkened outside the ring, which is a ball nobody can see. So the ball is not one
-  // mass but two, and the second is the answer to the first. The light off the top of it scores
-  // 2.96 to 5.45 on exactly those dark grounds, where the body has nothing, and falls to 1.55 on
-  // open water, where the body has 2.93. Whichever ground it crosses, one of the two is holding it.
-  // The trail does the same job again from further out, 5.73 to 11.66 on the dark grounds, and a
-  // round shot is only ever on screen while it is flying, so the trail is always there.
-  ball: "#333b42",
-  ballLit: "#9aa5af",   // the light off the top of it, which is what makes it a sphere and not a hole
-  smoke: "#e6efec",     // powder smoke: what a gun leaves behind and what a ball drags after it
-  pellet: "#dfefff",
-  hull: "#d99a3c",
-  // Mast reads on three grounds: the enemy bar's 50%-black backing, the player's HUD bar, and the
-  // FRONT gun button — the bow gun brings masts down, so it carries this colour too. It was a teal
-  // barely a shade off open water (1.41 contrast) and vanished against the sea. Pale rather than
-  // navy on purpose: a dark blue scores 1.01 against the bar's own dark backing, which would make a
-  // full mast bar look exactly like an empty one.
-  mast: "#a8c4ff",
-  crew: "#d15b5b",
-  side: "#e8c877",
-  front: "#7a9cc6",
-  splinter: "#b98a4a",
-  gold: "#e8c877",
-  panel: "rgba(11,51,49,0.80)",
-  hair: "rgba(160,224,210,0.20)",
-  ink: "#eef4f2",
-  sand: "#cbb98a",
-  sandDark: "#a8935f",
-  grass: "#6fae5c",
-  frond: "#4f9a3f",
-  frondDk: "#2f6634",
-  coconut: "#b58a4a",
-  sail: "#f4ecd8",
-  wood: "#6b4a2b",
-  woodLit: "#8d6740",
-  hullWood: "#7c5a37",
-  hullDeck: "#8c6a44",
-  hullDark: "#48331f",
-  boundary: "#e8c877",
-  buoyA: "#d15b5b",
-  buoyB: "#eef4f2",
-};
-
-// ---------------- island foliage ----------------
-// Two species built from one blade primitive. Every fraction below is of the plant's canopy radius,
-// and that radius is itself a fraction of the island radius — so a plant scales with the island it
-// stands on, and an island is never a scaled-up version of a smaller one only because of its plants.
-//
-// These values are tuned, not derived. Keep them here rather than inline in the draw code.
-const PLANT = {
-  // Canopy radius in screen px, the same on every island. It used to be a fraction of the island
-  // radius, which made a palm on the biggest island four times the size of one on the smallest —
-  // islands differed in the size of their trees rather than in how many they had. A fixed size says
-  // a tree is a tree; the island is what changes.
-  canopy: 9,
-  scaleMin: 0.75,      // so an individual plant still varies: 6.75 to 12.15 px
-  scaleMax: 1.35,
-
-  fronds: 7,           // blades per crown
-  frondLen: 1.06,
-  frondWidth: 0.20,    // at the blade's widest
-  arch: 0.20,          // rise at mid-blade, x blade length
-  droop: 0.26,         // tip drop below the crown, x blade length
-  wind: 0.20,          // bend amplitude
-
-  trunkH: 1.85,
-  trunkW: 0.30,        // base width; floored at 1.1 device px so it survives the small end
-  taper: 0.58,         // top width / base width
-  bow: 0.50,           // lean and curve, signed per plant
-
-  palmRatio: 0.85,     // the rest are bushes
-  minGap: 0.75,        // spacing, as a fraction of the two footprints summed
-  scatter: 0.67,       // x island r
-
-  // Count goes as the square of the radius, i.e. with island area, which is what holds the planting
-  // at one density now that a plant is a fixed size. Linear count was right only while plants grew
-  // with the island; against a fixed size it would leave a small island twice as densely planted as
-  // a large one. countRef is the count at countRefR: 12 plants at r=58, 40 at r=105, 55 at r=124.
-  countRef: 36,
-  countRefR: 100,
-
-  shadowSize: 0.42,
-  shadowLean: 0.55,    // how far the shadow tracks the crown's offset from the base
-  shadowOpa: 0.10,     // the soft outer pass is 0.40 of this
-};
-
-// quadratic bezier point and tangent
-function qp(t, a, b, c) {
-  const u = 1 - t;
-  return [u * u * a[0] + 2 * u * t * b[0] + t * t * c[0], u * u * a[1] + 2 * u * t * b[1] + t * t * c[1]];
-}
-function qd(t, a, b, c) {
-  const u = 1 - t;
-  return [2 * u * (b[0] - a[0]) + 2 * t * (c[0] - b[0]), 2 * u * (b[1] - a[1]) + 2 * t * (c[1] - b[1])];
-}
-
-// One tapered blade swept along a bezier that rises out of the crown and droops at the tip. `a` is
-// the plan bearing; its y component is squashed by TILT so the crown foreshortens like everything
-// else. bx/by bend the blade downwind and scale along t, so the root stays pinned at the crown and
-// only the outer half travels — the trunk and the crown point never move.
-function frond(ctx, cx, cy, a, L, wMax, arch, droop, notch, steps, bx = 0, by = 0) {
-  const dx = Math.cos(a) * L, dy = Math.sin(a) * L * TILT;
-  const p0 = [cx, cy];
-  const p1 = [cx + dx * 0.5 + bx * 0.30, cy + dy * 0.5 - arch * L + by * 0.30];
-  const p2 = [cx + dx + bx, cy + dy + droop * L + by];
-  const side = [];
-  for (let i = 0; i <= steps; i++) {
-    const t = i / steps;
-    const p = qp(t, p0, p1, p2), d = qd(t, p0, p1, p2);
-    const m = Math.hypot(d[0], d[1]) || 1;
-    let w = wMax * Math.sin(Math.PI * Math.pow(t, 0.8));
-    if (notch && i % 2) w *= 0.52; // leaflet notches
-    side.push([p, [-d[1] / m * w, d[0] / m * w]]);
-  }
-  ctx.beginPath();
-  ctx.moveTo(p0[0], p0[1]);
-  for (let i = 0; i <= steps; i++) ctx.lineTo(side[i][0][0] + side[i][1][0], side[i][0][1] + side[i][1][1]);
-  for (let i = steps; i >= 0; i--) ctx.lineTo(side[i][0][0] - side[i][1][0], side[i][0][1] - side[i][1][1]);
-  ctx.closePath();
-  ctx.fill();
-}
-
-// tapered, bowed trunk outline
-function trunkPath(ctx, bx, by, tx, ty, wb, wt, bow) {
-  const p0 = [bx, by], p2 = [tx, ty];
-  const p1 = [(bx + tx) / 2 + bow, (by + ty) / 2];
-  const N = 9, L = [], R = [];
-  for (let i = 0; i <= N; i++) {
-    const t = i / N;
-    const p = qp(t, p0, p1, p2), d = qd(t, p0, p1, p2);
-    const m = Math.hypot(d[0], d[1]) || 1;
-    const w = (wb + (wt - wb) * t) / 2;
-    L.push([p[0] - d[1] / m * w, p[1] + d[0] / m * w]);
-    R.push([p[0] + d[1] / m * w, p[1] - d[0] / m * w]);
-  }
-  ctx.beginPath();
-  ctx.moveTo(L[0][0], L[0][1]);
-  for (let i = 1; i <= N; i++) ctx.lineTo(L[i][0], L[i][1]);
-  for (let i = N; i >= 0; i--) ctx.lineTo(R[i][0], R[i][1]);
-  ctx.closePath();
-}
-
-// Plan-space radius a plant's crown covers on the ground, before TILT. Spacing is tested in plan
-// rather than on screen so the vertical squash is handled for free and front-to-back gaps match
-// side-to-side ones.
-function footprint(s, isPalm) {
-  const tr = PLANT.canopy * s;
-  return isPalm ? tr * PLANT.frondLen : tr * 0.62 * 1.05;
-}
-
-// A palm. The trunk carries the silhouette: the crown sits at trunkH x the canopy radius rather
-// than one radius up, so at a 5px canopy the plant still reads as a leaning stick with a splayed
-// head. Detail switches itself off by size below — those gates are what stop small plants
-// turning to mush.
-function drawPalm(ctx, f, clock) {
-  const fx = f.x, fy = f.y * TILT;
-  const tr = PLANT.canopy * f.s;
-  const lean = f.k * PLANT.bow * tr;      // static: wind never moves the trunk
-  const cx = fx + lean, cy = fy - tr * PLANT.trunkH;
-  const L = tr * PLANT.frondLen;
-
-  const wb = Math.max(1.1, tr * PLANT.trunkW), wt = wb * PLANT.taper;
-  ctx.fillStyle = C.wood;
-  trunkPath(ctx, fx, fy, cx, cy, wb, wt, lean * 0.9);
-  ctx.fill();
-  if (wb > 2.2) {
-    ctx.save();
-    ctx.clip();
-    ctx.fillStyle = C.woodLit;
-    trunkPath(ctx, fx - wb * 0.28, fy, cx - wt * 0.28, cy, wb * 0.34, wt * 0.34, lean * 0.9);
-    ctx.fill();
-    ctx.restore();
-  }
-
-  const n = tr < 6 ? Math.max(4, PLANT.fronds - 2) : PLANT.fronds;
-  const step = Math.PI * 2 / n;
-  const notch = tr > 7;
-  const steps = notch ? (tr > 13 ? 14 : 10) : 8;
-  const order = [];
-  for (let i = 0; i < n; i++) {
-    const a = f.a + i * step + Math.sin(f.ph + i * 2.4) * step * 0.18;
-    order.push({ a, i, back: Math.sin(a) < -0.1 });
-  }
-  order.sort((u, v) => Math.sin(u.a) - Math.sin(v.a)); // back to front
-  for (const o of order) {
-    const jitter = 1 + Math.sin(f.ph * 3 + o.a * 2) * 0.14;
-
-    // depth: 0 pointing straight away from the camera, 1 straight toward it. TILT squashes a back
-    // frond to about a third of its drawn length, so it must also travel less, droop less and sit
-    // narrower — otherwise its tip swings further than the blade is visibly long and smears across
-    // its neighbours and the crown.
-    const depth = (Math.sin(o.a) + 1) / 2;
-    const seen = 0.55 + 0.45 * depth;
-    const len = L * jitter * (0.80 + 0.20 * depth);
-    const wid = tr * PLANT.frondWidth * (0.74 + 0.26 * depth);
-    const arch = PLANT.arch * (1.26 - 0.26 * depth);   // back blades arc up behind the crown
-    const droop = PLANT.droop * (0.30 + 0.70 * depth); // instead of drooping down onto it
-
-    // Amplitude stays positive, so blades stream downwind and gust rather than swinging
-    // symmetrically through vertical. -cos(bearing) presses upwind blades down and lifts downwind
-    // ones, so the crown flexes instead of turning like a rigid fan.
-    const gust = Math.sin(clock * 1.5 + f.ph + o.i * 0.9);
-    const amp = PLANT.wind * tr * (0.55 + 0.45 * gust) * seen;
-    const press = -Math.cos(o.a) * amp * 0.20;
-
-    ctx.fillStyle = o.back ? C.frondDk : C.frond;
-    frond(ctx, cx, cy, o.a, len, wid, arch, droop, notch, steps, amp, amp * 0.18 + press);
-  }
-  ctx.fillStyle = C.frondDk; // crown core hides the seam where every frond meets
-  ctx.beginPath();
-  ctx.arc(cx, cy, Math.max(1, tr * 0.15), 0, Math.PI * 2);
-  ctx.fill();
-
-  if (tr > 9 && f.nuts > 0.45) {
-    ctx.fillStyle = C.coconut;
-    const rN = Math.max(1, tr * 0.085);
-    for (let i = 0; i < 3; i++) {
-      const a = f.ph + i * 2.1;
-      ctx.beginPath();
-      ctx.arc(cx + Math.cos(a) * tr * 0.17, cy + tr * 0.14 + Math.sin(a) * tr * 0.06, rN, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
-}
-
-// A low shrub, so an island is not a row of identical palms. Same frond() — short, wide, steeply
-// arched blades springing from just above the ground — so the two species share a drawing language
-// instead of one being circles and the other geometry. Below ~4px it collapses to two lobes,
-// because at that size blades are indistinguishable from noise.
-function drawBush(ctx, f, clock) {
-  const fx = f.x, fy = f.y * TILT;
-  const tr = PLANT.canopy * f.s * 0.62;
-
-  if (tr < 4) {
-    ctx.fillStyle = C.frondDk;
-    ctx.beginPath(); ctx.arc(fx, fy - tr * 0.30, tr * 0.86, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = C.frond;
-    ctx.beginPath(); ctx.arc(fx - tr * 0.16, fy - tr * 0.55, tr * 0.62, 0, Math.PI * 2); ctx.fill();
-    return;
-  }
-
-  const oy = fy - tr * 0.28;
-  ctx.fillStyle = C.frondDk; // dark mass at the base, so the blades read as growing out of something
-  ctx.beginPath();
-  ctx.ellipse(fx, fy - tr * 0.20, tr * 0.66, tr * 0.50, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  const n = tr < 8 ? 5 : 7, step = Math.PI * 2 / n;
-  const order = [];
-  for (let i = 0; i < n; i++) order.push({ a: f.a + i * step + Math.sin(f.ph + i * 1.7) * step * 0.22, i });
-  order.sort((u, v) => Math.sin(u.a) - Math.sin(v.a));
-  for (const o of order) {
-    const depth = (Math.sin(o.a) + 1) / 2;
-    const seen = 0.55 + 0.45 * depth;
-    const gust = Math.sin(clock * 1.9 + f.ph + o.i * 1.1);
-    const amp = PLANT.wind * tr * 0.75 * (0.5 + 0.5 * gust) * seen;
-    const jitter = 1 + Math.sin(f.ph * 2 + o.a * 3) * 0.18;
-    ctx.fillStyle = Math.sin(o.a) < -0.1 ? C.frondDk : C.frond;
-    frond(ctx, fx, oy, o.a, tr * 0.98 * jitter * (0.82 + 0.18 * depth), tr * 0.30 * (0.78 + 0.22 * depth),
-      0.44 * (1.20 - 0.20 * depth), 0.06, false, 8, amp, amp * 0.16);
-  }
-  if (tr > 9 && f.nuts > 0.62) {
-    ctx.fillStyle = C.coconut;
-    for (let i = 0; i < 3; i++) {
-      const a = f.ph + i * 2.4;
-      ctx.beginPath();
-      ctx.arc(fx + Math.cos(a) * tr * 0.30, oy + Math.sin(a) * tr * 0.18, Math.max(1, tr * 0.10), 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
-}
-
-// A small patch at the base, not a cast shadow: at this camera angle a long projected shadow reads
-// as a separate object, where a tight one just says "this touches the ground here". It leans toward
-// wherever the crown actually is — the trunk bows, so the mass overhead is off-centre from the base,
-// and tracking that is what makes a leaning palm look like it is leaning rather than drawn crooked.
-function shadowShape(ctx, f, clock, grow) {
-  const fx = f.x, fy = f.y * TILT;
-  const tr = PLANT.canopy * f.s * (f.isPalm ? 1 : 0.62);
-  const lean = f.isPalm ? f.k * PLANT.bow * tr : 0;
-  const drift = Math.sin(clock * 1.5 + f.ph) * PLANT.wind * tr * 0.30;
-  const r = tr * PLANT.shadowSize * grow;
-  const ox = fx + (lean + drift) * PLANT.shadowLean;
-  const oy = fy + tr * 0.08; // a touch forward of the base, so it sits under the plant
-  ctx.moveTo(ox + r, oy);
-  ctx.ellipse(ox, oy, r, r * TILT, 0, 0, Math.PI * 2);
-}
-
-// Every shadow on the island goes into ONE path and gets ONE fill. With a fill per plant, two
-// overlapping shadows composite twice and the intersection goes darker — wrong, since a crown
-// cannot block light that is already blocked. Nonzero winding unions them, and it is cheaper than
-// the per-plant ellipse it replaces.
-const SHADOW_SOFT = `rgba(0,0,0,${(PLANT.shadowOpa * 0.40).toFixed(3)})`;
-const SHADOW_CORE = `rgba(0,0,0,${PLANT.shadowOpa})`;
-function drawShadows(ctx, list, clock) {
-  ctx.fillStyle = SHADOW_SOFT;
-  ctx.beginPath();
-  for (const f of list) shadowShape(ctx, f, clock, 1.45); // wider, fainter: a penumbra
-  ctx.fill();
-  ctx.fillStyle = SHADOW_CORE;
-  ctx.beginPath();
-  for (const f of list) shadowShape(ctx, f, clock, 1);
-  ctx.fill();
-}
-
-// The drawn shoreline is a spline through the midpoints of the vertex polygon, not the polygon
-// itself — it cuts the corners, so a plain point-in-polygon test would call a corner land when the
-// sand has already curved away from it. Sample the same curve ring() draws and test against that.
-function islandOutline(r, verts, scale, steps = 4) {
-  const n = verts.length, pts = [];
-  for (let k = 0; k < n; k++) {
-    const a = (k / n) * Math.PI * 2, rr = r * verts[k] * scale;
-    pts.push([Math.cos(a) * rr, Math.sin(a) * rr * TILT]);
-  }
-  const out = [];
-  for (let k = 0; k < n; k++) {
-    const p = pts[k], q = pts[(k + 1) % n], prev = pts[(k + n - 1) % n];
-    const m0 = [(prev[0] + p[0]) / 2, (prev[1] + p[1]) / 2];
-    const m1 = [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2];
-    for (let i = 0; i < steps; i++) out.push(qp(i / steps, m0, p, m1));
-  }
-  return out;
-}
-
-function inOutline(px, py, poly) {
-  let inside = false;
-  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-    const a = poly[i], b = poly[j];
-    if ((a[1] > py) !== (b[1] > py) && px < (b[0] - a[0]) * (py - a[1]) / (b[1] - a[1]) + a[0]) inside = !inside;
-  }
-  return inside;
-}
-
-// Plants for one island. Positions are rejection-sampled so crowns cannot pile up: a candidate is
-// kept only if it clears every plant already placed by minGap x the two footprints summed. The
-// requirement relaxes every ten tries so a crowded island always terminates rather than hanging.
-function genFoliage(r, verts) {
-  const k = r / PLANT.countRefR;
-  const count = Math.max(1, Math.round(PLANT.countRef * k * k));
-  const Rs = r * PLANT.scatter;
-  const span = PLANT.scaleMax - PLANT.scaleMin;
-  const plants = [];
-
-  for (let f = 0; f < count; f++) {
-    let placed = null, relax = 1;
-    for (let t = 0; t < 60; t++) {
-      // sqrt spreads plants evenly over the disc. Uniform radius crowds the middle, which nothing
-      // noticed at the old two-to-four plants but is obvious at twenty.
-      const a = Math.random() * Math.PI * 2, rr = Rs * Math.sqrt(Math.random());
-      const s = PLANT.scaleMin + Math.random() * span;
-      const isPalm = Math.random() < PLANT.palmRatio;
-      const c = { x: Math.cos(a) * rr, y: Math.sin(a) * rr, s, isPalm };
-      const fc = footprint(s, isPalm);
-      let ok = true;
-      for (const o of plants) {
-        const need = (fc + footprint(o.s, o.isPalm)) * PLANT.minGap * relax;
-        if (Math.hypot(c.x - o.x, c.y - o.y) < need) { ok = false; break; }
-      }
-      if (ok) { placed = c; break; }
-      if (t % 10 === 9) relax *= 0.86;
-    }
-    if (!placed) {
-      const a = Math.random() * Math.PI * 2, rr = Rs * Math.sqrt(Math.random());
-      placed = { x: Math.cos(a) * rr, y: Math.sin(a) * rr,
-                 s: PLANT.scaleMin + Math.random() * span, isPalm: Math.random() < PLANT.palmRatio };
-    }
-    plants.push({
-      ...placed,
-      a: Math.random() * Math.PI * 2,   // crown rotation
-      k: Math.random() * 2 - 1,         // lean / bow direction
-      ph: Math.random() * Math.PI * 2,  // wind phase
-      nuts: Math.random(),
-    });
-  }
-
-  // Height is added in unsquashed screen px, so a tall plant near the back of the disc can push its
-  // crown out over the water. Walk those south until the crown clears the shoreline and bake the
-  // offset back into the plan position, so nothing downstream has to know it happened. Doing this
-  // here rather than per frame is the whole point — the alternative is isPointInPath every frame.
-  const shore = islandOutline(r, verts, 0.94);
-  for (const p of plants) {
-    const tr = PLANT.canopy * p.s;
-    const top = p.isPalm ? tr * (PLANT.trunkH + PLANT.arch * PLANT.frondLen + PLANT.frondWidth)
-                         : tr * 0.62 * 1.5;
-    const px = p.x + (p.isPalm ? p.k * PLANT.bow * tr : 0);
-    for (let i = 0; i < 30 && !inOutline(px, p.y * TILT - top, shore); i++) {
-      p.y += Math.max(0.6, tr * 0.10) / TILT;
-    }
-  }
-
-  // Sorted once, here: plants never move — wind only bends blades — so the draw loop has no reason
-  // to re-sort them every frame.
-  plants.sort((a, b) => a.y - b.y);
-  return plants;
-}
-
-const AI_COLORS = [
-  { fill: "#c15236", stroke: "#8a3722" },
-  { fill: "#c98a3b", stroke: "#8f5f22" },
-  { fill: "#a6584f", stroke: "#743833" },
-  { fill: "#7a9c8f", stroke: "#4d6a5f" },
-  { fill: "#9c7ab0", stroke: "#5f4d6a" },
-  { fill: "#b0a24f", stroke: "#6a5f2a" },
-  { fill: "#6f93b4", stroke: "#425a70" },
-  { fill: "#c76b8e", stroke: "#7f3f57" },
-  { fill: "#5fa27f", stroke: "#356050" },
-  { fill: "#b8794f", stroke: "#7a4b2c" },
-];
 
 const DISPLAY = 'Georgia, "Iowan Old Style", "Times New Roman", serif';
-const UI = 'ui-monospace, "SF Mono", Menlo, Consolas, monospace';
-
-const WP = {
-  // `draw` overrides SHOT_DRAW for one weapon. Round shot off the side is drawn at exactly the size
-  // it bites now: there are fifty of them coming off a first rate and a ball that looked smaller
-  // than its own reach would be reading the volley wrong at the moment it matters most.
-  broadside: { cd: 1.6, speed: 250, life: 0.88, r: 1.8, draw: 1, bar: "hull" },
-  bow: { cd: 1.1, speed: 270, life: 1.4, r: 2.6, bar: "mast" },
-  musket: { cd: 0.75, speed: 320, life: 0.4, r: 1.6, bar: "crew" },
-};
-
-// THE VOLLEY: how long her whole side takes to go off, and why it is not one order.
-//
-// She fires every gun she has, and fifty balls leaving in the same instant cannot be told apart:
-// down the length of a first rate they would sit two thirds of a pace from each other and read as
-// one bar of iron however small they were drawn. What separates them is a moment, not a size.
-//
-// EVERY GUN TAKES HER OWN MOMENT, drawn at random inside the window. That is a gun crew rather than
-// a machine: several ports along her side go off together, then a few more somewhere else, and the
-// whole side is away inside `VOLLEY_MAX`. It replaced a strict roll from one end to the other, which
-// was the same length of time and read as a mechanism running down her side. A ship firing is not a
-// zip fastener.
-//
-// The window is per gun up to a ceiling, so a cutter's five go off in a twentieth of a second and
-// still look simultaneous, and a first rate's fifty spread over a third of one. Nothing is lost by
-// the spread: her guns are laid as they bear, so a wider window is neither more nor less accurate.
-const GUN_STAGGER = 0.012; // her side takes about this per gun...
-const VOLLEY_MIN = 0.05;
-const VOLLEY_MAX = 0.32; // ...up to this, however many she carries
-/** How long a battery of `n` takes to get away, which the yard prints and the fight fires on. */
-const volleyWindow = (n) => clamp(n * GUN_STAGGER, VOLLEY_MIN, VOLLEY_MAX);
-// THE RANGE HER GUNS ARE LAID FOR, and the reason a rolling broadside is not a worse broadside.
-//
-// A ship at speed crosses better than a hull length while her side rolls through, so a gun fired at
-// the end of the roll goes off from a long way ahead of where the first one did. Left alone, that
-// walks the whole volley off the front of anything she was pointed at: a first rate at full speed
-// put a third of her iron on a target she had laid dead, against six tenths lying still. Gun crews
-// answered this by laying each gun as it bears rather than all of them abeam, and so does she: the
-// ground she has made since the order comes off the lay, at the range a fight is actually fought at.
-// The correction is exact at this range and honestly wrong at any other, which is what laying a gun
-// for a range you have guessed has always been worth.
-const LAY_RANGE = 150;
-
-// A shot's `r` is how wide a bite it takes: it is what widens the hull when the flight is tested,
-// so a round shot holes a ship where a musket ball whistles past her rail. What gets drawn is
-// smaller than that. Shrinking the drawn ball is a matter of how the sea looks; shrinking the bite
-// would quietly make every gun in the game worse, and those are two different decisions. Set this
-// to 1 to put them back together.
-const SHOT_DRAW = 0.7;
-// The light on the ball is the half of it that carries on dark water, so it is not allowed to
-// shrink away to nothing: under about a pixel canvas renders it as part-covered and it goes grey,
-// which is the one thing that mass was there to prevent.
-const SHOT_LIT_MIN = 0.85;
-
-// ---- the player's view ----
-//
-// What a captain sees is a square laid on the middle of the screen: its side is the shorter side of
-// the phone — the width held upright, the height held sideways — and whatever screen is left over
-// beyond it simply shows more sea, behind the buttons. Sizing the water to the screen instead left
-// her sight of it lopsided and different in each orientation: an upright phone gave barely a
-// broadside's width across and three times that up and down, so a ship a little abeam was off the
-// side of the screen while empty water ran away above and below her.
-//
-// The square holds a full broadside either side of her, because that is the range a fight is decided
-// at: whatever can reach her lies inside the square, whichever way it lies from her.
-const BROADSIDE_R = WP.broadside.speed * WP.broadside.life;
-const VIEW = BROADSIDE_R * 2; // world units across the square
-// A screen much bigger than a phone's would otherwise magnify everything to fill its shorter side.
-// Past this the square only ever shows more water than it promises, which costs the captain nothing.
-const MAX_ZOOM = 1.5;
-// How far the map's boundary is let inside the edge of the screen: enough to read the rope, its
-// buoys, and a strip of the water beyond, and no more. It is the whole of the camera's give on a
-// side, so it is also how far off centre a ship ends up when she runs right up on that boundary.
-const EDGE_PEEK = 40; // screen pixels
-// The most the boundary is let in on a side where the screen runs longer than the square. Held
-// upright that is the top and bottom, where the strip past the square is the buttons' and the
-// panels', and the boundary may come as far as the square's edge. Sideways the strips are the
-// left and right, and the square's edge there is a third of the screen: the boundary sat halfway
-// across the sea with the ship pinned beside it. This caps it at the joystick's own strip, so a ship
-// on the map's edge still sits clear of the stick and the rope still reads, and no more than that.
-const SIDE_PEEK = 150; // screen pixels
-
-// A ship's length, beam and collision ellipse are her own now, set per class by `hullform.js` and
-// carried on the ship as `hullA` and `hullB` (semi-length and semi-beam). The galleon anchors the
-// scale at the 36 by 13 every hull at sea used to share.
-
-/**
- * THE RIG SHE CARRIES, AT SEA. Every ship afloat used to draw the same three hard-coded masts, so a
- * gundalow and a first rate were told apart only by their health bars. The masts and sails drawn on the
- * water now come off the ship's own loadout, through the same `rigSpec()` the menu ship reads:
- * a mast stands where its station is on HER hull, as tall as the mast bought for it, and carries one
- * band of canvas per sail actually bent on, in the shape of its category. Square canvas is the
- * bellied band the fight has always drawn; triangular, gaff and lug canvas are fore-and-aft panels;
- * headsails run from the bowsprit up toward the foremost masthead.
- *
- * Worked out once per ship at `makeShip`, because nothing about her rig changes at sea short of the
- * whole thing coming down.
- */
-const SEA_FOREAFT = new Set(["TRI", "LAT", "GAF", "LUG"]);
-function buildSeaRig(loadout, sea) {
-  const spec = rigSpec(loadout);
-  const masts = [];
-  for (const m of spec.masts) {
-    const u = sea.masts[m.station];
-    if (u === undefined) continue;
-    const top = Math.max(8, sea.tops[m.station] * (m.height || 1));
-    const wB = sea.wBase[m.station];
-    const n = m.sails.length;
-    // bands from the deck up: each sail keeps about three quarters of the height of the one below
-    // it and narrows the same way, with a little air between bands
-    const zb0 = 0.18 * top, gap = 1.6;
-    const room = Math.max(4, top - 3 - zb0 - gap * (n - 1));
-    const weights = Array.from({ length: n }, (_, i) => Math.pow(0.74, i));
-    const wsum = weights.reduce((a, b) => a + b, 0) || 1;
-    let z = zb0;
-    const sails = m.sails.map((sail, i) => {
-      const h = room * (weights[i] / wsum);
-      // a studdingsail is the band run out sideways, so the band just carries the extra beam
-      const band = { kind: sail.kind, sb: z, st: z + h, w: wB * Math.pow(0.82, i) * (sail.stud ? 1.45 : 1) };
-      z += h + gap;
-      return band;
-    });
-    masts.push({ u, h: top, sails });
-  }
-  // what the bowsprit carries: headsails run up toward the foremost masthead, and square canvas
-  // under the spar is a spritsail
-  const fore = masts.reduce((a, m) => (!a || m.u > a.u ? m : a), null);
-  const heads = [];
-  const sprits = [];
-  const bowTip = 0.61 * sea.L;
-  for (const m of spec.masts) {
-    if (m.station !== "bowsprit") continue;
-    m.sails.forEach((sail, i) => {
-      if (SEA_FOREAFT.has(sail.kind)) {
-        if (fore) heads.push({ tack: bowTip * (0.72 + 0.11 * i), mastU: fore.u, mastZ: fore.h * (0.55 + 0.14 * i) });
-      } else {
-        // slung further out along the spar per sail, the way the menu spreads them, so a second
-        // spritsail is a sail and not a repaint of the first
-        sprits.push({ kind: sail.kind, sb: -1.5, st: 3, w: 0.54 * sea.W * (1 - 0.18 * i), u: sea.L * (0.46 + 0.12 * i) });
-      }
-    });
-  }
-  const topmost = masts.reduce((a, m) => Math.max(a, m.h), 0);
-  return { masts, heads, sprits, top: Math.max(topmost, 14) };
-}
-const HULL_PAD = 3; // rigging and oars, so hulls never touch pixels
-const RAM_MIN_CLOSE = 25; // closing speed at which a collision starts to count as a ram
-const RAM_FULL_CLOSE = 94; // closing speed for a full-weight ram: a fresh ship's top speed
-const RAM_CURVE = 1.5; // how sharply the blow grows with closing speed, for every angle alike
-const RAM_MAX_FORCE = 2.4; // ceiling on it, so a head-on cannot run away with the match
-const RAM_BEAM = 1.25; // weight of a blow square on the beam...
-const RAM_FINE = 0.6; // ...and of one that glances off her bow or stern
-const RAM_GRAZE = 1; // below this a touch is not a ram at all: no damage, no cooldown, no lock
-const RAM_MUTUAL_CAP = 0.8; // most of a bow-to-bow blow one ship's speed can shove onto the other
-const RAM_KNOCK = 150; // impulse thrown apart on a ram (scaled by closing speed)
-const RAM_RECOIL = 0.3; // floor on the bounce for whoever drove into the blow
-const RAM_DRIVE_LOSS = 0.88; // share of her way a ship spends into the impact, bow-on
-const RAM_REARM_GAP = 26; // hulls must break this far clear before the pair can ram again
-const RAM_CD = 0.9; // seconds before a ship can ram again
-// Hulls touching without a charge behind them are eased apart with this much push a second. It is a
-// force a second rather than a knock a frame: it was 32 a frame, which at sixty frames is this figure
-// and at a hundred and twenty was twice it, so a ship nudged along by another crossed the sea at a
-// different pace depending on the phone she was on.
-const HULL_NUDGE = 1920;
-// Breaking clear was the only way out of that lock, which two ships circling each other never manage:
-// they can hold station inside the gap indefinitely and the pair stays barred from ever trading
-// another blow. The lock is meant to stop damage being ground out of hulls already touching, and a
-// few seconds does that, so it lapses on its own as well.
-const RAM_LOCK_MAX = 3;
-// A ram is worked out from the way a ship has actually made, not from the way her helmsman wanted.
-// The two part company whenever something is in the road: hulls pressed against one another are
-// de-overlapped every frame, so they stand still in the water while `spdCur` — the throttle's idea of
-// her speed — reads full ahead. Resolving a blow from that gives a stationary ship the weight of a
-// flying one: a pair jammed bow to bow could sink a third that came to attack them, and the moment
-// one of them turned away the other took her beam at full force without ever having moved. So each
-// ship measures the ground she truly covered last frame, and a hull that cannot go forward loses her
-// way like any other.
-// The measurement is smoothed. Hulls in contact are driven together and pushed apart again frame by
-// frame, so a single frame's difference swings wildly either side of nothing, and taking the positive
-// half of that swing at face value hands a standing ship the weight of a charging one every other
-// frame. Not too smooth, though: force climbs as the 1.5 power of closing speed, so under-reading a
-// ship working up to a charge by a fifth costs nearly half her blow.
-const WAY_SMOOTH = 14; // the measurement follows her within about a fifteenth of a second
-
-// And a hull held on another's timbers loses her way, so she has to gather it again before she is
-// worth anything — which is what stops her taking the beam of the ship that breaks off first as
-// though she had been charging all along. Only being foul of another hull counts: a ship knocked off
-// her stride is still free to sail, and treating that as held empties the melee of blows altogether.
-const BAULK_TOL = 0.35; // foul of a hull and making less than this share of her asking: she is baulked
-const BAULK_GRACE = 0.35; // ...and only held once it has gone on this long. A knock in passing is not
-const BAULK_RATE = 6; // once held, her way falls away, halving in about an eighth of a second
-
-// For hull against hull a ship is her keel — a line down her length — swelled by her beam. Measuring
-// between the two keels finds where they truly foul, which the distance between two centres cannot:
-// hulls this long can cross well off the line joining them, and would slide through one another.
-// Both figures are each ship's own now: a first rate's keel is half again a cutter's, and the two
-// are alongside when the gap closes to the sum of their own beams.
-const keelHalf = (s) => s.hullA - s.hullB;
-const hullTouch = (a, b) => a.hullB + b.hullB + 2 * HULL_PAD;
-
-// closest approach of the two keels: distance, and the unit vector from a's keel to b's
-function keelGap(a, b) {
-  const aK = keelHalf(a), bK = keelHalf(b);
-  const ux = Math.cos(a.heading) * aK, uy = Math.sin(a.heading) * aK;
-  const vx = Math.cos(b.heading) * bK, vy = Math.sin(b.heading) * bK;
-  // segments a.x±u and b.x±v, walked as p0 + s*(2u) and q0 + t*(2v)
-  const wx = a.x - ux - (b.x - vx), wy = a.y - uy - (b.y - vy);
-  const A2 = 4 * (ux * ux + uy * uy), B2 = 4 * (ux * vx + uy * vy), C2 = 4 * (vx * vx + vy * vy);
-  const D2 = 2 * (ux * wx + uy * wy), E2 = 2 * (vx * wx + vy * wy);
-  const den = A2 * C2 - B2 * B2;
-  let s = den > 1e-9 ? clamp((B2 * E2 - C2 * D2) / den, 0, 1) : 0;
-  let t = C2 > 1e-9 ? clamp((B2 * s + E2) / C2, 0, 1) : 0;
-  s = A2 > 1e-9 ? clamp((B2 * t - D2) / A2, 0, 1) : 0; // settle it after the clamps
-  const px = a.x - ux + 2 * ux * s, py = a.y - uy + 2 * uy * s;
-  const qx = b.x - vx + 2 * vx * t, qy = b.y - vy + 2 * vy * t;
-  let gx = qx - px, gy = qy - py;
-  let d = Math.hypot(gx, gy);
-  if (d < 1e-6) { gx = b.x - a.x; gy = b.y - a.y; d = Math.hypot(gx, gy) || 1; } // dead aboard her
-  return { d, nx: gx / d, ny: gy / d };
-}
-
-// How far along this frame's flight does a shot bite? Works on the whole step from where the ball
-// was to where it is, so a fast ball cannot skip through a hull only thirteen paces across. `pad`
-// widens the hull by the radius of what is arriving: a heavy round shot bites where a musket ball
-// would whistle past her rail. Scaling the hull's ellipse to a unit circle makes it one quadratic.
-// It answers with the share of the step at which the ball first touches her, so the shots can tell
-// which of two hulls on one step is the nearer, and -1 for a clean miss.
-//
-// The flight is measured against the hull as the hull herself sees it, which means carrying the
-// ball's starting point forward by the ground the ship made this frame. Testing it against where
-// the frame left her was near enough for a ship under sail, but a ship in a melee does not move
-// like one: a ram throws her aside at better than her own top speed, and hulls foul of each other
-// are shoved apart bodily every frame, all of it done before the shots are stepped. A hull moved
-// half her own beam in one frame slid out from under a ball that had gone through her amidships,
-// and the ball sailed on. That is why it happened to ships in company and rarely anywhere else.
-//
-// Her turn within the frame is not counted, only her passage. A hull under helm sweeps her bow
-// through about a pace at the worst of it, against the ten or more the shoving throws her.
-const shotHitsHull = (s, x0, y0, x1, y1, pad) => {
-  const c = Math.cos(s.heading), sn = Math.sin(s.heading);
-  const A = s.hullA + pad, B = s.hullB + pad;
-  const wx = s.x - (s.px ?? s.x), wy = s.y - (s.py ?? s.y); // the ground she made this frame
-  const px = ((x0 + wx - s.x) * c + (y0 + wy - s.y) * sn) / A;
-  const py = ((y0 + wy - s.y) * c - (x0 + wx - s.x) * sn) / B;
-  const qx = ((x1 - s.x) * c + (y1 - s.y) * sn) / A, qy = ((y1 - s.y) * c - (x1 - s.x) * sn) / B;
-  const dx = qx - px, dy = qy - py;
-  const out = px * px + py * py - 1;
-  if (out < 0) return 0; // the ball began the step already inside her timbers
-  const len2 = dx * dx + dy * dy;
-  if (len2 <= 1e-12) return -1;
-  const half = px * dx + py * dy;
-  const disc = half * half - len2 * out;
-  if (disc < 0) return -1; // the flight passes her by
-  const t = (-half - Math.sqrt(disc)) / len2;
-  return t >= 0 && t <= 1 ? t : -1; // she is touched within this step, or not this frame
-};
-
-// The same question for an island, which is a plain circle and never moves. Asked of the whole
-// step for the same reason: a ball tested only where the frame left it can step over a shoal.
-const shotHitsCircle = (cx, cy, r, x0, y0, x1, y1) => {
-  const px = x0 - cx, py = y0 - cy, dx = x1 - x0, dy = y1 - y0;
-  const out = px * px + py * py - r * r;
-  if (out < 0) return 0;
-  const len2 = dx * dx + dy * dy;
-  if (len2 <= 1e-12) return -1;
-  const half = px * dx + py * dy;
-  const disc = half * half - len2 * out;
-  if (disc < 0) return -1;
-  const t = (-half - Math.sqrt(disc)) / len2;
-  return t >= 0 && t <= 1 ? t : -1;
-};
-
-/**
- * REPAIRS — the one thing a purse buys at sea, and the only reason to carry coins into a fight.
- *
- * Two buttons, and they are priced on opposite principles because they are opposite jobs.
- *
- * HULL is bought by the point, and by nothing else. A coin buys back a point of damage: no base, no
- * rate and no share of anything. What she pays is exactly what the damage she is undoing was worth to
- * the ship that dealt it, which puts both halves of a round's economy in the same currency and means
- * a captain can read her own hull bar as a price.
- *
- * What it will not buy is a whole ship. A carpenter at sea works with what is in the hold: he plugs
- * shot holes, fishes a cracked timber and pumps her out, and that stops at `HULL_PATCH_CAP`. Sound
- * planking, a new strake and her seams paid afresh are a slipway's work, so the last fifth of her
- * hull waits for the yard however deep her purse is. A ship that has been in a fight carries it until
- * the voyage ends, which is the difference between the hull and the rig: a mast is a spar to be
- * swayed up and a hull is the ship herself.
- *
- * Because the bill is her damage and nothing else, it scales with the class she is sailing without a
- * scaling term anywhere: a hull with two hundred and fifty points to lose can run up a bill of two
- * hundred, four fifths of her, and the cutter that has ninety can never be charged more than
- * seventy-two. Bigger ships cost more to keep afloat because there is more of them to hole.
- *
- * Two things follow and both are the point: a ship barely scratched pays almost nothing, so there is
- * no wrong moment to repair, and a captain who cannot cover the whole bill buys as much of it as her
- * purse reaches rather than being refused, which matters most in the round where she is down to her
- * last coins and still taking fire.
- *
- * MAST is flat, and it is a jury rig. A mast is stepped or it is not: there is no half a mast, so
- * there is no half price and no part payment, and the charge is the same whether she lost the whole
- * thing or sprung it. What sets the price is the mast she carries rather than the damage she took: a
- * coin a point of the rig the jury mast puts back, `MAST_REBUILD_SHARE` of her mast's health, which is
- * the shipyard's figure and not the fight's.
- *
- * What goes up is a spare spar swayed up with what the sail locker holds, not the suit she sailed
- * with, so it stops at `MAST_JURY_CAP` the way the hull stops at its own. Because speed and helm both
- * read how much of her rig is standing, that is nineteen twentieths of her way and a little over nine
- * tenths of her helm: not the ship she was, but sailing again, and that is what makes it worth the
- * money. Losing a mast is the one hit that takes a ship out of a fight while leaving her afloat, and
- * a jury rig is the difference between limping and drifting.
- *
- * CREW cannot be bought back at all. Hands lost over the rail are lost, and no coin brings them
- * back, so the crew bar is a clock that only runs one way for the length of a round. It is why
- * musket fire and a spell in the weather are worth avoiding rather than paying off afterwards.
- *
- * What makes any of it a decision rather than a tax is where the money comes from. Repairs are paid
- * out of the voyage's own takings, so every coin spent staying afloat is a coin that does not reach
- * the hold and does not buy a ship. Fighting carefully is worth money.
- */
-const HULL_RATE = 1; // a coin a point. Deliberately 1, and the one place to change it if it ever moves
-
-/**
- * How much of her hull the carpenter can put back at sea, and the one place that figure lives.
- *
- * Damage above the cap is not cheaper, it is unbuyable: the quote stops at the cap, the button stops
- * offering, and nothing anywhere else clamps the hull, so a captain who never takes a hit is never
- * pulled down to it. A repair only ever raises her towards the cap and never above it.
- */
-const HULL_PATCH_CAP = 0.8;
-/** The most hull a purse can reach on this ship. Whole is a shipyard's business. */
-const patchCap = (s) => s.maxHull * HULL_PATCH_CAP;
-
-/**
- * How much of her rig a jury mast is worth, and the reason the mast button no longer promises whole.
- *
- * A spare spar fished and swayed up carries sail again, but it is not the mast that came out of her
- * and the canvas on it is whatever the locker held. She is nine tenths of a ship, which `speedCap`
- * and `turnCap` read as nineteen twentieths of her way and a little over nine tenths of her helm.
- * `MAST_REBUILD_SHARE` in the shipyard is priced for exactly that nine tenths, a coin a point, so a
- * captain pays for the rig she gets back and never more than her mast is worth.
- */
-const MAST_JURY_CAP = 0.9;
-/** The most rig a purse can reach on this ship. The last tenth is stepped in a yard, not at sea. */
-const juryCap = (s) => s.maxMast * MAST_JURY_CAP;
-
-/**
- * What a new mast costs at sea: nine tenths of her own mast's health, a coin a point.
- *
- * Every ship afloat brings her own loadout, so the bill is hers: a first rate's mast is a first
- * rate's mast to put back, and a gundalow's costs a gundalow's. The starter's rig is the fallback for a hull that somehow reaches the water without one,
- * which nothing should do.
- */
-const STOCK_LOADOUT = resolve(STARTER);
-// Her three bars at full, off a loadout: what the HUD opens on and what the fight fills in.
-const barsOf = (loadout) => { const r = rate(loadout); return { hull: r.hull, mast: r.mast, crew: r.crew }; };
-const mastRebuild = (s) => mastRebuildCost(s.loadout || STOCK_LOADOUT);
 
 const REPAIRS = [
   { key: "hull", label: "HULL", sub: "planks and pitch, back to 80%", color: C.hull, whole: "Sound" },
@@ -967,77 +69,19 @@ const REPAIRS = [
 ];
 
 /**
- * What one repair would put back and what it would cost. Everything the rail needs to draw itself and
- * everything `repair()` needs to charge for, worked out in one place so the button cannot promise
- * something different from what the purchase does.
- *
- * `afford` is what her purse actually reaches. For the hull that can be part of the bill; for the
- * mast it is the whole price or nothing, because half a mast is not a thing.
- *
- * Both are quoted against their cap rather than against her full bar, so a captain is never charged
- * for work that cannot be done at sea. `label` is why a dead button is dead, and the two reasons are
- * different news: she has taken nothing worth mending, or what is left of the damage needs a yard.
+ * What each mode is called and how its card sells it: the menu's half of a mode, beside the menu,
+ * where the engine's half is its rules in `sim/modes.js`. `MODES` is the two put back together, for
+ * the screens that read both, the menu cards and the records.
  */
-function repairQuote(s, sys) {
-  if (sys === "hull") {
-    const points = Math.max(0, patchCap(s) - s.hull);
-    const cost = Math.ceil(points * HULL_RATE);
-    return {
-      points,
-      cost,
-      afford: Math.min(cost, Math.floor(s.coins)),
-      whole: points <= 0.001,
-      label: s.hull >= s.maxHull - 0.001 ? "Sound" : "Yard work",
-      part: true,
-    };
-  }
-  const cost = mastRebuild(s);
-  const points = Math.max(0, juryCap(s) - s.mast);
-  const whole = points <= 0.001;
-  return {
-    points,
-    cost,
-    afford: Math.floor(s.coins) >= cost ? cost : 0,
-    whole,
-    label: s.mast >= s.maxMast - 0.001 ? "Sound" : "Yard work",
-    part: false,
-  };
-}
-
-/**
- * A mode is a set of rules, not a name to compare against. Everything that used to ask "are we in
- * free-for-all?" now asks what it actually wants to know — are guns aboard, is every hull hostile to
- * every other, does anyone keep a placement — so each rule is stated once, here, where the modes can
- * be read side by side. Adding a mode is filling in a row rather than hunting down the checks that
- * would otherwise have to be taught about it.
- */
-const MODES = {
+const MODE_COPY = {
   wave: {
-    key: "wave",
     title: "WAVE ARENA",
     short: "wave",
     color: C.side,
     desc: "Endless survival. One hunter to start but their numbers grow. Each ship you sink brings more in from the horizon. Patch up between waves, out of what you have taken. Score by ships sunk.",
     unsailed: "No wave has come for you here yet.", // the log, where a mode has no voyages in it
-    rivals: ARENA_START, // hulls on the water at the drop, besides the player
-    guns: true, // cannons and muskets aboard
-    repairs: true, // the repair rail, paid for out of the voyage's own earnings
-    melee: false, // every hull hostile to every other, rather than only to the player
-    ranked: false, // placements, a leader, and the rank badge
-    lastAfloatWins: false,
-    reinforcements: true, // a sinking brings fresh hunters in from the horizon
-    reinforce: arenaReinforcements, // ...how many, by her nth sinking
-    fleetCap: ARENA_MAX_ENEMIES, // ...and how many may be on the water at once
-    hunter: (strength, kills) => arenaHunter(strength.overall, kills), // ...and which stock ship each is
-    ladder: false, // the round is won at the top of the stock fleet, one ship at a time
-    flees: false, // a beaten captain runs rather than fights on
-    storm: null, // the shape of her closing ring of foul weather, or nothing for open sea
-    timeCoins: 0, // coins a second afloat, on top of what her guns and bow earn
-    fullRound: 0, // ...and the span a winner is paid for whatever the clock said
-    winBonus: 0,
   },
   ladder: {
-    key: "ladder",
     title: "LADDER ARENA",
     short: "ladder",
     // The hull bar's amber, which the menu's dark grounds carry at better than 5 to 1; it sits
@@ -1045,100 +89,23 @@ const MODES = {
     color: C.hull,
     desc: "One ship at a time. Start with the weakest ships and work up through ranks. Sink one and the next sails in. Patch up between rungs, out of what you have taken. Score by rungs climbed.",
     unsailed: "You have not set foot on the ladder.",
-    rivals: ARENA_START,
-    guns: true,
-    repairs: true,
-    melee: false,
-    ranked: false,
-    lastAfloatWins: false,
-    reinforcements: true,
-    reinforce: () => 1, // one for one: the next rung sails in as the last goes under
-    fleetCap: 1,
-    hunter: (strength, kills) => ladderRung(kills), // the fleet in order, whatever she sails
-    ladder: true,
-    flees: false,
-    storm: null,
-    timeCoins: 0,
-    fullRound: 0,
-    // Sinking the whole fleet in one voyage is paid on top of the forty-odd bounties it took, and
-    // the achievement for it pays besides. Bigger than a free-for-all's purse because it is the
-    // longest round in the game and there is only one way to end it well.
-    winBonus: 200,
   },
   ffa: {
-    key: "ffa",
     title: "FREE-FOR-ALL",
     short: "free-for-all",
     color: C.mast,
     desc: "Last afloat wins. 10 other captains with each ship rivaling your own, hunting for weak prey and turning on whoever pulls ahead. Spend what you take on repairs, or keep it. A storm closes in that takes the crew of any ship caught.",
     unsailed: "You have not taken on the ten.",
-    rivals: FFA_AI,
-    guns: true,
-    repairs: true,
-    melee: true,
-    ranked: true,
-    lastAfloatWins: true,
-    reinforcements: false,
-    reinforce: null,
-    fleetCap: 0,
-    hunter: null,
-    ladder: false,
-    flees: true,
-    // Weather came late to this mode and it came for the same reason it came to the derby: three
-    // wounded captains keeping their distance is not a fight, and a hull that runs at a third of her
-    // health can run for a very long time on a sea two thousand paces across. Her ring is wider and
-    // slower than the derby's, so the gunnery half of the round happens in open water and only the
-    // end of it is fought where the weather says.
-    storm: FFA_WEATHER,
-    // Time afloat is NOT paid here. It was, a coin a second as in the derby, and a captain who sat
-    // in the middle of the ring and fired nothing was the last afloat at three minutes with 230
-    // coins for it, against a tenth of that for a round of fighting: the best wage in the game was
-    // for staying out of the game. Her guns pay her, by the point, and the weather is what makes
-    // sure a round ends; the derby keeps its purse because it has no guns to pay anybody with.
-    timeCoins: 0,
-    fullRound: 0,
-    // ...and a purse for outlasting ten rivals. Smaller than the derby's, because a free-for-all
-    // captain has been paid all round for the fighting that got her there and a derby captain has
-    // not: there are no guns in that mode, so the win is most of what it pays.
-    winBonus: 25,
   },
   derby: {
-    key: "derby",
     title: "DEMOLITION DERBY",
     short: "derby",
     color: C.crew,
     desc: "Only one hand needed. Last afloat wins. 10 captains with similar ships. No guns, no repairs. Sink ships by ramming. Drive into enemy sides, face charging ships. Time afloat is paid and a storm closes in that takes the crew of any ship caught.",
     unsailed: "Untried. Nothing in there but iron and weather.",
-    rivals: DERBY_AI,
-    guns: false,
-    repairs: false,
-    melee: true,
-    ranked: true,
-    lastAfloatWins: true,
-    reinforcements: false,
-    reinforce: null,
-    fleetCap: 0,
-    hunter: null,
-    ladder: false,
-    flees: false, // there is nowhere to run to, and the weather is coming anyway
-    storm: DERBY_WEATHER,
-    // Staying afloat is most of the work here, so it is paid by the second — and a winner is paid for
-    // a whole round however early she ended it. Settling the thing in forty seconds is worth the same
-    // purse as outlasting the weather for the full span, which is to say it is worth far more an hour:
-    // the time she saves is hers to spend on the next one. A round left alone runs
-    // the whole of DERBY_WEATHER, 168 seconds as it is tuned; the winner's is a set purse a shade
-    // above that, so a win comes to 250 whatever else she took.
-    timeCoins: 1,
-    fullRound: 175,
-    winBonus: 75,
   },
 };
-// Menu order, and the order the hold's per-mode bests are listed in. The two arenas sit last and
-// together: the wave arena is the hardest opening a new captain can pick, since the sea keeps
-// filling up behind every ship she sinks, and the ladder is the longest round in the game. The
-// first card is the one most players will take.
-const MODE_LIST = ["ffa", "derby", "wave", "ladder"];
-const modeOf = (m) => MODES[m] || MODES.wave;
+const MODES = Object.fromEntries(MODE_LIST.map((k) => [k, { ...RULES[k], ...MODE_COPY[k] }]));
 
 // What an achievement's tag can name: a mode, or the pair of arenas for the ones that count both.
 // A row in `achievements.js` says `mode: "arenas"` and the card reads it from here rather than
@@ -1146,112 +113,11 @@ const modeOf = (m) => MODES[m] || MODES.wave;
 // own colour, so the tag does not claim one of them; it carries the dark grounds at 6 to 1.
 const TAGS = { ...MODES, arenas: { short: "all arenas", color: C.sand } };
 
-function norm(a) {
-  while (a > Math.PI) a -= Math.PI * 2;
-  while (a < -Math.PI) a += Math.PI * 2;
-  return a;
-}
-const clamp = (v, a, b) => Math.min(Math.max(v, a), b);
 const fmtTime = (sec) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, "0")}`;
 // Grouped, because a lifetime tally runs to five figures and 41203 is a number nobody reads at a
 // glance. `fmtCoins` is the same thing under the name the purse uses.
 const fmtNum = (n) => Math.round(n || 0).toLocaleString();
 const fmtCoins = fmtNum;
-
-// A hull with way on her does not answer her rudder as she does at a crawl. The loss is weighted to
-// the top of the range: handling in and out of a fight is left where it was, and only a ship running
-// flat out finds she cannot turn inside her own wake. It keys off the way she actually carries rather
-// than the stick, so easing off the throttle hands the rudder back as she slows: coming round hard
-// means spending some of her way to do it, and a charge at full sail is a commitment.
-const BASE_SPEED = 94; // top speed of a whole ship, and the yardstick for a heavy rudder
-const RUDDER_HEAVY = 0.22; // rudder lost at that speed
-const RUDDER_CURVE = 2.2; // how late in the range it starts to bite
-
-/**
- * WHAT A SHIP CAN DO, which is now what she was built to do.
- *
- * Every one of these opened with a level she had bought in that track, then with a plain constant
- * once nothing bought levels any more. They took the ship rather than being constants throughout,
- * against the day the shipyard fed them, and this is that day: a ship carries a `rating` from
- * `rate()`, and these read it.
- *
- * Two things still vary at sea and both are damage. How much of her rig is standing, which is what
- * `mast` measures, and how badly she is holed, which thins her volleys. Nothing else about her moves
- * once she has sailed.
- *
- * The rudder goes heavy against HER OWN top speed rather than the fleet's fastest, or a slow hull
- * would never find the end of her range and a clipper would live in it.
- */
-const topSpeed = (s) => BASE_SPEED * s.rating.speed;
-const rudder = (s) => 1 - RUDDER_HEAVY * Math.pow(clamp(s.spdCur / topSpeed(s), 0, 1), RUDDER_CURVE);
-const speedCap = (s) => topSpeed(s) * (0.5 + 0.5 * (s.mast / s.maxMast));
-const turnCap = (s) => 2.4 * s.rating.turn * (0.22 + 0.78 * (s.mast / s.maxMast)) * rudder(s);
-// What one ball carries, which is one gun's worth: every gun aboard throws its own.
-const sideDmg = (s) => s.rating.broadside.perBall;
-const frontDmg = (s) => s.rating.bow.perBall;
-// One ball of the small-arms volley. A plain rail is the old flat 3.2; swivels aboard pull it up,
-// because a swivel ball outweighs a musket's, and better swivels pull harder.
-const musketDmg = (s) => s.rating.musketDamage;
-// The arc that volley scatters over. Quality iron on the rail tightens it; the AI's own aiming
-// error is added separately in `fire()` and must stay separate, or better swivels aboard the player
-// would quietly make every rival captain a better shot.
-const musketArc = (s) => s.rating.musketSpread;
-// An AI captain's own aim, in radians of error either side, added to whatever scatter her guns
-// carry of their own. Both are nought: a rival lays her guns as well as the player does. Every
-// mount used to carry 0.14 the player's never did, so the same battery threw a straight bank of
-// iron for the player and a ragged fan for a rival, and the one thing that made a rival's fire
-// worse was a rule nobody could see. Put a figure in either if rivals ever need handicapping.
-const AI_CANNON_AIM = 0;
-const AI_MUSKET_AIM = 0;
-/**
- * A ram is worth a quarter of the hull BEHIND it, so what she does with her bow scales with the ship
- * she is driving. A flat 26 was right when every hull afloat had a hundred points; against a first
- * rate's three thousand it would be a knock on the door, and the derby is decided by ramming alone.
- */
-const RAM_SHARE = 0.26;
-const ramDmg = (s) => RAM_SHARE * s.maxHull;
-// What a sinking pays her killer, as a share of the hull that went down. A quarter of a ship's
-// launch is the flat 25 the game paid when every hull afloat was worth a hundred points.
-const KILL_SHARE = 0.25;
-/** How long that mount takes to serve. A battery reloads at the pace of its slowest piece. */
-const reloadOf = (s, wk) => (wk === "musket" ? WP.musket.cd : s.rating[wk].reload || WP[wk].cd);
-/** Whether she has anything on that mount at all. A ship with no broadside must not fire one. */
-const canFire = (s, wk) => (wk === "musket" ? s.rating.muskets > 0 : s.rating[wk].count > 0);
-
-/**
- * Carry out one repair and charge her purse for it.
- *
- * The hull takes as much of the bill as she can pay and rises by that share of the work, and the work
- * on offer ends at `patchCap`: a full bill bought outright leaves her at four fifths and no further.
- * The mast is all or nothing and goes to `juryCap` in one step, which hands her back nearly all her
- * sail in the same instant, because `speedCap` and `turnCap` both read how much of her rig is
- * standing.
- *
- * `repaired` is banked apart from `coins` because the two answer different questions at the end of a
- * round: what she has left, and what she spent staying afloat. Only the second comes off her
- * earnings.
- */
-function repair(s, sys) {
-  const q = repairQuote(s, sys);
-  if (q.whole || q.afford <= 0) return 0;
-  const before = s[sys];
-  if (sys === "hull") {
-    s.hull = Math.min(patchCap(s), s.hull + q.points * (q.afford / q.cost));
-  } else {
-    s.mast = juryCap(s);
-    // A rig re-stepped is a rig again. Without this a mast shot away stayed away however much canvas
-    // she bent on, and the one repair worth buying most was the one that did nothing. A jury mast is
-    // still a mast, so it clears the flag as a proper one did: what she is short is the last tenth of
-    // her rig, not her rig.
-    s.mastDown = false;
-  }
-  s.coins -= q.afford;
-  s.repaired += q.afford;
-  s.patches += 1;
-  // the points the work put back, the twin of `dmgDealt` on the other side of the ledger
-  s.healed += Math.max(0, s[sys] - before);
-  return q.afford;
-}
 
 export default function App() {
   const canvasRef = useRef(null);
@@ -1644,7 +510,7 @@ export default function App() {
     function rivalLoadout(rules, strength, step, hull) {
       const key = rules.guns ? "overall" : "ram";
       const rungs = ladder();
-      if (rules.hunter) return rules.hunter(strength, step).loadout;
+      if (rules.hunter) return hunterOf(rules, strength, step).loadout;
       if (rules.guns) {
         const band = hull.id === STARTER.hull ? stockOfHull(hull.id) : stockOfRate(rateOf(hull).rung);
         if (band.length) return band[Math.floor(Math.random() * band.length)].loadout;
@@ -1828,7 +694,7 @@ export default function App() {
       if (g.rules.lastAfloatWins && g.ships.filter((s) => s.alive).length === 1) endWin("You are the last hull afloat.");
       // the ladder is climbed when there is no rung left to send, which the same rule the spawner
       // reads says by sending nothing
-      if (g.rules.ladder && !g.rules.hunter(g.playerStrength, g.sunk)) {
+      if (g.rules.ladder && !hunterOf(g.rules, g.playerStrength, g.sunk)) {
         endWin("Every ship in the fleet is on the bottom, from the plain gundalow to the fully found first rate.");
       }
     }
@@ -1873,7 +739,7 @@ export default function App() {
       pushText(s.x, s.y, s._deathBar === "storm" ? "LOST" : "SUNK");
       if (g.rules.reinforcements) {
         g.sunk += 1;
-        g.spawnQueue = Math.min(g.spawnQueue + g.rules.reinforce(g.sunk), g.rules.fleetCap);
+        g.spawnQueue = Math.min(g.spawnQueue + reinforcementsOf(g.rules, g.sunk), g.rules.fleetCap);
         g.spawnT = 0; // lead ship of the wave sails in at once, the next one waits out the gap
       }
       g.hudDirty = true;
@@ -2662,7 +1528,7 @@ export default function App() {
       const g = gameRef.current;
       if (!g.rules.reinforcements) return;
       // nothing left to send: the ladder is climbed, and `judge` ends the round on this frame
-      if (!g.rules.hunter(g.playerStrength, g.sunk)) return;
+      if (!hunterOf(g.rules, g.playerStrength, g.sunk)) return;
       g.spawnT -= dt;
       const enemies = g.ships.filter((s) => !s.isPlayer).length;
       if (enemies === 0 && g.spawnQueue <= 0) g.spawnQueue = 1; // never leave the sea empty

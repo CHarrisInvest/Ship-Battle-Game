@@ -8,10 +8,10 @@
  * fight is fair, whether the AI is any good, or whether a screen looks right. Screenshots and the
  * text of every screen are written to a folder for a person to look at, and the folder is printed.
  *
- * It builds the bundle with a root base path into a temporary folder, serves it with vite preview,
- * tours the menu, the yard, the outfitter, the shop and the records, then plays every mode twice in
- * parallel, once with no input and once with the stick held and every fire button down, until the
- * end screen. About four minutes. Needs `playwright-core` (a dev dependency) and a Chromium:
+ * It checks the engine's purity (`npm run purity`), builds the bundle with a root base path into a
+ * temporary folder, serves it with vite preview, tours the menu, the yard, the outfitter, the shop
+ * and the records, then plays every mode twice in parallel, once with no input and once with the
+ * stick held and every fire button down, until the end screen. About four minutes. Needs `playwright-core` (a dev dependency) and a Chromium:
  * `npx playwright install chromium` fetches one, or point SMOKE_CHROME at an executable.
  */
 
@@ -44,6 +44,11 @@ function run(cmd, args, opts = {}) {
     p.on("exit", (code) => (code === 0 ? resolve(text) : reject(new Error(`${cmd} ${args.join(" ")} exited ${code}\n${text}`))));
   });
 }
+
+// The engine's purity first: it is a second, and a build that would ship an engine reaching for the
+// page or an unseeded random number is not worth four minutes of play to find out about.
+try { console.log((await run("node", ["tools/purity.mjs"])).trim()); }
+catch (e) { fail(`purity: ${e.message.split("\n").slice(1).join(" ").trim()}`); }
 
 // Built and served from the root, which is the default base now that the site has its own domain,
 // but pinned here all the same: the preview reads `vite.config.js` too, and a `BASE_PATH` left in

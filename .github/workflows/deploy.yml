@@ -25,6 +25,8 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      # the engine imports nothing it must not and never reads the page, the clock or Math.random
+      - run: npm run purity
       - run: npm run build
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
