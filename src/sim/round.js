@@ -45,32 +45,41 @@ export function voyageStats(world, playerId) {
 /**
  * THE ROUND ENDS ONCE, HERE, at the end of the step. Hits and the weather only mark ships dead;
  * nothing inside a hit handler ends the round, because a step is not over when a hull goes
- * under. A rival's ball already in the air can still find the player after her last rival sank,
+ * under. A rival's ball already in the air can still find a captain after her last rival sank,
  * and the storm can take the last two crews on one tick, and each of those used to raise both
  * ends at once: a win banked, then a sinking painted over it. So the step plays out and one
- * question is asked of what it left. A sinking outranks a win: if she is not afloat she was not
- * the last afloat, whatever else went down beside her.
+ * question is asked of what it left.
+ *
+ * Every captain who went under on this step is placed now, at the number of ships still afloat
+ * plus one, so two who go down together share a place, and she is told at once by `player_out`
+ * while the rest fight on. The round is over when no captain is left afloat, or when the last
+ * ship afloat (or the top of the ladder) says the ones who are have won. A sinking outranks a
+ * win: a captain not afloat was not the last afloat, whatever else went down beside her. With one
+ * captain aboard this is the rule the game always had: her sinking ends it.
  */
 export function judge(world) {
   if (world.result.over) return;
   const humans = world.ships.filter(isHuman);
   const standing = world.ships.filter((s) => s.alive).length;
-  const sunk = humans.filter((s) => !s.alive);
-  let winners = [], losers = [];
-  if (sunk.length) {
-    // a round has one human in it, so her sinking is the end of it; a world with several would
-    // have to say whose round goes on
-    const together = world.rules.lastAfloatWins && standing === 0;
-    losers = sunk.map((s) => ({ playerId: s.playerId, rank: world.rules.ranked ? standing + 1 : 0, cause: together ? "together" : s._deathBar || "hull" }));
-  } else if (
+  const together = world.rules.lastAfloatWins && standing === 0;
+  for (const s of humans) {
+    if (s.alive || s.placed) continue;
+    s.placed = true;
+    const out = { playerId: s.playerId, rank: world.rules.ranked ? standing + 1 : 0, cause: together ? "together" : s._deathBar || "hull" };
+    world.out.push(out);
+    world.events.push({ type: "player_out", ...out });
+  }
+  const afloat = humans.filter((s) => s.alive);
+  let winners = [];
+  if (afloat.length && (
     (world.rules.lastAfloatWins && standing === 1) ||
     // the ladder is climbed when there is no rung left to send, which the same rule the spawner
     // reads says by sending nothing
     (world.rules.ladder && !hunterOf(world.rules, world.playerStrength, world.sunk))
-  ) {
-    winners = humans.map((s) => ({ playerId: s.playerId, rank: world.rules.ranked ? 1 : 0 }));
-  } else return;
-  world.result = { over: true, winners, losers, field: world.fieldSize };
+  )) {
+    winners = afloat.map((s) => ({ playerId: s.playerId, rank: world.rules.ranked ? 1 : 0 }));
+  } else if (afloat.length) return;
+  world.result = { over: true, winners, losers: world.out.map((o) => ({ ...o })), field: world.fieldSize };
   world.events.push({ type: "round_over", result: world.result });
 }
 

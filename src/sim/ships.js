@@ -77,7 +77,7 @@ export function makeShip(world, x, y, heading, opts) {
     controller: opts.playerId ? "human" : "ai", playerId: opts.playerId || null,
     loadout, rating, strength,
     hullA: sea.L / 2, hullB: sea.W / 2,
-    coins: 0, earned: 0, repaired: 0, patches: 0, rank: 0, kills: 0, dmgDealt: 0, rams: 0, exposure: 0,
+    coins: 0, earned: 0, repaired: 0, patches: 0, rank: 0, placed: false, kills: 0, dmgDealt: 0, rams: 0, exposure: 0,
     // What the record wants to know beyond the count of sinkings: how each one was done, and
     // what the carpenter gave back. `sunkBy` is keyed by the cause `applyHit` is told.
     dismasted: 0, healed: 0, sunkBy: { ram: 0, broadside: 0, musket: 0 }, rammedWhole: 0, wornDown: 0,

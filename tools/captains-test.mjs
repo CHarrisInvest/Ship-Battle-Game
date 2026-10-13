@@ -13,7 +13,7 @@
  *   a round with several captains does not end, or a voyage does not add up.
  */
 
-import { createWorld, step, voyageStats, shipOf, isHuman, HUMAN_SPAWN_GAP } from "../src/sim/index.js";
+import { createWorld, step, voyageStats, shipOf, isHuman, applyHit, HUMAN_SPAWN_GAP } from "../src/sim/index.js";
 import { STARTER, resolve, ladder } from "../src/shipyard.js";
 
 const LIMIT = 3600;
@@ -88,6 +88,7 @@ function rounds() {
       if (!a.world.result.over) { fail(`${tag}: no end after ${LIMIT} s`); continue; }
       ok(`${tag}: over at ${a.world.time.toFixed(1)} s`);
       try { structuredClone(a.world); } catch (e) { fail(`${tag}: the world is not plain data (${e.message})`); }
+      standings(tag, a);
       for (const id of a.ids) {
         const v = voyageStats(a.world, id);
         if (v.total !== v.coins + v.timePay + v.winPay) fail(`${tag}: ${id}'s voyage does not add up`);
@@ -100,9 +101,67 @@ function rounds() {
   }
 }
 
+/** Put a captain under at once, as if the last ball had just landed, with nobody credited. */
+const sink = (world, id) => { const s = shipOf(world, id); applyHit(world, s, "hull", s.hull + 1, null, "broadside"); };
+
+function placing() {
+  // one captain out while two others fight on: the round goes on, and she is placed at once
+  {
+    const world = createWorld({ mode: "ffa", seed: 21, players: captains(3), rivals: 2 });
+    sink(world, "p1");
+    const events = step(world, {});
+    const out = events.filter((e) => e.type === "player_out");
+    if (world.result.over) fail("placing: one captain sinking ended a round with two still afloat");
+    else if (out.length !== 1 || out[0].playerId !== "p1" || out[0].rank !== 5) fail(`placing: wanted p1 out in 5th, got ${JSON.stringify(out)}`);
+    else ok("placing: one captain out, 5th of 5, and the round goes on");
+    const again = step(world, {});
+    if (again.some((e) => e.type === "player_out")) fail("placing: a captain was placed twice");
+  }
+  // two captains under on one step, and the last ship afloat an AI: they share 2nd and nobody wins
+  {
+    const world = createWorld({ mode: "ffa", seed: 22, players: captains(2), rivals: 1 });
+    sink(world, "p1");
+    sink(world, "p2");
+    const events = step(world, {});
+    const out = events.filter((e) => e.type === "player_out");
+    const r = world.result;
+    if (!r.over) fail("placing: every captain under and the round goes on");
+    else if (out.length !== 2 || out.some((e) => e.rank !== 2)) fail(`placing: wanted both out in 2nd, got ${JSON.stringify(out)}`);
+    else if (r.winners.length !== 0 || r.losers.length !== 2) fail(`placing: wanted no winners and two losers, got ${JSON.stringify(r)}`);
+    else ok("placing: two under on one step share 2nd, and an AI afloat alone ends it");
+    if (events.filter((e) => e.type === "round_over").length !== 1) fail("placing: the end was not said once");
+  }
+  // the last captain afloat, with every rival gone, wins at 1st
+  {
+    const world = createWorld({ mode: "ffa", seed: 23, players: captains(2), rivals: 0 });
+    sink(world, "p2");
+    step(world, {});
+    const r = world.result;
+    if (!r.over || r.winners.length !== 1 || r.winners[0].playerId !== "p1" || r.winners[0].rank !== 1) fail(`placing: wanted p1 to win, got ${JSON.stringify(r)}`);
+    else if (r.losers.length !== 1 || r.losers[0].playerId !== "p2" || r.losers[0].rank !== 2) fail(`placing: wanted p2 2nd, got ${JSON.stringify(r.losers)}`);
+    else ok("placing: the last captain afloat wins, the other is 2nd");
+  }
+}
+
+/** Over a whole round: every captain placed exactly once, in range, and later sinkings never placed lower. */
+function standings(tag, a) {
+  const r = a.world.result;
+  const placed = [...r.winners, ...r.losers].map((x) => x.playerId).sort();
+  if (JSON.stringify(placed) !== JSON.stringify([...a.ids].sort())) fail(`${tag}: placed ${placed.join(",")}, aboard ${a.ids.join(",")}`);
+  const ranks = [...r.winners, ...r.losers].map((x) => x.rank);
+  if (ranks.some((k) => k < 1 || k > r.field)) fail(`${tag}: a rank out of 1..${r.field}: ${ranks.join(",")}`);
+  const outs = a.events.filter((e) => e.type === "player_out");
+  if (outs.length !== r.losers.length) fail(`${tag}: ${outs.length} player_out events for ${r.losers.length} losers`);
+  for (let i = 1; i < outs.length; i++) if (outs[i].rank > outs[i - 1].rank) fail(`${tag}: ${outs[i].playerId} sank later and was placed lower`);
+  const standing = a.world.ships.filter((s) => s.alive).length;
+  if (r.winners.length && standing !== 1) fail(`${tag}: won with ${standing} ships still afloat`);
+  for (const w of r.winners) if (!shipOf(a.world, w.playerId).alive) fail(`${tag}: ${w.playerId} won from the bottom`);
+}
+
 const t0 = Date.now();
 spawns();
 aiCount();
+placing();
 rounds();
 console.log(`\n${((Date.now() - t0) / 1000).toFixed(1)} s`);
 if (failures.length) {
