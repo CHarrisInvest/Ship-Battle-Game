@@ -1,7 +1,7 @@
 import React, { Fragment, useRef, useState, useEffect, useCallback, useMemo } from "react";
 import { drawGalleon } from "./galleon.js";
 import {
-  getHold, subscribeHold, modeRecord, shipLoadout, shortfall, connect, holdStatus, subscribeStatus, hadLocalSave, adoptHold,
+  getHold, subscribeHold, modeRecord, shipLoadout, shortfall, connect, holdStatus, subscribeStatus, hadLocalSave, adoptHold, holdSettled,
   buyShip, buyPart, fitMast, fitSail, fitStud, fitGun, unfitGun, setActiveShip, spareParts, ownedShips, partOf,
   shipName, nameShip, fitOwned, ownedFill, NAME_LIMIT, readiness, sellPart, refundOf,
 } from "./hold.js";
@@ -151,9 +151,11 @@ const VOYAGE_REFUSED = {
 };
 const LINK_NOTE = {
   loading: "Loading your progress from the server.",
+  blocked: "Your browser is blocking this site's cookies, so your progress cannot be kept. Allow cookies for this site to play.",
   offline: "The server cannot be reached. Your progress is safe, and the shop and voyages open again as soon as it answers.",
 };
-const MOVED_NOTE = "Your progress now saves to the server. Progress kept in this browser before today could not come with it.";
+const MOVED_NOTE = "Your progress now saves to the server. Progress saved in this browser earlier could not be moved.";
+const SAVING_NOTE = "Saving your changes to the server first.";
 
 export default function App() {
   const canvasRef = useRef(null);
@@ -442,7 +444,7 @@ export default function App() {
         setBounty(0);
         const rec = recorder;
         recorder = null;
-        rec.finish(g.tick).then((out) => {
+        pendingFinish = rec.finish(g.tick).then((out) => {
           if (gameRef.current !== g) return; // she has sailed again since
           if (out.ok) {
             adoptHold(out.data);
@@ -468,10 +470,19 @@ export default function App() {
     // its replay will build the world from, and a recorder for the controls she sails it with.
     let recorder = null;
     let starting = false;
+    let pendingFinish = Promise.resolve(); // the last voyage's finish, which a new one waits for
     async function start(m) {
       if (starting) return;
       starting = true;
       setNotice("");
+      // her last voyage is banked before the next begins (starting one abandons any still open), and
+      // the shop's changes reach the server first, so she sails the ship her screen shows
+      await pendingFinish;
+      if (!holdSettled()) {
+        setNotice(SAVING_NOTE);
+        for (let i = 0; i < 300 && !holdSettled(); i++) await new Promise((r) => setTimeout(r, 100));
+        setNotice("");
+      }
       const s = await startVoyage(m);
       starting = false;
       if (!s.ok) {
@@ -649,7 +660,7 @@ export default function App() {
       {phase === "start" && (
         <StartOverlay
           onStart={(m) => startRef.current(m)}
-          note={notice || LINK_NOTE[link] || ""}
+          note={[notice, LINK_NOTE[link]].filter(Boolean).join(" ")}
           onEdit={(id) => { setYardShip(id || null); setPhase("yard"); }}
           onOutfit={(id) => { setYardShip(id || null); setOutfitStart(null); setPhase("outfitter"); }}
           onRecords={() => setPhase("records")}

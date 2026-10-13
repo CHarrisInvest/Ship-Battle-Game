@@ -31,7 +31,9 @@ export function createRecorder({ send, finish, pieceTicks = PIECE_TICKS, retryMs
   async function deliver(call) {
     for (;;) {
       const r = await call();
-      if (r.status === 0 || r.status === 429 || r.status >= 500) { await wait(retryMs); continue; }
+      // the network, the server busy, or a finish of this voyage still being counted: ask again
+      const busy = r.status === 409 && r.data && r.data.error === "busy";
+      if (r.status === 0 || r.status === 429 || r.status >= 500 || busy) { await wait(retryMs); continue; }
       if (r.status === 200) return r;
       refused = refused || r;
       return null;

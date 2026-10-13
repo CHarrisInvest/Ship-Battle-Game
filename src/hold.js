@@ -33,7 +33,7 @@ let confirmed = blank(); // the record as the server last said it is
 let version = 0;
 let queue = []; // shop actions applied here and not yet answered, oldest first
 let shown = confirmed; // `confirmed` with `queue` applied: what the screens see
-let status = "loading"; // "loading" | "ready" | "offline"
+let status = "loading"; // "loading" | "ready" | "offline" | "blocked" (the browser refuses the cookie)
 let hadOldSave = false;
 const listeners = new Set();
 const statusListeners = new Set();
@@ -66,8 +66,15 @@ export function connect() {
   forgetOldSave();
   connecting = (async () => {
     for (;;) {
-      if (status !== "ready") setStatus(status === "offline" ? "offline" : "loading");
-      if (await ensureSession()) {
+      if (status !== "ready") setStatus(status === "offline" || status === "blocked" ? status : "loading");
+      const session = await ensureSession();
+      if (session === "blocked") {
+        // her browser will not keep the cookie: another try would only make another account
+        setStatus("blocked");
+        await wait(60000);
+        continue;
+      }
+      if (session) {
         const r = await call("GET", "/hold");
         if (r.status === 200) {
           confirmed = r.data.hold;
@@ -129,14 +136,16 @@ async function send() {
     const q = queue[0];
     const r = await call("POST", "/hold/actions", { action: q.name, args: q.args, version });
     if (r.status === 200 || r.status === 422 || r.status === 409) {
-      confirmed = r.data.hold;
-      version = r.data.version;
+      // an answer older than the record already here (a voyage banked meanwhile) is not taken
+      if (r.data.version >= version) { confirmed = r.data.hold; version = r.data.version; }
       // 409: another tab moved the record on; the action is tried again on the record it sent back.
       // 200 and 422: done, applied or refused, and the record is the server's either way.
       if (r.status !== 409) queue.shift();
       publish();
     } else if (r.status === 401) {
-      if (!(await ensureSession())) { setStatus("offline"); await wait(RETRY_MS); }
+      const session = await ensureSession();
+      if (session !== true) setStatus(session === "blocked" ? "blocked" : "offline");
+      await wait(RETRY_MS);
     } else if (r.status === 0 || r.status === 429 || r.status >= 500) {
       setStatus("offline");
       await wait(RETRY_MS);

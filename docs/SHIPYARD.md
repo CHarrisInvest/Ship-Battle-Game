@@ -22,7 +22,7 @@ are cheap to change and are deliberately left rough.
 | `src/shipyard.js` | The catalogue and the maths. Hulls, masts, sails, guns as data; what fits what; what a set of them rates. No state, no storage, no imports. |
 | `src/shipref.js` | GENERATED. What each class was: her dimensions, her shape, her timber, her era. `hullform.js` reads it and nothing else does. |
 | `src/hullform.js` | Each class's hull, modelled from her reference row: the menu's 3-D model and the hull at sea, size, collision, stern type and timber included. The galleon's numbers are the authored anchor. |
-| `src/holdrules.js` | What a captain owns, and the rules for changing it. The yard sits in the same record as the coins, so a purchase moves both in one write. `src/hold.js` keeps the record in the browser. |
+| `src/holdrules.js` | What a captain owns, and the rules for changing it. The yard sits in the same record as the coins, so a purchase moves both in one write. The server keeps the record; `src/hold.js` is the browser's copy of it. |
 | `src/galleon.js` | Draws a rig rather than *the* rig. Given a spec it builds the ship; given nothing it builds the galleon it always drew. |
 | `src/SternchaseIso.jsx` | The menu ship plate, the yard, the Boat Commission and the Rigging Outfitter, plus the repair rail that replaced the upgrade rail. |
 | `data/hulls.tsv`, `data/masts.tsv`, `data/sails.tsv`, `data/guns.tsv` | The tables a person edits. One row per class, per mast type, per sail and per gun. |

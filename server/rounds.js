@@ -149,6 +149,11 @@ export async function startRound(client, userId, body, { engine, now }) {
 export async function addInputs(client, userId, id, body, { now }) {
   if (!body || typeof body !== "object") throw new HttpError(400, "shape");
   const { round, closed } = await lockRound(client, userId, id);
+  // a piece already taken, sent again because its answer was lost: answered, and not taken twice
+  const e = body.entries;
+  if (Array.isArray(e) && e.length && Array.isArray(e[e.length - 1]) && Number.isInteger(e[e.length - 1][0]) && e[e.length - 1][0] < round.next_tick) {
+    return { status: 200, body: { nextTick: round.next_tick } };
+  }
   const bad = checkPiece(body.entries, round.next_tick);
   if (bad) return bad;
   if (closed) return { status: 409, body: { error: "closed" } };
@@ -179,7 +184,12 @@ export async function finishRound(pool, userId, id, body, { engine, now, replays
     const { rows } = await pool.query("select * from rounds where id = $1 and user_id = $2", [id, userId]);
     if (!rows.length) throw new HttpError(404, "no such round");
     const round = rows[0];
-    if (round.finished_at || round.abandoned_at) return { status: 409, body: { error: "closed" } };
+    // banked already, and asked again because the answer was lost: told what it banked, once more
+    if (round.finished_at) {
+      const cur = (await pool.query("select data, version from holds where user_id = $1", [userId])).rows[0];
+      return { status: 200, body: { hold: cur.data, version: cur.version, banked: round.banked, bounty: round.bounty || 0, rungs: [], result: round.result, again: true } };
+    }
+    if (round.abandoned_at) return { status: 409, body: { error: "closed" } };
     if (round.engine !== engine) return { status: 409, body: { error: "engine", engine } };
     const bad = checkPiece(entries, round.next_tick);
     if (bad) return bad;
@@ -210,8 +220,8 @@ export async function finishRound(pool, userId, id, body, { engine, now, replays
       const banked = bank(cur.hold, out.run);
       const version = cur.version + 1;
       await writeHold(client, userId, banked.rec, version, now);
-      await client.query("update rounds set finished_at = $2, ticks = $3, result = $4, banked = $5 where id = $1",
-        [id, new Date(now()), ticks, JSON.stringify(out.result), banked.banked]);
+      await client.query("update rounds set finished_at = $2, ticks = $3, result = $4, banked = $5, bounty = $6 where id = $1",
+        [id, new Date(now()), ticks, JSON.stringify(out.result), banked.banked, banked.bounty]);
       return { status: 200, body: { hold: banked.rec, version, banked: banked.banked, bounty: banked.bounty, rungs: banked.rungs, result: out.result } };
     });
   } finally {

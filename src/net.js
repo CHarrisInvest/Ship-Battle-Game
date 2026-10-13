@@ -40,12 +40,16 @@ export async function call(method, path, body) {
 
 /**
  * A session, made if there is none: the captain is a guest until she says otherwise, and her guest
- * account is what keeps her hold. True once there is one, false if the server could not be reached.
+ * account is what keeps her hold. `true` once there is one, `false` if the server could not be
+ * reached, and `"blocked"` if a guest account was made but the browser would not keep its cookie,
+ * in which case asking again would only make another account that it would not keep either.
  */
 export async function ensureSession() {
   const s = await call("GET", "/auth/get-session");
   if (s.status === 200 && s.data && s.data.user) return true;
   if (s.status === 0 || s.status >= 500) return false;
   const r = await call("POST", "/auth/sign-in/anonymous", {});
-  return r.status === 200;
+  if (r.status !== 200) return false;
+  const kept = await call("GET", "/auth/get-session");
+  return kept.status === 200 && kept.data && kept.data.user ? true : "blocked";
 }

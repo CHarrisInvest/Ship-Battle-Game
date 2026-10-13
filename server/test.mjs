@@ -214,7 +214,8 @@ try {
       && json(done.data.hold) === json(want.rec) && done.data.version === before.version + 1,
       `the server banks what its own replay says (${done.data && done.data.banked} coins, ${done.data && done.data.bounty} in bounties)`);
     const again = await c("POST", `/rounds/${start.roundId}/finish`, { ticks: voyage.ticks, entries: [] });
-    check(again.status === 409, "a round is finished once");
+    check(again.status === 200 && again.data.again && again.data.version === done.data.version && again.data.banked === done.data.banked,
+      "a round is banked once: asked again, it is told what it banked, and nothing more is banked");
     const d = await guest();
     const theirs = await d("POST", `/rounds/${start.roundId}/inputs`, { entries: [] });
     check(theirs.status === 404, "nobody else can feed a captain's round");
@@ -265,6 +266,23 @@ try {
     const out = await finished;
     check(out.status === 200 && polls > 3 && worst < took / 2,
       `the server answers during a replay (${voyage.ticks} ticks took ${took} ms; /health at worst ${worst} ms over ${polls} calls)`);
+  }
+
+  // ---- a lost answer is safe to ask again ---------------------------------------------------------------
+
+  {
+    const r = await guest();
+    const start = await begin(r, "ffa");
+    const voyage = sail(start, idle);
+    const piece = voyage.entries.slice(0, 1);
+    sailedTo(start.startedAt, voyage.ticks);
+    const first = await r("POST", `/rounds/${start.roundId}/inputs`, { entries: piece });
+    const again = await r("POST", `/rounds/${start.roundId}/inputs`, { entries: piece });
+    check(first.status === 200 && again.status === 200, "a piece sent twice (its answer lost) is taken once and answered twice");
+    const done = await r("POST", `/rounds/${start.roundId}/finish`, { ticks: voyage.ticks, entries: voyage.entries.slice(1) });
+    const retry = await r("POST", `/rounds/${start.roundId}/finish`, { ticks: voyage.ticks, entries: voyage.entries.slice(1) });
+    check(done.status === 200 && retry.status === 200 && retry.data.banked === done.data.banked && retry.data.version === done.data.version,
+      "a finish sent again after it banked (its answer lost) is told what was banked, and nothing is banked twice");
   }
 
   // ---- what one captain must not be able to do to the others -----------------------------------------
