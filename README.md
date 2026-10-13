@@ -52,6 +52,11 @@ Import the repository in Vercel and leave the project settings at their defaults
 names the framework (Vite), the install and build commands and the `dist` output, so nothing needs
 entering by hand. The production branch is `main`; every other branch gets a preview deployment.
 
+- **Checks.** The build command runs `npm run purity` and `npm run sim-test` before `npm run build`,
+  so an engine that reaches for the page, or a round that no longer plays to its end, stops the
+  deploy, and a pull request's preview fails rather than going up. Both scripts come with the
+  engine's move into `src/sim/`; on a branch that does not have them yet, `--if-present` skips them
+  and the build goes ahead.
 - **Domain.** Add `sternchase.org` (and `www.sternchase.org`, redirecting to it) under Settings →
   Domains and point the DNS records Vercel asks for at it. Only the apex is the canonical address;
   `index.html`, `robots.txt` and `sitemap.xml` all name it.
