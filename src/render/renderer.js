@@ -676,6 +676,17 @@ export function createRenderer(canvas) {
         ctx.fillText("#" + s.rank, bxL - 4, byT + 8);
         ctx.textAlign = "left";
       }
+      // a friend's ship carries her name over her bars, so she is told apart from the AI at a glance
+      const name = s.playerId && fx.names && fx.names[s.playerId];
+      if (name) {
+        ctx.font = `700 11px ${UI}`;
+        ctx.textAlign = "center";
+        ctx.fillStyle = "rgba(0,0,0,0.55)";
+        ctx.fillText(name, gx + 1, byT - 5);
+        ctx.fillStyle = C.gold;
+        ctx.fillText(name, gx, byT - 6);
+        ctx.textAlign = "left";
+      }
       const rows = [[s.hull / s.maxHull, C.hull], [s.mast / s.maxMast, C.mast], [s.crew / s.maxCrew, C.crew]];
       rows.forEach((r, i) => {
         const yy = byT + i * 4;

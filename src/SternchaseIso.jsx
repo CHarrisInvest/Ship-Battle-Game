@@ -599,6 +599,7 @@ export default function App() {
       gameRef.current = round.world;
       meRef.current = round.you;
       fx = createFx(shipOf(round.world, round.you).id);
+      fx.names = round.names; // her friends' ship names, drawn over their ships
       recorder = null;
       renderer.follow(shipOf(round.world, round.you));
       liveRef.current = true;
@@ -3494,9 +3495,9 @@ function LobbyScreen({ net, note, onMake, onJoin, onRivals, onStart, onLeave, on
             ))}
           </Slab>
           <Slab title="AI ships">
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+            <div>
               <div style={small}>{host ? "How many AI ships sail besides you and your friends." : "The host chooses how many AI ships sail."}</div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 14, marginTop: 8 }}>
                 {host && <StartButton ghost label="Fewer" onClick={() => onRivals(Math.max(0, shown - 1))} />}
                 <span style={{ fontSize: 18, fontWeight: 800, color: C.gold, minWidth: 24, textAlign: "center" }}>{shown}</span>
                 {host && <StartButton ghost label="More" onClick={() => onRivals(Math.min(most, shown + 1))} />}
