@@ -15,7 +15,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { chromium } from "playwright-core";
+import { chromium, webkit } from "playwright-core";
 import { testDatabase } from "../server/testdb.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -23,7 +23,9 @@ const out = mkdtempSync(join(tmpdir(), "sternchase-online-"));
 const dist = join(out, "dist");
 const PORT = Number(process.env.SMOKE_PORT || 4181);
 const SERVER_PORT = Number(process.env.SMOKE_SERVER_PORT || 8798);
-const SITE = `http://127.0.0.1:${PORT}`;
+// SMOKE_SITE plays against a deployed game instead, e.g. https://sternchase.vercel.app, starting nothing
+const LIVE = process.env.SMOKE_SITE || null;
+const SITE = LIVE || `http://127.0.0.1:${PORT}`;
 const failures = [];
 const fail = (what) => { failures.push(what); console.log("  FAIL  " + what); };
 const ok = (what) => console.log("  ok    " + what);
@@ -38,8 +40,8 @@ const run = (cmd, args, opts = {}) => new Promise((resolve, reject) => {
 });
 const waitUp = async (url) => { for (let i = 0; i < 60; i++) { try { if ((await fetch(url)).ok) return true; } catch { /* not yet */ } await new Promise((r) => setTimeout(r, 500)); } return false; };
 
-const db = await testDatabase();
-const game = spawn("node", ["server/index.js"], {
+const db = LIVE ? { stop: async () => {} } : await testDatabase();
+const game = LIVE ? null : spawn("node", ["server/index.js"], {
   cwd: root, stdio: ["ignore", "inherit", "inherit"], detached: true,
   env: {
     ...process.env, DATABASE_URL: db.url, PORT: String(SERVER_PORT), API_PREFIX: "/api",
@@ -50,15 +52,19 @@ const game = spawn("node", ["server/index.js"], {
 const env = { ...process.env, BASE_PATH: "/", API_TARGET: `http://127.0.0.1:${SERVER_PORT}` };
 let preview = null, browser = null;
 try {
-  if (!(await waitUp(`http://127.0.0.1:${SERVER_PORT}/health`))) throw new Error("the game server did not start");
-  await run("npx", ["vite", "build", "--outDir", dist], { env });
-  preview = spawn("npx", ["vite", "preview", "--outDir", dist, "--port", String(PORT), "--strictPort", "--host", "127.0.0.1"], { cwd: root, stdio: "ignore", env, detached: true });
-  if (!(await waitUp(SITE + "/"))) throw new Error("the preview did not start");
-  say("serving", SITE, "with the game server on", SERVER_PORT);
+  if (!LIVE) {
+    if (!(await waitUp(`http://127.0.0.1:${SERVER_PORT}/health`))) throw new Error("the game server did not start");
+    await run("npx", ["vite", "build", "--outDir", dist], { env });
+    preview = spawn("npx", ["vite", "preview", "--outDir", dist, "--port", String(PORT), "--strictPort", "--host", "127.0.0.1"], { cwd: root, stdio: "ignore", env, detached: true });
+    if (!(await waitUp(SITE + "/"))) throw new Error("the preview did not start");
+    say("serving", SITE, "with the game server on", SERVER_PORT);
+  } else say("playing against", SITE);
 
   browser = await chromium.launch({ executablePath: process.env.SMOKE_CHROME || undefined, headless: true, args: ["--no-sandbox"] });
+  // the friend in Safari's engine when asked (SMOKE_FRIEND=webkit), since friends are as likely on an iPhone
+  const friendBrowser = process.env.SMOKE_FRIEND === "webkit" ? await webkit.launch({ headless: true }) : browser;
   async function open(tag, path = "/") {
-    const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
+    const ctx = await (tag === "friend" ? friendBrowser : browser).newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
     await ctx.addInitScript(() => {
       window.__tcfapi = (cmd, v, cb) => { if (cmd === "addEventListener") cb({ gdprApplies: false, eventStatus: "tcloaded" }, true); };
       if (!localStorage.getItem("sternchase.consent")) localStorage.setItem("sternchase.consent", JSON.stringify({ status: "rejected", analytics: false, advertising: false, functionality: true }));
@@ -101,13 +107,26 @@ try {
   await snap(friend, "02-sea");
 
   // the friend drives hard; the host sits; both wait for their end screens
-  const cdp = await friend.context().newCDPSession(friend);
+  const chromiumFriend = process.env.SMOKE_FRIEND !== "webkit";
+  const cdp = chromiumFriend ? await friend.context().newCDPSession(friend) : null;
   const joy = await friend.locator("div[style*='touch-action: none'][style*='border-radius: 50%']").first().boundingBox();
   const ended = (t) => /Back to the lobby/.test(t);
   const t0 = Date.now();
   let hostEnd = false, friendEnd = false;
   while (!(hostEnd && friendEnd) && Date.now() - t0 < 360000) {
-    if (!friendEnd && joy) {
+    if (!friendEnd && joy && !chromiumFriend) {
+      // Safari's engine: the stick held and swung with the mouse, which the pad reads as a pointer,
+      // and the side guns fired between holds
+      try {
+        await friend.mouse.move(joy.x + joy.width / 2, joy.y + joy.height / 2);
+        await friend.mouse.down();
+        await friend.mouse.move(joy.x + joy.width / 2 + 30, joy.y + joy.height / 2 - 30, { steps: 4 });
+        await friend.waitForTimeout(2000);
+        await friend.mouse.up();
+        const side = friend.locator("button", { hasText: /^SIDE/ }).first();
+        if (await side.count()) await side.click({ timeout: 500 });
+      } catch { /* the screen moved on */ }
+    } else if (!friendEnd && joy) {
       try {
         await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: joy.x + joy.width / 2, y: joy.y + joy.height / 2, id: 1 }] });
         await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: joy.x + joy.width / 2 + 30, y: joy.y + joy.height / 2 - 30, id: 1 }] });
