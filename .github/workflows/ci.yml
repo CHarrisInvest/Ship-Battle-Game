@@ -60,3 +60,4 @@ jobs:
       - run: npm ci
       - run: npm run server-test
       - run: npm run client-test
+      - run: npm run online-test

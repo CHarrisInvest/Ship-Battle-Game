@@ -44,6 +44,18 @@ export function voyageStats(world, playerId) {
 }
 
 /**
+ * A fingerprint of the ships: where each is, which way she heads, how fast, and her three bars. A
+ * round stepped by two engines from the same seed and the same inputs prints the same, so an online
+ * browser compares its own against the server's every few seconds to know it is still in step.
+ */
+export function shipsPrint(world) {
+  let h = 0x811c9dc5;
+  const text = JSON.stringify(world.ships.map((s) => [s.id, s.x, s.y, s.heading, s.spdCur, s.hull, s.mast, s.crew, s.alive]));
+  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 0x01000193) >>> 0;
+  return h;
+}
+
+/**
  * What a finished voyage banks: the summary `bank` in `holdrules.js` takes, read off the world as
  * the end screen always read it. One statement of it, because the browser banks it today and the
  * server will bank it off its own replay, and two hand-built copies would drift.

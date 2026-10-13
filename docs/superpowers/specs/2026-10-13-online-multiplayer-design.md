@@ -18,7 +18,7 @@ browser or a Node server can run it unchanged, and this note covers the stages a
 | Which ship a captain sails | Her own, from her hold, as she has fitted her. The server trusts the loadout the browser sends. A rating cap or server accounts can come later. |
 | Coins earned online | Banked into her hold the same way a single-player voyage is. |
 | When she sinks | She sees her placement ("4th of 8"), may watch the rest of the round, and may leave for the lobby at any time. |
-| How the games stay in step | The server runs the round. Each browser predicts its own ship so the helm answers at once, and draws everyone else a little in the past, smoothed. |
+| How the games stay in step | The server runs the round on its own clock and sends each tick's controls; every browser steps the same world through them. (Built this way instead of snapshots and prediction: see "What was built".) |
 
 ### Why the server runs the round
 
@@ -43,6 +43,22 @@ second), so a faster tick cannot remove it. Prediction can: the browser moves it
 moment the wheel turns, and quietly corrects to the server when the server's word arrives. The
 engine is well suited to it because the same `step` already runs in the browser and controls
 already travel as one input record per tick, which is exactly what prediction replays.
+
+## What was built
+
+The design below chose snapshots and prediction because lockstep "needs every device to compute
+bit-identical floating point", which was not true then. It was made true before online play was
+built: `src/exact.js` and `npm run determinism` hold Node, Chromium, WebKit and Firefox to the same
+bits on every round. So the server runs the round on its own clock, as chosen, and sends each tick's
+controls rather than its world, and every browser steps the same world through them. The slowest
+player holds nobody back, because the server never waits for anyone: a captain's latest controls are
+what she sails with on each tick. A browser draws a round with everything single player has, for a
+few bytes a tick, and the server's ships are fingerprinted every two seconds so a browser that ever
+parted company could tell. The cost against prediction is that her helm answers a round trip late
+(about 0.1 s), which the frame loop smooths; prediction can be added on top later, since the browser
+already has the world it would predict in. Lobbies, invite links, the lobby screen and banking each
+captain off the server's world are built (`server/online.js`, `src/online.js`). Public lobbies
+(Stage E) are not.
 
 ## The stages
 

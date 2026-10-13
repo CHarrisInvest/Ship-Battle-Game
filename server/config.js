@@ -15,6 +15,9 @@
  *                        server cannot be reached around the proxy, and the visitor's address is
  *                        read from the proxy's `x-client-ip` rather than from the connection.
  *   GUESTS_PER_MINUTE    optional: how many guest accounts one address may make a minute (10).
+ *   PUBLIC_WS_URL        the address browsers open the online socket on, e.g.
+ *                        wss://server-production-08778.up.railway.app/ws. The socket goes straight
+ *                        to the server (Vercel's proxy cannot carry one), authenticated by ticket.
  *   PORT                 Railway sets it.
  */
 export function configFromEnv(env = process.env) {
@@ -31,6 +34,7 @@ export function configFromEnv(env = process.env) {
     prefix: env.API_PREFIX || "",
     proxySecret: env.PROXY_SECRET || null,
     guestsPerMinute: Number(env.GUESTS_PER_MINUTE) || 10,
+    publicWs: env.PUBLIC_WS_URL || null,
     port: Number(env.PORT) || 8787,
   };
 }

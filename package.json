@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "catalogue": "node tools/catalogue.mjs",
     "smoke": "node tools/smoke.mjs",
+    "online-smoke": "node tools/online-smoke.mjs",
     "purity": "node tools/purity.mjs",
     "sim-test": "node tools/sim-test.mjs && node tools/captains-test.mjs",
     "exact-test": "node tools/exact-test.mjs",
@@ -16,6 +17,7 @@
     "server": "node server/index.js",
     "server-test": "node server/test.mjs",
     "client-test": "node server/client-test.mjs",
+    "online-test": "node server/online-test.mjs",
     "determinism": "node tools/determinism.mjs",
     "inputlog": "node tools/inputlog.mjs",
     "icon": "node tools/icon.mjs",
@@ -28,7 +30,8 @@
     "better-auth": "^1.7.7",
     "pg": "^8.23.1",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "ws": "^8.22.0"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.4",
