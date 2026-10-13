@@ -203,10 +203,13 @@ Addition, subtraction, multiplication, division and `Math.sqrt` are exact in eve
 `Math.sin`, `cos`, `atan2`, `pow`, `hypot`, `exp`, `log` and `asin` are not, and the engine calls
 all of them. So:
 
-- `src/sim/math.js` gains its own versions of those eight, built from exact operations only (a
-  port of the fdlibm routines V8 already uses, so Node's results do not move).
-- `npm run purity` refuses those `Math` functions anywhere under `src/sim/`, and in any function of
-  `shipyard.js` or `hullform.js` the engine reaches. The ones the renderer uses are untouched.
+- `src/exact.js`, a new module that imports nothing, has its own versions of those eight, built
+  from exact operations only: ports of fdlibm, within 1 unit in the last place of the built-ins.
+  Current V8 no longer uses fdlibm for all of them, so Node's own results move in the last bit for
+  under 1% of calls; nothing depends on matching it.
+- `npm run purity` refuses those `Math` functions, and `**`, anywhere under `src/sim/` and in
+  `shipyard.js` and `hullform.js` whole, which the engine imports. The ones the renderer uses are
+  untouched.
 - `npm run determinism`, a new test, plays the `sim-test` rounds in Node and, through the
   `playwright-core` already installed, in WebKit, Chromium and Firefox, and fails unless every final
   world matches Node's bit for bit. It runs in CI beside `sim-test`.

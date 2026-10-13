@@ -9,6 +9,7 @@ import { WORLD, ARENA_SPAWN_CLEAR, ARENA_SPAWN_GAP, STORM_R0, HUMAN_SPAWN_GAP } 
 import { hunterOf, modeOf } from "./modes.js";
 import { isHuman, humanRange, makeShip } from "./ships.js";
 import { computeMeta } from "./round.js";
+import * as exact from "../exact.js";
 
 /**
  * A FRESH ROUND: the sea, its islands, each captain's ship and the rivals her mode opens with.
@@ -94,7 +95,7 @@ export function farPos(world, minFromPlayer) {
     const d = humanRange(world, x, y);
     if (d < minFromPlayer) ok = false;
     let aground = false;
-    if (world.islands) for (const isl of world.islands) if (Math.hypot(x - isl.x, y - isl.y) < isl.r + 55) { aground = true; ok = false; break; }
+    if (world.islands) for (const isl of world.islands) if (exact.hypot(x - isl.x, y - isl.y) < isl.r + 55) { aground = true; ok = false; break; }
     if (!aground && d > bestD) { bestD = d; best = { x, y }; }
     tries++;
   } while (!ok && tries < 40);
@@ -111,7 +112,7 @@ export function spawnPos(world, gap) {
   for (let t = 0; t < 80; t++) {
     const x = 180 + random(world) * (WORLD - 360);
     const y = 180 + random(world) * (WORLD - 360);
-    if (world.islands.some((isl) => Math.hypot(x - isl.x, y - isl.y) < isl.r + 55)) continue;
+    if (world.islands.some((isl) => exact.hypot(x - isl.x, y - isl.y) < isl.r + 55)) continue;
     const d = humanRange(world, x, y);
     if (d >= gap) return { x, y };
     if (d > bestD) { bestD = d; best = { x, y }; }
@@ -148,8 +149,8 @@ export function genIslands(world) {
     const r = 58 + random(world) * 66;
     const x = r + 90 + random(world) * (WORLD - 2 * (r + 90));
     const y = r + 90 + random(world) * (WORLD - 2 * (r + 90));
-    if (Math.hypot(x - WORLD / 2, y - WORLD / 2) < clear) continue;
-    if (isl.some((o) => Math.hypot(x - o.x, y - o.y) < r + o.r + 170)) continue;
+    if (exact.hypot(x - WORLD / 2, y - WORLD / 2) < clear) continue;
+    if (isl.some((o) => exact.hypot(x - o.x, y - o.y) < r + o.r + 170)) continue;
     const n = 12;
     const verts = [];
     for (let k = 0; k < n; k++) verts.push(0.78 + random(world) * 0.3);
@@ -170,7 +171,7 @@ export function edgePos(world, minFromPlayer) {
     const x = side === 0 ? u : side === 1 ? u : side === 2 ? inset : WORLD - inset;
     const y = side === 0 ? inset : side === 1 ? WORLD - inset : u;
     let blocked = false;
-    if (world.islands) for (const isl of world.islands) if (Math.hypot(x - isl.x, y - isl.y) < isl.r + 55) { blocked = true; break; }
+    if (world.islands) for (const isl of world.islands) if (exact.hypot(x - isl.x, y - isl.y) < isl.r + 55) { blocked = true; break; }
     if (blocked) continue;
     const d = humanRange(world, x, y);
     if (d >= minFromPlayer) return { x, y };
@@ -182,7 +183,7 @@ export function edgePos(world, minFromPlayer) {
 export function spawnArenaEnemy(world) {
   const p = edgePos(world, ARENA_SPAWN_CLEAR);
   // bow pointed inland so a fresh hunter sails into the fight, not into the boundary
-  const heading = Math.atan2(WORLD / 2 - p.y, WORLD / 2 - p.x) + (random(world) - 0.5) * 0.8;
+  const heading = exact.atan2(WORLD / 2 - p.y, WORLD / 2 - p.x) + (random(world) - 0.5) * 0.8;
   // Every hull she has put under moves the next one out of the horizon up its mode's ladder.
   return makeShip(world, p.x, p.y, heading, {
     livery: world.ships.length,

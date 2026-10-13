@@ -7,6 +7,7 @@
 import { clamp, norm } from "./math.js";
 import { STORM_R0, STORM_R2, WORLD } from "./tables.js";
 import { killShip } from "./round.js";
+import * as exact from "../exact.js";
 
 // The weather takes this share of her FULL crew a second, every second she is out in it, whatever
 // class she is and however many hands she has left: ten seconds of exposure is the ship, for a
@@ -49,7 +50,7 @@ export const stormPhase = (t, w) => {
 
 /** Whether she is out in the weather: afloat, in a mode that has some, and outside the ring. */
 export const outInWeather = (world, s) =>
-  !!world.rules.storm && s.alive && Math.hypot(s.x - WORLD / 2, s.y - WORLD / 2) > world.stormR;
+  !!world.rules.storm && s.alive && exact.hypot(s.x - WORLD / 2, s.y - WORLD / 2) > world.stormR;
 
 /**
  * The weather bends whatever a captain meant to do, whichever mode she is sailing in.
@@ -66,13 +67,13 @@ export const outInWeather = (world, s) =>
  */
 export function weatherCourse(world, s, desired, throttle) {
   if (!world.rules.storm) return { desired, throttle };
-  const dc = Math.hypot(s.x - WORLD / 2, s.y - WORLD / 2);
+  const dc = exact.hypot(s.x - WORLD / 2, s.y - WORLD / 2);
   const out = dc > world.stormR;
   const lean = out
     ? clamp(0.55 + 0.45 * (s.exposure / STORM_RAMP), 0, 1)
     : STORM_PULL * clamp((dc / Math.max(1, world.stormR) - STORM_HOME) / (1 - STORM_HOME), 0, 1);
   if (lean <= 0.01) return { desired, throttle };
-  const toMid = Math.atan2(WORLD / 2 - s.y, WORLD / 2 - s.x);
+  const toMid = exact.atan2(WORLD / 2 - s.y, WORLD / 2 - s.x);
   return {
     desired: desired + norm(toMid - desired) * lean, // swing part of the way onto the course home
     throttle: out ? Math.max(throttle, 0.9) : throttle,
@@ -91,7 +92,7 @@ export function stepStorm(world, dt) {
   for (let i = world.ships.length - 1; i >= 0; i--) {
     const s = world.ships[i];
     if (!s.alive) continue;
-    const out = Math.hypot(s.x - cx, s.y - cy) > world.stormR;
+    const out = exact.hypot(s.x - cx, s.y - cy) > world.stormR;
     if (!out) { s.exposure = Math.max(0, s.exposure - dt * STORM_RECOVER); continue; }
     s.exposure = Math.min(STORM_RAMP, s.exposure + dt);
     // a share of her full complement, not of what is left, so the last hands go as fast as the first

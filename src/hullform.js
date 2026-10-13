@@ -30,6 +30,7 @@
  */
 
 import { HULL_REF } from "./shipref.js";
+import * as exact from "./exact.js";
 
 /* ---- the galleon's authored hull, the anchor everything else is derived against ---------------- */
 
@@ -160,7 +161,7 @@ const SPECIES = {
 function timberOf(ref) {
   const s = SPECIES[ref.species] || SPECIES.Oak;
   // denser timber reads a little darker; oak at 1 stays the identity
-  const bright = s.bright * Math.pow(1 / (ref.timber || 1), 0.35);
+  const bright = s.bright * exact.pow(1 / (ref.timber || 1), 0.35);
   return { bright, r: s.r, g: s.g, b: s.b };
 }
 
@@ -362,7 +363,7 @@ function portsOf(ref, { Lh, ST, aft, fore }) {
 
   // Tier by tier, the calibre falls off going up. `size` is what each tier's port is of the lowest.
   const tiers = bat.decks.length;
-  const size = bat.decks.map((_, i) => Math.pow(PORT.taper, i));
+  const size = bat.decks.map((_, i) => exact.pow(PORT.taper, i));
 
   /* WILL THEY FIT? The tiers are stacked from the sill up: the lowest port's edge stands `sill`
      clear of the water, each tier above it `pad` times the two half-depths higher, and the topmost
@@ -412,9 +413,9 @@ GALLEON_MENU.ports = portsOf(G, {
 });
 
 function menuForm(ref) {
-  const lf = Math.pow(ref.lod / G.lod, MENU_POW); // length scale
-  const wf = Math.pow(ref.beam / G.beam, MENU_POW); // beam scale
-  const k = Math.pow(lf, 0.75); // fittings, sheer sweep, castle heights: with the size, but gently
+  const lf = exact.pow(ref.lod / G.lod, MENU_POW); // length scale
+  const wf = exact.pow(ref.beam / G.beam, MENU_POW); // beam scale
+  const k = exact.pow(lf, 0.75); // fittings, sheer sweep, castle heights: with the size, but gently
   const Lh = 60 * lf;
   const maxW = 18.9 * wf;
   const zMid = Math.max(2.8, ref.freeboard * 0.923); // depth of side amidships, feet to model units
@@ -473,7 +474,7 @@ function menuForm(ref) {
 
   // Mast geometry: the galleon's stations scaled into this hull. Heights go with the hull and with
   // her own rig height; yards go with the beam; everything up the pole keeps its proportions.
-  const zf = Math.pow(lf, 0.85) * ((ref.mastHeight || 1) / G.mastH);
+  const zf = exact.pow(lf, 0.85) * ((ref.mastHeight || 1) / G.mastH);
   const rf = Math.sqrt(zf);
   const geom = {};
   for (const [name, g0] of Object.entries(GALLEON_GEOM)) {
@@ -513,8 +514,8 @@ function menuForm(ref) {
 const SEA_POW = 0.62;
 
 function seaForm(ref, menu) {
-  const L = clamp(36 * Math.pow(ref.lod / G.lod, SEA_POW), 16, 52);
-  const W = clamp(13 * Math.pow(ref.beam / G.beam, SEA_POW), 5.5, 20);
+  const L = clamp(36 * exact.pow(ref.lod / G.lod, SEA_POW), 16, 52);
+  const W = clamp(13 * exact.pow(ref.beam / G.beam, SEA_POW), 5.5, 20);
 
   // Outline points, bow first, clockwise down the starboard side: a fine entry pulls the shoulders
   // aft, and the stern is the type the reference names. A transom cuts flat; a round or pear tuck
@@ -542,14 +543,14 @@ function seaForm(ref, menu) {
       ? { fx: -0.3 * L, bx: -0.47 * L, hw: 0.42 * W, h: 2.2 * ref.castle }
       : null;
 
-  const sizeF = Math.pow(L / 36, 0.9);
+  const sizeF = exact.pow(L / 36, 0.9);
   const masts = { fore: 0.306 * L, main: 0.028 * L, mizzen: -0.25 * L, bonaventure: -0.39 * L };
   const tops = { fore: 30, main: 36, mizzen: 26, bonaventure: 20 };
   for (const kName of Object.keys(tops)) tops[kName] = Math.max(9, tops[kName] * sizeF * ((ref.mastHeight || 1) / G.mastH));
   const wBase = { fore: 14, main: 18, mizzen: 13, bonaventure: 10 };
-  for (const kName of Object.keys(wBase)) wBase[kName] = Math.max(4, wBase[kName] * Math.pow(W / 13, 0.9));
+  for (const kName of Object.keys(wBase)) wBase[kName] = Math.max(4, wBase[kName] * exact.pow(W / 13, 0.9));
 
-  const deckH = clamp(4 * Math.pow(W / 13, 0.5), 2.4, 5.2);
+  const deckH = clamp(4 * exact.pow(W / 13, 0.5), 2.4, 5.2);
   return { L, W, outline, castle, masts, tops, wBase, deckH };
 }
 

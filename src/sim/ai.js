@@ -11,6 +11,7 @@ import { canFire, fire, reloadOf } from "./weapons.js";
 import { BAULK_GRACE } from "./ram.js";
 import { canHit } from "./round.js";
 import { weatherCourse } from "./storm.js";
+import * as exact from "../exact.js";
 
 // How an AI captain sails round an island. She keeps this much water between her beach and the
 // point `moveShip` grounds her at, looks this far ahead for one plus what she will cover in
@@ -73,15 +74,15 @@ export function avoidIslands(world, s, desired) {
   let isl = null, id = 1e9, iTo = 0, iRel = 0;
   for (const o of world.islands) {
     const dx = o.x - s.x, dy = o.y - s.y;
-    const d = Math.hypot(dx, dy);
+    const d = exact.hypot(dx, dy);
     const R = o.r + clear;
     if (d - R > look) continue; // beyond where she looks
-    const toI = Math.atan2(dy, dx);
+    const toI = exact.atan2(dy, dx);
     const rel = norm(toI - desired);
     // Clear of her if the course points off the island, or passes her wider than R at its
     // nearest. A ship inside R is only clear on a course that already leans off the shore.
     const off = Math.abs(rel) > Math.PI / 2 + (d > R ? 0 : ISLAND_LEAN);
-    if (off || (d > R && Math.abs(Math.sin(rel)) * d > R)) continue;
+    if (off || (d > R && Math.abs(exact.sin(rel)) * d > R)) continue;
     if (d < id) { isl = o; id = d; iTo = toI; iRel = rel; }
   }
   if (!isl) { s.avoidIsl = null; return desired; }
@@ -89,14 +90,14 @@ export function avoidIslands(world, s, desired) {
   if (s.avoidIsl !== isl) { s.avoidIsl = isl; s.avoidSide = iRel > 0 ? -1 : 1; }
   const side = s.avoidSide;
   if (id <= R) return iTo + side * (Math.PI / 2 + ISLAND_LEAN); // along the shore, leaning off it
-  return iTo + side * Math.asin(Math.min(1, R / id)); // the tangent
+  return iTo + side * exact.asin(Math.min(1, R / id)); // the tangent
 }
 
 export function pickTarget(world, s) {
   if (!world.rules.melee) {
     // one quarry, whoever is sailing against the fleet: the nearest of them afloat
     let near = null;
-    for (const c of world.ships) if (isHuman(c) && c.alive && (!near || Math.hypot(c.x - s.x, c.y - s.y) < Math.hypot(near.x - s.x, near.y - s.y))) near = c;
+    for (const c of world.ships) if (isHuman(c) && c.alive && (!near || exact.hypot(c.x - s.x, c.y - s.y) < exact.hypot(near.x - s.x, near.y - s.y))) near = c;
     return near;
   }
   const leaderSnow = world.leader && world.leader !== s && world.leader.earned > world.avgEarned * 1.6 && world.aliveCount > 2;
@@ -108,7 +109,7 @@ export function pickTarget(world, s) {
   let best = null, bestScore = -1e9, nearest = null, nd = 1e9;
   for (const c of world.ships) {
     if (c === s || !c.alive) continue;
-    const dist = Math.hypot(c.x - s.x, c.y - s.y);
+    const dist = exact.hypot(c.x - s.x, c.y - s.y);
     if (dist < nd) { nd = dist; nearest = c; }
     if (dist > 1500) continue;
     let score = -dist * distW;
@@ -121,7 +122,7 @@ export function pickTarget(world, s) {
     // sea, and went when every hull became the same hull; the fleet varies again, off the
     // shipyard, so it is back off the loadouts. It weighs prey only: nobody runs from a stronger
     // ship on account of it, since a captain who fled every heavier hull would never fight.
-    if (s.strength > 0 && c.strength > 0) score += PREY_STRENGTH * shop * clamp(Math.log(s.strength / c.strength), -1, 1);
+    if (s.strength > 0 && c.strength > 0) score += PREY_STRENGTH * shop * clamp(exact.log(s.strength / c.strength), -1, 1);
     const hpR = Math.min(c.hull / c.maxHull, c.crew / c.maxCrew);
     if (hpR < 0.5) score += (0.5 - hpR) * 120 * shop;
     if (score > bestScore) { bestScore = score; best = c; }
@@ -153,8 +154,8 @@ export function linedUp(world, s, weapon, primary) {
   let bystander = null;
   for (const c of world.ships) {
     if (!canHit(world, s, c)) continue;
-    const d = Math.hypot(c.x - s.x, c.y - s.y);
-    const ab = Math.abs(norm(Math.atan2(c.y - s.y, c.x - s.x) - s.heading));
+    const d = exact.hypot(c.x - s.x, c.y - s.y);
+    const ab = Math.abs(norm(exact.atan2(c.y - s.y, c.x - s.x) - s.heading));
     if (!arc(d, ab)) continue;
     if (c === primary) return { ship: c, primary: true };
     if (!bystander || d < bystander.d) bystander = { ship: c, primary: false, d };
@@ -174,17 +175,17 @@ export function pickRamTarget(world, s, shyOf) {
   let best = null, bestScore = -1e9;
   for (const c of world.ships) {
     if (c === s || !c.alive) continue;
-    const toC = Math.atan2(c.y - s.y, c.x - s.x);
-    const dist = Math.hypot(c.x - s.x, c.y - s.y);
-    const aspect = Math.abs(Math.sin(c.heading - toC)); // 1 when her beam is square to us
+    const toC = exact.atan2(c.y - s.y, c.x - s.x);
+    const dist = exact.hypot(c.x - s.x, c.y - s.y);
+    const aspect = Math.abs(exact.sin(c.heading - toC)); // 1 when her beam is square to us
     const facing = Math.abs(norm(toC + Math.PI - c.heading)); // 0 when her bow is on us
     // ...and whether we are gaining on her at all. Every hull holds the same top speed in a mode
     // with no gunnery to bring a mast down, so a stern chase is one nobody ever
     // wins: without this a captain will happily follow a fleeing rival across the whole sea while
     // the beam of a ship crossing her bow goes begging.
     const closing =
-      (Math.cos(s.heading) * s.spdCur - Math.cos(c.heading) * c.spdCur) * Math.cos(toC) +
-      (Math.sin(s.heading) * s.spdCur - Math.sin(c.heading) * c.spdCur) * Math.sin(toC);
+      (exact.cos(s.heading) * s.spdCur - exact.cos(c.heading) * c.spdCur) * exact.cos(toC) +
+      (exact.sin(s.heading) * s.spdCur - exact.sin(c.heading) * c.spdCur) * exact.sin(toC);
     let score = -dist * 0.06 + aspect * 46 + facing * 8 + (1 - c.hull / c.maxHull) * 55 + clamp(closing, -70, 70) * 0.55;
     if (isHuman(c)) score += 8; // captains would rather have the notorious hull
     // the hull she has just spent a while jammed against is the one she is least likely to get
@@ -198,9 +199,9 @@ export function pickRamTarget(world, s, shyOf) {
 
 // Steer for where she will be by the time we get there, not where she is now.
 export function ramIntercept(s, t) {
-  const dist = Math.hypot(t.x - s.x, t.y - s.y);
+  const dist = exact.hypot(t.x - s.x, t.y - s.y);
   const lead = clamp(dist / Math.max(40, speedCap(s)), 0, 2.4);
-  return Math.atan2(t.y + Math.sin(t.heading) * t.spdCur * lead - s.y, t.x + Math.cos(t.heading) * t.spdCur * lead - s.x);
+  return exact.atan2(t.y + exact.sin(t.heading) * t.spdCur * lead - s.y, t.x + exact.cos(t.heading) * t.spdCur * lead - s.x);
 }
 
 // Anyone bow-on to us, close, and carrying way is about to ram. Nearest one wins our attention.
@@ -208,10 +209,10 @@ export function incomingRam(world, s) {
   let threat = null, td = 1e9;
   for (const c of world.ships) {
     if (c === s || !c.alive) continue;
-    const dist = Math.hypot(c.x - s.x, c.y - s.y);
+    const dist = exact.hypot(c.x - s.x, c.y - s.y);
     if (dist > 250 || dist > td) continue;
     if (c.spdCur < 46) continue;
-    if (Math.abs(norm(Math.atan2(s.y - c.y, s.x - c.x) - c.heading)) > 0.42) continue;
+    if (Math.abs(norm(exact.atan2(s.y - c.y, s.x - c.x) - c.heading)) > 0.42) continue;
     threat = c; td = dist;
   }
   return threat;
@@ -224,11 +225,11 @@ export function clearWater(world, s) {
   for (const c of world.ships) {
     if (c === s || !c.alive) continue;
     const dx = c.x - s.x, dy = c.y - s.y;
-    const d = Math.hypot(dx, dy);
+    const d = exact.hypot(dx, dy);
     if (d > SHEER_LOOK || d < 1) continue;
     cx += dx / d; cy += dy / d; n++;
   }
-  const away = n > 0 ? Math.atan2(-cy, -cx) : s.heading + (random(world) < 0.5 ? 1 : -1) * SHEER_ANGLE;
+  const away = n > 0 ? exact.atan2(-cy, -cx) : s.heading + (random(world) < 0.5 ? 1 : -1) * SHEER_ANGLE;
   return away + (random(world) - 0.5) * 0.7;
 }
 
@@ -241,7 +242,7 @@ export function stepRamAI(world, s, dt) {
   }
   const tgt = s.target;
   const threat = incomingRam(world, s);
-  const facing = threat && Math.hypot(threat.x - s.x, threat.y - s.y) < 150 + s.nerve * 90 ? threat : null;
+  const facing = threat && exact.hypot(threat.x - s.x, threat.y - s.y) < 150 + s.nerve * 90 ? threat : null;
   const engaged = facing || tgt; // the hull this is about, whether she picked it or it picked her
   let desired, throttle = 1;
   s.sheerT = Math.max(0, s.sheerT - dt);
@@ -250,10 +251,10 @@ export function stepRamAI(world, s, dt) {
   // she is chasing and the one charging her alike. It used to run only inside the chase, so the
   // one case that never resolves itself — a pair locked bow to bow — was the one case never timed.
   if (engaged) {
-    const toE = Math.atan2(engaged.y - s.y, engaged.x - s.x);
+    const toE = exact.atan2(engaged.y - s.y, engaged.x - s.x);
     const closing =
-      (Math.cos(s.heading) * s.spdCur - Math.cos(engaged.heading) * engaged.spdCur) * Math.cos(toE) +
-      (Math.sin(s.heading) * s.spdCur - Math.sin(engaged.heading) * engaged.spdCur) * Math.sin(toE);
+      (exact.cos(s.heading) * s.spdCur - exact.cos(engaged.heading) * engaged.spdCur) * exact.cos(toE) +
+      (exact.sin(s.heading) * s.spdCur - exact.sin(engaged.heading) * engaged.spdCur) * exact.sin(toE);
     s.baffled = closing > 18 ? Math.max(0, s.baffled - dt * 2) : s.baffled + dt;
   } else s.baffled = Math.max(0, s.baffled - dt);
 
@@ -280,7 +281,7 @@ export function stepRamAI(world, s, dt) {
     throttle = SHEER_THROTTLE;
   } else if (facing) {
     // meet her bow to bow rather than let her have the beam — a glance both of us share
-    desired = Math.atan2(facing.y - s.y, facing.x - s.x);
+    desired = exact.atan2(facing.y - s.y, facing.x - s.x);
   } else if (!tgt) {
     s.wanderT -= dt;
     if (s.wanderT <= 0) { s.wander += (random(world) - 0.5) * 1.2; s.wanderT = 1.5 + random(world); }
@@ -288,7 +289,7 @@ export function stepRamAI(world, s, dt) {
     throttle = 0.5;
   } else if (s.baffled > patience(STALL_PATIENCE)) {
     // a chase she is not winning: come round inside her instead of following her wake
-    desired = Math.atan2(tgt.y - s.y, tgt.x - s.x); // straight at her, not at where she is going
+    desired = exact.atan2(tgt.y - s.y, tgt.x - s.x); // straight at her, not at where she is going
     throttle = STALL_THROTTLE;
     if (s.baffled > patience(STALL_PATIENCE + STALL_CUT)) s.baffled = 0; // then have another go
   } else {
@@ -323,14 +324,14 @@ export function stepAI(world, s, dt) {
   if (!tgt) {
     s.wanderT -= dt;
     if (s.wanderT <= 0) { s.wander += (random(world) - 0.5) * 1.2; s.wanderT = 1.5 + random(world); }
-    const idle = weatherCourse(world, s, nearWall ? Math.atan2(WORLD / 2 - s.y, WORLD / 2 - s.x) : s.wander, 0.4);
+    const idle = weatherCourse(world, s, nearWall ? exact.atan2(WORLD / 2 - s.y, WORLD / 2 - s.x) : s.wander, 0.4);
     moveShip(world, s, dt, avoidIslands(world, s, idle.desired), idle.throttle);
     return;
   }
 
   const dx = tgt.x - s.x, dy = tgt.y - s.y;
-  const dist = Math.hypot(dx, dy);
-  const toT = Math.atan2(dy, dx);
+  const dist = exact.hypot(dx, dy);
+  const toT = exact.atan2(dy, dx);
   const bearing = norm(toT - s.heading);
   const hpR = Math.min(s.hull / s.maxHull, s.crew / s.maxCrew);
   // She used to run from a ship carrying more levels than her as well as from her own wounds.
@@ -339,8 +340,8 @@ export function stepAI(world, s, dt) {
   const fleeing = world.rules.flees && hpR < 0.34;
 
   if (fleeing) {
-    let away = Math.atan2(s.y - tgt.y, s.x - tgt.x);
-    if (nearWall) away = Math.atan2(WORLD / 2 - s.y, WORLD / 2 - s.x);
+    let away = exact.atan2(s.y - tgt.y, s.x - tgt.x);
+    if (nearWall) away = exact.atan2(WORLD / 2 - s.y, WORLD / 2 - s.x);
     // ...and the weather has a say in where "away" is. A wounded captain running from the ship
     // that wounded her is exactly who sails out of the ring and dies of the sea, so the run home
     // is bent back the same way everyone else's course is.
@@ -355,7 +356,7 @@ export function stepAI(world, s, dt) {
   }
 
   let desired, throttle;
-  if (nearWall && dist > 260) { desired = Math.atan2(WORLD / 2 - s.y, WORLD / 2 - s.x); throttle = 0.7; }
+  if (nearWall && dist > 260) { desired = exact.atan2(WORLD / 2 - s.y, WORLD / 2 - s.x); throttle = 0.7; }
   else if (dist > 900) {
     s.wanderT -= dt;
     if (s.wanderT <= 0) { s.wander = toT + (random(world) - 0.5) * 0.8; s.wanderT = 1.2 + random(world); }

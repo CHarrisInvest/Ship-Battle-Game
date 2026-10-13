@@ -86,9 +86,16 @@ The same seed and the same inputs give the same round, on a phone, a laptop or a
 
 Nothing under `src/sim/` imports React, the renderer, the menus, the hold, analytics, ads or consent,
 or anything from npm, and nothing there mentions `window`, `document`, `localStorage`, a canvas,
-`Math.random`, `Date.now` or `performance`. `npm run purity` enforces it, and holds the three
-catalogue modules the engine imports to the same rules. It runs first in the smoke test and in the
-deploy, before the build.
+`Math.random`, `Date.now` or `performance`. It may import the three catalogue modules and
+`exact.js`. `npm run purity` enforces it, and holds those four to the same rules. It runs first in
+the smoke test and in the deploy, before the build.
+
+Nor does the engine, or a catalogue module it imports, call `Math.sin`, `cos`, `atan2`, `asin`,
+`exp`, `log`, `pow`, `hypot` or any other `Math` function JavaScript lets each engine round its own
+way, or use `**`. `src/exact.js` has them built from `+ - * /`, `%` and `Math.sqrt`, which IEEE 754
+fixes, so a round steps to the same bits in every browser and in Node. That is what lets the server
+replay a voyage from its seed and its inputs. The renderer keeps the built-in `Math`: nothing it draws
+is read back.
 
 `hullform.js` is on the allowed list as well as `shipyard.js` and `shipref.js`: a ship's length and
 beam are her collision ellipse, and they live with her art there. It imports only `shipref.js` and
@@ -96,6 +103,10 @@ touches nothing of the page.
 
 ## Tests
 
+- `npm run determinism` sails the recorded rounds in `tools/rounds.js` (every mode, two ships, three
+  pairs of hands, and a four-captain free-for-all) in Node, Chromium, WebKit and Firefox, and fails
+  unless every engine's fingerprints match Node's, or if a browser will not start. `npm run
+  exact-test` holds `src/exact.js` to the built-in `Math` it replaces.
 - `npm run sim-test` plays every mode to its end in plain Node, idle and driven, in the starter's
   gundalow and in a fully found first rate, and sails each round twice from one seed. It fails on a
   round that never ends, a ship whose figures stop being numbers, a world or a result that differs
