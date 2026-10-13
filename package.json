@@ -13,6 +13,7 @@
     "sim-test": "node tools/sim-test.mjs && node tools/captains-test.mjs",
     "exact-test": "node tools/exact-test.mjs",
     "determinism": "node tools/determinism.mjs",
+    "inputlog": "node tools/inputlog.mjs",
     "icon": "node tools/icon.mjs",
     "promo": "node tools/promo.mjs",
     "import": "node tools/import.mjs",

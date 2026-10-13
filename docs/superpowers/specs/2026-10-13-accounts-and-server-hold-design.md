@@ -299,5 +299,9 @@ Each step is merged on its own and leaves the game playable.
 - **Serve the game from Railway too?** One origin would lift Safari's 7-day cap on the session
   cookie and remove CORS, at the cost of moving off GitHub Pages and its deploy workflow.
 - **Railway region.** The same one multiplayer picks, and the Postgres beside it.
-- **Input log size.** The rounding in `controls.js` is a first figure; step 1 measures what a
-  20-minute ladder round's log weighs gzipped, and the rounding moves if it is too heavy.
+- **Input log size.** Measured with `npm run inputlog`: a 20-minute round under a captain who
+  holds a course logs 520 entries, 4 KB gzipped; one who steers all the time, 16,832 entries and
+  99 KB; and the worst case, a stick that moves every tick, 709 KB. The worst case is too heavy to
+  post in one request at the end of a round, so step 4 should send the log in pieces during the
+  round instead (which also shows the server the round's pace as it is played), keep the rounding
+  at 1/1024, and change "Finishing" above to match.
