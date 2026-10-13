@@ -29,7 +29,7 @@ import {
   RAM_KNOCK, RAM_RECOIL, RAM_DRIVE_LOSS, RAM_REARM_GAP, RAM_CD, HULL_NUDGE, RAM_LOCK_MAX, WAY_SMOOTH,
   BAULK_TOL, BAULK_GRACE, BAULK_RATE, hullTouch, keelGap, ramDmg,
   HULL_PATCH_CAP, MAST_JURY_CAP, repairQuote, repair,
-  STOCK_LOADOUT, barsOf, speedCap, turnCap, KILL_SHARE,
+  STOCK_LOADOUT, barsOf, speedCap, turnCap, KILL_SHARE, isHuman, shipOf, humanRange, outInWeather,
   MODES as RULES, MODE_LIST, modeOf, hunterOf, reinforcementsOf, clamp, norm, random, seedOf, seedFrom,
 } from "./sim/index.js";
 import { C, UI } from "./render/palette.js";
@@ -120,6 +120,27 @@ const fmtTime = (sec) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60))
 const fmtNum = (n) => Math.round(n || 0).toLocaleString();
 const fmtCoins = fmtNum;
 
+// The one captain at this screen, by the id the engine knows her by. A round has one human in it,
+// and she is this one: every input record, every HUD figure and the end screen are hers.
+const ME = "p1";
+// Her controls between steps: the stick, the three fire buttons held or not, and a repair asked for
+// since the last step. The engine reads a copy of it once a step, keyed by her id.
+const NO_INPUT = { joyMag: 0, joyAng: 0, broadside: false, bow: false, musket: false, repair: null };
+
+// The end screen's sentence, picked from how the round ended. Copy is the screen's job and the engine
+// never carries it: it says only who won and, for whoever sank, which way she went.
+const WON_LAST = "You are the last hull afloat.";
+const WON_LADDER = "Every ship in the fleet is on the bottom, from the plain gundalow to the fully found first rate.";
+// Four different shapes on purpose. Written to one template they read as filled-in slots, however
+// good the words are. The last is the round nobody survived: she and the last rival went down in
+// the same moment, which is a sinking and not a win.
+const SUNK_LINE = {
+  together: "Nobody is left afloat. She and the last of them went down together.",
+  storm: "The squall has your crew, and she founders in the weather.",
+  hull: "Your hull is breached. She goes under.",
+  crew: "Crew routed. You strike your colors.",
+};
+
 // A fresh seed for each round's dice. The one place the game rolls them itself: the engine is handed
 // the seed and never reaches for `Math.random`, so the same seed always gives it the same round.
 const newSeed = () => (Math.random() * 2 ** 32) >>> 0;
@@ -129,7 +150,7 @@ export default function App() {
   const gameRef = useRef(null);
   const startRef = useRef(() => {});
   const syncRef = useRef(() => {});
-  const inputRef = useRef({ joyMag: 0, joyAng: 0, broadside: false, bow: false, musket: false });
+  const inputRef = useRef({ ...NO_INPUT });
 
   const knobRef = useRef(null);
   const hudRef = useRef(null); // the safe-area box every control sits in; the canvas reads its insets
@@ -219,10 +240,12 @@ export default function App() {
     };
   }, [phase]);
 
+  // The HUD's figures, read off the world: the frame loop asks at most every 0.09 s, and only when
+  // something it shows has moved, so React hears of a hit and not of every frame.
   const syncHUD = useCallback(() => {
     const g = gameRef.current;
     if (!g) return;
-    const p = g.player;
+    const p = shipOf(g, ME);
     setCoins(Math.floor(p.coins));
     setSunk(g.sunk);
     const aliveCount = g.ships.filter((s) => s.alive).length;
@@ -239,19 +262,17 @@ export default function App() {
     setPhMax({ hull: p.maxHull, mast: p.maxMast, crew: p.maxCrew });
     if (g.rules.storm) {
       const w = g.rules.storm;
-      setStorm({ closes: Math.max(0, w.grace - g.time), out: g.playerOut, phase: stormPhase(g.time, w) });
+      setStorm({ closes: Math.max(0, w.grace - g.time), out: outInWeather(g, p), phase: stormPhase(g.time, w) });
     }
   }, []);
   syncRef.current = syncHUD;
 
-  const mendNow = useCallback(
-    (sys) => {
-      const g = gameRef.current;
-      if (!g || !g.running || !g.rules.repairs) return;
-      if (repair(g.player, sys) > 0) syncHUD();
-    },
-    [syncHUD]
-  );
+  // A repair goes the same road as the stick: asked for here, carried out in the next step.
+  const mendNow = useCallback((sys) => {
+    const g = gameRef.current;
+    if (!g || !g.running || !g.rules.repairs) return;
+    inputRef.current.repair = sys;
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -270,7 +291,7 @@ export default function App() {
       // that the HUD keeps clear; read off the HUD's wrapper, which is inset by the same amounts
       safe = { l: 0, t: 0, r: 0, b: 0 };
     // this viewer's picture of the round: smoke, wakes, words on the water, and how each ship looks
-    let fx = createFx();
+    let fx = null;
 
     // View space is world space seen from the camera: across is one to one, and down is squashed by
     // TILT. `zoom` is the only thing between it and the screen, so every distance the sea is drawn
@@ -319,7 +340,8 @@ export default function App() {
         // viewer of the round has to agree on
         id: g.nextId++, livery: opts.ci || 0,
         x, y, heading, spdCur: 0, alive: true,
-        isPlayer: !!opts.isPlayer,
+        // a person or the engine, and which person: the input record she answers to
+        controller: opts.playerId ? "human" : "ai", playerId: opts.playerId || null,
         loadout, rating, strength,
         hullA: sea.L / 2, hullB: sea.W / 2,
         coins: 0, earned: 0, repaired: 0, patches: 0, rank: 0, kills: 0, dmgDealt: 0, rams: 0, exposure: 0,
@@ -339,7 +361,7 @@ export default function App() {
         mastDown: false, ramCd: 0, locked: new Map(), turnVel: 0, kx: 0, ky: 0,
         px: x, py: y, vx: 0, vy: 0, way: 0, baulkT: 0, foul: false, // where she was, and the ground she truly made
       };
-      if (!opts.isPlayer) {
+      if (!opts.playerId) {
         s.wander = random(g) * Math.PI * 2;
         s.wanderT = 0;
         s.oppT = 0;
@@ -362,7 +384,7 @@ export default function App() {
         x = 180 + random(g) * (WORLD - 360);
         y = 180 + random(g) * (WORLD - 360);
         ok = true;
-        if (g.player && Math.hypot(x - g.player.x, y - g.player.y) < minFromPlayer) ok = false;
+        if (humanRange(g, x, y) < minFromPlayer) ok = false;
         if (ok && g.islands) for (const isl of g.islands) if (Math.hypot(x - isl.x, y - isl.y) < isl.r + 55) { ok = false; break; }
         tries++;
       } while (!ok && tries < 40);
@@ -459,7 +481,7 @@ export default function App() {
         let blocked = false;
         if (g.islands) for (const isl of g.islands) if (Math.hypot(x - isl.x, y - isl.y) < isl.r + 55) { blocked = true; break; }
         if (blocked) continue;
-        const d = g.player ? Math.hypot(x - g.player.x, y - g.player.y) : 1e9;
+        const d = humanRange(g, x, y);
         if (d >= minFromPlayer) return { x, y };
         if (d > bestD) { bestD = d; best = { x, y }; }
       }
@@ -517,25 +539,30 @@ export default function App() {
     const nearestRung = (rungs, key, want) =>
       rungs.reduce((a, b) => (Math.abs(b.measure[key] - want) < Math.abs(a.measure[key] - want) ? b : a));
 
-    function reset(m, seed) {
+    function reset(m, seed, players) {
       const rules = modeOf(m);
       gameRef.current = {
-        mode: m, rules, player: null, ships: [], shots: [], volleys: [], islands: [],
+        mode: m, rules, players: {}, ships: [], shots: [], volleys: [], islands: [],
         cam: { x: 0, y: 0 }, sunk: 0, fieldSize: 0, aliveCount: 0, leader: null, avgEarned: 0,
-        _lastRank: 0, spawnT: 0, spawnQueue: 0, running: false, hudDirty: false, hudAcc: 0, time: 0,
+        spawnT: 0, spawnQueue: 0, running: false, time: 0,
         events: [], // what happened this step, for the screen to draw: the engine never draws it itself
         nextId: 0,
-        banked: false, stormR: STORM_R0, stormTick: -1, stormPhase: "", playerOut: false,
+        banked: false, stormR: STORM_R0,
+        result: { over: false, winners: [], losers: [], field: 0 }, // how the round ended, once it has
         rng: seedOf(seed), // the round's dice: every random number the round uses comes off these
       };
       const g = gameRef.current;
-      // Her own ship, read fresh out of the hold rather than off a closure, so a mast bought between
-      // rounds is aboard for the next one.
-      g.playerLoadout = shipLoadout(getHold());
+      // The field is matched against the first captain's ship: who she meets, and on the ladder
+      // which rung is next.
+      g.playerLoadout = players[0].loadout;
       g.playerStrength = measure(rate(g.playerLoadout));
-      const player = makeShip(WORLD / 2, WORLD / 2, -Math.PI / 2, { isPlayer: true, loadout: g.playerLoadout });
-      g.player = player;
-      g.ships.push(player);
+      // Each captain's own ship, in the middle of the sea with her bow to the north. A second would
+      // lie a little way off the first; a round has one today.
+      players.forEach((pl, i) => {
+        const ship = makeShip(WORLD / 2 + i * 90, WORLD / 2, -Math.PI / 2, { playerId: pl.id, loadout: pl.loadout });
+        g.players[pl.id] = ship.id;
+        g.ships.push(ship);
+      });
       genIslands(g);
       for (let i = 0; i < rules.rivals; i++) {
         // where a mode replaces its losses, rivals sail in from the horizon the same way the
@@ -549,8 +576,13 @@ export default function App() {
       g.fieldSize = g.ships.length;
     }
 
-    function finalStats(won) {
-      const g = gameRef.current, p = g.player, r = g.rules;
+    /**
+     * What a player has earned so far, which is what the end screen prints and what reaches the
+     * hold. A winner is paid as a winner, so it is only final once the round is over.
+     */
+    function voyageStats(g, playerId) {
+      const p = shipOf(g, playerId), r = g.rules;
+      const won = g.result.winners.some((w) => w.playerId === playerId);
       const time = g.time || 0;
       const paidInFull = !!(won && r.fullRound); // she ended it early; she is paid as though she had not
       const timePay = Math.round((paidInFull ? r.fullRound : time) * r.timeCoins);
@@ -576,58 +608,6 @@ export default function App() {
       };
     }
 
-    // A voyage banks once, at the end screen, whichever end it was. `judge` decides which end once a
-    // frame, so the two cannot both fire for one round; the flag is the guard behind that.
-    function bankRun(won, rank) {
-      const g = gameRef.current;
-      if (g.banked) return;
-      g.banked = true;
-      const s = finalStats(won);
-      const { banked: got, bounty: paid } = bankVoyage({
-        mode: g.mode, earned: s.total, repaired: s.repaired, kills: s.kills, dmg: s.dmg,
-        time: s.time, rams: s.rams, patches: s.patches, won, rank,
-        dismasted: s.dismasted, healed: s.healed,
-        sunkByRam: s.sunkByRam, sunkByGuns: s.sunkByGuns, sunkByMuskets: s.sunkByMuskets,
-        rammedWhole: s.rammedWhole, wornDown: s.wornDown,
-      });
-      setBanked(got);
-      setBounty(paid);
-      // What the privacy policy says Analytics counts: how voyages end. Nothing is sent without consent.
-      track("voyage_end", { mode: g.mode, result: won ? "won" : "sunk", rank, kills: s.kills, seconds: Math.round(s.time) });
-    }
-
-    function endWin(line) {
-      const g = gameRef.current;
-      g.running = false;
-      if (g.rules.ranked) setPlace({ rank: 1, total: g.fieldSize });
-      setStats(finalStats(true));
-      bankRun(true, g.rules.ranked ? 1 : 0);
-      setResult(line);
-      setPhase("won");
-      syncRef.current();
-    }
-    function playerDied(bar) {
-      const g = gameRef.current;
-      g.running = false;
-      g.player.alive = false;
-      const standing = g.ships.filter((s) => s.alive).length;
-      const rank = g.rules.ranked ? standing + 1 : 0;
-      if (g.rules.ranked) setPlace({ rank, total: g.fieldSize });
-      setStats(finalStats(false));
-      bankRun(false, rank);
-      setResult(
-        // Four different shapes on purpose. Written to one template they read as filled-in slots,
-        // however good the words are. The fourth is the round nobody survived: she and the last
-        // rival went down in the same moment, which is a sinking and not a win.
-        g.rules.lastAfloatWins && standing === 0 ? "Nobody is left afloat. She and the last of them went down together."
-          : bar === "storm" ? "The squall has your crew, and she founders in the weather."
-          : bar === "hull" ? "Your hull is breached. She goes under."
-          : "Crew routed. You strike your colors."
-      );
-      setPhase("dead");
-      syncRef.current();
-    }
-
     /**
      * THE ROUND ENDS ONCE, HERE, at the end of the frame. Hits and the weather only mark ships dead;
      * nothing inside a hit handler ends the round, because a frame is not over when a hull goes
@@ -639,14 +619,26 @@ export default function App() {
      */
     function judge() {
       const g = gameRef.current;
-      if (!g.running) return;
-      if (!g.player.alive) { playerDied(g.player._deathBar || "hull"); return; }
-      if (g.rules.lastAfloatWins && g.ships.filter((s) => s.alive).length === 1) endWin("You are the last hull afloat.");
-      // the ladder is climbed when there is no rung left to send, which the same rule the spawner
-      // reads says by sending nothing
-      if (g.rules.ladder && !hunterOf(g.rules, g.playerStrength, g.sunk)) {
-        endWin("Every ship in the fleet is on the bottom, from the plain gundalow to the fully found first rate.");
-      }
+      if (g.result.over) return;
+      const humans = g.ships.filter(isHuman);
+      const standing = g.ships.filter((s) => s.alive).length;
+      const sunk = humans.filter((s) => !s.alive);
+      let winners = [], losers = [];
+      if (sunk.length) {
+        // a round has one human in it, so her sinking is the end of it; a world with several would
+        // have to say whose round goes on
+        const together = g.rules.lastAfloatWins && standing === 0;
+        losers = sunk.map((s) => ({ playerId: s.playerId, rank: g.rules.ranked ? standing + 1 : 0, cause: together ? "together" : s._deathBar || "hull" }));
+      } else if (
+        (g.rules.lastAfloatWins && standing === 1) ||
+        // the ladder is climbed when there is no rung left to send, which the same rule the spawner
+        // reads says by sending nothing
+        (g.rules.ladder && !hunterOf(g.rules, g.playerStrength, g.sunk))
+      ) {
+        winners = humans.map((s) => ({ playerId: s.playerId, rank: g.rules.ranked ? 1 : 0 }));
+      } else return;
+      g.result = { over: true, winners, losers, field: g.fieldSize };
+      g.events.push({ type: "round_over", result: g.result });
     }
 
     /**
@@ -668,8 +660,7 @@ export default function App() {
         attacker.earned += bounty;
         attacker.kills = (attacker.kills || 0) + 1;
         if (cause in attacker.sunkBy) attacker.sunkBy[cause] += 1;
-        if (attacker.isPlayer) {
-          g.hudDirty = true;
+        if (isHuman(attacker)) {
           // Both are judged on what the player did to her and not on the state she went down in,
           // because in a melee her bars carry every rival's work and the storm's besides. Worn down
           // is half of each of her three bars off the player's own guns and bow; by the bow alone is
@@ -680,9 +671,9 @@ export default function App() {
           if (cause === "ram" && b.ram >= s.maxHull - 1e-6) attacker.rammedWhole += 1;
         }
       }
-      g.events.push({ type: "sunk", shipId: s.id, by: attacker ? attacker.id : null, cause: s._deathBar, human: s.isPlayer, x: s.x, y: s.y });
+      g.events.push({ type: "sunk", shipId: s.id, by: attacker ? attacker.id : null, cause: s._deathBar, x: s.x, y: s.y });
       // she is marked and left where she lies; `judge` reads the frame when it is over
-      if (s.isPlayer) { s.alive = false; g.hudDirty = true; return; }
+      if (isHuman(s)) { s.alive = false; return; }
       const i = g.ships.indexOf(s);
       if (i >= 0) g.ships.splice(i, 1);
       for (const o of g.ships) o.locked.delete(s); // she is on the bottom; nobody is fouled on her
@@ -691,13 +682,12 @@ export default function App() {
         g.spawnQueue = Math.min(g.spawnQueue + reinforcementsOf(g.rules, g.sunk), g.rules.fleetCap);
         g.spawnT = 0; // lead ship of the wave sails in at once, the next one waits out the gap
       }
-      g.hudDirty = true;
     }
 
     function canHit(owner, target) {
       if (!target.alive || target === owner) return false;
       if (gameRef.current.rules.melee) return true;
-      return owner.isPlayer !== target.isPlayer;
+      return owner.controller !== target.controller;
     }
 
     /**
@@ -723,13 +713,11 @@ export default function App() {
         attacker.coins += took;
         attacker.earned += took;
         attacker.dmgDealt = (attacker.dmgDealt || 0) + took;
-        if (attacker.isPlayer) {
-          g.hudDirty = true;
+        if (isHuman(attacker)) {
           target.byPlayer[bar] += took;
           if (cause === "ram") target.byPlayer.ram += took;
         }
       }
-      if (target.isPlayer) g.hudDirty = true;
       if (bar === "mast" && before > 0 && target[bar] <= 0 && !target.mastDown) {
         target.mastDown = true;
         if (attacker && standing) attacker.dismasted += 1;
@@ -766,7 +754,7 @@ export default function App() {
       const dmg = weapon === "broadside" ? sideDmg(s) : weapon === "bow" ? frontDmg(s) : musketDmg(s);
       const bx = s.x + Math.cos(h) * s.hullA;
       const by = s.y + Math.sin(h) * s.hullA;
-      const noise = s.isPlayer ? 0 : weapon === "musket" ? AI_MUSKET_AIM : AI_CANNON_AIM;
+      const noise = isHuman(s) ? 0 : weapon === "musket" ? AI_MUSKET_AIM : AI_CANNON_AIM;
       const push = (px, py, ang) =>
         g.shots.push({ x: px, y: py, vx: Math.cos(ang) * w.speed, vy: Math.sin(ang) * w.speed, life: w.life, r: w.r, bar: w.bar, dmg, owner: s, kind: weapon });
       if (weapon === "broadside") {
@@ -832,11 +820,18 @@ export default function App() {
         }
     }
 
-    function stepPlayer(dt) {
+    /**
+     * One human captain's step, off her input record: a repair she asked for since the last step,
+     * then the stick, then any fire button held over a loaded mount. A repair comes the same road as
+     * the wheel, so that it reaches the engine the same way wherever the engine is.
+     */
+    function stepHuman(p, inp, dt) {
       const g = gameRef.current;
-      const p = g.player;
       if (!p.alive) return;
-      const inp = inputRef.current;
+      if (inp.repair && g.rules.repairs) {
+        const paid = repair(p, inp.repair);
+        if (paid > 0) g.events.push({ type: "repaired", shipId: p.id, system: inp.repair, coins: paid });
+      }
       const desired = inp.joyMag > 0.08 ? inp.joyAng : p.heading;
       moveShip(p, dt, desired, inp.joyMag);
       p.ramCd = Math.max(0, p.ramCd - dt);
@@ -849,7 +844,12 @@ export default function App() {
 
     function pickTarget(s) {
       const g = gameRef.current;
-      if (!g.rules.melee) return g.player.alive ? g.player : null; // one quarry: the player
+      if (!g.rules.melee) {
+        // one quarry, whoever is sailing against the fleet: the nearest of them afloat
+        let near = null;
+        for (const c of g.ships) if (isHuman(c) && c.alive && (!near || Math.hypot(c.x - s.x, c.y - s.y) < Math.hypot(near.x - s.x, near.y - s.y))) near = c;
+        return near;
+      }
       const leaderSnow = g.leader && g.leader !== s && g.leader.earned > g.avgEarned * 1.6 && g.aliveCount > 2;
       // at the drop nobody has a reputation yet, so range is what matters: take the nearest hull
       // and only start shopping for weak or wealthy prey once the melee has had time to sort itself
@@ -936,7 +936,7 @@ export default function App() {
           (Math.cos(s.heading) * s.spdCur - Math.cos(c.heading) * c.spdCur) * Math.cos(toC) +
           (Math.sin(s.heading) * s.spdCur - Math.sin(c.heading) * c.spdCur) * Math.sin(toC);
         let score = -dist * 0.06 + aspect * 46 + facing * 8 + (1 - c.hull / c.maxHull) * 55 + clamp(closing, -70, 70) * 0.55;
-        if (c.isPlayer) score += 8; // captains would rather have the notorious hull
+        if (isHuman(c)) score += 8; // captains would rather have the notorious hull
         // the hull she has just spent a while jammed against is the one she is least likely to get
         // anything out of, so she shops elsewhere — though she will come back to her if she is all
         // there is, which is why this leans against her rather than ruling her out
@@ -1180,7 +1180,7 @@ export default function App() {
           const a = ships[i], b = ships[j];
           if (!a.alive || !b.alive) continue;
           // consorts cannot ram each other, but no two hulls may ever share the same water
-          const hostile = g.rules.melee || a.isPlayer !== b.isPlayer;
+          const hostile = g.rules.melee || a.controller !== b.controller;
           const heldSince = a.locked.get(b);
           if (heldSince !== undefined && g.time - heldSince > RAM_LOCK_MAX) { a.locked.delete(b); b.locked.delete(a); }
           const touch = hullTouch(a, b);
@@ -1288,19 +1288,7 @@ export default function App() {
         // a share of her full complement, not of what is left, so the last hands go as fast as the first
         const bite = STORM_BITE * s.maxCrew;
         s.crew = Math.max(0, s.crew - bite * dt);
-        if (s.isPlayer) g.hudDirty = true;
         if (s.crew <= 0 && s.alive) { s._deathBar = "storm"; killShip(s, null, "storm"); }
-      }
-      // the countdown ticks in whole seconds, and going in or out of the weather, or the weather
-      // changing what it is doing, is worth a redraw
-      const tick = Math.max(0, Math.ceil(w.grace - g.time));
-      const phase = stormPhase(g.time, w);
-      const playerOut = g.player.alive && Math.hypot(g.player.x - cx, g.player.y - cy) > g.stormR;
-      if (tick !== g.stormTick || phase !== g.stormPhase || playerOut !== g.playerOut) {
-        g.stormTick = tick;
-        g.stormPhase = phase;
-        g.playerOut = playerOut;
-        g.hudDirty = true;
       }
     }
 
@@ -1443,7 +1431,7 @@ export default function App() {
       // nothing left to send: the ladder is climbed, and `judge` ends the round on this frame
       if (!hunterOf(g.rules, g.playerStrength, g.sunk)) return;
       g.spawnT -= dt;
-      const enemies = g.ships.filter((s) => !s.isPlayer).length;
+      const enemies = g.ships.filter((s) => !isHuman(s)).length;
       if (enemies === 0 && g.spawnQueue <= 0) g.spawnQueue = 1; // never leave the sea empty
       if (g.spawnQueue > 0 && enemies < g.rules.fleetCap && g.spawnT <= 0) {
         g.ships.push(spawnArenaEnemy());
@@ -1461,7 +1449,6 @@ export default function App() {
       g.leader = alive[0] || null;
       g.aliveCount = alive.length;
       g.avgEarned = alive.reduce((t, s) => t + s.earned, 0) / Math.max(1, alive.length);
-      if (g.player.alive && g.player.rank !== g._lastRank) { g._lastRank = g.player.rank; g.hudDirty = true; }
     }
 
     // The camera holds her in the middle and fills the rest of the view with sea, which puts the
@@ -1485,23 +1472,24 @@ export default function App() {
 
     function camUpdate() {
       const g = gameRef.current;
-      if (!g || !g.player) return;
+      const me = g && shipOf(g, ME);
+      if (!me) return;
       const spanX = Vw, spanY = Vh / TILT; // sea on the screen, in world units
       // across, the give past the square is capped at SIDE_PEEK; up and down it is not, because
       // that strip is the one the buttons and panels sit on and it is hers to spend
       const peekX = Math.max(Math.min((spanX - Vsq) / 2, SIDE_PEEK / zoom), EDGE_PEEK / zoom);
       const peekY = Math.max((spanY - Vsq / TILT) / 2, EDGE_PEEK / (zoom * TILT));
-      g.cam.x = camHold(g.player.x - spanX / 2, spanX, peekX);
-      g.cam.y = camHold(g.player.y - spanY / 2, spanY, peekY);
+      g.cam.x = camHold(me.x - spanX / 2, spanX, peekX);
+      g.cam.y = camHold(me.y - spanY / 2, spanY, peekY);
     }
 
-    function update(dt) {
+    function update(dt, inputs) {
       const g = gameRef.current;
       g.time += dt;
       computeMeta();
       for (const s of g.ships) { s.px = s.x; s.py = s.y; s.foul = false; } // where she started the frame
-      stepPlayer(dt);
-      for (const s of g.ships) if (!s.isPlayer) stepAI(s, dt);
+      for (const s of g.ships) if (isHuman(s)) stepHuman(s, inputs[s.playerId] || NO_INPUT, dt);
+      for (const s of g.ships) if (!isHuman(s)) stepAI(s, dt);
       stepRam(dt);
       measureWay(dt);
       stepStorm(dt);
@@ -1512,7 +1500,7 @@ export default function App() {
     }
 
     function updateButtons() {
-      const p = gameRef.current.player;
+      const p = shipOf(gameRef.current, ME);
       for (const wk of ["broadside", "bow", "musket"]) {
         const el = btnRefs[wk].current;
         if (!el) continue;
@@ -1895,7 +1883,7 @@ export default function App() {
       }
 
       // ship colour reads as TRIM; the hull itself is brown wood
-      const trim = s.isPlayer ? C.gold : look.fill;
+      const trim = s.id === fx.me ? C.gold : look.fill;
 
       // hull: dark waterline body + brown deck, trimmed in the ship's colour. The outline is the
       // class's own: her length, her beam, her entry and her stern.
@@ -1909,7 +1897,7 @@ export default function App() {
       tracePoly(deckH);
       ctx.fillStyle = look.cols.deck; ctx.fill();
       if (look.flash > 0) { ctx.globalAlpha = look.flash; ctx.fillStyle = "#fff"; ctx.fill(); ctx.globalAlpha = 1; }
-      ctx.lineWidth = s.isPlayer ? 2 : 1.6; ctx.strokeStyle = trim; ctx.stroke(); // gunwale trim
+      ctx.lineWidth = s.id === fx.me ? 2 : 1.6; ctx.strokeStyle = trim; ctx.stroke(); // gunwale trim
       // painted trim stripe around the hull side
       tracePoly(deckH * 0.5); ctx.lineWidth = 1.6; ctx.strokeStyle = trim; ctx.globalAlpha = 0.85; ctx.stroke(); ctx.globalAlpha = 1;
       // bowsprit, on the hulls that have one
@@ -2067,7 +2055,7 @@ export default function App() {
       if (s.mastDown) line(P3(-2, 0, deckH), P3(-2, 3, deckH + 8), look.cols.spar, 1.8);
 
       // health bars + rank, above the rig
-      if (!s.isPlayer) {
+      if (s.id !== fx.me) {
         const bw = 26, bxL = gx - bw / 2;
         // above her own rig, so a boat's bars sit close over her and a tall ship's clear the royals
         const byT = P3(1, 0, deckH + rig.top + 6)[1] - 14;
@@ -2266,16 +2254,17 @@ export default function App() {
         ctx.stroke();
       }
       for (const s of g.ships) {
-        if (!s.alive || s.isPlayer) continue;
+        if (!s.alive || s.id === fx.me) continue;
         ctx.fillStyle = g.rules.ranked && s.rank === 1 ? C.gold : lookOf(fx, s).fill;
         ctx.beginPath();
         ctx.arc(rx + s.x * sc, ry + s.y * sc, g.rules.ranked && s.rank === 1 ? 3 : 2.3, 0, Math.PI * 2);
         ctx.fill();
       }
-      if (g.player.alive) {
+      const me = shipOf(g, ME);
+      if (me && me.alive) {
         ctx.fillStyle = C.player;
         ctx.beginPath();
-        ctx.arc(rx + g.player.x * sc, ry + g.player.y * sc, 3, 0, Math.PI * 2);
+        ctx.arc(rx + me.x * sc, ry + me.y * sc, 3, 0, Math.PI * 2);
         ctx.fill();
       }
       ctx.restore();
@@ -2331,7 +2320,7 @@ export default function App() {
       drawStormWater(cam);
       drawWakes(cam);
       drawIslands(cam);
-      if (g.running) drawArcGuides(g.player, cam);
+      if (g.running) drawArcGuides(shipOf(g, ME), cam);
       drawShots(cam);
       const order = g.ships.filter((s) => s.alive).slice().sort((a, b) => a.y - b.y);
       for (const s of order) drawShip(s, cam);
@@ -2351,30 +2340,95 @@ export default function App() {
       clock += dt;
       const g = gameRef.current;
       if (g && g.running) {
-        update(dt);
+        // her controls as they stand, read once for the step; a repair is asked for once and spent
+        const inputs = { [ME]: { ...inputRef.current } };
+        inputRef.current.repair = null;
+        update(dt, inputs);
         // what the step did, drawn: the engine only said it happened
         const events = g.events;
         g.events = [];
-        fxEvents(fx, events, g.player.id);
-        stepFx(fx, g, g.player.id, dt);
+        fxEvents(fx, events);
+        stepFx(fx, g, dt);
         camUpdate();
         updateButtons();
-        g.hudAcc += dt;
-        if (g.hudDirty && g.hudAcc > 0.09) { syncRef.current(); g.hudDirty = false; g.hudAcc = 0; }
+        let hudNow = false;
+        for (const e of events) {
+          if (e.type === "repaired" && e.shipId === fx.me) hudNow = true; // the rail answers the tap
+          if (e.type === "round_over") endRound(g, e.result);
+        }
+        hudAcc += dt;
+        if (hudNow || hudAcc > 0.09) {
+          const key = hudKey(g);
+          if (hudNow || key !== hudLast) { syncRef.current(); hudLast = key; hudAcc = 0; }
+        }
       }
       render();
       raf = requestAnimationFrame(loop);
     }
 
+    // What the HUD shows, as one string, so the loop can tell whether any of it has moved since React
+    // last heard: her purse, the field, her rank, her three bars, and the weather's countdown, phase
+    // and whether she is out in it. The repair rail is priced off the same purse and bars.
+    let hudAcc = 0, hudLast = "";
+    function hudKey(g) {
+      const p = shipOf(g, ME), w = g.rules.storm;
+      return [
+        Math.floor(p.coins), g.sunk, g.ships.filter((s) => s.alive).length, p.alive, p.rank, g.aliveCount,
+        p.hull, p.mast, p.crew,
+        w ? Math.max(0, Math.ceil(w.grace - g.time)) : 0, w ? outInWeather(g, p) : false, w ? stormPhase(g.time, w) : "",
+      ].join(",");
+    }
+
+    /**
+     * The round is over: the end screen, the voyage banked, and the one analytics event that says how
+     * it ended. The engine only said who won and how whoever sank went down; what that is worth, what
+     * it is called and where it is written down is the screen's business, and happens once, here.
+     */
+    function endRound(g, result) {
+      g.running = false;
+      const won = result.winners.some((w) => w.playerId === ME);
+      const mine = (won ? result.winners : result.losers).find((r) => r.playerId === ME) || { rank: 0, cause: "hull" };
+      if (g.rules.ranked) setPlace({ rank: mine.rank, total: result.field });
+      const s = voyageStats(g, ME);
+      setStats(s);
+      // A voyage banks once, at the end screen, whichever end it was. The engine ends a round once,
+      // and the flag on the world is the guard behind that.
+      if (!g.banked) {
+        g.banked = true;
+        const { banked: got, bounty: paid } = bankVoyage({
+          mode: g.mode, earned: s.total, repaired: s.repaired, kills: s.kills, dmg: s.dmg,
+          time: s.time, rams: s.rams, patches: s.patches, won, rank: mine.rank,
+          dismasted: s.dismasted, healed: s.healed,
+          sunkByRam: s.sunkByRam, sunkByGuns: s.sunkByGuns, sunkByMuskets: s.sunkByMuskets,
+          rammedWhole: s.rammedWhole, wornDown: s.wornDown,
+        });
+        setBanked(got);
+        setBounty(paid);
+        // What the privacy policy says Analytics counts: how voyages end. Nothing is sent without consent.
+        track("voyage_end", { mode: g.mode, result: won ? "won" : "sunk", rank: mine.rank, kills: s.kills, seconds: Math.round(s.time) });
+      }
+      setResult(won ? (g.rules.ladder ? WON_LADDER : WON_LAST) : SUNK_LINE[mine.cause] || SUNK_LINE.crew);
+      setPhase(won ? "won" : "dead");
+      syncRef.current();
+    }
+
+    // A new round: her ship read fresh out of the hold rather than off a closure, so a mast bought
+    // between rounds is aboard for the next one.
+    function newRound(m) {
+      reset(m, newSeed(), [{ id: ME, loadout: shipLoadout(getHold()) }]);
+      fx = createFx(shipOf(gameRef.current, ME).id);
+    }
+
     function start(m) {
-      reset(m, newSeed());
-      fx = createFx();
+      newRound(m);
       camUpdate();
       const g = gameRef.current;
       if (g.rules.ranked) computeMeta();
       g.running = true;
-      inputRef.current = { joyMag: 0, joyAng: 0, broadside: false, bow: false, musket: false };
+      inputRef.current = { ...NO_INPUT };
       last = 0;
+      hudAcc = 0;
+      hudLast = "";
       syncRef.current();
       setResult("");
       setBanked(0);
@@ -2387,7 +2441,7 @@ export default function App() {
     startRef.current = start;
 
     resize();
-    reset("wave", newSeed());
+    newRound("wave");
     window.addEventListener("resize", resize);
     raf = requestAnimationFrame(loop);
     return () => {

@@ -5,7 +5,7 @@
  */
 
 import { clamp } from "./math.js";
-import { STORM_R0, STORM_R2 } from "./tables.js";
+import { STORM_R0, STORM_R2, WORLD } from "./tables.js";
 
 // The weather takes this share of her FULL crew a second, every second she is out in it, whatever
 // class she is and however many hands she has left: ten seconds of exposure is the ship, for a
@@ -45,3 +45,7 @@ export const stormPhase = (t, w) => {
   if (t < w.grace + w.close + w.hold + w.squeeze) return "closing";
   return "closed";
 };
+
+/** Whether she is out in the weather: afloat, in a mode that has some, and outside the ring. */
+export const outInWeather = (world, s) =>
+  !!world.rules.storm && s.alive && Math.hypot(s.x - WORLD / 2, s.y - WORLD / 2) > world.stormR;

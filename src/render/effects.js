@@ -10,16 +10,17 @@
  */
 
 import { hullForm, tintTimber } from "../hullform.js";
-import { clamp, speedCap, STORM_RAMP, WORLD } from "../sim/index.js";
+import { clamp, speedCap, outInWeather, STORM_RAMP } from "../sim/index.js";
 import { C, AI_COLORS } from "./palette.js";
 import { buildSeaRig } from "./searig.js";
 
-/** A fresh picture: no smoke on the water and no ship yet seen. */
-export function createFx() {
-  return { parts: [], wakes: [], texts: [], vign: 0, ships: new Map() };
+/**
+ * A fresh picture for the viewer whose ship is `me`: no smoke on the water and no ship yet seen. Her
+ * own ship is drawn in her own colours and the screen reddens for her hits rather than anyone's.
+ */
+export function createFx(me) {
+  return { me, parts: [], wakes: [], texts: [], vign: 0, ships: new Map() };
 }
-
-const human = (s) => s.isPlayer;
 
 /**
  * How one ship looks, worked out the first time she is drawn and kept by her id: her colours, her
@@ -36,8 +37,8 @@ export function lookOf(fx, s) {
     // boat sits pale on the water beside an oak brig
     const form = hullForm(s.loadout.hull.id);
     look = {
-      fill: human(s) ? C.player : pal.fill,
-      stroke: human(s) ? C.playerStroke : pal.stroke,
+      fill: s.id === fx.me ? C.player : pal.fill,
+      stroke: s.id === fx.me ? C.playerStroke : pal.stroke,
       sea: form.sea,
       rig: buildSeaRig(s.loadout, form.sea),
       cols: {
@@ -103,7 +104,7 @@ function sinkFx(fx, x, y, col) {
 }
 
 /**
- * What a step's events look like, for the viewer whose ship is `me`.
+ * What a step's events look like, to the viewer this picture is for.
  *
  * A gun's flash and smoke stand where it fired: a broadside gun's at the rail it fired over, just
  * outside it, and a chaser's or the muskets' off the bow. A ball breaks where it bit, in splinters
@@ -113,7 +114,8 @@ function sinkFx(fx, x, y, col) {
  * for how she went; the viewer's own ship going down, or taking a hit to her hull or her crew,
  * reddens the edge of the screen.
  */
-export function fxEvents(fx, events, me) {
+export function fxEvents(fx, events) {
+  const me = fx.me;
   let rammedAt = null;
   for (const e of events) {
     if (e.type === "fired") {
@@ -146,7 +148,7 @@ export function fxEvents(fx, events, me) {
       const look = fx.ships.get(e.shipId);
       sinkFx(fx, e.x, e.y, look ? look.fill : C.splinter);
       if (e.shipId === me) fx.vign = 1;
-      else if (!e.human) pushText(fx, e.x, e.y, e.cause === "storm" ? "LOST" : "SUNK");
+      else pushText(fx, e.x, e.y, e.cause === "storm" ? "LOST" : "SUNK");
       fx.ships.delete(e.shipId);
     } else if (e.type === "dismasted") {
       pushText(fx, e.x, e.y, e.shipId === me ? "OUR MAST!" : "MAST DOWN");
@@ -157,13 +159,13 @@ export function fxEvents(fx, events, me) {
 /**
  * The picture moved on by `dt` of real time: smoke drifting and thinning, sparks falling, words
  * rising, the red fading, and each ship's wake, bow spray and heel worked out from how she is
- * sailing. `me` is the viewer's own ship, whose time out in the weather tints the screen.
+ * sailing. The viewer's own time out in the weather tints the screen.
  */
-export function stepFx(fx, world, me, dt) {
+export function stepFx(fx, world, dt) {
   // a steady tint that deepens with her exposure while she is out in the weather, rather than the
   // jolt a hit gives
-  const mine = world.ships.find((s) => s.id === me);
-  if (world.rules.storm && mine && mine.alive && Math.hypot(mine.x - WORLD / 2, mine.y - WORLD / 2) > world.stormR) {
+  const mine = world.ships.find((s) => s.id === fx.me);
+  if (mine && outInWeather(world, mine)) {
     fx.vign = Math.max(fx.vign, 0.2 + 0.55 * (mine.exposure / STORM_RAMP));
   }
   for (let i = fx.parts.length - 1; i >= 0; i--) {

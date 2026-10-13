@@ -41,3 +41,11 @@ export const turnCap = (s) => 2.4 * s.rating.turn * (0.22 + 0.78 * (s.mast / s.m
 export const STOCK_LOADOUT = resolve(STARTER);
 // Her three bars at full, off a loadout: what the HUD opens on and what the fight fills in.
 export const barsOf = (loadout) => { const r = rate(loadout); return { hull: r.hull, mast: r.mast, crew: r.crew }; };
+
+/** Whether a person sails her, rather than the engine. */
+export const isHuman = (s) => s.controller === "human";
+/** The ship a player sails in this world, afloat or sunk, or nothing if she has none. */
+export const shipOf = (world, playerId) => world.ships.find((s) => s.id === world.players[playerId]) || null;
+/** How far the nearest human ship lies from a point, or a very long way when there is none afloat. */
+export const humanRange = (world, x, y) =>
+  world.ships.reduce((d, s) => (isHuman(s) && s.alive ? Math.min(d, Math.hypot(x - s.x, y - s.y)) : d), 1e9);
