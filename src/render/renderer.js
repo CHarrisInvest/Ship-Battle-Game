@@ -9,9 +9,18 @@
  * `createRenderer(canvas)` hands back the few things the frame loop needs: `resize` when the page
  * does, `tick` to move the clock that sets the waves and the wind going, `follow` and `render` each
  * frame, and `under` for the one DOM panel that needs to know whether a ship is beneath it.
+ *
+ * THE ENGINE STEPS SIXTY TIMES A SECOND AND THE SCREEN DRAWS AS OFTEN AS IT LIKES. So a frame
+ * rarely lands on a step, and drawing each ship where the last step left her would stutter on any
+ * screen that is not running at exactly sixty: a 120 Hz phone would show every position twice. Each
+ * ship is drawn instead between where the last step found her and where it left her, `alpha` of the
+ * way, which is the share of a step the frame loop has banked and not yet spent; her heading is
+ * blended the short way round. A ball goes the same way back along its flight, and the camera
+ * follows her blended position, so the sea, her and her shot all move together. The picture runs
+ * a step behind the round, which is a sixtieth of a second and the price of it being smooth.
  */
 
-import { WORLD, WP, clamp, musketArc, seedFrom } from "../sim/index.js";
+import { WORLD, WP, TICK, clamp, norm, musketArc, seedFrom } from "../sim/index.js";
 import { C, UI } from "./palette.js";
 import { TILT, ZUP, VIEW, MAX_ZOOM, EDGE_PEEK, SIDE_PEEK, SHOT_DRAW, SHOT_LIT_MIN } from "./view.js";
 import { genFoliage, drawShadows, drawPalm, drawBush } from "./foliage.js";
@@ -34,7 +43,14 @@ export function createRenderer(canvas) {
     safe = { l: 0, t: 0, r: 0, b: 0 };
   const cam = { x: 0, y: 0 }; // the world point at the top left of the screen
   // what the frame being drawn is drawing: the world, this viewer's effects, and how she is looking
-  let world = null, fx = null, view = { live: false, input: {} };
+  let world = null, fx = null, view = { live: false, input: {}, alpha: 1 };
+
+  // Where a ship is drawn, `alpha` of the way through the last step: her position and her heading.
+  const at = (s, alpha) => ({
+    x: s.px + (s.x - s.px) * alpha,
+    y: s.py + (s.y - s.py) * alpha,
+    h: s.pHeading + norm(s.heading - s.pHeading) * alpha,
+  });
 
   // An island's planting, grown the first time she is drawn from dice seeded where she stands, so
   // the same island grows the same palms on every screen and drawing them never touches the round.
@@ -97,9 +113,11 @@ export function createRenderer(canvas) {
     return clamp(centred, lo, Math.max(lo, WORLD - span + peek));
   }
 
-  // the camera brought round onto `me`, the viewer's own ship
-  function follow(me) {
-    if (!me) return;
+  // the camera brought round onto `me`, the viewer's own ship, where she is drawn `alpha` of the
+  // way through the last step
+  function follow(ship, alpha = 1) {
+    if (!ship) return;
+    const me = at(ship, alpha);
     const spanX = Vw, spanY = Vh / TILT; // sea on the screen, in world units
     // across, the give past the square is capped at SIDE_PEEK; up and down it is not, because
     // that strip is the one the buttons and panels sit on and it is hers to spend
@@ -399,9 +417,10 @@ export function createRenderer(canvas) {
     if (!p.alive) return;
     const inp = view.input;
     ctx.save();
-    ctx.translate(SX(p.x, cam), SY(p.y, cam));
+    const pos = at(p, view.alpha);
+    ctx.translate(SX(pos.x, cam), SY(pos.y, cam));
     ctx.scale(1, TILT);
-    ctx.rotate(p.heading);
+    ctx.rotate(pos.h);
     ctx.lineWidth = 1.4;
     if (inp.broadside) {
       ctx.strokeStyle = "rgba(217,154,60,0.28)";
@@ -424,11 +443,12 @@ export function createRenderer(canvas) {
   }
 
   function drawShip(s, cam) {
-    const H = s.heading, cH = Math.cos(H), sH = Math.sin(H);
+    const pos = at(s, view.alpha);
+    const H = pos.h, cH = Math.cos(H), sH = Math.sin(H);
     const look = lookOf(fx, s);
     const roll = look.roll + Math.sin(look.rollPhase * 1.2) * 0.05; // bank into turns + gentle idle heel
     const cR = Math.cos(roll), sR = Math.sin(roll);
-    const gx = SX(s.x, cam), gy = SY(s.y, cam);
+    const gx = SX(pos.x, cam), gy = SY(pos.y, cam);
     const sea = look.sea;
     const deckH = sea.deckH;
     // local (u=fore, v=starboard, z=up) -> screen, via roll about keel, yaw, then iso projection
@@ -445,7 +465,7 @@ export function createRenderer(canvas) {
     ctx.globalAlpha = 0.28;
     ctx.fillStyle = "#000";
     ctx.beginPath();
-    ctx.ellipse(gx, gy + 2, s.hullA, s.hullB * TILT + 2, s.heading, 0, Math.PI * 2);
+    ctx.ellipse(gx, gy + 2, s.hullA, s.hullB * TILT + 2, H, 0, Math.PI * 2);
     ctx.fill();
     ctx.globalAlpha = 1;
 
@@ -669,7 +689,9 @@ export function createRenderer(canvas) {
 
   function drawShots(cam) {
     for (const b of world.shots) {
-      const sx = SX(b.x, cam), sy = SY(b.y, cam) - 3;
+      // back along its flight by the share of the step not yet drawn
+      const back = TICK * (1 - view.alpha);
+      const sx = SX(b.x - b.vx * back, cam), sy = SY(b.y - b.vy * back, cam) - 3;
       if (b.kind === "musket") {
         ctx.strokeStyle = C.pellet;
         ctx.lineWidth = 1.3;

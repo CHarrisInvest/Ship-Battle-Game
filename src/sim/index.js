@@ -55,7 +55,8 @@ export const TICK = 1 / 60;
 export const NO_INPUT = { joyMag: 0, joyAng: 0, broadside: false, bow: false, musket: false, repair: null };
 
 /**
- * One step of the round. `inputs` is keyed by player id, one record per human. Returns what
+ * One step of the round, exactly one `TICK` long. `inputs` is keyed by player id, one record per
+ * human. Returns what
  * happened during it, as events that carry ids and numbers and never a reference into the world,
  * so they can be drawn, counted or sent anywhere. A round that is over stays over: stepping it
  * again does nothing and says nothing.
@@ -65,13 +66,16 @@ export const NO_INPUT = { joyMag: 0, joyAng: 0, broadside: false, bow: false, mu
  * the guns still to go off in a rolling broadside fire, every ball in the air flies, an arena tops
  * its fleet up, and last of all the round is judged on what the step left.
  */
-export function step(world, inputs = {}, dt = TICK) {
+export function step(world, inputs = {}) {
+  const dt = TICK;
   if (world.result.over) return [];
   world.events = [];
   world.tick += 1;
   world.time += dt;
   computeMeta(world);
-  for (const s of world.ships) { s.px = s.x; s.py = s.y; s.foul = false; } // where she started the step
+  // where she started the step and which way she pointed, which is what the screen draws her
+  // between; and whether she is foul of anyone, which the step finds out afresh
+  for (const s of world.ships) { s.px = s.x; s.py = s.y; s.pHeading = s.heading; s.foul = false; }
   for (const s of world.ships) if (isHuman(s)) stepHuman(world, s, inputs[s.playerId] || NO_INPUT, dt);
   for (const s of world.ships) if (!isHuman(s)) stepAI(world, s, dt);
   stepRam(world, dt);

@@ -17,7 +17,7 @@ import { getAdRegion, onAdRegion, openGoogleChoices } from "./ads.js";
 import { analyticsLive, conversionsLive, measurementLive, track } from "./analytics.js";
 import { PrivacyPolicy } from "./privacy.jsx";
 import {
-  createWorld, step, voyageStats, repairQuote, shipOf, outInWeather, stormPhase, volleyWindow, reloadOf, canFire,
+  createWorld, step, TICK, voyageStats, repairQuote, shipOf, outInWeather, stormPhase, volleyWindow, reloadOf, canFire,
   HULL_PATCH_CAP, MAST_JURY_CAP, barsOf, MODES as RULES, MODE_LIST, modeOf, clamp,
 } from "./sim/index.js";
 import { C, UI } from "./render/palette.js";
@@ -261,17 +261,30 @@ export default function App() {
   /**
    * THE FRAME LOOP: the one place the engine, the screen and React meet.
    *
-   * Each frame it reads her controls, steps the world, hands what happened to the effects and to
-   * the end of the round, moves the camera and the fire buttons, tells the HUD if anything it shows
-   * has moved, and draws. The world is the engine's and `fx` is this screen's picture of it; the
-   * hold, analytics and the end screen are reached from here and never from the engine.
+   * Each frame it steps the world as many times as the time since the last frame pays for, reading
+   * her controls once a step, hands what happened to the effects and to the end of the round, moves
+   * the camera and the fire buttons, tells the HUD if anything it shows has moved, and draws. The
+   * world is the engine's and `fx` is this screen's picture of it; the hold, analytics and the end
+   * screen are reached from here and never from the engine.
+   *
+   * THE ROUND MOVES IN STEPS OF ONE `TICK` AND THE SCREEN DOES NOT. Real time is banked, a step is
+   * taken for every whole tick in the bank, and what is left over says how far between the last
+   * two steps to draw everything (`alpha`). So a round plays the same on a 60 Hz phone, a 120 Hz
+   * one and a laptop, where it used to step by whatever the frame took and a fast screen took two
+   * small steps where a slow one took one big one. A frame pays for at most five steps, so a tab
+   * brought back from the background does not try to sail the minutes it missed: the bank is
+   * emptied instead, and a phone dropping below twelve frames a second plays slower rather than in
+   * jumps. The effects, the waves and the wind still run on the frame's own time, since nothing in
+   * the round reads them.
    */
   useEffect(() => {
     const renderer = createRenderer(canvasRef.current);
     let raf = 0,
       last = 0,
+      bank = 0, // real time not yet stepped, in seconds
       // this viewer's picture of the round: smoke, wakes, words on the water, and how each ship looks
       fx = null;
+    const MAX_STEPS = 5; // the most steps one frame may take
 
     // The page changed size. The canvas follows it, and the camera her, if there is a world to look at.
     function resize() {
@@ -319,17 +332,28 @@ export default function App() {
 
     function loop(ts) {
       if (!last) last = ts;
-      let dt = (ts - last) / 1000;
+      const frame = (ts - last) / 1000;
       last = ts;
-      if (dt > 0.05) dt = 0.05;
+      const dt = Math.min(frame, 0.05); // the frame's own time, for what only decorates the sea
       renderer.tick(dt);
       const g = gameRef.current;
+      let alpha = 1;
       if (g && liveRef.current) {
-        const events = step(g, controls.read(), dt);
-        // what the step did, drawn: the engine only said it happened
+        bank += Math.min(frame, 0.25);
+        const events = [];
+        let steps = 0;
+        // her controls are read once a step, so a repair she tapped is spent by the first of them
+        while (bank >= TICK && steps < MAX_STEPS && !g.result.over) {
+          for (const e of step(g, controls.read())) events.push(e);
+          bank -= TICK;
+          steps++;
+        }
+        if (bank >= TICK) bank %= TICK; // behind by more than a frame can pay: let it go
+        alpha = g.result.over ? 1 : bank / TICK;
+        // what the steps did, drawn: the engine only said it happened
         fxEvents(fx, events);
         stepFx(fx, g, dt);
-        renderer.follow(shipOf(g, ME));
+        renderer.follow(shipOf(g, ME), alpha);
         updateButtons();
         let hudNow = false;
         for (const e of events) {
@@ -342,7 +366,7 @@ export default function App() {
           if (hudNow || key !== hudLast) { syncRef.current(); hudLast = key; hudAcc = 0; }
         }
       }
-      renderer.render(g, fx, { live: liveRef.current, input: controls.input });
+      renderer.render(g, fx, { live: liveRef.current, input: controls.input, alpha });
       fadeRail();
       raf = requestAnimationFrame(loop);
     }
@@ -406,6 +430,7 @@ export default function App() {
       liveRef.current = true;
       controls.reset();
       last = 0;
+      bank = 0;
       hudAcc = 0;
       hudLast = "";
       syncRef.current();

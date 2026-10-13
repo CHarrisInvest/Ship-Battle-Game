@@ -94,7 +94,8 @@ export function makeShip(world, x, y, heading, opts) {
     // the trigger discipline in `serveGuns` and their own spread of positions do that now.
     cd: { broadside: 0, bow: 0, musket: 0 },
     mastDown: false, ramCd: 0, locked: new Map(), turnVel: 0, kx: 0, ky: 0,
-    px: x, py: y, vx: 0, vy: 0, way: 0, baulkT: 0, foul: false, // where she was, and the ground she truly made
+    px: x, py: y, pHeading: heading, // where she was, and which way she pointed, when the step began
+    vx: 0, vy: 0, way: 0, baulkT: 0, foul: false, // the ground she truly made
   };
   if (!opts.playerId) {
     s.wander = random(world) * Math.PI * 2;
