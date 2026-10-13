@@ -113,6 +113,17 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   The function adds the `PROXY_SECRET` the server demands of every route but `/health`, and the
   visitor's address as Vercel saw it (`x-client-ip`), which the server's limits count by; whatever a
   visitor sends in either header is dropped first.
+- **Sailing with friends is one round the server runs and every browser steps.** `server/online.js`
+  keeps lobbies (a five-letter code, up to 8 captains, the host sets the AI ships and starts) and runs
+  each round at 60 ticks a second on its own clock, from its own seed and each captain's loadout off
+  her own hold. What it sends is not the world but each tick's controls, twenty frames a second, and
+  every browser (`src/online.js`) steps the same world through them: the engine steps to the same
+  bits everywhere, which is what `exact.js` and `npm run determinism` are for, so this is safe, and a
+  fingerprint of the ships every two seconds says if it ever is not. Each captain is banked off the
+  server's world as she goes out or the round ends, connected or not. The socket goes straight to
+  Railway (`PUBLIC_WS_URL`), because Vercel's proxy cannot carry one, so it is opened with a short-lived
+  ticket from `/api/online/ticket`, where the cookie still travels. `npm run online-test` sails two
+  captains through a round over real sockets; `npm run online-smoke` does it in two real browsers.
 - `src/consent.js` is the cookie prompt's answer: essential, analytics and advertising, kept
   under its own key. **The hold is the essential category and is never gated on
   it**: "Reject all" must not touch a captain's progress.
