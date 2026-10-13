@@ -5,8 +5,10 @@
  * at /privacy/, which is the address AdSense and Google's consent message are given. Each passes its
  * own `Section` so the words are written once and dressed the way the place around them is.
  *
- * Everything here has to stay true of the code. The hold and the consent answer live in
- * localStorage (`hold.js`, `consent.js`); ads load as `ads.js` says; analytics as `analytics.js`
+ * Everything here has to stay true of the code. The hold is kept by the game server (`server/`), under
+ * a guest account whose session cookie is the one thing of it in the browser, with each voyage's seed,
+ * controls and result kept for its replay and cleared as `purge` says; the consent answer lives in
+ * localStorage (`consent.js`); ads load as `ads.js` says; analytics as `analytics.js`
  * says, and the analytics section follows `analyticsLive` so it changes the day a measurement ID goes
  * in, and the Google Ads tag beside it following `conversionsLive`. Change any of those and this changes the same day, with `PRIVACY_UPDATED` moved.
  */
@@ -49,21 +51,53 @@ export function PrivacyPolicy({ Section, P, linkColor }) {
   return (
     <>
       <P>
-        Sternchase is a game you play in your browser at sternchase.org. There are no accounts, and the
-        game has no server of its own. This page says what is stored, where it is kept, and what you can
-        do about it.
+        Sternchase is a game you play in your browser. Your progress is kept on the game's own server,
+        under an account the game makes for you the first time you play. This page says what is
+        stored, where it is kept, and what you can do about it.
       </P>
 
       <Section title="What the game saves">
         <P>
-          Your coins, ships, ship names and records are saved in your browser's local storage on this
-          device, so they are there the next time you play. They are never sent anywhere. This is
-          essential to the game and is always on.
+          Your coins, ships, ship names and records are kept on the game's server, so they are there the
+          next time you play. The first time you play, the game makes you a guest account. It holds no
+          name or email of yours: only a random identifier, and a placeholder name and address the
+          account system fills in itself. Your browser keeps a cookie that says which
+          account is yours. That cookie is essential to the game and is always on: without it the game
+          could not find your progress.
         </P>
-        <P>Your cookie choices are saved the same way, kept apart from your progress, so you are not asked on every visit.</P>
         <P>
-          To delete your progress and your cookie choices, clear this site's data in your browser's
-          settings.
+          So that the server can check what a voyage earned, it keeps, for each voyage you sail, the
+          random number it started from, the ship you sailed as she was fitted, the controls you used
+          (the stick, the fire buttons and the repairs, and nothing else from your device) and how it
+          ended.
+        </P>
+        <P>
+          With your session, the server records the IP address your requests came from and the name
+          your browser gives itself (its user agent), and keeps them as long as the session. Separately,
+          it counts requests by address, in memory only, to stop one address making accounts without end.
+        </P>
+        <P>
+          A guest account that goes unused for 90 days is deleted, with its progress and its voyages.
+          The controls kept for a voyage are deleted 30 days after it ends; the rest of a voyage is
+          kept as long as the account.
+        </P>
+        <P>
+          The server and its database run on Railway, in the United States. Your browser reaches them
+          through Vercel, which also serves the game. Neither uses what is stored for anything but
+          running the game.
+        </P>
+        <P>
+          When you sail with friends, the captains in your lobby see the name of the ship you sail, and
+          your browser connects to the game server directly rather than through Vercel, so the server
+          sees your IP address on that connection too. Who is in a lobby is kept in the server's memory
+          only, and goes when the lobby empties.
+        </P>
+        <P>Your cookie choices are saved in your browser's local storage, apart from your progress, so you are not asked on every visit.</P>
+        <P>
+          To have your account and everything kept with it deleted,
+          write to <L href={`mailto:${PRIVACY_CONTACT}`}>{PRIVACY_CONTACT}</L>. Clearing this site's data
+          in your browser removes the cookie, after which the game makes you a new account and the old
+          one is deleted 90 days later.
         </P>
       </Section>
 

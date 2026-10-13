@@ -1,0 +1,157 @@
+/**
+ * THE HEADLESS ROUND TEST — `npm run sim-test`
+ *
+ * Plays every mode to its end in plain Node, through the engine's own interface and nothing else:
+ * no browser, no canvas, no React. It is the proof that `src/sim/` is an engine a server could run,
+ * and a regression net for the rules a round is played by. Each mode is sailed twice over, once
+ * with her hands off everything and once with the stick held hard over, every gun firing and a
+ * repair asked for every few seconds, in the starter's gundalow and again in the fully found first
+ * rate at the top of the ladder, which is the heaviest broadside the fleet can put in the air.
+ *
+ * It fails if:
+ *
+ *   a round never ends;
+ *   a ship's position, heading, speed or bars become anything but a number;
+ *   the same seed and the same inputs, sailed twice, end in a different `world.result` or a
+ *   different final world;
+ *   the world stops being plain data, which is what `structuredClone` proves, since it refuses
+ *   functions and anything from the page;
+ *   an event carries anything but ids, numbers and words, which is what a JSON round trip proves;
+ *   a voyage's figures do not add up, or the round's end is said other than exactly once;
+ *   a repair asked for through the input record does not charge for what it puts back.
+ *
+ * * Under ten seconds.
+ */
+
+import { createWorld, step, voyageStats, voyageRun, isInput, repairQuote, shipOf, NO_INPUT, TICK } from "../src/sim/index.js";
+import { LIMIT, MODES, SHIPS, idle, drive, wander, dump } from "./rounds.js";
+
+const failures = [];
+const fail = (what) => { failures.push(what); console.log("  FAIL  " + what); };
+const ok = (what) => console.log("  ok    " + what);
+
+const FIGURES = ["x", "y", "heading", "spdCur", "hull", "mast", "crew", "px", "py"];
+
+function sail(mode, seed, loadout, script) {
+  const world = createWorld({ mode, seed, players: [{ id: "p1", loadout }] });
+  const counts = {};
+  let bad = null, plain = null, overs = 0;
+  while (!world.result.over && world.time < LIMIT) {
+    const events = step(world, { p1: script(world.tick) });
+    for (const e of events) {
+      counts[e.type] = (counts[e.type] || 0) + 1;
+      if (e.type === "round_over") overs++;
+      if (!plain && JSON.stringify(JSON.parse(JSON.stringify(e))) !== JSON.stringify(e)) plain = e.type;
+    }
+    if (!bad) {
+      for (const s of world.ships) {
+        const f = FIGURES.find((k) => !Number.isFinite(s[k]));
+        if (f) { bad = `ship ${s.id} ${f} is ${s[f]} at ${world.time.toFixed(2)} s`; break; }
+      }
+    }
+  }
+  return { world, counts, bad, plain, overs };
+}
+
+function round(mode, shipName, script, scriptName) {
+  const tag = `${mode} ${shipName} ${scriptName}`;
+  const seed = 1 + MODES.indexOf(mode) * 101 + Object.keys(SHIPS).indexOf(shipName) * 7;
+  const a = sail(mode, seed, SHIPS[shipName], script);
+  const { world } = a;
+  if (!world.result.over) { fail(`${tag}: no end after ${LIMIT} s`); return; }
+  ok(`${tag}: over at ${world.time.toFixed(1)} s, ${world.result.winners.length ? "won" : `sunk by ${world.result.losers[0].cause}`}`);
+  if (a.bad) fail(`${tag}: ${a.bad}`);
+  if (a.plain) fail(`${tag}: a ${a.plain} event carries more than ids and numbers`);
+  if (a.overs !== 1) fail(`${tag}: the round's end was said ${a.overs} times`);
+  try { structuredClone(world); } catch (e) { fail(`${tag}: the world is not plain data (${e.message})`); }
+  const v = voyageStats(world, "p1");
+  if (v.total !== v.coins + v.timePay + v.winPay) fail(`${tag}: the voyage does not add up (${JSON.stringify(v)})`);
+  // the same round again, from the same seed, under the same hands
+  const b = sail(mode, seed, SHIPS[shipName], script);
+  if (JSON.stringify(b.world.result) !== JSON.stringify(world.result)) fail(`${tag}: the same seed ended differently`);
+  else if (dump(b.world) !== dump(world)) fail(`${tag}: the same seed left a different world`);
+  else ok(`${tag}: the same seed gives the same round (${world.tick} steps)`);
+}
+
+/** A repair asked for through the input record charges for exactly what it puts back. */
+function repairs() {
+  const world = createWorld({ mode: "wave", seed: 9, players: [{ id: "p1", loadout: SHIPS.gundalow }] });
+  const me = shipOf(world, "p1");
+  me.hull = me.maxHull * 0.3;
+  me.coins = 1000;
+  const quote = repairQuote(world, "p1", "hull");
+  const before = me.hull;
+  const events = step(world, { p1: { ...NO_INPUT, repair: "hull" } });
+  const done = events.find((e) => e.type === "repaired");
+  if (!done) { fail("repairs: asking for one through the input record did nothing"); return; }
+  if (done.coins !== quote.afford || me.coins !== 1000 - quote.afford) fail(`repairs: charged ${done.coins}, quoted ${quote.afford}`);
+  else if (Math.abs(me.hull - (before + quote.points)) > 1e-9) fail(`repairs: put back ${me.hull - before}, quoted ${quote.points}`);
+  else ok(`repairs: the hull was patched for ${done.coins} coins, as quoted`);
+  const again = step(world, { p1: NO_INPUT });
+  if (again.some((e) => e.type === "repaired")) fail("repairs: one ask repaired twice");
+  // and the mast is all or nothing
+  me.mast = 0;
+  me.mastDown = true;
+  me.coins = 0;
+  if (step(world, { p1: { ...NO_INPUT, repair: "mast" } }).some((e) => e.type === "repaired")) fail("repairs: a mast was stepped with an empty purse");
+  else ok("repairs: an empty purse buys no mast");
+}
+
+const t0 = Date.now();
+console.log(`one step is ${(TICK * 1000).toFixed(2)} ms of round`);
+for (const mode of MODES) {
+  for (const shipName of Object.keys(SHIPS)) {
+    round(mode, shipName, idle, "idle");
+    round(mode, shipName, drive, "driven");
+  }
+}
+/**
+ * What the server will read off a captain's controls and off the end of her round. `isInput` is the
+ * whole of what the controls can produce and nothing else, because a replayed round has to be fed
+ * exactly what the browser stepped with. `voyageRun` is what a finished voyage banks, the summary the
+ * end screen used to build by hand, so the browser and the server bank one thing.
+ */
+function inputsAndRuns() {
+  const good = [NO_INPUT, ...Array.from({ length: 2000 }, (_, t) => drive(t)), ...Array.from({ length: 2000 }, (_, t) => wander(t))];
+  if (!good.every(isInput)) fail("isInput refuses a record the scripted controls produce");
+  else ok(`isInput takes every record the scripted controls produce (${good.length})`);
+  const BAD = [
+    ["an extra key", { ...NO_INPUT, extra: 1 }], ["a missing key", (({ musket, ...r }) => r)(NO_INPUT)],
+    ["joyMag over 1", { ...NO_INPUT, joyMag: 1.01 }], ["joyMag NaN", { ...NO_INPUT, joyMag: NaN }],
+    ["joyMag below 0", { ...NO_INPUT, joyMag: -0.1 }], ["joyAng Infinity", { ...NO_INPUT, joyAng: Infinity }],
+    ["a string for a boolean", { ...NO_INPUT, bow: "true" }], ["a repair that is not one", { ...NO_INPUT, repair: "crew" }],
+    ["an array", [0, 0, false, false, false, null]], ["null", null], ["a number", 3],
+  ];
+  const let_through = BAD.filter(([, x]) => isInput(x)).map(([what]) => what);
+  if (let_through.length) fail(`isInput lets through ${let_through.join(", ")}`);
+  else ok(`isInput refuses ${BAD.length} records the controls could never produce`);
+
+  for (const mode of MODES) {
+    const world = createWorld({ mode, seed: 77, players: [{ id: "p1", loadout: SHIPS.gundalow }] });
+    while (!world.result.over && world.time < LIMIT) step(world, { p1: drive(world.tick) });
+    const result = world.result;
+    const won = result.winners.some((w) => w.playerId === "p1");
+    const mine = (won ? result.winners : result.losers).find((r) => r.playerId === "p1") || { rank: 0, cause: "hull" };
+    const s = voyageStats(world, "p1");
+    const byHand = {
+      mode: world.mode, earned: s.total, repaired: s.repaired, kills: s.kills, dmg: s.dmg,
+      time: s.time, rams: s.rams, patches: s.patches, won, rank: mine.rank,
+      dismasted: s.dismasted, healed: s.healed,
+      sunkByRam: s.sunkByRam, sunkByGuns: s.sunkByGuns, sunkByMuskets: s.sunkByMuskets,
+      rammedWhole: s.rammedWhole, wornDown: s.wornDown,
+    };
+    const run = voyageRun(world, "p1");
+    if (JSON.stringify(run) !== JSON.stringify(byHand)) fail(`voyageRun in ${mode} is not what the end screen banked`);
+    else ok(`voyageRun in ${mode} is what the end screen banked (${run.earned} earned, rank ${run.rank})`);
+  }
+}
+
+repairs();
+inputsAndRuns();
+console.log(`\n${((Date.now() - t0) / 1000).toFixed(1)} s`);
+if (failures.length) {
+  console.log(`\n${failures.length} FAILURE${failures.length === 1 ? "" : "S"}`);
+  for (const f of failures) console.log("  " + f);
+  process.exit(1);
+}
+console.log("\nThe engine runs without a browser.\n");

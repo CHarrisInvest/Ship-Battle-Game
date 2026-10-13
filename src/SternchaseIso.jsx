@@ -1,14 +1,14 @@
 import React, { Fragment, useRef, useState, useEffect, useCallback, useMemo } from "react";
 import { drawGalleon } from "./galleon.js";
-import { hullForm, tintTimber } from "./hullform.js";
 import {
-  getHold, bankVoyage, subscribeHold, modeRecord, shipLoadout, shortfall,
+  getHold, subscribeHold, modeRecord, shipLoadout, shortfall, connect, holdStatus, subscribeStatus, hadLocalSave, adoptHold, holdSettled,
   buyShip, buyPart, fitMast, fitSail, fitStud, fitGun, unfitGun, setActiveShip, spareParts, ownedShips, partOf,
   shipName, nameShip, fitOwned, ownedFill, NAME_LIMIT, readiness, sellPart, refundOf,
 } from "./hold.js";
+import { startVoyage, recorderFor } from "./voyage.js";
+import { connectOnline, ONLINE_FAILED } from "./online.js";
 import {
-  STARTER, kindOf, mastRebuildCost, measure, rate, rateOf, resolve, rigSpec,
-  ladder, peers, stockOfRate, stockOfHull, arenaHunter, ladderRung, ladderHeight,
+  kindOf, rate, rateOf, rigSpec, ladderHeight,
   HULLS, HULL_LIST, PARTS, statBand, maximumLoadout, outfitCost,
   mastsForSocket, sailsForBerth, studsForBerth, gunsForMount,
   knots, berthEffect, familyOf, gunTons, gunFits, gunEffect, cheapestCanvas, handlingScore, handlingPoints,
@@ -18,11 +18,27 @@ import { getStoredConsent, hasConsentDecision, acceptAllCookies, rejectNonEssent
 import { getAdRegion, onAdRegion, openGoogleChoices } from "./ads.js";
 import { analyticsLive, conversionsLive, measurementLive, track } from "./analytics.js";
 import { PrivacyPolicy } from "./privacy.jsx";
+import {
+  createWorld, step, TICK, voyageStats, repairQuote, shipOf, outInWeather, stormPhase, volleyWindow, reloadOf, canFire,
+  HULL_PATCH_CAP, MAST_JURY_CAP, barsOf, MODES as RULES, MODE_LIST, modeOf, clamp,
+} from "./sim/index.js";
+import { C, UI } from "./render/palette.js";
+import { createRenderer } from "./render/renderer.js";
+import { createFx, fxEvents, stepFx } from "./render/effects.js";
+import { HUD, radarRight } from "./render/hud.js";
+import { useControls } from "./input/controls.js";
 
 /**
  * STERNCHASE: HELM & HULL — pirate battles at sea, on a tilted (isometric-ish) sea with tall wooden
- * ships. "Broadside" survives below as the name of the side guns, which is the job it was always
- * doing in the simulation; the game's own name is Sternchase.
+ * ships. "Broadside" survives in the engine as the name of the side guns, which is the job it was
+ * always doing in the simulation; the game's own name is Sternchase.
+ *
+ * THIS FILE IS THE SCREEN, AND NOT THE GAME'S RULES. It holds the menus, the shipyard's screens,
+ * the HUD, the end screen, and the frame loop that joins the three parts beside it: the engine in
+ * `sim/`, which decides everything that happens in a round and runs as well in Node as here, the
+ * renderer in `render/`, which draws a world and never changes one, and the controls in `input/`.
+ * The hold, analytics and the end screen's words are reached from here, never from the engine.
+ *
  * WAVE ARENA: endless survival. One hunter to start, a stock ship a shade under the player's own;
  * kills bring reinforcements in from the edge of the map, well clear of your bow, 1-2-1-2 and then
  * two a kill, and every second kill the next rung of the stock ladder comes out of the horizon,
@@ -39,927 +55,11 @@ import { PrivacyPolicy } from "./privacy.jsx";
  * buys during a round is repairs and nothing else, and it buys them out of the voyage's own takings:
  * every coin spent patching her is a coin that does not reach the hold. Every mode opens her purse at
  * nothing, so the first patch of a round is always paid for by something she did in it. So the stat
- * functions below read only her damage, not any notion of a level, and their shape is the seam the
- * shipyard's `rate()` plugs into when the modes are reworked.
+ * functions in `sim/ships.js` read only her damage, not any notion of a level, and their shape is
+ * the seam the shipyard's `rate()` plugs into when the modes are reworked.
  */
-
-const WORLD = 2000;
-const TILT = 0.6; // vertical squash -> high-angle / isometric feel
-const ZUP = Math.sqrt(1 - TILT * TILT); // how world-height maps to screen-up
-const FFA_AI = 10;
-const ISLAND_COUNT = 4;
-const MIDDLE_CLEAR = 320; // no island closer than this to the middle, in any mode
-// How an AI captain sails round an island. She keeps this much water between her beach and the
-// point `moveShip` grounds her at, looks this far ahead for one plus what she will cover in
-// ISLAND_LOOK_SECS at her present speed, and once on a beach runs along it leaning off by this
-// much, which is what takes her off it. Two islands are never closer than 170 to each other, so
-// a first rate clearing each by the margin still has a channel between them.
-const ISLAND_CLEAR = 22;
-const ISLAND_LOOK = 90;
-const ISLAND_LOOK_SECS = 1.6;
-const ISLAND_LEAN = 0.35;
-const RING_CLEAR = 130; // ...and none within this of a closing ring's working size
-const OPENING_WINDOW = 30; // seconds the ffa AI weights range over reputation when picking prey
-// How much a rival's strength against her own weighs when an AI captain picks prey, at full weight
-// for a ship a factor of e weaker or stronger. Set beside the other terms: a runaway leader is worth
-// 130, a hull under half health up to 60, and a thousand paces of range 20 to 120.
-const PREY_STRENGTH = 60;
-
-// THE ARENAS: two modes that replace what she sinks from the horizon, and differ in what they send.
-// The wave arena grows the swarm rather than the ships: reinforcements sail in from the map edge,
-// and the hunters climb the stock ladder only until they have caught her up. The ladder arena sends
-// exactly one ship at a time, the whole stock fleet in order, and the ships are the whole of the
-// escalation. Both open with one hunter on the water.
-const ARENA_START = 1; // hunters afloat when the round opens
-const ARENA_RAMP = [1, 2, 1, 2]; // wave: reinforcements for the first four kills, then 2 every kill
-const ARENA_SPAWN_CLEAR = 620; // keep a respawn at least this far from the player
-const ARENA_MAX_ENEMIES = 14; // wave: ceiling so the fleet stays drawable
-const ARENA_SPAWN_GAP = 5; // the second ship of a wave holds off this long
-
-// nth kill (1-indexed) -> how many ships sail in to replace the one that sank
-const arenaReinforcements = (n) => ARENA_RAMP[n - 1] ?? 2;
-
-// DERBY: ten bows, no guns, nothing to buy, and a squall closing on the middle of the sea. Without
-// cannon nobody's mast can be brought down, so every hull holds the same top speed all match and a
-// runner could never be caught — the ring is what makes the fight happen.
-const DERBY_AI = 9; // rivals, so ten captains start
-
-/**
- * THE WEATHER: a ring closing on the middle of the sea, and why the two modes that carry one want
- * different rings.
- *
- * A ring opens wider than the map's own corners, so the grace period really is open water, and closes
- * onto the middle, which the island generator leaves clear to whatever size that mode's ring works at.
- * Outside it the crew works the deck in a gale: survivable for a dash across the weather, ruinous for
- * anyone who tries to live out there.
- *
- * ...and then, if the last of them are still circling one another, the eye itself shuts. A working
- * ring is not enough on its own: a ram needs closing speed to count for anything, and two ships penned
- * in a pool a hundred paces across can mill about forever without ever getting the run at each other
- * that would settle it — measured at better than two minutes of it. Weather asks nobody for a run-up,
- * so the ring goes to nothing instead, and the last hull afloat is the one with crew enough to outlast
- * the sea. However cagey the sailing, a round has an end.
- *
- * **The shape of it belongs to the mode, because what the ring has to leave room for is not the same
- * thing in both.** The derby is settled at the length of a bowsprit and its ring is the size of the
- * fight it is forcing. A free-for-all is settled by gunfire, and a broadside carries better than two
- * hundred: pen that fight into the derby's ring and every ship inside it lies under every other
- * ship's guns from the moment it closes, which is not a fight either, only a bonfire. So the
- * free-for-all works at a wider ring, and takes longer to get there, because ten captains with guns
- * thin themselves out long before the weather is what settles anything.
- */
-const STORM_R0 = 1400; // opening radius — just past the far corners of the map, so closing bites at once
-const STORM_R2 = 0; // ...and the eye shuts to nothing
-// The four times add up to how long a round runs when nobody settles it sooner: 168 seconds in the
-// derby, 200 in the free-for-all. The derby's `fullRound` purse sits a shade above its figure.
-const DERBY_WEATHER = { grace: 18, close: 95, ring: 190, hold: 20, squeeze: 35 };
-const FFA_WEATHER = { grace: 40, close: 100, ring: 300, hold: 25, squeeze: 35 };
-// The weather takes this share of her FULL crew a second, every second she is out in it, whatever
-// class she is and however many hands she has left: ten seconds of exposure is the ship, for a
-// gundalow and a first rate alike. It was an absolute figure of hands a second that ramped up over
-// STORM_RAMP, which cost a boat of thirty her whole crew in five seconds and a three-decker of eight
-// hundred nothing she would miss for most of a minute, so the same weather was a death sentence in
-// one hull and an inconvenience in another.
-const STORM_BITE = 0.1;
-// Exposure still builds and sheds, because it is what turns an AI captain's course home urgent and
-// what deepens the tint on the player's screen; it no longer sets how hard the weather bites.
-const STORM_RAMP = 12; // seconds out in it before her exposure is at its worst
-const STORM_RECOVER = 2.2; // exposure shed a second once she is back inside
-// An AI captain is drawn toward the middle rather than fenced away from the edge. Inside STORM_HOME
-// of the ring she fights as she pleases; past it the middle bends her course, hardest at the rail.
-// It is a preference, not an override, which is what leaves room to shoulder a rival out into the
-// weather and hold her there — and once she is out, her own exposure is what turns the pull urgent.
-const STORM_HOME = 0.45; // share of the ring she is content to fight anywhere within
-const STORM_PULL = 0.8; // how hard the middle bends her course at the very rail
-
-// Two hulls with the same top speed can fall into a mutual tail chase and orbit one another for as
-// long as they both keep the throttle down — lead pursuit holds the circle rather than closing it.
-// A captain who has gone this long without gaining takes the way off her instead: a slow hull turns
-// far inside a fast one, so easing the throttle is what lets her cut the corner and force the meeting.
-const STALL_PATIENCE = 5; // seconds of getting nowhere before she tries something else
-const STALL_CUT = 4.5; // and how long she holds the tighter, slower turn
-const STALL_THROTTLE = 0.5;
-
-// A captain gets out of a heap rather than grinding away in it. Being jammed against another hull is
-// not a fight — she is going nowhere and neither is anyone else — so once she has been stuck like
-// that a moment she peels out, gathers way in clear water, and comes back for a proper run, usually
-// at somebody other than whoever she was jammed against. What times it is `baulkT`, the plain fact of
-// being foul of a hull and making no ground: in a pile any reckoning of closing speed reads high one
-// frame and nothing the next, while being stuck is simply true or not. Her nerve scales how long she
-// will put up with it, so no two blink together — a pile that broke as one would only re-form.
-const SHEER_ANGLE = 1.35; // about 77 degrees off her bearing, when there is no heap to steer out of
-const SHEER_LOOK = 190; // hulls this close are what she counts as the heap she is peeling out of
-const SHEER_TIME = 2.4; // how long she holds the break before working back in
-const SHEER_THROTTLE = 0.7; // and she takes some way off to get the bow across
-
-/** Where the ring stands at `t` seconds, for one mode's weather. */
-const stormRadius = (t, w) => {
-  const closed = w.grace + w.close;
-  if (t <= closed) return STORM_R0 + (w.ring - STORM_R0) * clamp((t - w.grace) / w.close, 0, 1);
-  return w.ring + (STORM_R2 - w.ring) * clamp((t - closed - w.hold) / w.squeeze, 0, 1);
-};
-/**
- * What the weather is doing at `t`, in the word the HUD prints: `waiting` through the grace,
- * `closing` while the ring comes in, `holding` while it stands at the ring, `closing` again through
- * the squeeze, and `closed` once the eye has shut. Read off the clock rather than off the radius,
- * because the radius is below the ring for the whole of the squeeze, which is when the weather is
- * closing fastest and the pill used to say it had stopped.
- */
-const stormPhase = (t, w) => {
-  if (t < w.grace) return "waiting";
-  if (t < w.grace + w.close) return "closing";
-  if (t < w.grace + w.close + w.hold) return "holding";
-  if (t < w.grace + w.close + w.hold + w.squeeze) return "closing";
-  return "closed";
-};
-
-// The sea is three tones of one hue, laid down by depth: open water everywhere, the shallows banked
-// around each island, and a thin beach rim where the bottom comes up to meet the sand. Everything the
-// UI paints on top of the water — panels, scrims, the grid — is the same hue run down to near black,
-// so the chrome reads as the sea in shadow rather than as a second, unrelated colour scheme.
-const C = {
-  water: "#2a8f8b",      // open water — the main sea, and the page background behind it
-  shallows: "#45b39d",   // the bank of shallow water an island sits in
-  beachRim: "#7fd0bd",   // the thin band right where the water meets the sand
-  foam: "#f4fffc",       // a cap catching the light as it breaks
-  waterEdge: "#1c6663",  // outside the buoys: open water run deep, so the arena reads as the bright part
-  deep: "#0b3331",       // the sea at its darkest — panel grounds, and ink on a gold field
-  grid: "rgba(9,52,50,0.10)",
-  player: "#ece2cc",
-  playerStroke: "#b3a684",
-  // Round shot is cast iron, and going dark reads better than the gold it replaces almost
-  // everywhere, because every ground it crosses but one is lighter than it. Against the gold, by
-  // ground: open water 2.93 to 2.32, the shallows 4.44 to 1.53, grass 4.27 to 1.59, sand 5.88 to
-  // 1.15, the rim where the water meets the sand 6.32 to 1.07. A gold ball crossing an island was
-  // very nearly not there at all.
-  //
-  // The exception is dark water: 1.70 out past the buoys, and as little as 1.08 where the weather
-  // has the sea darkened outside the ring, which is a ball nobody can see. So the ball is not one
-  // mass but two, and the second is the answer to the first. The light off the top of it scores
-  // 2.96 to 5.45 on exactly those dark grounds, where the body has nothing, and falls to 1.55 on
-  // open water, where the body has 2.93. Whichever ground it crosses, one of the two is holding it.
-  // The trail does the same job again from further out, 5.73 to 11.66 on the dark grounds, and a
-  // round shot is only ever on screen while it is flying, so the trail is always there.
-  ball: "#333b42",
-  ballLit: "#9aa5af",   // the light off the top of it, which is what makes it a sphere and not a hole
-  smoke: "#e6efec",     // powder smoke: what a gun leaves behind and what a ball drags after it
-  pellet: "#dfefff",
-  hull: "#d99a3c",
-  // Mast reads on three grounds: the enemy bar's 50%-black backing, the player's HUD bar, and the
-  // FRONT gun button — the bow gun brings masts down, so it carries this colour too. It was a teal
-  // barely a shade off open water (1.41 contrast) and vanished against the sea. Pale rather than
-  // navy on purpose: a dark blue scores 1.01 against the bar's own dark backing, which would make a
-  // full mast bar look exactly like an empty one.
-  mast: "#a8c4ff",
-  crew: "#d15b5b",
-  side: "#e8c877",
-  front: "#7a9cc6",
-  splinter: "#b98a4a",
-  gold: "#e8c877",
-  panel: "rgba(11,51,49,0.80)",
-  hair: "rgba(160,224,210,0.20)",
-  ink: "#eef4f2",
-  sand: "#cbb98a",
-  sandDark: "#a8935f",
-  grass: "#6fae5c",
-  frond: "#4f9a3f",
-  frondDk: "#2f6634",
-  coconut: "#b58a4a",
-  sail: "#f4ecd8",
-  wood: "#6b4a2b",
-  woodLit: "#8d6740",
-  hullWood: "#7c5a37",
-  hullDeck: "#8c6a44",
-  hullDark: "#48331f",
-  boundary: "#e8c877",
-  buoyA: "#d15b5b",
-  buoyB: "#eef4f2",
-};
-
-// ---------------- island foliage ----------------
-// Two species built from one blade primitive. Every fraction below is of the plant's canopy radius,
-// and that radius is itself a fraction of the island radius — so a plant scales with the island it
-// stands on, and an island is never a scaled-up version of a smaller one only because of its plants.
-//
-// These values are tuned, not derived. Keep them here rather than inline in the draw code.
-const PLANT = {
-  // Canopy radius in screen px, the same on every island. It used to be a fraction of the island
-  // radius, which made a palm on the biggest island four times the size of one on the smallest —
-  // islands differed in the size of their trees rather than in how many they had. A fixed size says
-  // a tree is a tree; the island is what changes.
-  canopy: 9,
-  scaleMin: 0.75,      // so an individual plant still varies: 6.75 to 12.15 px
-  scaleMax: 1.35,
-
-  fronds: 7,           // blades per crown
-  frondLen: 1.06,
-  frondWidth: 0.20,    // at the blade's widest
-  arch: 0.20,          // rise at mid-blade, x blade length
-  droop: 0.26,         // tip drop below the crown, x blade length
-  wind: 0.20,          // bend amplitude
-
-  trunkH: 1.85,
-  trunkW: 0.30,        // base width; floored at 1.1 device px so it survives the small end
-  taper: 0.58,         // top width / base width
-  bow: 0.50,           // lean and curve, signed per plant
-
-  palmRatio: 0.85,     // the rest are bushes
-  minGap: 0.75,        // spacing, as a fraction of the two footprints summed
-  scatter: 0.67,       // x island r
-
-  // Count goes as the square of the radius, i.e. with island area, which is what holds the planting
-  // at one density now that a plant is a fixed size. Linear count was right only while plants grew
-  // with the island; against a fixed size it would leave a small island twice as densely planted as
-  // a large one. countRef is the count at countRefR: 12 plants at r=58, 40 at r=105, 55 at r=124.
-  countRef: 36,
-  countRefR: 100,
-
-  shadowSize: 0.42,
-  shadowLean: 0.55,    // how far the shadow tracks the crown's offset from the base
-  shadowOpa: 0.10,     // the soft outer pass is 0.40 of this
-};
-
-// quadratic bezier point and tangent
-function qp(t, a, b, c) {
-  const u = 1 - t;
-  return [u * u * a[0] + 2 * u * t * b[0] + t * t * c[0], u * u * a[1] + 2 * u * t * b[1] + t * t * c[1]];
-}
-function qd(t, a, b, c) {
-  const u = 1 - t;
-  return [2 * u * (b[0] - a[0]) + 2 * t * (c[0] - b[0]), 2 * u * (b[1] - a[1]) + 2 * t * (c[1] - b[1])];
-}
-
-// One tapered blade swept along a bezier that rises out of the crown and droops at the tip. `a` is
-// the plan bearing; its y component is squashed by TILT so the crown foreshortens like everything
-// else. bx/by bend the blade downwind and scale along t, so the root stays pinned at the crown and
-// only the outer half travels — the trunk and the crown point never move.
-function frond(ctx, cx, cy, a, L, wMax, arch, droop, notch, steps, bx = 0, by = 0) {
-  const dx = Math.cos(a) * L, dy = Math.sin(a) * L * TILT;
-  const p0 = [cx, cy];
-  const p1 = [cx + dx * 0.5 + bx * 0.30, cy + dy * 0.5 - arch * L + by * 0.30];
-  const p2 = [cx + dx + bx, cy + dy + droop * L + by];
-  const side = [];
-  for (let i = 0; i <= steps; i++) {
-    const t = i / steps;
-    const p = qp(t, p0, p1, p2), d = qd(t, p0, p1, p2);
-    const m = Math.hypot(d[0], d[1]) || 1;
-    let w = wMax * Math.sin(Math.PI * Math.pow(t, 0.8));
-    if (notch && i % 2) w *= 0.52; // leaflet notches
-    side.push([p, [-d[1] / m * w, d[0] / m * w]]);
-  }
-  ctx.beginPath();
-  ctx.moveTo(p0[0], p0[1]);
-  for (let i = 0; i <= steps; i++) ctx.lineTo(side[i][0][0] + side[i][1][0], side[i][0][1] + side[i][1][1]);
-  for (let i = steps; i >= 0; i--) ctx.lineTo(side[i][0][0] - side[i][1][0], side[i][0][1] - side[i][1][1]);
-  ctx.closePath();
-  ctx.fill();
-}
-
-// tapered, bowed trunk outline
-function trunkPath(ctx, bx, by, tx, ty, wb, wt, bow) {
-  const p0 = [bx, by], p2 = [tx, ty];
-  const p1 = [(bx + tx) / 2 + bow, (by + ty) / 2];
-  const N = 9, L = [], R = [];
-  for (let i = 0; i <= N; i++) {
-    const t = i / N;
-    const p = qp(t, p0, p1, p2), d = qd(t, p0, p1, p2);
-    const m = Math.hypot(d[0], d[1]) || 1;
-    const w = (wb + (wt - wb) * t) / 2;
-    L.push([p[0] - d[1] / m * w, p[1] + d[0] / m * w]);
-    R.push([p[0] + d[1] / m * w, p[1] - d[0] / m * w]);
-  }
-  ctx.beginPath();
-  ctx.moveTo(L[0][0], L[0][1]);
-  for (let i = 1; i <= N; i++) ctx.lineTo(L[i][0], L[i][1]);
-  for (let i = N; i >= 0; i--) ctx.lineTo(R[i][0], R[i][1]);
-  ctx.closePath();
-}
-
-// Plan-space radius a plant's crown covers on the ground, before TILT. Spacing is tested in plan
-// rather than on screen so the vertical squash is handled for free and front-to-back gaps match
-// side-to-side ones.
-function footprint(s, isPalm) {
-  const tr = PLANT.canopy * s;
-  return isPalm ? tr * PLANT.frondLen : tr * 0.62 * 1.05;
-}
-
-// A palm. The trunk carries the silhouette: the crown sits at trunkH x the canopy radius rather
-// than one radius up, so at a 5px canopy the plant still reads as a leaning stick with a splayed
-// head. Detail switches itself off by size below — those gates are what stop small plants
-// turning to mush.
-function drawPalm(ctx, f, clock) {
-  const fx = f.x, fy = f.y * TILT;
-  const tr = PLANT.canopy * f.s;
-  const lean = f.k * PLANT.bow * tr;      // static: wind never moves the trunk
-  const cx = fx + lean, cy = fy - tr * PLANT.trunkH;
-  const L = tr * PLANT.frondLen;
-
-  const wb = Math.max(1.1, tr * PLANT.trunkW), wt = wb * PLANT.taper;
-  ctx.fillStyle = C.wood;
-  trunkPath(ctx, fx, fy, cx, cy, wb, wt, lean * 0.9);
-  ctx.fill();
-  if (wb > 2.2) {
-    ctx.save();
-    ctx.clip();
-    ctx.fillStyle = C.woodLit;
-    trunkPath(ctx, fx - wb * 0.28, fy, cx - wt * 0.28, cy, wb * 0.34, wt * 0.34, lean * 0.9);
-    ctx.fill();
-    ctx.restore();
-  }
-
-  const n = tr < 6 ? Math.max(4, PLANT.fronds - 2) : PLANT.fronds;
-  const step = Math.PI * 2 / n;
-  const notch = tr > 7;
-  const steps = notch ? (tr > 13 ? 14 : 10) : 8;
-  const order = [];
-  for (let i = 0; i < n; i++) {
-    const a = f.a + i * step + Math.sin(f.ph + i * 2.4) * step * 0.18;
-    order.push({ a, i, back: Math.sin(a) < -0.1 });
-  }
-  order.sort((u, v) => Math.sin(u.a) - Math.sin(v.a)); // back to front
-  for (const o of order) {
-    const jitter = 1 + Math.sin(f.ph * 3 + o.a * 2) * 0.14;
-
-    // depth: 0 pointing straight away from the camera, 1 straight toward it. TILT squashes a back
-    // frond to about a third of its drawn length, so it must also travel less, droop less and sit
-    // narrower — otherwise its tip swings further than the blade is visibly long and smears across
-    // its neighbours and the crown.
-    const depth = (Math.sin(o.a) + 1) / 2;
-    const seen = 0.55 + 0.45 * depth;
-    const len = L * jitter * (0.80 + 0.20 * depth);
-    const wid = tr * PLANT.frondWidth * (0.74 + 0.26 * depth);
-    const arch = PLANT.arch * (1.26 - 0.26 * depth);   // back blades arc up behind the crown
-    const droop = PLANT.droop * (0.30 + 0.70 * depth); // instead of drooping down onto it
-
-    // Amplitude stays positive, so blades stream downwind and gust rather than swinging
-    // symmetrically through vertical. -cos(bearing) presses upwind blades down and lifts downwind
-    // ones, so the crown flexes instead of turning like a rigid fan.
-    const gust = Math.sin(clock * 1.5 + f.ph + o.i * 0.9);
-    const amp = PLANT.wind * tr * (0.55 + 0.45 * gust) * seen;
-    const press = -Math.cos(o.a) * amp * 0.20;
-
-    ctx.fillStyle = o.back ? C.frondDk : C.frond;
-    frond(ctx, cx, cy, o.a, len, wid, arch, droop, notch, steps, amp, amp * 0.18 + press);
-  }
-  ctx.fillStyle = C.frondDk; // crown core hides the seam where every frond meets
-  ctx.beginPath();
-  ctx.arc(cx, cy, Math.max(1, tr * 0.15), 0, Math.PI * 2);
-  ctx.fill();
-
-  if (tr > 9 && f.nuts > 0.45) {
-    ctx.fillStyle = C.coconut;
-    const rN = Math.max(1, tr * 0.085);
-    for (let i = 0; i < 3; i++) {
-      const a = f.ph + i * 2.1;
-      ctx.beginPath();
-      ctx.arc(cx + Math.cos(a) * tr * 0.17, cy + tr * 0.14 + Math.sin(a) * tr * 0.06, rN, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
-}
-
-// A low shrub, so an island is not a row of identical palms. Same frond() — short, wide, steeply
-// arched blades springing from just above the ground — so the two species share a drawing language
-// instead of one being circles and the other geometry. Below ~4px it collapses to two lobes,
-// because at that size blades are indistinguishable from noise.
-function drawBush(ctx, f, clock) {
-  const fx = f.x, fy = f.y * TILT;
-  const tr = PLANT.canopy * f.s * 0.62;
-
-  if (tr < 4) {
-    ctx.fillStyle = C.frondDk;
-    ctx.beginPath(); ctx.arc(fx, fy - tr * 0.30, tr * 0.86, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = C.frond;
-    ctx.beginPath(); ctx.arc(fx - tr * 0.16, fy - tr * 0.55, tr * 0.62, 0, Math.PI * 2); ctx.fill();
-    return;
-  }
-
-  const oy = fy - tr * 0.28;
-  ctx.fillStyle = C.frondDk; // dark mass at the base, so the blades read as growing out of something
-  ctx.beginPath();
-  ctx.ellipse(fx, fy - tr * 0.20, tr * 0.66, tr * 0.50, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  const n = tr < 8 ? 5 : 7, step = Math.PI * 2 / n;
-  const order = [];
-  for (let i = 0; i < n; i++) order.push({ a: f.a + i * step + Math.sin(f.ph + i * 1.7) * step * 0.22, i });
-  order.sort((u, v) => Math.sin(u.a) - Math.sin(v.a));
-  for (const o of order) {
-    const depth = (Math.sin(o.a) + 1) / 2;
-    const seen = 0.55 + 0.45 * depth;
-    const gust = Math.sin(clock * 1.9 + f.ph + o.i * 1.1);
-    const amp = PLANT.wind * tr * 0.75 * (0.5 + 0.5 * gust) * seen;
-    const jitter = 1 + Math.sin(f.ph * 2 + o.a * 3) * 0.18;
-    ctx.fillStyle = Math.sin(o.a) < -0.1 ? C.frondDk : C.frond;
-    frond(ctx, fx, oy, o.a, tr * 0.98 * jitter * (0.82 + 0.18 * depth), tr * 0.30 * (0.78 + 0.22 * depth),
-      0.44 * (1.20 - 0.20 * depth), 0.06, false, 8, amp, amp * 0.16);
-  }
-  if (tr > 9 && f.nuts > 0.62) {
-    ctx.fillStyle = C.coconut;
-    for (let i = 0; i < 3; i++) {
-      const a = f.ph + i * 2.4;
-      ctx.beginPath();
-      ctx.arc(fx + Math.cos(a) * tr * 0.30, oy + Math.sin(a) * tr * 0.18, Math.max(1, tr * 0.10), 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
-}
-
-// A small patch at the base, not a cast shadow: at this camera angle a long projected shadow reads
-// as a separate object, where a tight one just says "this touches the ground here". It leans toward
-// wherever the crown actually is — the trunk bows, so the mass overhead is off-centre from the base,
-// and tracking that is what makes a leaning palm look like it is leaning rather than drawn crooked.
-function shadowShape(ctx, f, clock, grow) {
-  const fx = f.x, fy = f.y * TILT;
-  const tr = PLANT.canopy * f.s * (f.isPalm ? 1 : 0.62);
-  const lean = f.isPalm ? f.k * PLANT.bow * tr : 0;
-  const drift = Math.sin(clock * 1.5 + f.ph) * PLANT.wind * tr * 0.30;
-  const r = tr * PLANT.shadowSize * grow;
-  const ox = fx + (lean + drift) * PLANT.shadowLean;
-  const oy = fy + tr * 0.08; // a touch forward of the base, so it sits under the plant
-  ctx.moveTo(ox + r, oy);
-  ctx.ellipse(ox, oy, r, r * TILT, 0, 0, Math.PI * 2);
-}
-
-// Every shadow on the island goes into ONE path and gets ONE fill. With a fill per plant, two
-// overlapping shadows composite twice and the intersection goes darker — wrong, since a crown
-// cannot block light that is already blocked. Nonzero winding unions them, and it is cheaper than
-// the per-plant ellipse it replaces.
-const SHADOW_SOFT = `rgba(0,0,0,${(PLANT.shadowOpa * 0.40).toFixed(3)})`;
-const SHADOW_CORE = `rgba(0,0,0,${PLANT.shadowOpa})`;
-function drawShadows(ctx, list, clock) {
-  ctx.fillStyle = SHADOW_SOFT;
-  ctx.beginPath();
-  for (const f of list) shadowShape(ctx, f, clock, 1.45); // wider, fainter: a penumbra
-  ctx.fill();
-  ctx.fillStyle = SHADOW_CORE;
-  ctx.beginPath();
-  for (const f of list) shadowShape(ctx, f, clock, 1);
-  ctx.fill();
-}
-
-// The drawn shoreline is a spline through the midpoints of the vertex polygon, not the polygon
-// itself — it cuts the corners, so a plain point-in-polygon test would call a corner land when the
-// sand has already curved away from it. Sample the same curve ring() draws and test against that.
-function islandOutline(r, verts, scale, steps = 4) {
-  const n = verts.length, pts = [];
-  for (let k = 0; k < n; k++) {
-    const a = (k / n) * Math.PI * 2, rr = r * verts[k] * scale;
-    pts.push([Math.cos(a) * rr, Math.sin(a) * rr * TILT]);
-  }
-  const out = [];
-  for (let k = 0; k < n; k++) {
-    const p = pts[k], q = pts[(k + 1) % n], prev = pts[(k + n - 1) % n];
-    const m0 = [(prev[0] + p[0]) / 2, (prev[1] + p[1]) / 2];
-    const m1 = [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2];
-    for (let i = 0; i < steps; i++) out.push(qp(i / steps, m0, p, m1));
-  }
-  return out;
-}
-
-function inOutline(px, py, poly) {
-  let inside = false;
-  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-    const a = poly[i], b = poly[j];
-    if ((a[1] > py) !== (b[1] > py) && px < (b[0] - a[0]) * (py - a[1]) / (b[1] - a[1]) + a[0]) inside = !inside;
-  }
-  return inside;
-}
-
-// Plants for one island. Positions are rejection-sampled so crowns cannot pile up: a candidate is
-// kept only if it clears every plant already placed by minGap x the two footprints summed. The
-// requirement relaxes every ten tries so a crowded island always terminates rather than hanging.
-function genFoliage(r, verts) {
-  const k = r / PLANT.countRefR;
-  const count = Math.max(1, Math.round(PLANT.countRef * k * k));
-  const Rs = r * PLANT.scatter;
-  const span = PLANT.scaleMax - PLANT.scaleMin;
-  const plants = [];
-
-  for (let f = 0; f < count; f++) {
-    let placed = null, relax = 1;
-    for (let t = 0; t < 60; t++) {
-      // sqrt spreads plants evenly over the disc. Uniform radius crowds the middle, which nothing
-      // noticed at the old two-to-four plants but is obvious at twenty.
-      const a = Math.random() * Math.PI * 2, rr = Rs * Math.sqrt(Math.random());
-      const s = PLANT.scaleMin + Math.random() * span;
-      const isPalm = Math.random() < PLANT.palmRatio;
-      const c = { x: Math.cos(a) * rr, y: Math.sin(a) * rr, s, isPalm };
-      const fc = footprint(s, isPalm);
-      let ok = true;
-      for (const o of plants) {
-        const need = (fc + footprint(o.s, o.isPalm)) * PLANT.minGap * relax;
-        if (Math.hypot(c.x - o.x, c.y - o.y) < need) { ok = false; break; }
-      }
-      if (ok) { placed = c; break; }
-      if (t % 10 === 9) relax *= 0.86;
-    }
-    if (!placed) {
-      const a = Math.random() * Math.PI * 2, rr = Rs * Math.sqrt(Math.random());
-      placed = { x: Math.cos(a) * rr, y: Math.sin(a) * rr,
-                 s: PLANT.scaleMin + Math.random() * span, isPalm: Math.random() < PLANT.palmRatio };
-    }
-    plants.push({
-      ...placed,
-      a: Math.random() * Math.PI * 2,   // crown rotation
-      k: Math.random() * 2 - 1,         // lean / bow direction
-      ph: Math.random() * Math.PI * 2,  // wind phase
-      nuts: Math.random(),
-    });
-  }
-
-  // Height is added in unsquashed screen px, so a tall plant near the back of the disc can push its
-  // crown out over the water. Walk those south until the crown clears the shoreline and bake the
-  // offset back into the plan position, so nothing downstream has to know it happened. Doing this
-  // here rather than per frame is the whole point — the alternative is isPointInPath every frame.
-  const shore = islandOutline(r, verts, 0.94);
-  for (const p of plants) {
-    const tr = PLANT.canopy * p.s;
-    const top = p.isPalm ? tr * (PLANT.trunkH + PLANT.arch * PLANT.frondLen + PLANT.frondWidth)
-                         : tr * 0.62 * 1.5;
-    const px = p.x + (p.isPalm ? p.k * PLANT.bow * tr : 0);
-    for (let i = 0; i < 30 && !inOutline(px, p.y * TILT - top, shore); i++) {
-      p.y += Math.max(0.6, tr * 0.10) / TILT;
-    }
-  }
-
-  // Sorted once, here: plants never move — wind only bends blades — so the draw loop has no reason
-  // to re-sort them every frame.
-  plants.sort((a, b) => a.y - b.y);
-  return plants;
-}
-
-const AI_COLORS = [
-  { fill: "#c15236", stroke: "#8a3722" },
-  { fill: "#c98a3b", stroke: "#8f5f22" },
-  { fill: "#a6584f", stroke: "#743833" },
-  { fill: "#7a9c8f", stroke: "#4d6a5f" },
-  { fill: "#9c7ab0", stroke: "#5f4d6a" },
-  { fill: "#b0a24f", stroke: "#6a5f2a" },
-  { fill: "#6f93b4", stroke: "#425a70" },
-  { fill: "#c76b8e", stroke: "#7f3f57" },
-  { fill: "#5fa27f", stroke: "#356050" },
-  { fill: "#b8794f", stroke: "#7a4b2c" },
-];
 
 const DISPLAY = 'Georgia, "Iowan Old Style", "Times New Roman", serif';
-const UI = 'ui-monospace, "SF Mono", Menlo, Consolas, monospace';
-
-const WP = {
-  // `draw` overrides SHOT_DRAW for one weapon. Round shot off the side is drawn at exactly the size
-  // it bites now: there are fifty of them coming off a first rate and a ball that looked smaller
-  // than its own reach would be reading the volley wrong at the moment it matters most.
-  broadside: { cd: 1.6, speed: 250, life: 0.88, r: 1.8, draw: 1, bar: "hull" },
-  bow: { cd: 1.1, speed: 270, life: 1.4, r: 2.6, bar: "mast" },
-  musket: { cd: 0.75, speed: 320, life: 0.4, r: 1.6, bar: "crew" },
-};
-
-// THE VOLLEY: how long her whole side takes to go off, and why it is not one order.
-//
-// She fires every gun she has, and fifty balls leaving in the same instant cannot be told apart:
-// down the length of a first rate they would sit two thirds of a pace from each other and read as
-// one bar of iron however small they were drawn. What separates them is a moment, not a size.
-//
-// EVERY GUN TAKES HER OWN MOMENT, drawn at random inside the window. That is a gun crew rather than
-// a machine: several ports along her side go off together, then a few more somewhere else, and the
-// whole side is away inside `VOLLEY_MAX`. It replaced a strict roll from one end to the other, which
-// was the same length of time and read as a mechanism running down her side. A ship firing is not a
-// zip fastener.
-//
-// The window is per gun up to a ceiling, so a cutter's five go off in a twentieth of a second and
-// still look simultaneous, and a first rate's fifty spread over a third of one. Nothing is lost by
-// the spread: her guns are laid as they bear, so a wider window is neither more nor less accurate.
-const GUN_STAGGER = 0.012; // her side takes about this per gun...
-const VOLLEY_MIN = 0.05;
-const VOLLEY_MAX = 0.32; // ...up to this, however many she carries
-/** How long a battery of `n` takes to get away, which the yard prints and the fight fires on. */
-const volleyWindow = (n) => clamp(n * GUN_STAGGER, VOLLEY_MIN, VOLLEY_MAX);
-// THE RANGE HER GUNS ARE LAID FOR, and the reason a rolling broadside is not a worse broadside.
-//
-// A ship at speed crosses better than a hull length while her side rolls through, so a gun fired at
-// the end of the roll goes off from a long way ahead of where the first one did. Left alone, that
-// walks the whole volley off the front of anything she was pointed at: a first rate at full speed
-// put a third of her iron on a target she had laid dead, against six tenths lying still. Gun crews
-// answered this by laying each gun as it bears rather than all of them abeam, and so does she: the
-// ground she has made since the order comes off the lay, at the range a fight is actually fought at.
-// The correction is exact at this range and honestly wrong at any other, which is what laying a gun
-// for a range you have guessed has always been worth.
-const LAY_RANGE = 150;
-
-// A shot's `r` is how wide a bite it takes: it is what widens the hull when the flight is tested,
-// so a round shot holes a ship where a musket ball whistles past her rail. What gets drawn is
-// smaller than that. Shrinking the drawn ball is a matter of how the sea looks; shrinking the bite
-// would quietly make every gun in the game worse, and those are two different decisions. Set this
-// to 1 to put them back together.
-const SHOT_DRAW = 0.7;
-// The light on the ball is the half of it that carries on dark water, so it is not allowed to
-// shrink away to nothing: under about a pixel canvas renders it as part-covered and it goes grey,
-// which is the one thing that mass was there to prevent.
-const SHOT_LIT_MIN = 0.85;
-
-// ---- the player's view ----
-//
-// What a captain sees is a square laid on the middle of the screen: its side is the shorter side of
-// the phone — the width held upright, the height held sideways — and whatever screen is left over
-// beyond it simply shows more sea, behind the buttons. Sizing the water to the screen instead left
-// her sight of it lopsided and different in each orientation: an upright phone gave barely a
-// broadside's width across and three times that up and down, so a ship a little abeam was off the
-// side of the screen while empty water ran away above and below her.
-//
-// The square holds a full broadside either side of her, because that is the range a fight is decided
-// at: whatever can reach her lies inside the square, whichever way it lies from her.
-const BROADSIDE_R = WP.broadside.speed * WP.broadside.life;
-const VIEW = BROADSIDE_R * 2; // world units across the square
-// A screen much bigger than a phone's would otherwise magnify everything to fill its shorter side.
-// Past this the square only ever shows more water than it promises, which costs the captain nothing.
-const MAX_ZOOM = 1.5;
-// How far the map's boundary is let inside the edge of the screen: enough to read the rope, its
-// buoys, and a strip of the water beyond, and no more. It is the whole of the camera's give on a
-// side, so it is also how far off centre a ship ends up when she runs right up on that boundary.
-const EDGE_PEEK = 40; // screen pixels
-// The most the boundary is let in on a side where the screen runs longer than the square. Held
-// upright that is the top and bottom, where the strip past the square is the buttons' and the
-// panels', and the boundary may come as far as the square's edge. Sideways the strips are the
-// left and right, and the square's edge there is a third of the screen: the boundary sat halfway
-// across the sea with the ship pinned beside it. This caps it at the joystick's own strip, so a ship
-// on the map's edge still sits clear of the stick and the rope still reads, and no more than that.
-const SIDE_PEEK = 150; // screen pixels
-
-// A ship's length, beam and collision ellipse are her own now, set per class by `hullform.js` and
-// carried on the ship as `hullA` and `hullB` (semi-length and semi-beam). The galleon anchors the
-// scale at the 36 by 13 every hull at sea used to share.
-
-/**
- * THE RIG SHE CARRIES, AT SEA. Every ship afloat used to draw the same three hard-coded masts, so a
- * gundalow and a first rate were told apart only by their health bars. The masts and sails drawn on the
- * water now come off the ship's own loadout, through the same `rigSpec()` the menu ship reads:
- * a mast stands where its station is on HER hull, as tall as the mast bought for it, and carries one
- * band of canvas per sail actually bent on, in the shape of its category. Square canvas is the
- * bellied band the fight has always drawn; triangular, gaff and lug canvas are fore-and-aft panels;
- * headsails run from the bowsprit up toward the foremost masthead.
- *
- * Worked out once per ship at `makeShip`, because nothing about her rig changes at sea short of the
- * whole thing coming down.
- */
-const SEA_FOREAFT = new Set(["TRI", "LAT", "GAF", "LUG"]);
-function buildSeaRig(loadout, sea) {
-  const spec = rigSpec(loadout);
-  const masts = [];
-  for (const m of spec.masts) {
-    const u = sea.masts[m.station];
-    if (u === undefined) continue;
-    const top = Math.max(8, sea.tops[m.station] * (m.height || 1));
-    const wB = sea.wBase[m.station];
-    const n = m.sails.length;
-    // bands from the deck up: each sail keeps about three quarters of the height of the one below
-    // it and narrows the same way, with a little air between bands
-    const zb0 = 0.18 * top, gap = 1.6;
-    const room = Math.max(4, top - 3 - zb0 - gap * (n - 1));
-    const weights = Array.from({ length: n }, (_, i) => Math.pow(0.74, i));
-    const wsum = weights.reduce((a, b) => a + b, 0) || 1;
-    let z = zb0;
-    const sails = m.sails.map((sail, i) => {
-      const h = room * (weights[i] / wsum);
-      // a studdingsail is the band run out sideways, so the band just carries the extra beam
-      const band = { kind: sail.kind, sb: z, st: z + h, w: wB * Math.pow(0.82, i) * (sail.stud ? 1.45 : 1) };
-      z += h + gap;
-      return band;
-    });
-    masts.push({ u, h: top, sails });
-  }
-  // what the bowsprit carries: headsails run up toward the foremost masthead, and square canvas
-  // under the spar is a spritsail
-  const fore = masts.reduce((a, m) => (!a || m.u > a.u ? m : a), null);
-  const heads = [];
-  const sprits = [];
-  const bowTip = 0.61 * sea.L;
-  for (const m of spec.masts) {
-    if (m.station !== "bowsprit") continue;
-    m.sails.forEach((sail, i) => {
-      if (SEA_FOREAFT.has(sail.kind)) {
-        if (fore) heads.push({ tack: bowTip * (0.72 + 0.11 * i), mastU: fore.u, mastZ: fore.h * (0.55 + 0.14 * i) });
-      } else {
-        // slung further out along the spar per sail, the way the menu spreads them, so a second
-        // spritsail is a sail and not a repaint of the first
-        sprits.push({ kind: sail.kind, sb: -1.5, st: 3, w: 0.54 * sea.W * (1 - 0.18 * i), u: sea.L * (0.46 + 0.12 * i) });
-      }
-    });
-  }
-  const topmost = masts.reduce((a, m) => Math.max(a, m.h), 0);
-  return { masts, heads, sprits, top: Math.max(topmost, 14) };
-}
-const HULL_PAD = 3; // rigging and oars, so hulls never touch pixels
-const RAM_MIN_CLOSE = 25; // closing speed at which a collision starts to count as a ram
-const RAM_FULL_CLOSE = 94; // closing speed for a full-weight ram: a fresh ship's top speed
-const RAM_CURVE = 1.5; // how sharply the blow grows with closing speed, for every angle alike
-const RAM_MAX_FORCE = 2.4; // ceiling on it, so a head-on cannot run away with the match
-const RAM_BEAM = 1.25; // weight of a blow square on the beam...
-const RAM_FINE = 0.6; // ...and of one that glances off her bow or stern
-const RAM_GRAZE = 1; // below this a touch is not a ram at all: no damage, no cooldown, no lock
-const RAM_MUTUAL_CAP = 0.8; // most of a bow-to-bow blow one ship's speed can shove onto the other
-const RAM_KNOCK = 150; // impulse thrown apart on a ram (scaled by closing speed)
-const RAM_RECOIL = 0.3; // floor on the bounce for whoever drove into the blow
-const RAM_DRIVE_LOSS = 0.88; // share of her way a ship spends into the impact, bow-on
-const RAM_REARM_GAP = 26; // hulls must break this far clear before the pair can ram again
-const RAM_CD = 0.9; // seconds before a ship can ram again
-// Hulls touching without a charge behind them are eased apart with this much push a second. It is a
-// force a second rather than a knock a frame: it was 32 a frame, which at sixty frames is this figure
-// and at a hundred and twenty was twice it, so a ship nudged along by another crossed the sea at a
-// different pace depending on the phone she was on.
-const HULL_NUDGE = 1920;
-// Breaking clear was the only way out of that lock, which two ships circling each other never manage:
-// they can hold station inside the gap indefinitely and the pair stays barred from ever trading
-// another blow. The lock is meant to stop damage being ground out of hulls already touching, and a
-// few seconds does that, so it lapses on its own as well.
-const RAM_LOCK_MAX = 3;
-// A ram is worked out from the way a ship has actually made, not from the way her helmsman wanted.
-// The two part company whenever something is in the road: hulls pressed against one another are
-// de-overlapped every frame, so they stand still in the water while `spdCur` — the throttle's idea of
-// her speed — reads full ahead. Resolving a blow from that gives a stationary ship the weight of a
-// flying one: a pair jammed bow to bow could sink a third that came to attack them, and the moment
-// one of them turned away the other took her beam at full force without ever having moved. So each
-// ship measures the ground she truly covered last frame, and a hull that cannot go forward loses her
-// way like any other.
-// The measurement is smoothed. Hulls in contact are driven together and pushed apart again frame by
-// frame, so a single frame's difference swings wildly either side of nothing, and taking the positive
-// half of that swing at face value hands a standing ship the weight of a charging one every other
-// frame. Not too smooth, though: force climbs as the 1.5 power of closing speed, so under-reading a
-// ship working up to a charge by a fifth costs nearly half her blow.
-const WAY_SMOOTH = 14; // the measurement follows her within about a fifteenth of a second
-
-// And a hull held on another's timbers loses her way, so she has to gather it again before she is
-// worth anything — which is what stops her taking the beam of the ship that breaks off first as
-// though she had been charging all along. Only being foul of another hull counts: a ship knocked off
-// her stride is still free to sail, and treating that as held empties the melee of blows altogether.
-const BAULK_TOL = 0.35; // foul of a hull and making less than this share of her asking: she is baulked
-const BAULK_GRACE = 0.35; // ...and only held once it has gone on this long. A knock in passing is not
-const BAULK_RATE = 6; // once held, her way falls away, halving in about an eighth of a second
-
-// For hull against hull a ship is her keel — a line down her length — swelled by her beam. Measuring
-// between the two keels finds where they truly foul, which the distance between two centres cannot:
-// hulls this long can cross well off the line joining them, and would slide through one another.
-// Both figures are each ship's own now: a first rate's keel is half again a cutter's, and the two
-// are alongside when the gap closes to the sum of their own beams.
-const keelHalf = (s) => s.hullA - s.hullB;
-const hullTouch = (a, b) => a.hullB + b.hullB + 2 * HULL_PAD;
-
-// closest approach of the two keels: distance, and the unit vector from a's keel to b's
-function keelGap(a, b) {
-  const aK = keelHalf(a), bK = keelHalf(b);
-  const ux = Math.cos(a.heading) * aK, uy = Math.sin(a.heading) * aK;
-  const vx = Math.cos(b.heading) * bK, vy = Math.sin(b.heading) * bK;
-  // segments a.x±u and b.x±v, walked as p0 + s*(2u) and q0 + t*(2v)
-  const wx = a.x - ux - (b.x - vx), wy = a.y - uy - (b.y - vy);
-  const A2 = 4 * (ux * ux + uy * uy), B2 = 4 * (ux * vx + uy * vy), C2 = 4 * (vx * vx + vy * vy);
-  const D2 = 2 * (ux * wx + uy * wy), E2 = 2 * (vx * wx + vy * wy);
-  const den = A2 * C2 - B2 * B2;
-  let s = den > 1e-9 ? clamp((B2 * E2 - C2 * D2) / den, 0, 1) : 0;
-  let t = C2 > 1e-9 ? clamp((B2 * s + E2) / C2, 0, 1) : 0;
-  s = A2 > 1e-9 ? clamp((B2 * t - D2) / A2, 0, 1) : 0; // settle it after the clamps
-  const px = a.x - ux + 2 * ux * s, py = a.y - uy + 2 * uy * s;
-  const qx = b.x - vx + 2 * vx * t, qy = b.y - vy + 2 * vy * t;
-  let gx = qx - px, gy = qy - py;
-  let d = Math.hypot(gx, gy);
-  if (d < 1e-6) { gx = b.x - a.x; gy = b.y - a.y; d = Math.hypot(gx, gy) || 1; } // dead aboard her
-  return { d, nx: gx / d, ny: gy / d };
-}
-
-// How far along this frame's flight does a shot bite? Works on the whole step from where the ball
-// was to where it is, so a fast ball cannot skip through a hull only thirteen paces across. `pad`
-// widens the hull by the radius of what is arriving: a heavy round shot bites where a musket ball
-// would whistle past her rail. Scaling the hull's ellipse to a unit circle makes it one quadratic.
-// It answers with the share of the step at which the ball first touches her, so the shots can tell
-// which of two hulls on one step is the nearer, and -1 for a clean miss.
-//
-// The flight is measured against the hull as the hull herself sees it, which means carrying the
-// ball's starting point forward by the ground the ship made this frame. Testing it against where
-// the frame left her was near enough for a ship under sail, but a ship in a melee does not move
-// like one: a ram throws her aside at better than her own top speed, and hulls foul of each other
-// are shoved apart bodily every frame, all of it done before the shots are stepped. A hull moved
-// half her own beam in one frame slid out from under a ball that had gone through her amidships,
-// and the ball sailed on. That is why it happened to ships in company and rarely anywhere else.
-//
-// Her turn within the frame is not counted, only her passage. A hull under helm sweeps her bow
-// through about a pace at the worst of it, against the ten or more the shoving throws her.
-const shotHitsHull = (s, x0, y0, x1, y1, pad) => {
-  const c = Math.cos(s.heading), sn = Math.sin(s.heading);
-  const A = s.hullA + pad, B = s.hullB + pad;
-  const wx = s.x - (s.px ?? s.x), wy = s.y - (s.py ?? s.y); // the ground she made this frame
-  const px = ((x0 + wx - s.x) * c + (y0 + wy - s.y) * sn) / A;
-  const py = ((y0 + wy - s.y) * c - (x0 + wx - s.x) * sn) / B;
-  const qx = ((x1 - s.x) * c + (y1 - s.y) * sn) / A, qy = ((y1 - s.y) * c - (x1 - s.x) * sn) / B;
-  const dx = qx - px, dy = qy - py;
-  const out = px * px + py * py - 1;
-  if (out < 0) return 0; // the ball began the step already inside her timbers
-  const len2 = dx * dx + dy * dy;
-  if (len2 <= 1e-12) return -1;
-  const half = px * dx + py * dy;
-  const disc = half * half - len2 * out;
-  if (disc < 0) return -1; // the flight passes her by
-  const t = (-half - Math.sqrt(disc)) / len2;
-  return t >= 0 && t <= 1 ? t : -1; // she is touched within this step, or not this frame
-};
-
-// The same question for an island, which is a plain circle and never moves. Asked of the whole
-// step for the same reason: a ball tested only where the frame left it can step over a shoal.
-const shotHitsCircle = (cx, cy, r, x0, y0, x1, y1) => {
-  const px = x0 - cx, py = y0 - cy, dx = x1 - x0, dy = y1 - y0;
-  const out = px * px + py * py - r * r;
-  if (out < 0) return 0;
-  const len2 = dx * dx + dy * dy;
-  if (len2 <= 1e-12) return -1;
-  const half = px * dx + py * dy;
-  const disc = half * half - len2 * out;
-  if (disc < 0) return -1;
-  const t = (-half - Math.sqrt(disc)) / len2;
-  return t >= 0 && t <= 1 ? t : -1;
-};
-
-/**
- * REPAIRS — the one thing a purse buys at sea, and the only reason to carry coins into a fight.
- *
- * Two buttons, and they are priced on opposite principles because they are opposite jobs.
- *
- * HULL is bought by the point, and by nothing else. A coin buys back a point of damage: no base, no
- * rate and no share of anything. What she pays is exactly what the damage she is undoing was worth to
- * the ship that dealt it, which puts both halves of a round's economy in the same currency and means
- * a captain can read her own hull bar as a price.
- *
- * What it will not buy is a whole ship. A carpenter at sea works with what is in the hold: he plugs
- * shot holes, fishes a cracked timber and pumps her out, and that stops at `HULL_PATCH_CAP`. Sound
- * planking, a new strake and her seams paid afresh are a slipway's work, so the last fifth of her
- * hull waits for the yard however deep her purse is. A ship that has been in a fight carries it until
- * the voyage ends, which is the difference between the hull and the rig: a mast is a spar to be
- * swayed up and a hull is the ship herself.
- *
- * Because the bill is her damage and nothing else, it scales with the class she is sailing without a
- * scaling term anywhere: a hull with two hundred and fifty points to lose can run up a bill of two
- * hundred, four fifths of her, and the cutter that has ninety can never be charged more than
- * seventy-two. Bigger ships cost more to keep afloat because there is more of them to hole.
- *
- * Two things follow and both are the point: a ship barely scratched pays almost nothing, so there is
- * no wrong moment to repair, and a captain who cannot cover the whole bill buys as much of it as her
- * purse reaches rather than being refused, which matters most in the round where she is down to her
- * last coins and still taking fire.
- *
- * MAST is flat, and it is a jury rig. A mast is stepped or it is not: there is no half a mast, so
- * there is no half price and no part payment, and the charge is the same whether she lost the whole
- * thing or sprung it. What sets the price is the mast she carries rather than the damage she took: a
- * coin a point of the rig the jury mast puts back, `MAST_REBUILD_SHARE` of her mast's health, which is
- * the shipyard's figure and not the fight's.
- *
- * What goes up is a spare spar swayed up with what the sail locker holds, not the suit she sailed
- * with, so it stops at `MAST_JURY_CAP` the way the hull stops at its own. Because speed and helm both
- * read how much of her rig is standing, that is nineteen twentieths of her way and a little over nine
- * tenths of her helm: not the ship she was, but sailing again, and that is what makes it worth the
- * money. Losing a mast is the one hit that takes a ship out of a fight while leaving her afloat, and
- * a jury rig is the difference between limping and drifting.
- *
- * CREW cannot be bought back at all. Hands lost over the rail are lost, and no coin brings them
- * back, so the crew bar is a clock that only runs one way for the length of a round. It is why
- * musket fire and a spell in the weather are worth avoiding rather than paying off afterwards.
- *
- * What makes any of it a decision rather than a tax is where the money comes from. Repairs are paid
- * out of the voyage's own takings, so every coin spent staying afloat is a coin that does not reach
- * the hold and does not buy a ship. Fighting carefully is worth money.
- */
-const HULL_RATE = 1; // a coin a point. Deliberately 1, and the one place to change it if it ever moves
-
-/**
- * How much of her hull the carpenter can put back at sea, and the one place that figure lives.
- *
- * Damage above the cap is not cheaper, it is unbuyable: the quote stops at the cap, the button stops
- * offering, and nothing anywhere else clamps the hull, so a captain who never takes a hit is never
- * pulled down to it. A repair only ever raises her towards the cap and never above it.
- */
-const HULL_PATCH_CAP = 0.8;
-/** The most hull a purse can reach on this ship. Whole is a shipyard's business. */
-const patchCap = (s) => s.maxHull * HULL_PATCH_CAP;
-
-/**
- * How much of her rig a jury mast is worth, and the reason the mast button no longer promises whole.
- *
- * A spare spar fished and swayed up carries sail again, but it is not the mast that came out of her
- * and the canvas on it is whatever the locker held. She is nine tenths of a ship, which `speedCap`
- * and `turnCap` read as nineteen twentieths of her way and a little over nine tenths of her helm.
- * `MAST_REBUILD_SHARE` in the shipyard is priced for exactly that nine tenths, a coin a point, so a
- * captain pays for the rig she gets back and never more than her mast is worth.
- */
-const MAST_JURY_CAP = 0.9;
-/** The most rig a purse can reach on this ship. The last tenth is stepped in a yard, not at sea. */
-const juryCap = (s) => s.maxMast * MAST_JURY_CAP;
-
-/**
- * What a new mast costs at sea: nine tenths of her own mast's health, a coin a point.
- *
- * Every ship afloat brings her own loadout, so the bill is hers: a first rate's mast is a first
- * rate's mast to put back, and a gundalow's costs a gundalow's. The starter's rig is the fallback for a hull that somehow reaches the water without one,
- * which nothing should do.
- */
-const STOCK_LOADOUT = resolve(STARTER);
-// Her three bars at full, off a loadout: what the HUD opens on and what the fight fills in.
-const barsOf = (loadout) => { const r = rate(loadout); return { hull: r.hull, mast: r.mast, crew: r.crew }; };
-const mastRebuild = (s) => mastRebuildCost(s.loadout || STOCK_LOADOUT);
 
 const REPAIRS = [
   { key: "hull", label: "HULL", sub: "planks and pitch, back to 80%", color: C.hull, whole: "Sound" },
@@ -967,77 +67,19 @@ const REPAIRS = [
 ];
 
 /**
- * What one repair would put back and what it would cost. Everything the rail needs to draw itself and
- * everything `repair()` needs to charge for, worked out in one place so the button cannot promise
- * something different from what the purchase does.
- *
- * `afford` is what her purse actually reaches. For the hull that can be part of the bill; for the
- * mast it is the whole price or nothing, because half a mast is not a thing.
- *
- * Both are quoted against their cap rather than against her full bar, so a captain is never charged
- * for work that cannot be done at sea. `label` is why a dead button is dead, and the two reasons are
- * different news: she has taken nothing worth mending, or what is left of the damage needs a yard.
+ * What each mode is called and how its card sells it: the menu's half of a mode, beside the menu,
+ * where the engine's half is its rules in `sim/modes.js`. `MODES` is the two put back together, for
+ * the screens that read both, the menu cards and the records.
  */
-function repairQuote(s, sys) {
-  if (sys === "hull") {
-    const points = Math.max(0, patchCap(s) - s.hull);
-    const cost = Math.ceil(points * HULL_RATE);
-    return {
-      points,
-      cost,
-      afford: Math.min(cost, Math.floor(s.coins)),
-      whole: points <= 0.001,
-      label: s.hull >= s.maxHull - 0.001 ? "Sound" : "Yard work",
-      part: true,
-    };
-  }
-  const cost = mastRebuild(s);
-  const points = Math.max(0, juryCap(s) - s.mast);
-  const whole = points <= 0.001;
-  return {
-    points,
-    cost,
-    afford: Math.floor(s.coins) >= cost ? cost : 0,
-    whole,
-    label: s.mast >= s.maxMast - 0.001 ? "Sound" : "Yard work",
-    part: false,
-  };
-}
-
-/**
- * A mode is a set of rules, not a name to compare against. Everything that used to ask "are we in
- * free-for-all?" now asks what it actually wants to know — are guns aboard, is every hull hostile to
- * every other, does anyone keep a placement — so each rule is stated once, here, where the modes can
- * be read side by side. Adding a mode is filling in a row rather than hunting down the checks that
- * would otherwise have to be taught about it.
- */
-const MODES = {
+const MODE_COPY = {
   wave: {
-    key: "wave",
     title: "WAVE ARENA",
     short: "wave",
     color: C.side,
     desc: "Endless survival. One hunter to start but their numbers grow. Each ship you sink brings more in from the horizon. Patch up between waves, out of what you have taken. Score by ships sunk.",
     unsailed: "No wave has come for you here yet.", // the log, where a mode has no voyages in it
-    rivals: ARENA_START, // hulls on the water at the drop, besides the player
-    guns: true, // cannons and muskets aboard
-    repairs: true, // the repair rail, paid for out of the voyage's own earnings
-    melee: false, // every hull hostile to every other, rather than only to the player
-    ranked: false, // placements, a leader, and the rank badge
-    lastAfloatWins: false,
-    reinforcements: true, // a sinking brings fresh hunters in from the horizon
-    reinforce: arenaReinforcements, // ...how many, by her nth sinking
-    fleetCap: ARENA_MAX_ENEMIES, // ...and how many may be on the water at once
-    hunter: (strength, kills) => arenaHunter(strength.overall, kills), // ...and which stock ship each is
-    ladder: false, // the round is won at the top of the stock fleet, one ship at a time
-    flees: false, // a beaten captain runs rather than fights on
-    storm: null, // the shape of her closing ring of foul weather, or nothing for open sea
-    timeCoins: 0, // coins a second afloat, on top of what her guns and bow earn
-    fullRound: 0, // ...and the span a winner is paid for whatever the clock said
-    winBonus: 0,
   },
   ladder: {
-    key: "ladder",
     title: "LADDER ARENA",
     short: "ladder",
     // The hull bar's amber, which the menu's dark grounds carry at better than 5 to 1; it sits
@@ -1045,100 +87,23 @@ const MODES = {
     color: C.hull,
     desc: "One ship at a time. Start with the weakest ships and work up through ranks. Sink one and the next sails in. Patch up between rungs, out of what you have taken. Score by rungs climbed.",
     unsailed: "You have not set foot on the ladder.",
-    rivals: ARENA_START,
-    guns: true,
-    repairs: true,
-    melee: false,
-    ranked: false,
-    lastAfloatWins: false,
-    reinforcements: true,
-    reinforce: () => 1, // one for one: the next rung sails in as the last goes under
-    fleetCap: 1,
-    hunter: (strength, kills) => ladderRung(kills), // the fleet in order, whatever she sails
-    ladder: true,
-    flees: false,
-    storm: null,
-    timeCoins: 0,
-    fullRound: 0,
-    // Sinking the whole fleet in one voyage is paid on top of the forty-odd bounties it took, and
-    // the achievement for it pays besides. Bigger than a free-for-all's purse because it is the
-    // longest round in the game and there is only one way to end it well.
-    winBonus: 200,
   },
   ffa: {
-    key: "ffa",
     title: "FREE-FOR-ALL",
     short: "free-for-all",
     color: C.mast,
     desc: "Last afloat wins. 10 other captains with each ship rivaling your own, hunting for weak prey and turning on whoever pulls ahead. Spend what you take on repairs, or keep it. A storm closes in that takes the crew of any ship caught.",
     unsailed: "You have not taken on the ten.",
-    rivals: FFA_AI,
-    guns: true,
-    repairs: true,
-    melee: true,
-    ranked: true,
-    lastAfloatWins: true,
-    reinforcements: false,
-    reinforce: null,
-    fleetCap: 0,
-    hunter: null,
-    ladder: false,
-    flees: true,
-    // Weather came late to this mode and it came for the same reason it came to the derby: three
-    // wounded captains keeping their distance is not a fight, and a hull that runs at a third of her
-    // health can run for a very long time on a sea two thousand paces across. Her ring is wider and
-    // slower than the derby's, so the gunnery half of the round happens in open water and only the
-    // end of it is fought where the weather says.
-    storm: FFA_WEATHER,
-    // Time afloat is NOT paid here. It was, a coin a second as in the derby, and a captain who sat
-    // in the middle of the ring and fired nothing was the last afloat at three minutes with 230
-    // coins for it, against a tenth of that for a round of fighting: the best wage in the game was
-    // for staying out of the game. Her guns pay her, by the point, and the weather is what makes
-    // sure a round ends; the derby keeps its purse because it has no guns to pay anybody with.
-    timeCoins: 0,
-    fullRound: 0,
-    // ...and a purse for outlasting ten rivals. Smaller than the derby's, because a free-for-all
-    // captain has been paid all round for the fighting that got her there and a derby captain has
-    // not: there are no guns in that mode, so the win is most of what it pays.
-    winBonus: 25,
   },
   derby: {
-    key: "derby",
     title: "DEMOLITION DERBY",
     short: "derby",
     color: C.crew,
     desc: "Only one hand needed. Last afloat wins. 10 captains with similar ships. No guns, no repairs. Sink ships by ramming. Drive into enemy sides, face charging ships. Time afloat is paid and a storm closes in that takes the crew of any ship caught.",
     unsailed: "Untried. Nothing in there but iron and weather.",
-    rivals: DERBY_AI,
-    guns: false,
-    repairs: false,
-    melee: true,
-    ranked: true,
-    lastAfloatWins: true,
-    reinforcements: false,
-    reinforce: null,
-    fleetCap: 0,
-    hunter: null,
-    ladder: false,
-    flees: false, // there is nowhere to run to, and the weather is coming anyway
-    storm: DERBY_WEATHER,
-    // Staying afloat is most of the work here, so it is paid by the second — and a winner is paid for
-    // a whole round however early she ended it. Settling the thing in forty seconds is worth the same
-    // purse as outlasting the weather for the full span, which is to say it is worth far more an hour:
-    // the time she saves is hers to spend on the next one. A round left alone runs
-    // the whole of DERBY_WEATHER, 168 seconds as it is tuned; the winner's is a set purse a shade
-    // above that, so a win comes to 250 whatever else she took.
-    timeCoins: 1,
-    fullRound: 175,
-    winBonus: 75,
   },
 };
-// Menu order, and the order the hold's per-mode bests are listed in. The two arenas sit last and
-// together: the wave arena is the hardest opening a new captain can pick, since the sea keeps
-// filling up behind every ship she sinks, and the ladder is the longest round in the game. The
-// first card is the one most players will take.
-const MODE_LIST = ["ffa", "derby", "wave", "ladder"];
-const modeOf = (m) => MODES[m] || MODES.wave;
+const MODES = Object.fromEntries(MODE_LIST.map((k) => [k, { ...RULES[k], ...MODE_COPY[k] }]));
 
 // What an achievement's tag can name: a mode, or the pair of arenas for the ones that count both.
 // A row in `achievements.js` says `mode: "arenas"` and the card reads it from here rather than
@@ -1146,124 +111,65 @@ const modeOf = (m) => MODES[m] || MODES.wave;
 // own colour, so the tag does not claim one of them; it carries the dark grounds at 6 to 1.
 const TAGS = { ...MODES, arenas: { short: "all arenas", color: C.sand } };
 
-function norm(a) {
-  while (a > Math.PI) a -= Math.PI * 2;
-  while (a < -Math.PI) a += Math.PI * 2;
-  return a;
-}
-const clamp = (v, a, b) => Math.min(Math.max(v, a), b);
 const fmtTime = (sec) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, "0")}`;
 // Grouped, because a lifetime tally runs to five figures and 41203 is a number nobody reads at a
 // glance. `fmtCoins` is the same thing under the name the purse uses.
 const fmtNum = (n) => Math.round(n || 0).toLocaleString();
 const fmtCoins = fmtNum;
 
-// A hull with way on her does not answer her rudder as she does at a crawl. The loss is weighted to
-// the top of the range: handling in and out of a fight is left where it was, and only a ship running
-// flat out finds she cannot turn inside her own wake. It keys off the way she actually carries rather
-// than the stick, so easing off the throttle hands the rudder back as she slows: coming round hard
-// means spending some of her way to do it, and a charge at full sail is a commitment.
-const BASE_SPEED = 94; // top speed of a whole ship, and the yardstick for a heavy rudder
-const RUDDER_HEAVY = 0.22; // rudder lost at that speed
-const RUDDER_CURVE = 2.2; // how late in the range it starts to bite
+// The one captain at this screen, by the id the engine knows her by. A round has one human in it,
+// and she is this one: every input record, every HUD figure and the end screen are hers.
+const ME = "p1";
+
+// The end screen's sentence, picked from how the round ended. Copy is the screen's job and the engine
+// never carries it: it says only who won and, for whoever sank, which way she went.
+const WON_LAST = "You are the last hull afloat.";
+const WON_LADDER = "Every ship in the fleet is on the bottom, from the plain gundalow to the fully found first rate.";
+// Four different shapes on purpose. Written to one template they read as filled-in slots, however
+// good the words are. The last is the round nobody survived: she and the last rival went down in
+// the same moment, which is a sinking and not a win.
+const SUNK_LINE = {
+  together: "Nobody is left afloat. She and the last of them went down together.",
+  storm: "The squall has your crew, and she founders in the weather.",
+  hull: "Your hull is breached. She goes under.",
+  crew: "Crew routed. You strike your colors.",
+};
+
+// A seed for the sea behind the menu, a round laid out and never sailed. A voyage's seed is the
+// server's: the engine is handed it and never reaches for `Math.random`, so the server's replay of
+// the round is the round she sailed.
+const newSeed = () => (Math.random() * 2 ** 32) >>> 0;
 
 /**
- * WHAT A SHIP CAN DO, which is now what she was built to do.
- *
- * Every one of these opened with a level she had bought in that track, then with a plain constant
- * once nothing bought levels any more. They took the ship rather than being constants throughout,
- * against the day the shipyard fed them, and this is that day: a ship carries a `rating` from
- * `rate()`, and these read it.
- *
- * Two things still vary at sea and both are damage. How much of her rig is standing, which is what
- * `mast` measures, and how badly she is holed, which thins her volleys. Nothing else about her moves
- * once she has sailed.
- *
- * The rudder goes heavy against HER OWN top speed rather than the fleet's fastest, or a slow hull
- * would never find the end of her range and a clipper would live in it.
+ * What the menu says when a voyage could not start, by the reason the server gave, and what it says
+ * about the connection itself. Plain words: a captain needs to know what happened and what to do.
  */
-const topSpeed = (s) => BASE_SPEED * s.rating.speed;
-const rudder = (s) => 1 - RUDDER_HEAVY * Math.pow(clamp(s.spdCur / topSpeed(s), 0, 1), RUDDER_CURVE);
-const speedCap = (s) => topSpeed(s) * (0.5 + 0.5 * (s.mast / s.maxMast));
-const turnCap = (s) => 2.4 * s.rating.turn * (0.22 + 0.78 * (s.mast / s.maxMast)) * rudder(s);
-// What one ball carries, which is one gun's worth: every gun aboard throws its own.
-const sideDmg = (s) => s.rating.broadside.perBall;
-const frontDmg = (s) => s.rating.bow.perBall;
-// One ball of the small-arms volley. A plain rail is the old flat 3.2; swivels aboard pull it up,
-// because a swivel ball outweighs a musket's, and better swivels pull harder.
-const musketDmg = (s) => s.rating.musketDamage;
-// The arc that volley scatters over. Quality iron on the rail tightens it; the AI's own aiming
-// error is added separately in `fire()` and must stay separate, or better swivels aboard the player
-// would quietly make every rival captain a better shot.
-const musketArc = (s) => s.rating.musketSpread;
-// An AI captain's own aim, in radians of error either side, added to whatever scatter her guns
-// carry of their own. Both are nought: a rival lays her guns as well as the player does. Every
-// mount used to carry 0.14 the player's never did, so the same battery threw a straight bank of
-// iron for the player and a ragged fan for a rival, and the one thing that made a rival's fire
-// worse was a rule nobody could see. Put a figure in either if rivals ever need handicapping.
-const AI_CANNON_AIM = 0;
-const AI_MUSKET_AIM = 0;
-/**
- * A ram is worth a quarter of the hull BEHIND it, so what she does with her bow scales with the ship
- * she is driving. A flat 26 was right when every hull afloat had a hundred points; against a first
- * rate's three thousand it would be a knock on the door, and the derby is decided by ramming alone.
- */
-const RAM_SHARE = 0.26;
-const ramDmg = (s) => RAM_SHARE * s.maxHull;
-// What a sinking pays her killer, as a share of the hull that went down. A quarter of a ship's
-// launch is the flat 25 the game paid when every hull afloat was worth a hundred points.
-const KILL_SHARE = 0.25;
-/** How long that mount takes to serve. A battery reloads at the pace of its slowest piece. */
-const reloadOf = (s, wk) => (wk === "musket" ? WP.musket.cd : s.rating[wk].reload || WP[wk].cd);
-/** Whether she has anything on that mount at all. A ship with no broadside must not fire one. */
-const canFire = (s, wk) => (wk === "musket" ? s.rating.muskets > 0 : s.rating[wk].count > 0);
-
-/**
- * Carry out one repair and charge her purse for it.
- *
- * The hull takes as much of the bill as she can pay and rises by that share of the work, and the work
- * on offer ends at `patchCap`: a full bill bought outright leaves her at four fifths and no further.
- * The mast is all or nothing and goes to `juryCap` in one step, which hands her back nearly all her
- * sail in the same instant, because `speedCap` and `turnCap` both read how much of her rig is
- * standing.
- *
- * `repaired` is banked apart from `coins` because the two answer different questions at the end of a
- * round: what she has left, and what she spent staying afloat. Only the second comes off her
- * earnings.
- */
-function repair(s, sys) {
-  const q = repairQuote(s, sys);
-  if (q.whole || q.afford <= 0) return 0;
-  const before = s[sys];
-  if (sys === "hull") {
-    s.hull = Math.min(patchCap(s), s.hull + q.points * (q.afford / q.cost));
-  } else {
-    s.mast = juryCap(s);
-    // A rig re-stepped is a rig again. Without this a mast shot away stayed away however much canvas
-    // she bent on, and the one repair worth buying most was the one that did nothing. A jury mast is
-    // still a mast, so it clears the flag as a proper one did: what she is short is the last tenth of
-    // her rig, not her rig.
-    s.mastDown = false;
-  }
-  s.coins -= q.afford;
-  s.repaired += q.afford;
-  s.patches += 1;
-  // the points the work put back, the twin of `dmgDealt` on the other side of the ledger
-  s.healed += Math.max(0, s[sys] - before);
-  return q.afford;
-}
+const VOYAGE_REFUSED = {
+  engine: "The game has been updated since this page opened. Reload the page to sail.",
+  busy: "Your last voyage is still being counted. Try again in a moment.",
+  offline: "The server cannot be reached, so no voyage can start. Your progress is safe.",
+  refused: "The server would not start that voyage. Try again in a moment.",
+};
+const LINK_NOTE = {
+  loading: "Loading your progress from the server.",
+  blocked: "Your browser is blocking this site's cookies, so your progress cannot be kept. Allow cookies for this site to play.",
+  offline: "The server cannot be reached. Your progress is safe, and the shop and voyages open again as soon as it answers.",
+};
+const MOVED_NOTE = "Your progress now saves to the server. Progress saved in this browser earlier could not be moved.";
+const SAVING_NOTE = "Saving your changes to the server first.";
 
 export default function App() {
   const canvasRef = useRef(null);
-  const gameRef = useRef(null);
+  const gameRef = useRef(null); // the world: the round being sailed, or the one lying behind the menu
   const startRef = useRef(() => {});
   const syncRef = useRef(() => {});
-  const inputRef = useRef({ joyMag: 0, joyAng: 0, broadside: false, bow: false, musket: false });
+  const liveRef = useRef(false); // a round is being sailed, rather than lying behind the menu
+  const controls = useControls(ME); // her stick, fire buttons and repairs, as the engine reads them
+  // which ship is hers: "p1" on a voyage of her own, and whichever the server says when sailing with friends
+  const meRef = useRef(ME);
 
-  const knobRef = useRef(null);
   const hudRef = useRef(null); // the safe-area box every control sits in; the canvas reads its insets
   const railRef = useRef(null); // the repair rail, faded by the loop when a ship sails under it
-  const joyState = useRef({ id: null, cx: 0, cy: 0, R: 34 });
   const btnRefs = { broadside: useRef(null), bow: useRef(null), musket: useRef(null) };
 
   const [phase, setPhase] = useState("start");
@@ -1306,6 +212,68 @@ export default function App() {
   const [bounty, setBounty] = useState(0); // ...and what the achievements it finished paid besides
 
   useEffect(() => subscribeHold(setHold), []);
+  // The hold is the server's: sign in as a guest if need be, and load it. `link` is the connection,
+  // so the menu can say when the hold is still loading or the server is out of reach.
+  const [link, setLink] = useState(holdStatus);
+  const [notice, setNotice] = useState("");
+  // Sailing with friends: the connection, what the lobby screen shows of it, and whether the end
+  // screen on show is for a round with friends.
+  const onlineRef = useRef(null);
+  const startOnlineRef = useRef(() => {});
+  const [net, setNet] = useState(null);
+  const [netNote, setNetNote] = useState("");
+  const [onlineEnd, setOnlineEnd] = useState(false);
+  const roundSeen = useRef(null);
+  const pendingJoin = useRef(null);
+  const onNet = useCallback((st) => {
+    setNet(st);
+    // a round has started: build its world and sail it
+    if (st.round && st.round !== roundSeen.current) {
+      roundSeen.current = st.round;
+      startOnlineRef.current(st.round);
+    }
+    if (st.error) setNetNote(ONLINE_FAILED[st.error] || "Something went wrong with the connection.");
+  }, []);
+  const openOnline = useCallback(async () => {
+    setPhase("lobby");
+    if (onlineRef.current && onlineRef.current.state.open) return;
+    setNetNote("Connecting to the server.");
+    const c = await connectOnline({ onChange: onNet });
+    if (c.error) { setNetNote(ONLINE_FAILED[c.error]); return; }
+    onlineRef.current = c;
+    setNetNote("");
+    setNet({ ...c.state });
+    if (pendingJoin.current) { c.join(pendingJoin.current); pendingJoin.current = null; }
+  }, [onNet]);
+  const closeOnline = useCallback(() => {
+    const c = onlineRef.current;
+    if (c) { c.leave(); c.close(); }
+    onlineRef.current = null;
+    roundSeen.current = null;
+    setNet(null);
+    setNetNote("");
+    setPhase("start");
+  }, []);
+  // What the server banked for her round with friends: shown on the end screen, kept in the hold.
+  useEffect(() => {
+    if (!net || !net.banked) return;
+    adoptHold(net.banked);
+    setBanked(net.banked.banked);
+    setBounty(net.banked.bounty);
+  }, [net && net.banked]);
+  // An invite link carries the lobby's code: open the lobby screen and join it once the hold is in.
+  useEffect(() => {
+    const code = new URLSearchParams(window.location.search).get("join");
+    if (!code) return;
+    window.history.replaceState(null, "", window.location.pathname);
+    pendingJoin.current = code.toUpperCase();
+    connect().then(() => openOnline());
+  }, []);
+  useEffect(() => {
+    const off = subscribeStatus(setLink);
+    connect().then(() => { if (hadLocalSave()) setNotice(MOVED_NOTE); });
+    return off;
+  }, []);
 
   // What the browser paints around the page: the strip behind a phone's clock and the bars Safari
   // tints to match a site, and the ground shown when a scroll rubber-bands past the edge. It is
@@ -1348,10 +316,12 @@ export default function App() {
     };
   }, [phase]);
 
+  // The HUD's figures, read off the world: the frame loop asks at most every 0.09 s, and only when
+  // something it shows has moved, so React hears of a hit and not of every frame.
   const syncHUD = useCallback(() => {
     const g = gameRef.current;
     if (!g) return;
-    const p = g.player;
+    const p = shipOf(g, meRef.current);
     setCoins(Math.floor(p.coins));
     setSunk(g.sunk);
     const aliveCount = g.ships.filter((s) => s.alive).length;
@@ -1361,1415 +331,62 @@ export default function App() {
     setRank({ rank: p.rank || 1, total: g.aliveCount || aliveCount });
     if (g.rules.repairs) {
       const q = {};
-      for (const r of REPAIRS) q[r.key] = repairQuote(p, r.key);
+      for (const r of REPAIRS) q[r.key] = repairQuote(g, meRef.current, r.key);
       setMend(q);
     }
     setPh({ hull: p.hull, mast: p.mast, crew: p.crew });
     setPhMax({ hull: p.maxHull, mast: p.maxMast, crew: p.maxCrew });
     if (g.rules.storm) {
       const w = g.rules.storm;
-      setStorm({ closes: Math.max(0, w.grace - g.time), out: g.playerOut, phase: stormPhase(g.time, w) });
+      setStorm({ closes: Math.max(0, w.grace - g.time), out: outInWeather(g, p), phase: stormPhase(g.time, w) });
     }
   }, []);
   syncRef.current = syncHUD;
 
-  const mendNow = useCallback(
-    (sys) => {
-      const g = gameRef.current;
-      if (!g || !g.running || !g.rules.repairs) return;
-      if (repair(g.player, sys) > 0) syncHUD();
-    },
-    [syncHUD]
-  );
+  // A repair goes the same road as the stick: asked for here, carried out in the next step.
+  const mendNow = useCallback((sys) => {
+    const g = gameRef.current;
+    if (!g || !liveRef.current || !g.rules.repairs) return;
+    controls.ask(sys);
+  }, [controls]);
 
+  /**
+   * THE FRAME LOOP: the one place the engine, the screen and React meet.
+   *
+   * Each frame it steps the world as many times as the time since the last frame pays for, reading
+   * her controls once a step, hands what happened to the effects and to the end of the round, moves
+   * the camera and the fire buttons, tells the HUD if anything it shows has moved, and draws. The
+   * world is the engine's and `fx` is this screen's picture of it; the hold, analytics and the end
+   * screen are reached from here and never from the engine.
+   *
+   * THE ROUND MOVES IN STEPS OF ONE `TICK` AND THE SCREEN DOES NOT. Real time is banked, a step is
+   * taken for every whole tick in the bank, and what is left over says how far between the last
+   * two steps to draw everything (`alpha`). So a round plays the same on a 60 Hz phone, a 120 Hz
+   * one and a laptop, where it used to step by whatever the frame took and a fast screen took two
+   * small steps where a slow one took one big one. A frame pays for at most five steps, so a tab
+   * brought back from the background does not try to sail the minutes it missed: the bank is
+   * emptied instead, and a phone dropping below twelve frames a second plays slower rather than in
+   * jumps. The effects, the waves and the wind still run on the frame's own time, since nothing in
+   * the round reads them.
+   */
   useEffect(() => {
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext("2d");
-    let Wd = 0, // the canvas, in screen pixels: what the buttons and the radar are placed against
-      Hd = 0,
-      dpr = 1,
-      zoom = 1, // screen pixels per unit of view space
-      Vw = 0, // and the same canvas in view space, which is where the sea is drawn
-      Vh = 0,
-      Vsq = 0, // the side of the square, in view space
-      raf = 0,
+    const renderer = createRenderer(canvasRef.current);
+    let raf = 0,
       last = 0,
-      clock = 0,
-      // the phone's notch, corners and home bar, as the distance in from each edge of the canvas
-      // that the HUD keeps clear; read off the HUD's wrapper, which is inset by the same amounts
-      safe = { l: 0, t: 0, r: 0, b: 0 };
+      bank = 0, // real time not yet stepped, in seconds
+      // this viewer's picture of the round: smoke, wakes, words on the water, and how each ship looks
+      fx = null;
+    const MAX_STEPS = 5; // the most steps one frame may take
 
-    // View space is world space seen from the camera: across is one to one, and down is squashed by
-    // TILT. `zoom` is the only thing between it and the screen, so every distance the sea is drawn
-    // with — a hull, a range, a whitecap — stays in world units and the square decides how big they
-    // come out. Screen pixels are wanted for two things only, the radar and the vignette.
-    const worldSpace = () => ctx.setTransform(dpr * zoom, 0, 0, dpr * zoom, 0, 0);
-    const screenSpace = () => ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
+    // The page changed size. The canvas follows it, and the camera her, if there is a world to look at.
     function resize() {
-      dpr = Math.min(window.devicePixelRatio || 1, 2);
-      const rect = canvas.getBoundingClientRect();
-      Wd = rect.width;
-      Hd = rect.height;
-      canvas.width = Math.round(Wd * dpr);
-      canvas.height = Math.round(Hd * dpr);
-      const hr = hudRef.current?.getBoundingClientRect();
-      if (hr) safe = { l: Math.max(0, hr.left - rect.left), t: Math.max(0, hr.top - rect.top), r: Math.max(0, rect.right - hr.right), b: Math.max(0, rect.bottom - hr.bottom) };
-      zoom = Math.min(Math.min(Wd, Hd) / VIEW, MAX_ZOOM);
-      Vw = Wd / zoom;
-      Vh = Hd / zoom;
-      Vsq = Math.min(Vw, Vh);
-      screenSpace();
-      camUpdate();
-    }
-
-    const SX = (x, cam) => x - cam.x;
-    const SY = (y, cam) => (y - cam.y) * TILT;
-
-    function makeShip(x, y, heading, opts) {
-      const pal = AI_COLORS[opts.ci % AI_COLORS.length];
-      // She sails as what she was built: her loadout comes in from the hold if she is the player's,
-      // and from the stock fleet if she is not. `rate()` is asked once, here, because nothing about
-      // a ship changes at sea except her damage.
-      const loadout = opts.loadout || STOCK_LOADOUT;
-      const rating = rate(loadout);
-      // What she measures, on the scale the mode fights on: overall under gunfire, ram without it.
-      // A captain picking prey reads it against her own, so a plain sloop no longer charges a fully
-      // found one three times her strength as if the two were the same hull.
-      const measured = measure(rating);
-      const strength = gameRef.current && !gameRef.current.rules.guns ? measured.ram : measured.overall;
-      // Her hull's own size, from the class's form: what she draws as, and also what she collides
-      // as, because a first rate really is a bigger target than a yawl. Her timber comes with it,
-      // so a pine boat sits pale on the water beside an oak brig.
-      const form = hullForm(loadout.hull.id);
-      const sea = form.sea;
-      const s = {
-        x, y, heading, spdCur: 0, alive: true,
-        isPlayer: !!opts.isPlayer,
-        loadout, rating, strength, sea, seaRig: buildSeaRig(loadout, sea),
-        hullA: sea.L / 2, hullB: sea.W / 2,
-        cols: {
-          dark: tintTimber(C.hullDark, form.timber),
-          deck: tintTimber(C.hullDeck, form.timber),
-          wood: tintTimber(C.hullWood, form.timber),
-          spar: tintTimber(C.wood, form.timber),
-        },
-        coins: 0, earned: 0, repaired: 0, patches: 0, rank: 0, kills: 0, dmgDealt: 0, rams: 0, exposure: 0,
-        // What the record wants to know beyond the count of sinkings: how each one was done, and
-        // what the carpenter gave back. `sunkBy` is keyed by the cause `applyHit` is told.
-        dismasted: 0, healed: 0, sunkBy: { ram: 0, broadside: 0, musket: 0 }, rammedWhole: 0, wornDown: 0,
-        // What the PLAYER has done to this ship, bar by bar, and how much of her hull went to the
-        // player's bow. Rivals hit each other in a melee and the storm takes crew, so "you wore her
-        // down" and "you sank her by the bow alone" are judged on this and never on her bars.
-        byPlayer: { hull: 0, mast: 0, crew: 0, ram: 0 },
-        maxHull: rating.hull, maxMast: rating.mast, maxCrew: rating.crew,
-        hull: rating.hull, mast: rating.mast, crew: rating.crew,
-        // every gun aboard is loaded at the drop, the player's and a rival's alike. A rival's used
-        // to start on a random reload of up to half a second so ten of them would not fire as one;
-        // the trigger discipline in `serveGuns` and their own spread of positions do that now.
-        cd: { broadside: 0, bow: 0, musket: 0 },
-        mastDown: false, flash: 0, ramCd: 0, locked: new Map(), wakeT: 0, sprayT: 0,
-        roll: 0, rollPhase: Math.random() * Math.PI * 2, turnVel: 0, kx: 0, ky: 0,
-        px: x, py: y, vx: 0, vy: 0, way: 0, baulkT: 0, foul: false, // where she was, and the ground she truly made
-        fill: opts.isPlayer ? C.player : pal.fill,
-        stroke: opts.isPlayer ? C.playerStroke : pal.stroke,
-      };
-      if (!opts.isPlayer) {
-        s.wander = Math.random() * Math.PI * 2;
-        s.wanderT = 0;
-        s.oppT = 0;
-        s.oppHold = 1.8 + Math.random() * 2.6; // trigger discipline: some captains waste less powder
-        s.nerve = Math.random(); // how late she leaves it before turning to face a charge
-        s.baffled = 0; // how long she has been getting nowhere with the hull she is engaged with
-        s.sheerT = 0; // time left on a deliberate break-off
-        s.sheerHeading = 0; // and the course out of the heap she picked when she began it
-        s.avoidIsl = null; // the island she is sailing round, and which side she chose to pass it
-        s.avoidSide = 0;
-        s.retargetT = 0;
-        s.target = null;
-      }
-      return s;
-    }
-
-    function farPos(g, minFromPlayer) {
-      let x, y, ok, tries = 0;
-      do {
-        x = 180 + Math.random() * (WORLD - 360);
-        y = 180 + Math.random() * (WORLD - 360);
-        ok = true;
-        if (g.player && Math.hypot(x - g.player.x, y - g.player.y) < minFromPlayer) ok = false;
-        if (ok && g.islands) for (const isl of g.islands) if (Math.hypot(x - isl.x, y - isl.y) < isl.r + 55) { ok = false; break; }
-        tries++;
-      } while (!ok && tries < 40);
-      return { x, y };
-    }
-
-    function hash(i, j) {
-      const v = Math.sin(i * 127.1 + j * 311.7) * 43758.5453;
-      return v - Math.floor(v);
-    }
-
-    // The middle of the sea is left open, and a mode with weather has it left open out to the whole
-    // of its working ring: the end of such a round is fought in there, and a headland in the eye of
-    // the storm would be a place to hide from the one thing that stops anyone hiding. `MIDDLE_CLEAR`
-    // is what the derby's ring already asked for, kept as the floor so a mode without weather drops
-    // its fleet into the same open water it always did.
-    function genIslands(g) {
-      const isl = [];
-      const clear = Math.max(MIDDLE_CLEAR, (g.rules.storm ? g.rules.storm.ring : 0) + RING_CLEAR);
-      let tries = 0;
-      while (isl.length < ISLAND_COUNT && tries < 400) {
-        tries++;
-        const r = 58 + Math.random() * 66;
-        const x = r + 90 + Math.random() * (WORLD - 2 * (r + 90));
-        const y = r + 90 + Math.random() * (WORLD - 2 * (r + 90));
-        if (Math.hypot(x - WORLD / 2, y - WORLD / 2) < clear) continue;
-        if (isl.some((o) => Math.hypot(x - o.x, y - o.y) < r + o.r + 170)) continue;
-        const n = 12;
-        const verts = [];
-        for (let k = 0; k < n; k++) verts.push(0.78 + Math.random() * 0.3);
-        isl.push({ x, y, r, verts, foliage: genFoliage(r, verts) });
-      }
-      g.islands = isl;
-    }
-
-    /**
-     * Bend an AI captain's course round any island it would run her onto.
-     *
-     * The rule this replaced looked at the nearest island only, within a fixed 130 paces, and when
-     * the course pointed at it pushed the course sideways by a fixed amount. That is what left a
-     * rival pinned on a beach for so long. The push for a course dead at the island was less than
-     * the quarter turn that runs along a shore, so a ship already touching was steered back into
-     * the sand every frame and lost half her way for it every frame; and the push changed sides as
-     * her bearing on the island crossed nought, so a captain with her quarry straight across an
-     * island dithered between going round one way and the other and went round neither.
-     *
-     * This one steers for the tangent. Of the islands she can see, the nearest whose beach the
-     * course would pass within `clear` of has the course swung onto the tangent to the circle
-     * `clear` off her beach, on whichever side the course was already nearer to. She remembers the
-     * side she picked for that island until she is past it, so having chosen to go round to port
-     * she goes round to port. A ship already inside that circle, on the beach or nearly, runs along
-     * the shore leaning outward, which is the one course that takes her off it however she came to
-     * be there; and a course that already points off the island is left alone.
-     */
-    function avoidIslands(s, desired) {
+      renderer.resize(hudRef.current?.getBoundingClientRect());
       const g = gameRef.current;
-      if (!g.islands) return desired;
-      const clear = s.hullA * 0.76 + ISLAND_CLEAR; // moveShip grounds her at the first term
-      const look = ISLAND_LOOK + s.spdCur * ISLAND_LOOK_SECS;
-      let isl = null, id = 1e9, iTo = 0, iRel = 0;
-      for (const o of g.islands) {
-        const dx = o.x - s.x, dy = o.y - s.y;
-        const d = Math.hypot(dx, dy);
-        const R = o.r + clear;
-        if (d - R > look) continue; // beyond where she looks
-        const toI = Math.atan2(dy, dx);
-        const rel = norm(toI - desired);
-        // Clear of her if the course points off the island, or passes her wider than R at its
-        // nearest. A ship inside R is only clear on a course that already leans off the shore.
-        const off = Math.abs(rel) > Math.PI / 2 + (d > R ? 0 : ISLAND_LEAN);
-        if (off || (d > R && Math.abs(Math.sin(rel)) * d > R)) continue;
-        if (d < id) { isl = o; id = d; iTo = toI; iRel = rel; }
-      }
-      if (!isl) { s.avoidIsl = null; return desired; }
-      const R = isl.r + clear;
-      if (s.avoidIsl !== isl) { s.avoidIsl = isl; s.avoidSide = iRel > 0 ? -1 : 1; }
-      const side = s.avoidSide;
-      if (id <= R) return iTo + side * (Math.PI / 2 + ISLAND_LEAN); // along the shore, leaning off it
-      return iTo + side * Math.asin(Math.min(1, R / id)); // the tangent
-    }
-
-    function splash(x, y) {
-      const parts = gameRef.current.parts;
-      for (let i = 0; i < 5; i++) {
-        const a = Math.random() * Math.PI * 2, sp = 30 + Math.random() * 60;
-        parts.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 0.3, max: 0.4, col: "rgba(240,252,249,0.9)", kind: "spark" });
-      }
-    }
-
-    // A point on the map edge, as far from the player as we can manage and clear of islands.
-    function edgePos(g, minFromPlayer) {
-      const inset = 70;
-      let best = null, bestD = -1;
-      for (let t = 0; t < 60; t++) {
-        const side = t % 4;
-        const u = 120 + Math.random() * (WORLD - 240);
-        const x = side === 0 ? u : side === 1 ? u : side === 2 ? inset : WORLD - inset;
-        const y = side === 0 ? inset : side === 1 ? WORLD - inset : u;
-        let blocked = false;
-        if (g.islands) for (const isl of g.islands) if (Math.hypot(x - isl.x, y - isl.y) < isl.r + 55) { blocked = true; break; }
-        if (blocked) continue;
-        const d = g.player ? Math.hypot(x - g.player.x, y - g.player.y) : 1e9;
-        if (d >= minFromPlayer) return { x, y };
-        if (d > bestD) { bestD = d; best = { x, y }; }
-      }
-      return best || { x: inset, y: inset };
-    }
-
-    function spawnArenaEnemy() {
-      const g = gameRef.current;
-      const p = edgePos(g, ARENA_SPAWN_CLEAR);
-      // bow pointed inland so a fresh hunter sails into the fight, not into the boundary
-      const heading = Math.atan2(WORLD / 2 - p.y, WORLD / 2 - p.x) + (Math.random() - 0.5) * 0.8;
-      // Every hull she has put under moves the next one out of the horizon up its mode's ladder.
-      return makeShip(p.x, p.y, heading, {
-        ci: g.ships.length,
-        loadout: rivalLoadout(g.rules, g.playerStrength, g.sunk, g.playerLoadout.hull),
-      });
-    }
-
-    /**
-     * WHO SHE MEETS, matched on what her own ship measures rather than on what class it is.
-     *
-     * A fully found cutter genuinely outclasses a plain brig, so matching on the shelf would call
-     * that an even fight. Every mode issues from `STOCK` and every mode picks on a measure:
-     *
-     *   wave arena   climbs the ladder a rung at a time: the first hunter is a shade under her, and
-     *                every second sinking brings the next rung out of the horizon until the rungs
-     *                have caught her up, and the numbers do the rest. `arenaHunter` in the
-     *                catalogue is the rule, and the bench prints it.
-     *   ladder arena is the one mode not matched to her at all: the stock ladder from the bottom,
-     *                by strength, and her `kills` say which rung is next. `ladderRung` is the rule.
-     *                Both arenas carry theirs on the mode row as `hunter`.
-     *   free-for-all fields her own rate: ships of her own class of ship, at every standard of
-     *                fitting out, which is equal without being identical. In the first ship it
-     *                fields her own class instead: the lowest rate holds four classes, and a
-     *                gundalow with two guns a side against cutters with five is not an even fight.
-     *   derby        matches on `ram` rather than on rate, because a rate is a count of guns and
-     *                nobody in that mode has one aboard.
-     *
-     * Falls back to the nearest rung by the same measure when a band comes up empty, so a captain in
-     * something the fleet has no answer to still gets a fight.
-     */
-    function rivalLoadout(rules, strength, step, hull) {
-      const key = rules.guns ? "overall" : "ram";
-      const rungs = ladder();
-      if (rules.hunter) return rules.hunter(strength, step).loadout;
-      if (rules.guns) {
-        const band = hull.id === STARTER.hull ? stockOfHull(hull.id) : stockOfRate(rateOf(hull).rung);
-        if (band.length) return band[Math.floor(Math.random() * band.length)].loadout;
-      } else {
-        const band = peers(strength.ram, 0.15, "ram");
-        if (band.length) return band[Math.floor(Math.random() * band.length)].loadout;
-      }
-      return nearestRung(rungs, key, strength[key]).loadout;
-    }
-    const nearestRung = (rungs, key, want) =>
-      rungs.reduce((a, b) => (Math.abs(b.measure[key] - want) < Math.abs(a.measure[key] - want) ? b : a));
-
-    function reset(m) {
-      const rules = modeOf(m);
-      gameRef.current = {
-        mode: m, rules, player: null, ships: [], shots: [], volleys: [], parts: [], wakes: [], islands: [], texts: [],
-        cam: { x: 0, y: 0 }, sunk: 0, fieldSize: 0, aliveCount: 0, leader: null, avgEarned: 0,
-        _lastRank: 0, spawnT: 0, spawnQueue: 0, vign: 0, running: false, hudDirty: false, hudAcc: 0, time: 0,
-        banked: false, stormR: STORM_R0, stormTick: -1, stormPhase: "", playerOut: false,
-      };
-      const g = gameRef.current;
-      // Her own ship, read fresh out of the hold rather than off a closure, so a mast bought between
-      // rounds is aboard for the next one.
-      g.playerLoadout = shipLoadout(getHold());
-      g.playerStrength = measure(rate(g.playerLoadout));
-      const player = makeShip(WORLD / 2, WORLD / 2, -Math.PI / 2, { isPlayer: true, loadout: g.playerLoadout });
-      g.player = player;
-      g.ships.push(player);
-      genIslands(g);
-      for (let i = 0; i < rules.rivals; i++) {
-        // where a mode replaces its losses, rivals sail in from the horizon the same way the
-        // reinforcements will; where the field is fixed, they are scattered across the whole sea
-        if (rules.reinforcements) g.ships.push(spawnArenaEnemy());
-        else {
-          const pos = farPos(g, 440);
-          g.ships.push(makeShip(pos.x, pos.y, Math.random() * Math.PI * 2, { ci: i, loadout: rivalLoadout(rules, g.playerStrength, 0, g.playerLoadout.hull) }));
-        }
-      }
-      g.fieldSize = g.ships.length;
-    }
-
-    function pushText(x, y, t) {
-      gameRef.current.texts.push({ x, y: y - 26, t, life: 1.3 });
-    }
-    function muzzle(x, y, ang) {
-      gameRef.current.parts.push({ x, y, ang, life: 0.12, max: 0.12, kind: "muzzle" });
-    }
-    // A gun going off leaves a bank of smoke hanging where it fired. It is thrown out along the
-    // barrel, slows almost at once, and then swells and thins where it stands, which is why the
-    // puffs carry heavy drag rather than a short life: what says "a gun fired here" is the smoke
-    // still sitting there a second later, well after the flash has gone.
-    //
-    // It has to stay on her rail to read as her smoke. Thrown any harder than this the puffs end up
-    // a full beam off the hull, where they stop looking like gunsmoke and start looking like the
-    // foam on a shoal. Drag being what it is, a puff settles about a third of its starting speed
-    // away from the gun, so these numbers put the bank within a few paces of her side.
-    function smoke(x, y, ang, n, power) {
-      const parts = gameRef.current.parts;
-      for (let i = 0; i < n; i++) {
-        const a = ang + (Math.random() - 0.5) * 1.1;
-        const sp = (11 + Math.random() * 15) * power;
-        const life = (0.55 + Math.random() * 0.45) * power;
-        parts.push({
-          x: x + (Math.random() - 0.5) * 2.5, y: y + (Math.random() - 0.5) * 2.5,
-          vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, drag: 3.4,
-          life, max: life, r0: 1.2 * power, r1: (5.6 + Math.random() * 3) * power, kind: "puff",
-        });
-      }
-    }
-    function burst(x, y, bar) {
-      const col = bar === "hull" ? C.splinter : bar === "mast" ? "#d8e6e0" : C.crew;
-      const parts = gameRef.current.parts;
-      for (let i = 0; i < 7; i++) {
-        const a = Math.random() * Math.PI * 2, sp = 40 + Math.random() * 90;
-        parts.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 0.4, max: 0.6, col, kind: "spark" });
-      }
-      parts.push({ x, y, life: 0.3, max: 0.3, col, kind: "ring" });
-    }
-    function sinkFx(x, y, col) {
-      const parts = gameRef.current.parts;
-      for (let i = 0; i < 16; i++) {
-        const a = Math.random() * Math.PI * 2, sp = 30 + Math.random() * 120;
-        parts.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 0.6, max: 0.9, col: C.splinter, kind: "spark" });
-      }
-      parts.push({ x, y, life: 0.5, max: 0.5, col, kind: "ring" });
-    }
-
-    function finalStats(won) {
-      const g = gameRef.current, p = g.player, r = g.rules;
-      const time = g.time || 0;
-      const paidInFull = !!(won && r.fullRound); // she ended it early; she is paid as though she had not
-      const timePay = Math.round((paidInFull ? r.fullRound : time) * r.timeCoins);
-      const winPay = won ? r.winBonus : 0;
-      const fought = Math.round(p.earned || 0);
-      const repaired = Math.round(p.repaired || 0);
-      const total = fought + timePay + winPay;
-      return {
-        time,
-        kills: p.kills || 0,
-        dmg: Math.round(p.dmgDealt || 0),
-        coins: fought, // what her bow and her guns took
-        patches: p.patches || 0,
-        repaired, // ...and what she handed straight back to the carpenter, all of it her own money
-        rams: p.rams || 0,
-        dismasted: p.dismasted || 0,
-        healed: Math.round(p.healed || 0),
-        sunkByRam: p.sunkBy.ram, sunkByGuns: p.sunkBy.broadside, sunkByMuskets: p.sunkBy.musket,
-        rammedWhole: p.rammedWhole || 0,
-        wornDown: p.wornDown || 0,
-        timePay, winPay, paidInFull,
-        total,
-      };
-    }
-
-    // A voyage banks once, at the end screen, whichever end it was. `judge` decides which end once a
-    // frame, so the two cannot both fire for one round; the flag is the guard behind that.
-    function bankRun(won, rank) {
-      const g = gameRef.current;
-      if (g.banked) return;
-      g.banked = true;
-      const s = finalStats(won);
-      const { banked: got, bounty: paid } = bankVoyage({
-        mode: g.mode, earned: s.total, repaired: s.repaired, kills: s.kills, dmg: s.dmg,
-        time: s.time, rams: s.rams, patches: s.patches, won, rank,
-        dismasted: s.dismasted, healed: s.healed,
-        sunkByRam: s.sunkByRam, sunkByGuns: s.sunkByGuns, sunkByMuskets: s.sunkByMuskets,
-        rammedWhole: s.rammedWhole, wornDown: s.wornDown,
-      });
-      setBanked(got);
-      setBounty(paid);
-      // What the privacy policy says Analytics counts: how voyages end. Nothing is sent without consent.
-      track("voyage_end", { mode: g.mode, result: won ? "won" : "sunk", rank, kills: s.kills, seconds: Math.round(s.time) });
-    }
-
-    function endWin(line) {
-      const g = gameRef.current;
-      g.running = false;
-      if (g.rules.ranked) setPlace({ rank: 1, total: g.fieldSize });
-      setStats(finalStats(true));
-      bankRun(true, g.rules.ranked ? 1 : 0);
-      setResult(line);
-      setPhase("won");
-      syncRef.current();
-    }
-    function playerDied(bar) {
-      const g = gameRef.current;
-      g.running = false;
-      g.vign = 1;
-      g.player.alive = false;
-      const standing = g.ships.filter((s) => s.alive).length;
-      const rank = g.rules.ranked ? standing + 1 : 0;
-      if (g.rules.ranked) setPlace({ rank, total: g.fieldSize });
-      setStats(finalStats(false));
-      bankRun(false, rank);
-      setResult(
-        // Four different shapes on purpose. Written to one template they read as filled-in slots,
-        // however good the words are. The fourth is the round nobody survived: she and the last
-        // rival went down in the same moment, which is a sinking and not a win.
-        g.rules.lastAfloatWins && standing === 0 ? "Nobody is left afloat. She and the last of them went down together."
-          : bar === "storm" ? "The squall has your crew, and she founders in the weather."
-          : bar === "hull" ? "Your hull is breached. She goes under."
-          : "Crew routed. You strike your colors."
-      );
-      setPhase("dead");
-      syncRef.current();
-    }
-
-    /**
-     * THE ROUND ENDS ONCE, HERE, at the end of the frame. Hits and the weather only mark ships dead;
-     * nothing inside a hit handler ends the round, because a frame is not over when a hull goes
-     * under. A rival's ball already in the air can still find the player after her last rival sank,
-     * and the storm can take the last two crews on one tick, and each of those used to raise both
-     * ends at once: a win banked, then a sinking painted over it. So the frame plays out and one
-     * question is asked of what it left. A sinking outranks a win: if she is not afloat she was not
-     * the last afloat, whatever else went down beside her.
-     */
-    function judge() {
-      const g = gameRef.current;
-      if (!g.running) return;
-      if (!g.player.alive) { playerDied(g.player._deathBar || "hull"); return; }
-      if (g.rules.lastAfloatWins && g.ships.filter((s) => s.alive).length === 1) endWin("You are the last hull afloat.");
-      // the ladder is climbed when there is no rung left to send, which the same rule the spawner
-      // reads says by sending nothing
-      if (g.rules.ladder && !g.rules.hunter(g.playerStrength, g.sunk)) {
-        endWin("Every ship in the fleet is on the bottom, from the plain gundalow to the fully found first rate.");
-      }
-    }
-
-    /**
-     * The bounty on a sinking: a quarter of what she was, so it scales with the fleet the way the
-     * rest of the economy already does.
-     *
-     * A coin is earned a point of damage and a coin is charged a point of damage, so putting a first
-     * rate under pays twenty-seven times what a gundalow pays and costs twenty-seven times as much to
-     * undo, with no scaling term anywhere in either. The bounty was the one flat term left, and
-     * against a class worth three thousand points of hull a flat 25 was a rounding error rather than
-     * the reward for finishing her. A quarter of her hull comes to exactly 25 on the smallest ship
-     * in the fleet, so nothing moved at the bottom of it.
-     */
-    function killShip(s, attacker, cause, standing = !!(attacker && attacker.alive)) {
-      const g = gameRef.current;
-      if (attacker && standing) {
-        const bounty = Math.round(KILL_SHARE * s.maxHull);
-        attacker.coins += bounty;
-        attacker.earned += bounty;
-        attacker.kills = (attacker.kills || 0) + 1;
-        if (cause in attacker.sunkBy) attacker.sunkBy[cause] += 1;
-        if (attacker.isPlayer) {
-          g.hudDirty = true;
-          // Both are judged on what the player did to her and not on the state she went down in,
-          // because in a melee her bars carry every rival's work and the storm's besides. Worn down
-          // is half of each of her three bars off the player's own guns and bow; by the bow alone is
-          // her whole hull gone to the player's ram, with a hair of tolerance for the float sum.
-          const b = s.byPlayer;
-          const half = (got, max) => max <= 0 || got >= max * 0.5;
-          if (half(b.hull, s.maxHull) && half(b.mast, s.maxMast) && half(b.crew, s.maxCrew)) attacker.wornDown += 1;
-          if (cause === "ram" && b.ram >= s.maxHull - 1e-6) attacker.rammedWhole += 1;
-        }
-      }
-      sinkFx(s.x, s.y, s.fill);
-      // she is marked and left where she lies; `judge` reads the frame when it is over
-      if (s.isPlayer) { s.alive = false; g.vign = 1; g.hudDirty = true; return; }
-      const i = g.ships.indexOf(s);
-      if (i >= 0) g.ships.splice(i, 1);
-      for (const o of g.ships) o.locked.delete(s); // she is on the bottom; nobody is fouled on her
-      pushText(s.x, s.y, s._deathBar === "storm" ? "LOST" : "SUNK");
-      if (g.rules.reinforcements) {
-        g.sunk += 1;
-        g.spawnQueue = Math.min(g.spawnQueue + g.rules.reinforce(g.sunk), g.rules.fleetCap);
-        g.spawnT = 0; // lead ship of the wave sails in at once, the next one waits out the gap
-      }
-      g.hudDirty = true;
-    }
-
-    function canHit(owner, target) {
-      if (!target.alive || target === owner) return false;
-      if (gameRef.current.rules.melee) return true;
-      return owner.isPlayer !== target.isPlayer;
-    }
-
-    /**
-     * One hit landing. `cause` names what landed it, `ram` or the weapon kind on the ball, and it is
-     * carried because the bar alone cannot say: a ram and a broadside both stave in the hull, and
-     * the record wants to know which one finished her.
-     */
-    function applyHit(target, bar, amt, attacker, cause, standing = !!(attacker && attacker.alive)) {
-      const g = gameRef.current;
-      const before = target[bar];
-      target[bar] = Math.max(0, before - amt);
-      if (bar !== "mast") target.flash = 0.35;
-      // Credited as what she actually lost, not what was thrown, so the sum over every hit she took
-      // is her whole bar and a single ball cannot overshoot it. That goes for the coins as well as
-      // the tallies: a coin a point is the promise the repair rail makes, and a ram worth seven
-      // hundred landing on a boat with a hundred to lose was being paid the seven hundred.
-      const took = before - target[bar];
-      // `standing` is whether the attacker counts for the credit. It is her being afloat, unless the
-      // caller says otherwise: two bows meeting resolve both blows, and the second is still hers
-      // even if the first has just put her under.
-      if (attacker && standing) {
-        attacker.coins += took;
-        attacker.earned += took;
-        attacker.dmgDealt = (attacker.dmgDealt || 0) + took;
-        if (attacker.isPlayer) {
-          g.hudDirty = true;
-          target.byPlayer[bar] += took;
-          if (cause === "ram") target.byPlayer.ram += took;
-        }
-      }
-      if (target.isPlayer) {
-        g.hudDirty = true;
-        if (bar !== "mast") g.vign = Math.min(1, g.vign + 0.45);
-      }
-      if (bar === "mast" && before > 0 && target[bar] <= 0 && !target.mastDown) {
-        target.mastDown = true;
-        if (attacker && standing) attacker.dismasted += 1;
-        pushText(target.x, target.y, target.isPlayer ? "OUR MAST!" : "MAST DOWN");
-      }
-      if ((bar === "hull" || bar === "crew") && target[bar] <= 0 && target.alive) {
-        target._deathBar = bar;
-        killShip(target, attacker, cause, standing);
-      }
-    }
-
-    /**
-     * How many guns of a mount are served, and where they sit.
-     *
-     * `balls` is her gun count, less a share of it once she is holed below half: guns go silent as
-     * the hands serving them are wanted elsewhere. It used to be exactly one gun fewer, which was a
-     * tenth of the biggest battery in the game when nothing threw more than ten balls and is a
-     * fiftieth of one now. A share falls the same way at every size, and the floor of one keeps a
-     * boat with a single gun a side from being disarmed by the first hit that finds her.
-     *
-     * `spread` lays that many evenly across a span, centred: one ball goes down the middle, two sit
-     * at the ends, and the old hand-written offsets fall out of it for the counts they covered.
-     */
-    const SILENCED = 0.15; // of her battery, once she is holed below half
-    const balls = (s, wk) =>
-      Math.max(1, Math.round(s.rating[wk].balls * (s.hull < s.maxHull * 0.5 ? 1 - SILENCED : 1)));
-    const spread = (n, half) =>
-      n <= 1 ? [0] : Array.from({ length: n }, (_, i) => -half + (2 * half * i) / (n - 1));
-
-    function fire(s, weapon) {
-      const g = gameRef.current;
-      const w = WP[weapon];
-      const h = s.heading;
-      const dmg = weapon === "broadside" ? sideDmg(s) : weapon === "bow" ? frontDmg(s) : musketDmg(s);
-      const bx = s.x + Math.cos(h) * s.hullA;
-      const by = s.y + Math.sin(h) * s.hullA;
-      const noise = s.isPlayer ? 0 : weapon === "musket" ? AI_MUSKET_AIM : AI_CANNON_AIM;
-      const push = (px, py, ang) =>
-        g.shots.push({ x: px, y: py, vx: Math.cos(ang) * w.speed, vy: Math.sin(ang) * w.speed, life: w.life, r: w.r, bar: w.bar, dmg, owner: s, kind: weapon });
-      if (weapon === "broadside") {
-        // She does not throw her broadside, she gives the order. Every port down her side takes her
-        // own moment inside the window, in the order they happen to come, so several go off together
-        // and the rest follow in ones and twos; `stepVolley` fires each as her moment arrives, off
-        // wherever the ship is by then. Nothing else about the volley is decided now, because a ship
-        // a third of a second into a turn is not the ship that gave the order.
-        const offs = spread(balls(s, "broadside"), 0.72 * s.hullA);
-        const win = volleyWindow(offs.length);
-        g.volleys.push({
-          s, dmg, noise, n: 0,
-          guns: offs
-            .map((off) => ({ off, at: g.time + Math.random() * win }))
-            .sort((a, b) => a.at - b.at),
-          // where she lay when the order was given, which is what the guns are laid against
-          x0: s.x, y0: s.y, h0: h,
-        });
-      } else if (weapon === "bow") {
-        // Her chasers, opened out by half what they were: they are round shot too, and a chase gun
-        // that sprays is no use to anybody.
-        const angs = spread(balls(s, "bow"), 0.045);
-        for (const o of angs) push(bx, by, h + o + (Math.random() - 0.5) * noise);
-        muzzle(bx, by, h);
-        smoke(bx, by, h, 4, 0.92);
-      } else {
-        // The hands at the rail and the swivels on it, firing together. The count, the weight of
-        // one ball and the scatter all come off the loadout now; only `noise`, an AI captain's own
-        // aim, is the fight's to add.
-        for (let i = 0; i < s.rating.muskets; i++) push(bx, by, h + (Math.random() - 0.5) * (musketArc(s) + noise));
-        muzzle(bx, by, h);
-        smoke(bx, by, h, 2, 0.45); // muskets make little enough of it, and fire often
-      }
-    }
-
-    function moveShip(s, dt, desired, throttle) {
-      let dH = 0;
-      if (throttle > 0.03) {
-        const d = norm(desired - s.heading);
-        const step = turnCap(s) * dt;
-        dH = clamp(d, -step, step);
-        s.heading += dH;
-      }
-      s.turnVel = dt > 0 ? dH / dt : 0;
-      const tgt = throttle * speedCap(s);
-      s.spdCur += (tgt - s.spdCur) * Math.min(1, dt * 3);
-      s.x += Math.cos(s.heading) * s.spdCur * dt;
-      s.y += Math.sin(s.heading) * s.spdCur * dt;
-      s.x += s.kx * dt;
-      s.y += s.ky * dt;
-      const kf = Math.exp(-dt * 3.5);
-      s.kx *= kf;
-      s.ky *= kf;
-      s.x = clamp(s.x, 28, WORLD - 28);
-      s.y = clamp(s.y, 28, WORLD - 28);
-      const g = gameRef.current;
-      if (g.islands)
-        for (const isl of g.islands) {
-          const dx = s.x - isl.x, dy = s.y - isl.y;
-          const d = Math.hypot(dx, dy) || 1;
-          // her own half-length, so a first rate grounds where her bow reaches the shallows and a
-          // launch can work right in under the beach
-          const minD = isl.r + s.hullA * 0.76;
-          if (d < minD) { s.x = isl.x + (dx / d) * minD; s.y = isl.y + (dy / d) * minD; s.spdCur *= 0.5; }
-        }
-    }
-
-    function stepPlayer(dt) {
-      const g = gameRef.current;
-      const p = g.player;
-      if (!p.alive) return;
-      const inp = inputRef.current;
-      const desired = inp.joyMag > 0.08 ? inp.joyAng : p.heading;
-      moveShip(p, dt, desired, inp.joyMag);
-      p.ramCd = Math.max(0, p.ramCd - dt);
-      if (!g.rules.guns) return; // ram-only: nothing aboard to reload
-      for (const wk of ["broadside", "bow", "musket"]) {
-        p.cd[wk] = Math.max(0, p.cd[wk] - dt);
-        if (inp[wk] && p.cd[wk] <= 0 && canFire(p, wk)) { fire(p, wk); p.cd[wk] = reloadOf(p, wk); }
-      }
-    }
-
-    function pickTarget(s) {
-      const g = gameRef.current;
-      if (!g.rules.melee) return g.player.alive ? g.player : null; // one quarry: the player
-      const leaderSnow = g.leader && g.leader !== s && g.leader.earned > g.avgEarned * 1.6 && g.aliveCount > 2;
-      // at the drop nobody has a reputation yet, so range is what matters: take the nearest hull
-      // and only start shopping for weak or wealthy prey once the melee has had time to sort itself
-      const opening = clamp(1 - g.time / OPENING_WINDOW, 0, 1);
-      const distW = 0.02 + 0.1 * opening; // range matters most while the fleet is still sorting out
-      const shop = 1 - 0.75 * opening; // ...and reputation barely at all
-      let best = null, bestScore = -1e9, nearest = null, nd = 1e9;
-      for (const c of g.ships) {
-        if (c === s || !c.alive) continue;
-        const dist = Math.hypot(c.x - s.x, c.y - s.y);
-        if (dist < nd) { nd = dist; nearest = c; }
-        if (dist > 1500) continue;
-        let score = -dist * distW;
-        const isLead = leaderSnow && c === g.leader;
-        if (isLead) score += 130 * shop;
-        // Weaker prey is better prey. The two ships' measures are read against each other on a log
-        // scale, so a hull half her strength is worth as much as one twice her strength costs, and
-        // the term is held to a factor of e either way so a first rate in a field of boats is not
-        // the only thing anyone ever hunts. A term like it sat here once, comparing levels bought at
-        // sea, and went when every hull became the same hull; the fleet varies again, off the
-        // shipyard, so it is back off the loadouts. It weighs prey only: nobody runs from a stronger
-        // ship on account of it, since a captain who fled every heavier hull would never fight.
-        if (s.strength > 0 && c.strength > 0) score += PREY_STRENGTH * shop * clamp(Math.log(s.strength / c.strength), -1, 1);
-        const hpR = Math.min(c.hull / c.maxHull, c.crew / c.maxCrew);
-        if (hpR < 0.5) score += (0.5 - hpR) * 120 * shop;
-        if (score > bestScore) { bestScore = score; best = c; }
-      }
-      return best || nearest;
-    }
-
-    // How far a broadside carries, which is the ball's speed for its life, and how close an AI
-    // captain gets before she turns beam-on to use it. The second sits well inside the first on
-    // purpose: it was 225 against a reach of 220, so a hunter who turned beam-on at the edge of it
-    // could lie there with her guns five paces short, and where she was pinned on the boundary
-    // beam-on she could neither close nor fire, and a round with one hunter in it never ended.
-    const BROADSIDE_REACH = WP.broadside.speed * WP.broadside.life;
-    const BEAM_ON = BROADSIDE_REACH - 25;
-    // Is anything in this weapon's arc? Prefers the ship we are hunting, but reports a bystander
-    // that has drifted into the line of fire so the AI can decide whether to loose a volley at it.
-    const ARCS = {
-      broadside: (d, ab) => d < BROADSIDE_REACH && Math.abs(ab - Math.PI / 2) < 0.4,
-      bow: (d, ab) => d < 360 && ab < 0.28,
-      // half the volley's arc plus a little, so an AI captain looses when a hull is somewhere in her
-      // fire rather than when it is merely off the bow
-      musket: (d, ab) => d < 130 && ab < 0.3,
-    };
-    function linedUp(s, weapon, primary) {
-      const g = gameRef.current;
-      const arc = ARCS[weapon];
-      let bystander = null;
-      for (const c of g.ships) {
-        if (!canHit(s, c)) continue;
-        const d = Math.hypot(c.x - s.x, c.y - s.y);
-        const ab = Math.abs(norm(Math.atan2(c.y - s.y, c.x - s.x) - s.heading));
-        if (!arc(d, ab)) continue;
-        if (c === primary) return { ship: c, primary: true };
-        if (!bystander || d < bystander.d) bystander = { ship: c, primary: false, d };
-      }
-      return bystander;
-    }
-
-    // ---- ram-only captains -------------------------------------------------------------------
-    // With nothing to shoot, a captain's whole trade is where her bow is pointed and how much way she
-    // has behind it. She wants a rival's beam, because that is where a hull is staved in; she wants to
-    // meet a charge with her own bow, because that turns a beam blow into a glance the other ship has
-    // to share; and she has to spend speed to come round at all, now that a rudder goes heavy at a run.
-
-    // Whose beam is worth crossing the sea for. Weighs how side-on she lies to us, how badly she is
-    // already holed, whether she is looking the other way, and how far off she is.
-    function pickRamTarget(s, shyOf) {
-      const g = gameRef.current;
-      let best = null, bestScore = -1e9;
-      for (const c of g.ships) {
-        if (c === s || !c.alive) continue;
-        const toC = Math.atan2(c.y - s.y, c.x - s.x);
-        const dist = Math.hypot(c.x - s.x, c.y - s.y);
-        const aspect = Math.abs(Math.sin(c.heading - toC)); // 1 when her beam is square to us
-        const facing = Math.abs(norm(toC + Math.PI - c.heading)); // 0 when her bow is on us
-        // ...and whether we are gaining on her at all. Every hull holds the same top speed in a mode
-        // with no gunnery to bring a mast down, so a stern chase is one nobody ever
-        // wins: without this a captain will happily follow a fleeing rival across the whole sea while
-        // the beam of a ship crossing her bow goes begging.
-        const closing =
-          (Math.cos(s.heading) * s.spdCur - Math.cos(c.heading) * c.spdCur) * Math.cos(toC) +
-          (Math.sin(s.heading) * s.spdCur - Math.sin(c.heading) * c.spdCur) * Math.sin(toC);
-        let score = -dist * 0.06 + aspect * 46 + facing * 8 + (1 - c.hull / c.maxHull) * 55 + clamp(closing, -70, 70) * 0.55;
-        if (c.isPlayer) score += 8; // captains would rather have the notorious hull
-        // the hull she has just spent a while jammed against is the one she is least likely to get
-        // anything out of, so she shops elsewhere — though she will come back to her if she is all
-        // there is, which is why this leans against her rather than ruling her out
-        if (c === shyOf) score -= 55;
-        if (score > bestScore) { bestScore = score; best = c; }
-      }
-      return best;
-    }
-
-    // Steer for where she will be by the time we get there, not where she is now.
-    function ramIntercept(s, t) {
-      const dist = Math.hypot(t.x - s.x, t.y - s.y);
-      const lead = clamp(dist / Math.max(40, speedCap(s)), 0, 2.4);
-      return Math.atan2(t.y + Math.sin(t.heading) * t.spdCur * lead - s.y, t.x + Math.cos(t.heading) * t.spdCur * lead - s.x);
-    }
-
-    // Anyone bow-on to us, close, and carrying way is about to ram. Nearest one wins our attention.
-    function incomingRam(s) {
-      const g = gameRef.current;
-      let threat = null, td = 1e9;
-      for (const c of g.ships) {
-        if (c === s || !c.alive) continue;
-        const dist = Math.hypot(c.x - s.x, c.y - s.y);
-        if (dist > 250 || dist > td) continue;
-        if (c.spdCur < 46) continue;
-        if (Math.abs(norm(Math.atan2(s.y - c.y, s.x - c.x) - c.heading)) > 0.42) continue;
-        threat = c; td = dist;
-      }
-      return threat;
-    }
-
-    // Which way is out of the heap: away from the mean bearing of every hull near enough to be in the
-    // road, with a touch of sheer either side so a whole pile does not peel off along the same line.
-    function clearWater(s) {
-      const g = gameRef.current;
-      let cx = 0, cy = 0, n = 0;
-      for (const c of g.ships) {
-        if (c === s || !c.alive) continue;
-        const dx = c.x - s.x, dy = c.y - s.y;
-        const d = Math.hypot(dx, dy);
-        if (d > SHEER_LOOK || d < 1) continue;
-        cx += dx / d; cy += dy / d; n++;
-      }
-      const away = n > 0 ? Math.atan2(-cy, -cx) : s.heading + (Math.random() < 0.5 ? 1 : -1) * SHEER_ANGLE;
-      return away + (Math.random() - 0.5) * 0.7;
-    }
-
-    /**
-     * The weather bends whatever a captain meant to do, whichever mode she is sailing in.
-     *
-     * Well inside the ring it asks nothing; nearer the rail it leans on her course; once she is
-     * actually out in it her own exposure decides how hard, so a shove into the weather is something
-     * she rides out and a pinning is something she fights her way out of — or does not.
-     *
-     * Both AIs go through here, and they have to. A gun captain runs from a wound rather than from
-     * the ring, and a rival who has driven her to a third of her health is behind her, so the course
-     * she picks to save herself is the course that takes her out of the ring: without this she sails
-     * out of the round having beaten nobody. It is a lean, not a fence, so shouldering a wounded ship
-     * out into the weather and holding her there is still a way of finishing her.
-     */
-    function weatherCourse(s, desired, throttle) {
-      const g = gameRef.current;
-      if (!g.rules.storm) return { desired, throttle };
-      const dc = Math.hypot(s.x - WORLD / 2, s.y - WORLD / 2);
-      const out = dc > g.stormR;
-      const lean = out
-        ? clamp(0.55 + 0.45 * (s.exposure / STORM_RAMP), 0, 1)
-        : STORM_PULL * clamp((dc / Math.max(1, g.stormR) - STORM_HOME) / (1 - STORM_HOME), 0, 1);
-      if (lean <= 0.01) return { desired, throttle };
-      const toMid = Math.atan2(WORLD / 2 - s.y, WORLD / 2 - s.x);
-      return {
-        desired: desired + norm(toMid - desired) * lean, // swing part of the way onto the course home
-        throttle: out ? Math.max(throttle, 0.9) : throttle,
-      };
-    }
-
-    function stepRamAI(s, dt) {
-      const g = gameRef.current;
-      s.ramCd = Math.max(0, s.ramCd - dt);
-      s.retargetT -= dt;
-      if (!s.target || !s.target.alive || s.retargetT <= 0) {
-        s.target = pickRamTarget(s);
-        s.retargetT = 0.6 + Math.random() * 0.7;
-      }
-      const tgt = s.target;
-      const threat = incomingRam(s);
-      const facing = threat && Math.hypot(threat.x - s.x, threat.y - s.y) < 150 + s.nerve * 90 ? threat : null;
-      const engaged = facing || tgt; // the hull this is about, whether she picked it or it picked her
-      let desired, throttle = 1;
-      s.sheerT = Math.max(0, s.sheerT - dt);
-
-      // Is she getting anywhere with it? The clock runs against whoever she is engaged with, the hull
-      // she is chasing and the one charging her alike. It used to run only inside the chase, so the
-      // one case that never resolves itself — a pair locked bow to bow — was the one case never timed.
-      if (engaged) {
-        const toE = Math.atan2(engaged.y - s.y, engaged.x - s.x);
-        const closing =
-          (Math.cos(s.heading) * s.spdCur - Math.cos(engaged.heading) * engaged.spdCur) * Math.cos(toE) +
-          (Math.sin(s.heading) * s.spdCur - Math.sin(engaged.heading) * engaged.spdCur) * Math.sin(toE);
-        s.baffled = closing > 18 ? Math.max(0, s.baffled - dt * 2) : s.baffled + dt;
-      } else s.baffled = Math.max(0, s.baffled - dt);
-
-      const patience = (secs) => secs * (0.7 + 0.6 * s.nerve); // no two captains blink together
-
-      // Bunched up. `baulkT` is the plain fact of it — she is foul of another hull and going nowhere —
-      // and it is a far better signal than any reckoning of closing speed, which in a pile is high one
-      // frame and nothing the next. Once she has been stuck like that a moment she peels out of the
-      // heap, gathers way in clear water, and comes back at whoever looks best from out there. That
-      // is usually somebody else: the hull she was jammed against is the one she has just proved she
-      // cannot get a run at.
-      if (s.sheerT <= 0 && s.baulkT > patience(BAULK_GRACE)) {
-        s.sheerT = SHEER_TIME;
-        s.sheerHeading = clearWater(s);
-        s.baulkT = 0;
-        s.baffled = 0;
-        s.target = pickRamTarget(s, engaged);
-        s.retargetT = SHEER_TIME + Math.random() * 0.5; // let the new choice stand while she pulls out
-      }
-
-      if (s.sheerT > 0) {
-        // out of the heap: sea room first, a fresh run at her second
-        desired = s.sheerHeading;
-        throttle = SHEER_THROTTLE;
-      } else if (facing) {
-        // meet her bow to bow rather than let her have the beam — a glance both of us share
-        desired = Math.atan2(facing.y - s.y, facing.x - s.x);
-      } else if (!tgt) {
-        s.wanderT -= dt;
-        if (s.wanderT <= 0) { s.wander += (Math.random() - 0.5) * 1.2; s.wanderT = 1.5 + Math.random(); }
-        desired = s.wander;
-        throttle = 0.5;
-      } else if (s.baffled > patience(STALL_PATIENCE)) {
-        // a chase she is not winning: come round inside her instead of following her wake
-        desired = Math.atan2(tgt.y - s.y, tgt.x - s.x); // straight at her, not at where she is going
-        throttle = STALL_THROTTLE;
-        if (s.baffled > patience(STALL_PATIENCE + STALL_CUT)) s.baffled = 0; // then have another go
-      } else {
-        desired = ramIntercept(s, tgt);
-      }
-
-      ({ desired, throttle } = weatherCourse(s, desired, throttle));
-
-      // A hull carrying way will not come round. Ease off to swing the bow across, then pile it on —
-      // which is what makes an AI charge something a captain can watch coming and step aside from.
-      const err = Math.abs(norm(desired - s.heading));
-      if (err > 1.15) throttle = Math.min(throttle, 0.4);
-      else if (err > 0.55) throttle = Math.min(throttle, 0.72);
-
-      moveShip(s, dt, avoidIslands(s, desired), throttle);
-    }
-
-    function stepAI(s, dt) {
-      const g = gameRef.current;
-      if (!s.alive) return;
-      if (!g.rules.guns) { stepRamAI(s, dt); return; }
-      s.retargetT -= dt;
-      if (!s.target || !s.target.alive || s.retargetT <= 0) {
-        s.target = pickTarget(s);
-        s.retargetT = 0.7 + Math.random() * 0.6;
-      }
-      const tgt = s.target;
-      for (const wk of ["broadside", "bow", "musket"]) s.cd[wk] = Math.max(0, s.cd[wk] - dt);
-      s.ramCd = Math.max(0, s.ramCd - dt);
-      s.oppT = Math.max(0, s.oppT - dt);
-      const nearWall = s.x < 140 || s.x > WORLD - 140 || s.y < 140 || s.y > WORLD - 140;
-
-      if (!tgt) {
-        s.wanderT -= dt;
-        if (s.wanderT <= 0) { s.wander += (Math.random() - 0.5) * 1.2; s.wanderT = 1.5 + Math.random(); }
-        const idle = weatherCourse(s, nearWall ? Math.atan2(WORLD / 2 - s.y, WORLD / 2 - s.x) : s.wander, 0.4);
-        moveShip(s, dt, avoidIslands(s, idle.desired), idle.throttle);
-        return;
-      }
-
-      const dx = tgt.x - s.x, dy = tgt.y - s.y;
-      const dist = Math.hypot(dx, dy);
-      const toT = Math.atan2(dy, dx);
-      const bearing = norm(toT - s.heading);
-      const hpR = Math.min(s.hull / s.maxHull, s.crew / s.maxCrew);
-      // She used to run from a ship carrying more levels than her as well as from her own wounds.
-      // Levels are gone and every hull is equal, so what is left is the wound, which was always the
-      // better half of it: a captain runs because of the state of her own ship.
-      const fleeing = g.rules.flees && hpR < 0.34;
-
-      if (fleeing) {
-        let away = Math.atan2(s.y - tgt.y, s.x - tgt.x);
-        if (nearWall) away = Math.atan2(WORLD / 2 - s.y, WORLD / 2 - s.x);
-        // ...and the weather has a say in where "away" is. A wounded captain running from the ship
-        // that wounded her is exactly who sails out of the ring and dies of the sea, so the run home
-        // is bent back the same way everyone else's course is.
-        const run = weatherCourse(s, away, 0.95);
-        moveShip(s, dt, avoidIslands(s, run.desired), run.throttle);
-        // A captain running is still a captain with guns. She used to return here without firing
-        // a shot, so a pursuer who came up on her beam, which is the one place a running ship can
-        // hit without turning, was handed the whole exchange. She looses whatever bears and keeps
-        // running; she never alters course to bring a gun on.
-        serveGuns(s, tgt);
-        return;
-      }
-
-      let desired, throttle;
-      if (nearWall && dist > 260) { desired = Math.atan2(WORLD / 2 - s.y, WORLD / 2 - s.x); throttle = 0.7; }
-      else if (dist > 900) {
-        s.wanderT -= dt;
-        if (s.wanderT <= 0) { s.wander = toT + (Math.random() - 0.5) * 0.8; s.wanderT = 1.2 + Math.random(); }
-        desired = s.wander; throttle = 0.6;
-      } else if ((tgt.hull < tgt.maxHull * 0.4 || tgt.crew < tgt.maxCrew * 0.4) && dist < 520) {
-        desired = toT; throttle = 1; // line up and charge a wounded ship to ram it down
-      } else if (dist < 150 && Math.abs(bearing) < 0.35) {
-        desired = toT; throttle = 1; // opportunistic ram when already bow-on and close
-      } else if (dist > BEAM_ON) { desired = toT; throttle = 0.9; }
-      else { const sign = bearing >= 0 ? 1 : -1; desired = toT - (sign * Math.PI) / 2; throttle = 0.5; }
-      ({ desired, throttle } = weatherCourse(s, desired, throttle));
-      moveShip(s, dt, avoidIslands(s, desired), throttle);
-      serveGuns(s, tgt);
-    }
-
-    // Every mount that is loaded and has a hull in its arc fires, at the ship she is hunting for
-    // choice. Fighting or running, this is the whole of an AI captain's gunnery.
-    function serveGuns(s, tgt) {
-      for (const wk of ["broadside", "bow", "musket"]) {
-        if (s.cd[wk] > 0 || !canFire(s, wk)) continue;
-        const shot = linedUp(s, wk, tgt);
-        if (!shot) continue;
-        if (!shot.primary) {
-          // a hull that wandered into the arc is not who we came for: take the shot sometimes,
-          // then hold fire a beat so nobody spends the whole match blasting bystanders
-          if (s.oppT > 0) continue;
-          s.oppT = s.oppHold * (0.7 + Math.random() * 0.6);
-        }
-        fire(s, wk);
-        s.cd[wk] = reloadOf(s, wk); // AI reloads at the pace of its own battery, every mode
-      }
-    }
-
-    function stepRam(dt) {
-      const g = gameRef.current;
-      const ships = g.ships;
-      for (let i = 0; i < ships.length; i++) {
-        for (let j = i + 1; j < ships.length; j++) {
-          const a = ships[i], b = ships[j];
-          if (!a.alive || !b.alive) continue;
-          // consorts cannot ram each other, but no two hulls may ever share the same water
-          const hostile = g.rules.melee || a.isPlayer !== b.isPlayer;
-          const heldSince = a.locked.get(b);
-          if (heldSince !== undefined && g.time - heldSince > RAM_LOCK_MAX) { a.locked.delete(b); b.locked.delete(a); }
-          const touch = hullTouch(a, b);
-          const { d, nx, ny } = keelGap(a, b); // where the two hulls come nearest to fouling
-          // pressed hulls sit right on the touch line and cross it every other frame as they drive
-          // together and are pushed apart, so the margin is what keeps this from flickering
-          if (d < touch + 4) a.foul = b.foul = true;
-          if (d >= touch) {
-            // a pair has to break properly clear of each other before it can ram again
-            if (d >= touch + RAM_REARM_GAP) { a.locked.delete(b); b.locked.delete(a); }
-            continue;
-          }
-          const toB = Math.atan2(ny, nx); // the line of the impact, from her side to theirs
-          // always de-overlap so hulls never sit inside each other
-          const ov = touch - d;
-          a.x -= nx * ov * 0.5; a.y -= ny * ov * 0.5;
-          b.x += nx * ov * 0.5; b.y += ny * ov * 0.5;
-
-          // closing speed along the line of impact, counting how both ships are actually moving:
-          // a head-on doubles it, and running from a chaser bleeds it away
-          const closing = (a.vx - b.vx) * nx + (a.vy - b.vy) * ny;
-          // ...and how much of each ship's own way is driving into the other. That is the ram:
-          // a ship crossing or running has none of it, however hard the hulls meet
-          const bowA = Math.cos(a.heading - toB), bowB = -Math.cos(b.heading - toB);
-          // A hull that has been held on someone's timbers for a while is not ramming anybody: whatever
-          // her helmsman is asking for, she is not going anywhere, and the ground she covers between
-          // one frame and the next is the shoving rather than any way of her own. Two ships jammed bow
-          // to bow are a target, not a threat — including to whoever comes to take advantage of them.
-          const driveA = Math.max(0, bowA * a.way), driveB = Math.max(0, bowB * b.way);
-          // One curve for every angle: how hard the hulls met. Harder is always worse, whoever you
-          // are and wherever it lands, which is what makes a ram something a captain can judge
-          const t = clamp((closing - RAM_MIN_CLOSE) / (RAM_FULL_CLOSE - RAM_MIN_CLOSE), 0, 99);
-          const force = Math.min(Math.pow(t, RAM_CURVE), RAM_MAX_FORCE);
-          // ...and then where it lands only sets its weight: square on the beam a hull is staved in,
-          // caught on her fine ends the blow glances along her
-          const weigh = (aspect) => RAM_FINE + (RAM_BEAM - RAM_FINE) * aspect;
-
-          let hurtB = 0, hurtA = 0;
-          if (hostile && force > 0 && !a.locked.has(b)) {
-            if (driveA > 0 && a.ramCd <= 0) hurtB = ramDmg(a) * force * bowA * bowA * weigh(Math.abs(Math.sin(b.heading - toB)));
-            if (driveB > 0 && b.ramCd <= 0) hurtA = ramDmg(b) * force * bowB * bowB * weigh(Math.abs(Math.sin(a.heading - toB)));
-          }
-          if (hurtB > 0 && hurtA > 0) {
-            // both bows in it: the one with less way behind her comes off worse, because the ship
-            // with more weight behind her drives through what the other has to absorb
-            const lead = clamp(driveA / (driveA + driveB), 1 - RAM_MUTUAL_CAP, RAM_MUTUAL_CAP);
-            hurtB *= 2 * lead;
-            hurtA *= 2 * (1 - lead);
-          }
-          // hulls kissing at walking pace are not a ram: no damage, no cooldown spent, and the pair
-          // stays free to ram properly, so a light touch can never rob a captain of her charge
-          if (Math.max(hurtA, hurtB) < RAM_GRAZE) { hurtA = 0; hurtB = 0; }
-          let rammed = false;
-          // Both blows land, whatever the first one did. They used to resolve in list order with the
-          // second skipped if the first had sunk its target, which made every simultaneous kill a
-          // survival for the lower-numbered hull, and the player is always hull number one. Two bows
-          // meeting at speed can now put both ships under, and each is credited for her blow even
-          // when the other's has just sunk her, because she was afloat when she struck.
-          const aStanding = a.alive, bStanding = b.alive;
-          if (hurtB > 0) { applyHit(b, "hull", hurtB, a, "ram", aStanding); a.ramCd = RAM_CD; a.baffled = 0; if (hurtB >= RAM_GRAZE) a.rams++; rammed = true; }
-          if (hurtA > 0) { applyHit(a, "hull", hurtA, b, "ram", bStanding); b.ramCd = RAM_CD; b.baffled = 0; if (hurtA >= RAM_GRAZE) b.rams++; rammed = true; }
-          if (rammed) {
-            a.locked.set(b, g.time); b.locked.set(a, g.time);
-            // each ship spends the part of her way that went into the impact, so one driving
-            // straight in stops dead while one caught across her course carries on. whoever put
-            // the least drive into it is the one thrown clear
-            const impulse = RAM_KNOCK * clamp(closing / RAM_FULL_CLOSE, 0.3, 1.2);
-            const share = driveA / Math.max(1, driveA + driveB);
-            const aKnock = impulse * (RAM_RECOIL + (1 - RAM_RECOIL) * (1 - share));
-            const bKnock = impulse * (RAM_RECOIL + (1 - RAM_RECOIL) * share);
-            a.kx -= nx * aKnock; a.ky -= ny * aKnock;
-            b.kx += nx * bKnock; b.ky += ny * bKnock;
-            // the share is held to one whole: her measured way can run past her own speed for a
-            // moment after a knock, and an unclamped share threw her astern at a fraction of top
-            // speed, which is not what spending her way into a blow means
-            a.spdCur *= 1 - RAM_DRIVE_LOSS * clamp(driveA / Math.max(1, a.spdCur), 0, 1);
-            b.spdCur *= 1 - RAM_DRIVE_LOSS * clamp(driveB / Math.max(1, b.spdCur), 0, 1);
-            burst((a.x + b.x) / 2, (a.y + b.y) / 2, "hull");
-          } else {
-            // hulls touching without a charge behind them: gentle nudge, no damage, by the second
-            const nudge = HULL_NUDGE * dt;
-            a.kx -= nx * nudge; a.ky -= ny * nudge;
-            b.kx += nx * nudge; b.ky += ny * nudge;
-          }
-        }
-      }
-    }
-
-    // The squall is weather, not an attack: no captain is paid for it, so it does not run through
-    // applyHit. It works on the crew, exposed on deck, and the longer they are out in it the harder
-    // it works — a dash across the weather costs a few hands, living out there costs the ship.
-    function stepStorm(dt) {
-      const g = gameRef.current;
-      const w = g.rules.storm;
-      if (!w) return;
-      g.stormR = stormRadius(g.time, w);
-      const cx = WORLD / 2, cy = WORLD / 2;
-      // walked backwards because a ship the weather finishes is spliced out from under us
-      for (let i = g.ships.length - 1; i >= 0; i--) {
-        const s = g.ships[i];
-        if (!s.alive) continue;
-        const out = Math.hypot(s.x - cx, s.y - cy) > g.stormR;
-        if (!out) { s.exposure = Math.max(0, s.exposure - dt * STORM_RECOVER); continue; }
-        s.exposure = Math.min(STORM_RAMP, s.exposure + dt);
-        // a share of her full complement, not of what is left, so the last hands go as fast as the first
-        const bite = STORM_BITE * s.maxCrew;
-        s.crew = Math.max(0, s.crew - bite * dt);
-        if (s.isPlayer) {
-          // a steady tint that deepens with the exposure, rather than the jolt a hit gives
-          g.vign = Math.max(g.vign, 0.2 + 0.55 * (s.exposure / STORM_RAMP));
-          g.hudDirty = true;
-        }
-        if (s.crew <= 0 && s.alive) { s._deathBar = "storm"; killShip(s, null, "storm"); }
-      }
-      // the countdown ticks in whole seconds, and going in or out of the weather, or the weather
-      // changing what it is doing, is worth a redraw
-      const tick = Math.max(0, Math.ceil(w.grace - g.time));
-      const phase = stormPhase(g.time, w);
-      const playerOut = g.player.alive && Math.hypot(g.player.x - cx, g.player.y - cy) > g.stormR;
-      if (tick !== g.stormTick || phase !== g.stormPhase || playerOut !== g.playerOut) {
-        g.stormTick = tick;
-        g.stormPhase = phase;
-        g.playerOut = playerOut;
-        g.hudDirty = true;
-      }
-    }
-
-    // What each ship actually did with the frame, measured once the hulls have been pushed out of one
-    // another: her velocity over the ground, and how much of it carried her bow forward. A hull that
-    // could not go forward — jammed against another, shouldered off an island, pinned on the boundary,
-    // or thrown back by a blow — loses her way to match, and has to gather it again like anyone else.
-    // Next frame's ram is resolved from these.
-    //
-    // It is her plain velocity along her heading, with nothing taken back out of it for the shoving.
-    // An earlier turn of this subtracted the knock, meaning to leave only what she made under her own
-    // power; but a ship held back by a knock has that knock subtracted the other way, and two hulls
-    // pressed bow to bow — dead in the water, covering 0.2px/s between them — came out reading 118.
-    //
-    // It is smoothed, too. Hulls in contact are driven together and pushed apart again frame by frame,
-    // so a single frame's difference swings wildly either side of nothing; taking the positive half of
-    // that swing at face value handed a standing ship the weight of a charging one every other frame.
-    function measureWay(dt) {
-      const g = gameRef.current;
-      if (dt <= 0) return;
-      for (const s of g.ships) {
-        if (!s.alive) continue;
-        const ch = Math.cos(s.heading), sh = Math.sin(s.heading);
-        const k = Math.min(1, dt * WAY_SMOOTH);
-        s.vx += ((s.x - s.px) / dt - s.vx) * k;
-        s.vy += ((s.y - s.py) / dt - s.vy) * k;
-        s.way = Math.max(0, s.vx * ch + s.vy * sh);
-        // and a hull foul of another and going nowhere is baulked, so she loses her way and must gather
-        // it again. Only another hull counts: an island or the boundary already checks her by other
-        // means, and a ship merely knocked off her stride is still free to sail
-        if (s.foul && s.spdCur > 5 && s.way < s.spdCur * BAULK_TOL) s.baulkT += dt;
-        else s.baulkT = Math.max(0, s.baulkT - dt * 2);
-        if (s.baulkT > BAULK_GRACE) s.spdCur *= Math.exp(-dt * BAULK_RATE);
-      }
-    }
-
-    /**
-     * ONE GUN OF A BROADSIDE, both sides at once.
-     *
-     * Fired from where she is at this instant rather than from where she was when the order was
-     * given, which is the whole point of spreading the volley at all: a ship holding her course lays
-     * a straight bank of iron, and a ship swinging her helm mid-volley walks it across the water,
-     * exactly as she would have. The gun's own smoke and flash go with it, at the port it came out
-     * of.
-     */
-    function fireGun(v, off) {
-      const g = gameRef.current;
-      const s = v.s;
-      const w = WP.broadside;
-      const h = s.heading;
-      // The volley opens out along the hull as it travels, but it used to open out a long way:
-      // at the range these fights are actually fought, about 150 paces, the four balls arrived
-      // spread across 76 of them, more than two hull lengths, so a broadside laid dead on a ship
-      // still had most of itself pass either side of her. Tightened to this the same volley
-      // covers 51, near enough one hull and a half, and a shot lined up properly lands more of
-      // itself. It is deliberately not nothing: a broadside is a wall of iron, not a rifle.
-      const FAN = 0.0045;
-      const px = s.x + Math.cos(h) * off, py = s.y + Math.sin(h) * off;
-      // the ground she has made along her own heading since the order, which every gun still to fire
-      // takes off its lay
-      const made = (s.x - v.x0) * Math.cos(v.h0) + (s.y - v.y0) * Math.sin(v.h0);
-      const lay = made / LAY_RANGE;
-      for (const sd of [-1, 1]) {
-        const dir = h + (sd * Math.PI) / 2;
-        const ang = dir + sd * lay - sd * FAN * off + (Math.random() - 0.5) * (0.05 + v.noise);
-        g.shots.push({
-          x: px, y: py, vx: Math.cos(ang) * w.speed, vy: Math.sin(ang) * w.speed,
-          life: w.life, r: w.r, draw: w.draw, bar: w.bar, dmg: v.dmg, owner: s, kind: "broadside",
-        });
-        // her smoke stands at the rail she fired over, not on her keel, or the bank comes up
-        // through the middle of the deck. Two puffs a gun, and a little more of each than a gun
-        // used to make: a rolling broadside spends a second putting its smoke out, so the first
-        // guns' has begun to thin before the last has fired, and a bank has to be built to last
-        // that long or she looks as though she is firing blanks. One puff to a gun and a bigger,
-        // longer-standing one, rather than two apiece: a fleet of first rates in company is eleven
-        // hundred guns a volley, and the same bank drawn in half the pieces held sixty frames a
-        // second where two apiece did not.
-        // A GUN FIRES OUT OF A PORT IN HER SIDE, so its flash and its smoke both stand at the rail
-        // it fired over rather than on her keel. The flash was amidships on her centreline, where a
-        // gun deck is stores rather than gunports, and with fifty of them going off in half a second
-        // that is the difference between a ship firing her broadside and a ship on fire.
-        const rx = px + Math.cos(dir) * s.hullB, ry = py + Math.sin(dir) * s.hullB;
-        // The bank stands just OUTSIDE the rail, and each puff is small enough that fifty of them
-        // make a band down her side rather than one cloud sitting on her. A puff as wide as she is
-        // long is a ship in a fog bank: her hull, her flashes and the first few paces of her shot
-        // all disappear into it, which is the opposite of what the smoke is there to show.
-        smoke(rx + Math.cos(dir) * 2.5, ry + Math.sin(dir) * 2.5, dir, 1, 0.9);
-        muzzle(rx, ry, dir);
-      }
-    }
-
-    /**
-     * The guns still to go off, on every ship with a volley in the air.
-     *
-     * A ship sunk mid-broadside stops firing, which is the difference between a gun crew and a
-     * timer. Everything else is arithmetic: a gun goes off when her moment comes, however many that
-     * is in one frame, and the entry is done when her last one has.
-     */
-    function stepVolley() {
-      const g = gameRef.current;
-      for (let i = g.volleys.length - 1; i >= 0; i--) {
-        const v = g.volleys[i];
-        if (!v.s.alive) { g.volleys.splice(i, 1); continue; }
-        while (v.n < v.guns.length && g.time >= v.guns[v.n].at) fireGun(v, v.guns[v.n++].off);
-        if (v.n >= v.guns.length) g.volleys.splice(i, 1);
-      }
-    }
-
-    function stepShots(dt) {
-      const g = gameRef.current;
-      const s = g.shots;
-      for (let i = s.length - 1; i >= 0; i--) {
-        const b = s[i];
-        const fromX = b.x, fromY = b.y;
-        b.x += b.vx * dt; b.y += b.vy * dt; b.life -= dt;
-        // A ball takes the first thing in its road, which is the nearest along the flight and not
-        // whichever hull the ships happen to be listed in first. Hulls are held far enough apart
-        // that a single step rarely reaches across two of them, so this is a rare case rather than
-        // a common one, but when it did come up the near ship, the one the ball plainly went
-        // through, was as likely as not the one that felt nothing.
-        let struck = null, shoal = false, when = 2;
-        for (const isl of g.islands) {
-          const t = shotHitsCircle(isl.x, isl.y, isl.r, fromX, fromY, b.x, b.y);
-          if (t >= 0 && t < when) { when = t; shoal = true; }
-        }
-        for (const target of g.ships) {
-          if (!canHit(b.owner, target)) continue;
-          const t = shotHitsHull(target, fromX, fromY, b.x, b.y, b.r);
-          if (t >= 0 && t < when) { when = t; struck = target; shoal = false; }
-        }
-        const hit = struck !== null || shoal;
-        if (hit) {
-          // and it breaks where it bit her, not at the end of a step it never finished
-          const hx = fromX + (b.x - fromX) * when, hy = fromY + (b.y - fromY) * when;
-          if (struck) { applyHit(struck, b.bar, b.dmg, b.owner, b.kind); burst(hx, hy, b.bar); }
-          else splash(hx, hy);
-        }
-        if (hit || b.life <= 0 || b.x < 0 || b.x > WORLD || b.y < 0 || b.y > WORLD) s.splice(i, 1);
-      }
-    }
-
-    function stepParts(dt) {
-      const g = gameRef.current;
-      for (let i = g.parts.length - 1; i >= 0; i--) {
-        const p = g.parts[i];
-        p.life -= dt;
-        // Smoke says how fast it slows in its own terms, so a bank of it stands the same on a phone
-        // dropping frames as on a screen holding sixty. The sparks keep the old per-frame damping,
-        // which is brief enough that nobody was ever going to catch it drifting.
-        if (p.vx !== undefined) {
-          p.x += p.vx * dt; p.y += p.vy * dt;
-          const k = p.drag !== undefined ? Math.exp(-dt * p.drag) : 0.9;
-          p.vx *= k; p.vy *= k;
-        }
-        if (p.life <= 0) g.parts.splice(i, 1);
-      }
-      for (let i = g.texts.length - 1; i >= 0; i--) {
-        const t = g.texts[i]; t.life -= dt; t.y -= 14 * dt; if (t.life <= 0) g.texts.splice(i, 1);
-      }
-      for (let i = g.wakes.length - 1; i >= 0; i--) { g.wakes[i].life -= dt; if (g.wakes[i].life <= 0) g.wakes.splice(i, 1); }
-      for (const s of g.ships) s.flash = Math.max(0, s.flash - dt);
-      g.vign = Math.max(0, g.vign - dt * 1.6);
-    }
-
-    function maintain(dt) {
-      const g = gameRef.current;
-      if (!g.rules.reinforcements) return;
-      // nothing left to send: the ladder is climbed, and `judge` ends the round on this frame
-      if (!g.rules.hunter(g.playerStrength, g.sunk)) return;
-      g.spawnT -= dt;
-      const enemies = g.ships.filter((s) => !s.isPlayer).length;
-      if (enemies === 0 && g.spawnQueue <= 0) g.spawnQueue = 1; // never leave the sea empty
-      if (g.spawnQueue > 0 && enemies < g.rules.fleetCap && g.spawnT <= 0) {
-        g.ships.push(spawnArenaEnemy());
-        g.spawnQueue -= 1;
-        g.spawnT = ARENA_SPAWN_GAP;
-      }
-    }
-
-    function computeMeta() {
-      const g = gameRef.current;
-      if (!g.rules.ranked) return;
-      const alive = g.ships.filter((s) => s.alive);
-      alive.sort((a, b) => b.earned - a.earned || b.coins - a.coins);
-      alive.forEach((s, i) => (s.rank = i + 1));
-      g.leader = alive[0] || null;
-      g.aliveCount = alive.length;
-      g.avgEarned = alive.reduce((t, s) => t + s.earned, 0) / Math.max(1, alive.length);
-      if (g.player.alive && g.player.rank !== g._lastRank) { g._lastRank = g.player.rank; g.hudDirty = true; }
-    }
-
-    // The camera holds her in the middle and fills the rest of the view with sea, which puts the
-    // boundary off the edge of the screen until she is close to it. Coming in on a side, it is let
-    // `peek` inside the screen — a strip of open water, the rope, and its buoys, no more — and she
-    // comes off centre by exactly as much: the edge slides into view and she slides toward it, which
-    // is what tells a captain how much sea she has left on that hand.
-    //
-    // The peek is a strip of screen, so it comes to the same band whichever way the map is squashed:
-    // across it is that many pixels of world, and up and down it is that many pixels of a world
-    // foreshortened by TILT, which takes more world to cover.
-    //
-    // Where the screen runs longer than the square — up and down, held upright — the boundary is let
-    // in as far as the edge of the square instead, since that strip of screen is the one the buttons
-    // and the panels sit on and it is hers to spend. That is what keeps her out from under them at
-    // the top and bottom of the map, where she used to end up pinned against the glass.
-    function camHold(centred, span, peek) {
-      const lo = -peek; // the far side of the map, let this far into the view
-      return clamp(centred, lo, Math.max(lo, WORLD - span + peek));
-    }
-
-    function camUpdate() {
-      const g = gameRef.current;
-      if (!g || !g.player) return;
-      const spanX = Vw, spanY = Vh / TILT; // sea on the screen, in world units
-      // across, the give past the square is capped at SIDE_PEEK; up and down it is not, because
-      // that strip is the one the buttons and panels sit on and it is hers to spend
-      const peekX = Math.max(Math.min((spanX - Vsq) / 2, SIDE_PEEK / zoom), EDGE_PEEK / zoom);
-      const peekY = Math.max((spanY - Vsq / TILT) / 2, EDGE_PEEK / (zoom * TILT));
-      g.cam.x = camHold(g.player.x - spanX / 2, spanX, peekX);
-      g.cam.y = camHold(g.player.y - spanY / 2, spanY, peekY);
-    }
-
-    function update(dt) {
-      const g = gameRef.current;
-      g.time += dt;
-      computeMeta();
-      for (const s of g.ships) { s.px = s.x; s.py = s.y; s.foul = false; } // where she started the frame
-      stepPlayer(dt);
-      for (const s of g.ships) if (!s.isPlayer) stepAI(s, dt);
-      stepRam(dt);
-      measureWay(dt);
-      stepStorm(dt);
-      stepVolley();
-      stepShots(dt);
-      stepParts(dt);
-      maintain(dt);
-      for (const s of g.ships) {
-        if (!s.alive || s.spdCur < 22) continue;
-        s.wakeT -= dt;
-        if (s.wakeT <= 0) {
-          s.wakeT = 0.05;
-          const sf = clamp(s.spdCur / 130, 0, 1); // longer trail only when she's really moving
-          const wlife = 0.24 + 0.42 * sf;
-          const h = s.heading;
-          const bx = s.x - Math.cos(h) * s.hullA, by = s.y - Math.sin(h) * s.hullA;
-          const px = Math.cos(h + Math.PI / 2), py = Math.sin(h + Math.PI / 2);
-          for (const sd of [-1, 1]) g.wakes.push({ x: bx + px * sd * 4, y: by + py * sd * 4, life: wlife, max: wlife });
-        }
-        if (s.spdCur > speedCap(s) * 0.82) {
-          s.sprayT -= dt;
-          if (s.sprayT <= 0) {
-            s.sprayT = 0.05;
-            const h = s.heading;
-            const fx = s.x + Math.cos(h) * (s.hullA + 2), fy = s.y + Math.sin(h) * (s.hullA + 2);
-            for (const sd of [-1, 1]) {
-              const a = h + sd * 0.28 + (Math.random() - 0.5) * 0.18, sp = 35 + Math.random() * 45;
-              g.parts.push({ x: fx, y: fy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 0.28, max: 0.38, col: "rgba(232,246,244,0.9)", kind: "spark" });
-            }
-          }
-        }
-      }
-      for (const s of g.ships) {
-        if (!s.alive) continue;
-        s.rollPhase += dt;
-        const target = clamp(-s.turnVel * 0.16, -0.4, 0.4);
-        s.roll += (target - s.roll) * Math.min(1, dt * 6);
-      }
-      judge();
-      camUpdate();
-      updateButtons();
-      g.hudAcc += dt;
-      if (g.hudDirty && g.hudAcc > 0.09) { syncRef.current(); g.hudDirty = false; g.hudAcc = 0; }
+      if (g) renderer.follow(shipOf(g, meRef.current));
     }
 
     function updateButtons() {
-      const p = gameRef.current.player;
+      const p = shipOf(gameRef.current, meRef.current);
       for (const wk of ["broadside", "bow", "musket"]) {
         const el = btnRefs[wk].current;
         if (!el) continue;
@@ -2782,761 +399,6 @@ export default function App() {
         if (fill) fill.style.transform = `scaleX(${armed ? clamp(ratio, 0, 1) : 0})`;
         el.style.opacity = !armed ? "0.28" : p.cd[wk] > 0 ? "0.55" : "1";
       }
-    }
-
-    // ---------------- rendering ----------------
-
-    // One breaking crest: two peaked humps with the outer legs rolling away from the shape, the way
-    // foam spills off either shoulder of a cap. Drawn wide and low, because a cap lies flat on the
-    // water and the water is seen at a tilt.
-    //
-    // The troughs are rounded but the crests are not, and that asymmetry is the whole shape. On each
-    // descent the control on the crest side sits on the crest itself, so the curve leaves it steeply
-    // and the peak stays sharp; the control on the trough side sits out to the side at trough height,
-    // which flattens the tangent there and rolls the bottom out. Round both ends and it stops reading
-    // as a breaking wave and starts reading as a sine squiggle.
-    //
-    // The notch between the two crests rides HIGHER than the troughs the tails fall into, so the low
-    // points of the shape are its two outside ends and the water only dips a little in the middle.
-    // Each tail is a quadratic from (-w, -0.1h) through (-0.8w, 0.6h) to the crest, which puts its y
-    // at -0.1 + 1.4t - 2t² and bottoms out at t = 0.35, i.e. 0.145h below the baseline. CAP_MID has
-    // to stay clear of that figure — push it past 0.145 and the middle becomes the lowest point of the
-    // cap again; drop it much below about -0.05 and the notch flattens until the two crests read as
-    // one broad hump.
-    //
-    // Path only: the caller owns beginPath/stroke, so each cap can carry its own alpha.
-    const CAP_W = 5.5, CAP_H = 4, CAP_LW = 1.4;
-    const CAP_MID = 0; // centre notch, as a fraction of CAP_H below the baseline
-    const CAP_TROUGH = 0.3; // how far the trough controls sit to the side — 0 would cusp the bottom
-
-    // A cap breaking: it whitens fast, then falls back to its own colour over about a second. Every
-    // cap runs its own cycle, so a few are always going off somewhere in view and no two are in step.
-    //
-    // This is a function of the cap's cell and the clock and nothing else — there is no list of live
-    // flares, nothing is spawned, and nothing is stored per cap. That is what makes it free at the
-    // edges of the screen: caps keep their rhythm whether or not they are being drawn, so one that
-    // scrolls into view arrives already mid-cycle instead of starting over or popping.
-    const CAP_CYCLE_MIN = 9, CAP_CYCLE_MAX = 19; // seconds between one cap's breaks
-    const CAP_FLARE_LEN = 0.9;   // how long a break lasts
-    const CAP_FLARE_RISE = 0.18; // fraction of that spent whitening — small, so it snaps and then fades
-    const CAP_FLARE_ALPHA = 0.55;
-    function capFlare(cell, phase) {
-      const period = CAP_CYCLE_MIN + cell * (CAP_CYCLE_MAX - CAP_CYCLE_MIN);
-      const u = (clock / period + phase) % 1;      // where this cap is in its own cycle
-      const win = CAP_FLARE_LEN / period;
-      if (u >= win) return 0;
-      const s = u / win;
-      if (s < CAP_FLARE_RISE) return s / CAP_FLARE_RISE;
-      const fall = (1 - s) / (1 - CAP_FLARE_RISE); // squared, so it drops away and then lingers
-      return fall * fall;
-    }
-    function whitecap(x, y) {
-      const w = CAP_W, h = CAP_H, d = CAP_TROUGH;
-      const px = 0.45 * w, py = y - 0.7 * h, ty = y + CAP_MID * h;
-      ctx.moveTo(x - w, y - 0.1 * h);
-      ctx.quadraticCurveTo(x - 0.8 * w, y + 0.6 * h, x - px, py);        // tail rolls out, up into the crest
-      ctx.bezierCurveTo(x - px, py, x - d * w, ty, x, ty);               // down into the shallow notch
-      ctx.bezierCurveTo(x + d * w, ty, x + px, py, x + px, py);          // and back up to the far crest
-      ctx.quadraticCurveTo(x + 0.8 * w, y + 0.6 * h, x + w, y - 0.1 * h); // then rolls out again
-    }
-
-    function drawWater(cam) {
-      ctx.fillStyle = C.water;
-      ctx.fillRect(0, 0, Vw, Vh);
-      const x0 = SX(0, cam), x1 = SX(WORLD, cam), y0 = SY(0, cam), y1 = SY(WORLD, cam);
-      ctx.fillStyle = C.waterEdge;
-      if (y0 > 0) ctx.fillRect(0, 0, Vw, y0);
-      if (y1 < Vh) ctx.fillRect(0, y1, Vw, Vh - y1);
-      if (x0 > 0) ctx.fillRect(0, 0, x0, Vh);
-      if (x1 < Vw) ctx.fillRect(x1, 0, Vw - x1, Vh);
-      ctx.strokeStyle = C.grid;
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      const step = 80;
-      const gy0 = Math.max(0, y0), gy1 = Math.min(Vh, y1), gx0 = Math.max(0, x0), gx1 = Math.min(Vw, x1);
-      for (let X = Math.ceil(cam.x / step) * step; X <= WORLD; X += step) { const sx = SX(X, cam); if (sx > Vw) break; if (sx < 0) continue; ctx.moveTo(sx, gy0); ctx.lineTo(sx, gy1); }
-      for (let Y = Math.ceil(cam.y / step) * step; Y <= WORLD; Y += step) { const sy = SY(Y, cam); if (sy > Vh) break; if (sy < 0) continue; ctx.moveTo(gx0, sy); ctx.lineTo(gx1, sy); }
-      ctx.stroke();
-      const cs = 130;
-      const ci0 = Math.floor(cam.x / cs) - 1, ci1 = Math.floor((cam.x + Vw) / cs) + 1;
-      const cj0 = Math.floor(cam.y / cs) - 1, cj1 = Math.floor((cam.y + Vh / TILT) / cs) + 1;
-      ctx.strokeStyle = C.beachRim;
-      ctx.lineWidth = CAP_LW;
-      ctx.lineCap = "round";
-      ctx.lineJoin = "round";
-      for (let ci = ci0; ci <= ci1; ci++) {
-        for (let cj = cj0; cj <= cj1; cj++) {
-          const h1 = hash(ci, cj), h2 = hash(ci + 9, cj + 4);
-          const wx = (ci + h1) * cs, wy = (cj + h2) * cs;
-          if (wx < 6 || wx > WORLD - 6 || wy < 6 || wy > WORLD - 6) continue;
-          const sx = SX(wx, cam), sy = SY(wy, cam) + Math.sin(clock * 1.3 + h1 * 6.283) * 1.4;
-          // beach-rim tone on open water: a lighter hue than the old caps, and a shape with detail in
-          // it rather than a bare tick, so it needs more of itself showing through to read as a cap
-          ctx.globalAlpha = 0.2 + 0.12 * (0.5 + 0.5 * Math.sin(clock + h2 * 6.283));
-          ctx.beginPath();
-          whitecap(sx, sy);
-          ctx.stroke();
-          // A break is painted over the top rather than swapped in, so the cap keeps its own colour
-          // underneath and the white simply fades off it. Same path, so there is nothing to rebuild.
-          const flare = capFlare(hash(ci + 5, cj + 17), h1);
-          if (flare > 0.01) {
-            ctx.strokeStyle = C.foam;
-            ctx.globalAlpha = flare * CAP_FLARE_ALPHA;
-            ctx.stroke();
-            ctx.strokeStyle = C.beachRim;
-          }
-        }
-      }
-      ctx.globalAlpha = 1;
-      ctx.lineCap = "butt";
-      ctx.lineJoin = "miter";
-      drawBoundary(cam, x0, y0, x1, y1);
-    }
-
-    function drawBoundary(cam, x0, y0, x1, y1) {
-      ctx.strokeStyle = "rgba(0,0,0,0.5)";
-      ctx.lineWidth = 7;
-      ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
-      ctx.strokeStyle = C.boundary;
-      ctx.lineWidth = 4;
-      ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
-      ctx.strokeStyle = "rgba(232,200,119,0.5)";
-      ctx.lineWidth = 1.5;
-      ctx.setLineDash([9, 8]);
-      ctx.strokeRect(x0 + 8, y0 + 8 * TILT, x1 - x0 - 16, y1 - y0 - 16 * TILT);
-      ctx.setLineDash([]);
-      const step = 400;
-      let n = 0;
-      const buoy = (wx, wy) => {
-        const sx = SX(wx, cam), sy = SY(wy, cam) + Math.sin(clock * 2 + wx * 0.01 + wy * 0.01) * 1.5;
-        n++;
-        if (sx < -10 || sx > Vw + 10 || sy < -10 || sy > Vh + 10) return;
-        ctx.beginPath();
-        ctx.arc(sx, sy, 4, 0, Math.PI * 2);
-        ctx.fillStyle = n % 2 ? C.buoyB : C.buoyA;
-        ctx.fill();
-        ctx.lineWidth = 1;
-        ctx.strokeStyle = "rgba(0,0,0,0.4)";
-        ctx.stroke();
-      };
-      for (let X = 0; X <= WORLD; X += step) { buoy(X, 0); buoy(X, WORLD); }
-      for (let Y = step; Y < WORLD; Y += step) { buoy(0, Y); buoy(WORLD, Y); }
-    }
-
-    // The weather is painted in two passes so it never costs readability: the sea outside the ring
-    // darkens under the ships, and the edge itself is drawn over the top of everything, because the
-    // one thing a captain must always be able to find is the line between fair water and foul.
-    function stormEllipse(cam) {
-      const g = gameRef.current;
-      return { cx: SX(WORLD / 2, cam), cy: SY(WORLD / 2, cam), r: g.stormR };
-    }
-
-    function drawStormWater(cam) {
-      const g = gameRef.current;
-      if (!g.rules.storm) return;
-      const { cx, cy, r } = stormEllipse(cam);
-      const outside = () => {
-        ctx.beginPath();
-        ctx.rect(0, 0, Vw, Vh);
-        ctx.ellipse(cx, cy, r, r * TILT, 0, 0, Math.PI * 2);
-      };
-      outside();
-      ctx.fillStyle = "rgba(7,34,33,0.5)";
-      ctx.fill("evenodd");
-      // rain, drawn only where the weather is
-      ctx.save();
-      outside();
-      ctx.clip("evenodd");
-      ctx.strokeStyle = "rgba(190,215,225,0.5)";
-      ctx.lineWidth = 1;
-      ctx.globalAlpha = 0.35;
-      ctx.beginPath();
-      const cell = 46;
-      for (let i = 0; i < Math.ceil(Vw / cell) + 1; i++) {
-        for (let j = 0; j < Math.ceil(Vh / cell) + 1; j++) {
-          const h1 = hash(i + Math.floor(cam.x / cell), j + Math.floor(cam.y / cell));
-          const px = i * cell + h1 * cell;
-          const py = ((j * cell + h1 * 900 + clock * 340) % (Vh + cell)) - cell / 2;
-          ctx.moveTo(px, py);
-          ctx.lineTo(px - 3, py + 11);
-        }
-      }
-      ctx.stroke();
-      ctx.globalAlpha = 1;
-      ctx.restore();
-    }
-
-    function drawStormEdge(cam) {
-      const g = gameRef.current;
-      if (!g.rules.storm) return;
-      const { cx, cy, r } = stormEllipse(cam);
-      const ring = (w, style, dash, off) => {
-        ctx.beginPath();
-        ctx.ellipse(cx, cy, r, r * TILT, 0, 0, Math.PI * 2);
-        ctx.lineWidth = w;
-        ctx.strokeStyle = style;
-        ctx.setLineDash(dash);
-        ctx.lineDashOffset = off;
-        ctx.stroke();
-        ctx.setLineDash([]);
-      };
-      ring(6, "rgba(0,0,0,0.35)", [], 0);
-      // it pulses harder once it is actually closing in
-      const closing = g.time > g.rules.storm.grace ? 1 : 0.45;
-      ring(2.4, `rgba(209,91,91,${0.45 + 0.35 * closing * (0.5 + 0.5 * Math.sin(clock * 3))})`, [16, 12], -clock * 26);
-    }
-
-    function drawWakes(cam) {
-      const g = gameRef.current;
-      for (const w of g.wakes) {
-        const k = w.life / w.max;
-        ctx.globalAlpha = k * 0.55;
-        ctx.fillStyle = "#eefaf6";
-        const rr = 1.6 + (1 - k) * 4.5;
-        ctx.beginPath();
-        ctx.ellipse(SX(w.x, cam), SY(w.y, cam), rr, rr * TILT, 0, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      ctx.globalAlpha = 1;
-    }
-
-    function drawIslands(cam) {
-      const g = gameRef.current;
-      for (const isl of g.islands) {
-        const cx = SX(isl.x, cam), cy = SY(isl.y, cam);
-        // cull on the shallows, not the sand: the bank reaches well outside isl.r, and culling on the
-        // land radius would pop a whole ring of shallow water in and out at the edge of the screen
-        const vr = isl.r * 1.45 + 8;
-        if (cx < -vr || cx > Vw + vr || cy < -vr * TILT - 60 || cy > Vh + vr * TILT + 60) continue;
-        const n = isl.verts.length;
-        ctx.save();
-        ctx.translate(cx, cy);
-        // One closed ring of the island's outline at `scale`, optionally rolling on the swell.
-        //
-        // The roll has to close on itself, which is why it is given as a whole number of `waves` round
-        // the ring rather than as a phase that advances per vertex. An advancing phase leaves the last
-        // vertex and the first at different radii even though they are neighbours, and the ring then
-        // shuts with a straight chord across the gap — a hard step that reads as a notch bitten out of
-        // the band. Taking the phase from the vertex angle makes that unrepresentable.
-        //
-        // The vertices are joined by a closed quadratic spline through the midpoint of each edge: the
-        // curve passes through every midpoint and is tangent to the outline there, so the facets round
-        // off and the bands roll instead of stepping. It cuts the corners slightly, so the drawn shape
-        // sits a touch inside the polygon — far less than the 0.78-1.08 spread of verts already puts
-        // between the drawn sand and the isl.r circle that shots and hulls actually test against.
-        const ring = (scale, waves = 0, amp = 0, speed = 0) => {
-          const pts = [];
-          for (let k = 0; k < n; k++) {
-            const a = (k / n) * Math.PI * 2;
-            const rr = isl.r * isl.verts[k] * scale + (amp ? Math.sin(clock * speed + a * waves) * amp : 0);
-            pts.push([Math.cos(a) * rr, Math.sin(a) * rr * TILT]);
-          }
-          ctx.beginPath();
-          ctx.moveTo((pts[n - 1][0] + pts[0][0]) / 2, (pts[n - 1][1] + pts[0][1]) / 2);
-          for (let k = 0; k < n; k++) {
-            const p = pts[k], q = pts[(k + 1) % n];
-            ctx.quadraticCurveTo(p[0], p[1], (p[0] + q[0]) / 2, (p[1] + q[1]) / 2);
-          }
-          ctx.closePath();
-        };
-        // The bottom comes up in two steps before it breaks the surface: a broad bank of shallows, then
-        // a thin beach rim right at the sand. Both roll on the swell — the outer one wider and slower,
-        // over fewer crests — so the two edges never march in step and the island keeps a moving
-        // waterline.
-        ring(1.30, 2, 3, 1.6);
-        ctx.fillStyle = C.shallows;
-        ctx.fill();
-        ring(1.08, 3, 2, 2);
-        ctx.fillStyle = C.beachRim;
-        ctx.fill();
-        // just a hairline of shade under the sand edge — any wider and it eats the beach rim
-        ctx.globalAlpha = 0.14;
-        ctx.fillStyle = "#000";
-        ring(1.015);
-        ctx.fill();
-        ctx.globalAlpha = 1;
-        ring(1);
-        ctx.fillStyle = C.sand;
-        ctx.fill();
-        ctx.lineWidth = 1.5;
-        ctx.strokeStyle = C.sandDark;
-        ctx.stroke();
-        // One flat green, not two: the interior stays a single colour and the only darker green on the
-        // island is the foliage, which reads as canopy rather than as another contour line inland.
-        ring(0.72);
-        ctx.fillStyle = C.grass;
-        ctx.fill();
-        // Shadows first, as one batched pass under every plant. The list is already sorted back to
-        // front from generation, so near plants overdraw far ones without sorting again here.
-        drawShadows(ctx, isl.foliage, clock);
-        for (const f of isl.foliage) (f.isPalm ? drawPalm : drawBush)(ctx, f, clock);
-        ctx.restore();
-      }
-    }
-
-    function drawArcGuides(p, cam) {
-      if (!p.alive) return;
-      const inp = inputRef.current;
-      ctx.save();
-      ctx.translate(SX(p.x, cam), SY(p.y, cam));
-      ctx.scale(1, TILT);
-      ctx.rotate(p.heading);
-      ctx.lineWidth = 1.4;
-      if (inp.broadside) {
-        ctx.strokeStyle = "rgba(217,154,60,0.28)";
-        const R = WP.broadside.speed * WP.broadside.life;
-        for (const s of [-1, 1]) { ctx.beginPath(); ctx.moveTo(0, s * 6); ctx.lineTo(0, s * R); ctx.stroke(); }
-      }
-      if (inp.bow) {
-        ctx.strokeStyle = "rgba(122,156,198,0.32)";
-        const R = WP.bow.speed * WP.bow.life;
-        ctx.beginPath(); ctx.moveTo(p.hullA, 0); ctx.lineTo(R, -R * 0.09); ctx.moveTo(p.hullA, 0); ctx.lineTo(R, R * 0.09); ctx.stroke();
-      }
-      if (inp.musket) {
-        ctx.strokeStyle = "rgba(223,239,255,0.28)";
-        const R = WP.musket.speed * WP.musket.life;
-        // the guide cone follows the volley's own scatter, so better swivels visibly narrow it
-        const arc = 0.875 * musketArc(p);
-        ctx.beginPath(); ctx.moveTo(p.hullA, 0); ctx.lineTo(Math.cos(arc) * R, Math.sin(arc) * R); ctx.moveTo(p.hullA, 0); ctx.lineTo(Math.cos(-arc) * R, Math.sin(-arc) * R); ctx.stroke();
-      }
-      ctx.restore();
-    }
-
-    function drawShip(s, cam) {
-      const g = gameRef.current;
-      const H = s.heading, cH = Math.cos(H), sH = Math.sin(H);
-      const roll = s.roll + Math.sin(s.rollPhase * 1.2) * 0.05; // bank into turns + gentle idle heel
-      const cR = Math.cos(roll), sR = Math.sin(roll);
-      const gx = SX(s.x, cam), gy = SY(s.y, cam);
-      const sea = s.sea;
-      const deckH = sea.deckH;
-      // local (u=fore, v=starboard, z=up) -> screen, via roll about keel, yaw, then iso projection
-      const P3 = (u, v, z) => {
-        const v2 = v * cR - z * sR;
-        const z2 = v * sR + z * cR;
-        const ox = u * cH - v2 * sH;
-        const oy = u * sH + v2 * cH;
-        return [gx + ox, gy + oy * TILT - z2 * ZUP];
-      };
-      const line = (a, b, col, wLine) => { ctx.strokeStyle = col; ctx.lineWidth = wLine; ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke(); };
-
-      // shadow on the water
-      ctx.globalAlpha = 0.28;
-      ctx.fillStyle = "#000";
-      ctx.beginPath();
-      ctx.ellipse(gx, gy + 2, s.hullA, s.hullB * TILT + 2, s.heading, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.globalAlpha = 1;
-
-      // V-shaped bow wave — subtle at cruise, pronounced on a charge
-      const sf = clamp((s.spdCur - 28) / 110, 0, 1);
-      if (sf > 0.03) {
-        const apex = P3(s.hullA + 2 * sf, 0, 0);
-        const spread = (6 + 6 * sf) * (s.hullB / 6.5), len = (10 + 10 * sf) * (s.hullA / 18);
-        const lft = P3(s.hullA + 2 - len, -spread, 0), rgt = P3(s.hullA + 2 - len, spread, 0);
-        ctx.strokeStyle = `rgba(232,246,244,${0.18 + 0.4 * sf})`;
-        ctx.lineWidth = 1.3 + 1.4 * sf;
-        ctx.lineJoin = "round";
-        ctx.lineCap = "round";
-        ctx.beginPath();
-        ctx.moveTo(lft[0], lft[1]);
-        ctx.quadraticCurveTo(apex[0], apex[1], rgt[0], rgt[1]);
-        ctx.stroke();
-        ctx.globalAlpha = 0.22 + 0.35 * sf;
-        ctx.fillStyle = "#eaf6f4";
-        const cap = 2 + 1.5 * sf;
-        ctx.beginPath();
-        ctx.ellipse(apex[0], apex[1], cap, cap * TILT, 0, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.globalAlpha = 1;
-      }
-
-      // ship colour reads as TRIM; the hull itself is brown wood
-      const trim = s.isPlayer ? C.gold : s.fill;
-
-      // hull: dark waterline body + brown deck, trimmed in the ship's colour. The outline is the
-      // class's own: her length, her beam, her entry and her stern.
-      const hull = sea.outline;
-      const tracePoly = (z) => {
-        ctx.beginPath();
-        hull.forEach(([u, v], i) => { const [X, Y] = P3(u, v, z); if (i === 0) ctx.moveTo(X, Y); else ctx.lineTo(X, Y); });
-        ctx.closePath();
-      };
-      tracePoly(0); ctx.fillStyle = s.cols.dark; ctx.fill();
-      tracePoly(deckH);
-      ctx.fillStyle = s.cols.deck; ctx.fill();
-      if (s.flash > 0) { ctx.globalAlpha = s.flash; ctx.fillStyle = "#fff"; ctx.fill(); ctx.globalAlpha = 1; }
-      ctx.lineWidth = s.isPlayer ? 2 : 1.6; ctx.strokeStyle = trim; ctx.stroke(); // gunwale trim
-      // painted trim stripe around the hull side
-      tracePoly(deckH * 0.5); ctx.lineWidth = 1.6; ctx.strokeStyle = trim; ctx.globalAlpha = 0.85; ctx.stroke(); ctx.globalAlpha = 1;
-      // bowsprit, on the hulls that have one
-      if (s.loadout.hull.bowsprit) line(P3(-0.11 * sea.L, 0, deckH + 1), P3(0.61 * sea.L, 0, deckH + 2), s.cols.spar, 1.4);
-
-      // raised stern castle (quarterdeck cabin) on the back quarter, on the classes built up
-      // enough to carry one: an open boat has no cabin at all
-      if (sea.castle) {
-        const { fx, bx, hw, h } = sea.castle;
-        const cf = [[fx, -hw], [fx, hw], [bx - 1, hw * 0.76], [bx - 1, -hw * 0.76]]; // FL, FR, BR, BL — overhangs the stern slightly
-        const baseC = cf.map(([u, v]) => P3(u, v, deckH));
-        const topC = cf.map(([u, v]) => P3(u, v, deckH + h));
-        const walls = [];
-        for (let k = 0; k < 4; k++) {
-          const a = k, b = (k + 1) % 4;
-          walls.push({ q: [baseC[a], baseC[b], topC[b], topC[a]], d: (baseC[a][1] + baseC[b][1]) / 2, edge: k });
-        }
-        walls.sort((x, y) => x.d - y.d); // far walls first
-        for (const w of walls) {
-          ctx.beginPath();
-          w.q.forEach((p, i) => { if (i === 0) ctx.moveTo(p[0], p[1]); else ctx.lineTo(p[0], p[1]); });
-          ctx.closePath();
-          ctx.fillStyle = s.cols.wood; ctx.fill();
-          ctx.globalAlpha = 0.2; ctx.fillStyle = "#000"; ctx.fill(); ctx.globalAlpha = 1;
-          ctx.lineWidth = 1; ctx.strokeStyle = s.cols.dark; ctx.stroke();
-          if (w.edge === 2) { // cabin windows on the aft wall (BR -> BL)
-            for (const t of [0.32, 0.68]) {
-              const bx2 = baseC[2][0] + (baseC[3][0] - baseC[2][0]) * t, by2 = baseC[2][1] + (baseC[3][1] - baseC[2][1]) * t;
-              const tx2 = topC[2][0] + (topC[3][0] - topC[2][0]) * t, ty2 = topC[2][1] + (topC[3][1] - topC[2][1]) * t;
-              ctx.fillStyle = "#2a1c10";
-              ctx.fillRect(bx2 + (tx2 - bx2) * 0.5 - 1.4, by2 + (ty2 - by2) * 0.5 - 1.4, 2.8, 2.8);
-            }
-          }
-        }
-        ctx.beginPath();
-        topC.forEach((p, i) => { if (i === 0) ctx.moveTo(p[0], p[1]); else ctx.lineTo(p[0], p[1]); });
-        ctx.closePath();
-        ctx.fillStyle = s.cols.deck; ctx.fill();
-        ctx.lineWidth = 1.2; ctx.strokeStyle = trim; ctx.stroke();
-      }
-
-      // masts and canvas, off her own loadout: each mast at its station, each band of sail in the
-      // shape of its category. Square canvas bellies on the BOW side of the pole as it always has;
-      // fore-and-aft canvas stands along the keel line.
-      const rig = s.seaRig;
-      const masts = s.mastDown ? [] : rig.masts;
-      const fwd = 1.5, belly = 3, MINW = 4, N = 6;
-      // a mast stands on the quarterdeck only if she has one and it's aft of its front wall
-      const mz = (u) => (sea.castle && u <= sea.castle.fx ? deckH + sea.castle.h : deckH);
-      const drawSail = (u, m) => {
-        const bz = mz(u);
-        const topZ = bz + m.st, botZ = bz + m.sb;
-        // sample the bellied cloth across the beam into columns
-        const cols = [];
-        for (let k = 0; k <= N; k++) {
-          const t = k / N, v = -m.w / 2 + m.w * t, nrm = v / (m.w / 2);
-          const uu = u + fwd + belly * (1 - nrm * nrm); // bellies forward toward the bow
-          cols.push({ top: P3(uu, v, topZ), bot: P3(uu, v, botZ), nrm });
-        }
-        // keep a small minimum on-screen width so she never vanishes edge-on
-        let minX = Infinity, maxX = -Infinity;
-        for (const c of cols) for (const p of [c.top, c.bot]) { if (p[0] < minX) minX = p[0]; if (p[0] > maxX) maxX = p[0]; }
-        const wpx = maxX - minX;
-        if (wpx > 0 && wpx < MINW) {
-          const cx = (minX + maxX) / 2, sc = MINW / wpx;
-          for (const c of cols) for (const p of [c.top, c.bot]) p[0] = cx + (p[0] - cx) * sc;
-        }
-        // fill the belly as white cloth, one convex quad-strip at a time so the
-        // whole surface reads white on every face (front and back of the belly),
-        // never leaving a hole for the hull/mast to show through.
-        for (let k = 0; k < N; k++) {
-          const a = cols[k], b = cols[k + 1];
-          ctx.beginPath();
-          ctx.moveTo(a.top[0], a.top[1]); ctx.lineTo(b.top[0], b.top[1]); ctx.lineTo(b.bot[0], b.bot[1]); ctx.lineTo(a.bot[0], a.bot[1]); ctx.closePath();
-          ctx.fillStyle = C.sail; ctx.fill();
-          const shade = 0.2 * ((a.nrm * a.nrm + b.nrm * b.nrm) / 2); // soft rounding toward the edges
-          if (shade > 0.01) { ctx.globalAlpha = shade; ctx.fillStyle = "#000"; ctx.fill(); ctx.globalAlpha = 1; }
-          ctx.globalAlpha = 0.09; ctx.fillStyle = trim; ctx.fill(); ctx.globalAlpha = 1;
-        }
-        // silhouette outline + yard across the head
-        ctx.beginPath();
-        cols.forEach((c, i) => { if (i === 0) ctx.moveTo(c.top[0], c.top[1]); else ctx.lineTo(c.top[0], c.top[1]); });
-        for (let k = N; k >= 0; k--) ctx.lineTo(cols[k].bot[0], cols[k].bot[1]);
-        ctx.closePath();
-        ctx.lineWidth = 1; ctx.strokeStyle = "rgba(0,0,0,0.28)"; ctx.stroke();
-        line(cols[0].top, cols[N].top, s.cols.spar, 1.3);
-      };
-      const drawPole = (m, base, top) => {
-        line(base, top, s.cols.spar, 1.7);
-        const bz = mz(m.u);
-        const f2 = P3(m.u - 5, 0, bz + m.h - 0.6), f3 = P3(m.u, 0, bz + m.h - 2.4);
-        ctx.fillStyle = trim;
-        ctx.beginPath(); ctx.moveTo(top[0], top[1]); ctx.lineTo(f2[0], f2[1]); ctx.lineTo(f3[0], f3[1]); ctx.closePath(); ctx.fill();
-      };
-      // a fore-and-aft panel: cloth standing along the keel line, filled from its outline. Kept to
-      // a small on-screen minimum the same way the square bands are, so it never quite vanishes
-      // when she sails straight up or down the screen.
-      const drawPanel = (pts) => {
-        const proj = pts.map(([uu, zz]) => P3(uu, 0, zz));
-        let minX = Infinity, maxX = -Infinity;
-        for (const p of proj) { if (p[0] < minX) minX = p[0]; if (p[0] > maxX) maxX = p[0]; }
-        const wpx = maxX - minX;
-        if (wpx > 0 && wpx < MINW) {
-          const cx = (minX + maxX) / 2, sc = MINW / wpx;
-          for (const p of proj) p[0] = cx + (p[0] - cx) * sc;
-        }
-        ctx.beginPath();
-        proj.forEach((p, i) => { if (i === 0) ctx.moveTo(p[0], p[1]); else ctx.lineTo(p[0], p[1]); });
-        ctx.closePath();
-        ctx.fillStyle = C.sail; ctx.fill();
-        ctx.globalAlpha = 0.09; ctx.fillStyle = trim; ctx.fill(); ctx.globalAlpha = 1;
-        ctx.lineWidth = 1; ctx.strokeStyle = "rgba(0,0,0,0.28)"; ctx.stroke();
-      };
-      // the outline of one fore-and-aft band, by its category: a gaff sail peaks high and aft of
-      // the mast, a lug hangs from its raking yard with some cloth forward of the pole, and
-      // triangular canvas is the lateen's fin, tacked forward and peaked aft
-      const drawFin = (u, band) => {
-        const bz = mz(u), sb = bz + band.sb, st = bz + band.st, h = band.st - band.sb;
-        if (band.kind === "GAF") {
-          const r = 0.85 * h + 3;
-          drawPanel([[u, sb], [u, st - 0.24 * h], [u - 0.72 * r, st], [u - r, sb + 0.1 * h]]);
-        } else if (band.kind === "LUG") {
-          drawPanel([[u + 0.34 * h, sb], [u + 0.42 * h, st - 0.3 * h], [u - 0.58 * h, st], [u - 0.5 * h, sb + 0.06 * h]]);
-        } else {
-          drawPanel([[u + 0.45 * h, sb + 0.12 * h], [u - 0.55 * h, st], [u - 0.42 * h, sb]]);
-        }
-      };
-      // a headsail: tacked on the bowsprit, hoisted toward the foremost masthead, clewed down aft
-      const drawHead = (hd) => {
-        const bz = mz(hd.mastU);
-        drawPanel([[hd.tack, deckH + 2], [hd.mastU, bz + hd.mastZ], [hd.tack - 7, deckH + 2.5]]);
-      };
-      // depth-sort every pole and sail together: whichever is farther from the
-      // camera is painted first, so the mast sits behind its bow-side sail when
-      // she sails toward you and in front of it when she sails away.
-      const prims = [];
-      for (const m of masts) {
-        prims.push({ d: m.u * sH, kind: "pole", m, base: P3(m.u, 0, mz(m.u)), top: P3(m.u, 0, mz(m.u) + m.h) });
-        for (const band of m.sails) {
-          if (SEA_FOREAFT.has(band.kind)) prims.push({ d: m.u * sH, kind: "fin", u: m.u, band });
-          else prims.push({ d: (m.u + fwd + belly * 0.5) * sH, kind: "sail", u: m.u, band });
-        }
-      }
-      if (!s.mastDown) {
-        for (const hd of rig.heads) prims.push({ d: hd.tack * sH, kind: "head", hd });
-        for (const sp of rig.sprits) prims.push({ d: sp.u * sH, kind: "sail", u: sp.u, band: sp });
-      }
-      prims.sort((a, b) => a.d - b.d);
-      for (const p of prims) {
-        if (p.kind === "pole") drawPole(p.m, p.base, p.top);
-        else if (p.kind === "fin") drawFin(p.u, p.band);
-        else if (p.kind === "head") drawHead(p.hd);
-        else drawSail(p.u, p.band);
-      }
-      if (s.mastDown) line(P3(-2, 0, deckH), P3(-2, 3, deckH + 8), s.cols.spar, 1.8);
-
-      // health bars + rank, above the rig
-      if (!s.isPlayer) {
-        const bw = 26, bxL = gx - bw / 2;
-        // above her own rig, so a boat's bars sit close over her and a tall ship's clear the royals
-        const byT = P3(1, 0, deckH + rig.top + 6)[1] - 14;
-        if (g.rules.ranked && s.rank) {
-          ctx.font = `700 10px ${UI}`;
-          ctx.textAlign = "right";
-          ctx.fillStyle = s.rank === 1 ? C.gold : "rgba(238,244,242,0.8)";
-          ctx.fillText("#" + s.rank, bxL - 4, byT + 8);
-          ctx.textAlign = "left";
-        }
-        const rows = [[s.hull / s.maxHull, C.hull], [s.mast / s.maxMast, C.mast], [s.crew / s.maxCrew, C.crew]];
-        rows.forEach((r, i) => {
-          const yy = byT + i * 4;
-          ctx.fillStyle = "rgba(0,0,0,0.5)";
-          ctx.fillRect(bxL, yy, bw, 2.6);
-          ctx.fillStyle = r[1];
-          ctx.fillRect(bxL, yy, bw * Math.max(0, r[0]), 2.6);
-        });
-      }
-    }
-
-    function drawShots(cam) {
-      for (const b of gameRef.current.shots) {
-        const sx = SX(b.x, cam), sy = SY(b.y, cam) - 3;
-        if (b.kind === "musket") {
-          ctx.strokeStyle = C.pellet;
-          ctx.lineWidth = 1.3;
-          ctx.beginPath();
-          ctx.moveTo(sx, sy);
-          ctx.lineTo(sx - b.vx * 0.012, sy - b.vy * 0.012 * TILT);
-          ctx.stroke();
-        } else {
-          // The smoke she drags comes first, so the ball sits on the head of it. It is drawn as a
-          // wedge tapering to nothing astern rather than a line: a stroke this thin goes grey the
-          // moment it lands under a pixel, where a shape narrowing to a point keeps its weight at
-          // the ball and simply runs out. Two wedges, a long faint one and a short bright one,
-          // give it a falling-off without a gradient per ball per frame.
-          const dr = b.r * (b.draw ?? SHOT_DRAW); // what it looks like, which is not always what it bites
-          const tail = 0.06; // seconds of her flight lie behind her
-          const px = -b.vx * tail, py = -b.vy * tail * TILT; // astern, in screen terms
-          const nx = -py, ny = px; // across the trail, to give the wedge its width at the ball
-          const nl = Math.hypot(nx, ny) || 1;
-          for (const [reach, wide, alpha] of [[1, 0.85, 0.2], [0.45, 0.62, 0.28]]) {
-            ctx.globalAlpha = alpha;
-            ctx.fillStyle = C.smoke;
-            ctx.beginPath();
-            ctx.moveTo(sx + (nx / nl) * dr * wide, sy + (ny / nl) * dr * wide);
-            ctx.lineTo(sx + px * reach, sy + py * reach);
-            ctx.lineTo(sx - (nx / nl) * dr * wide, sy - (ny / nl) * dr * wide);
-            ctx.closePath();
-            ctx.fill();
-          }
-          ctx.globalAlpha = 1;
-          // cast iron, with the light off the top of it. No outline: a dark ball on this sea has
-          // the contrast to stand on its own, and a hairline round something this small is a
-          // smudge rather than an edge
-          ctx.beginPath();
-          ctx.arc(sx, sy, dr, 0, Math.PI * 2);
-          ctx.fillStyle = C.ball;
-          ctx.fill();
-          ctx.beginPath();
-          ctx.arc(sx - dr * 0.3, sy - dr * 0.34, Math.max(SHOT_LIT_MIN, dr * 0.42), 0, Math.PI * 2);
-          ctx.fillStyle = C.ballLit;
-          ctx.fill();
-        }
-      }
-    }
-
-    /**
-     * Smoke first and every flash over it, in two passes rather than in the order they were made.
-     *
-     * A gun's flash is pale yellow and its own smoke is white, so drawn in order the flash went
-     * under the bank the next gun down the side put up: fifty guns going off left a bank with
-     * nothing in it, which is a ship in a fog rather than a ship firing. The flash is the shortest
-     * lived thing on the water and the one that says a gun is going off HERE, so it is drawn last.
-     */
-    function drawParts(cam) {
-      const g = gameRef.current;
-      for (const p of g.parts) {
-        if (p.kind === "muzzle") continue;
-        const sx = SX(p.x, cam), sy = SY(p.y, cam);
-        if (p.kind === "puff") {
-          // It swells the whole way and thins as it goes, so what fades out is a wide soft bank
-          // rather than a hard dot winking out. Squashed like everything else lying on the water.
-          //
-          // Three rings of the one puff, each drawn over the last, in place of a soft-edged brush.
-          // A single flat disc has a hard rim, and a dozen hard rims over a hull read as spots on
-          // the water rather than as smoke; stacking them thickens the middle and lets the edge go
-          // off gradually, which is the whole difference between a cloud and a blob. Three fills
-          // beat building a gradient for every puff of every frame.
-          const k = 1 - p.life / p.max;
-          const rr = p.r0 + (p.r1 - p.r0) * Math.sqrt(k);
-          const fade = (1 - k) * Math.min(1, k * 5); // a beat to bloom, then away
-          ctx.fillStyle = C.smoke;
-          for (const step of [1, 0.7, 0.44]) {
-            ctx.globalAlpha = 0.26 * fade;
-            ctx.beginPath();
-            ctx.ellipse(sx, sy, rr * step, rr * step * TILT, 0, 0, Math.PI * 2);
-            ctx.fill();
-          }
-          ctx.globalAlpha = 1;
-        } else if (p.kind === "ring") {
-          const k = 1 - p.life / p.max;
-          ctx.globalAlpha = (1 - k) * 0.8;
-          ctx.strokeStyle = p.col;
-          ctx.lineWidth = 1.4;
-          const rr = 3 + k * 16;
-          ctx.beginPath();
-          ctx.ellipse(sx, sy, rr, rr * TILT, 0, 0, Math.PI * 2);
-          ctx.stroke();
-          ctx.globalAlpha = 1;
-        } else {
-          ctx.globalAlpha = Math.max(0, p.life / p.max);
-          ctx.fillStyle = p.col;
-          ctx.fillRect(sx - 1, sy - 1, 2, 2);
-          ctx.globalAlpha = 1;
-        }
-      }
-
-      // and now every flash, over all of it
-      for (const p of g.parts) {
-        if (p.kind !== "muzzle") continue;
-        ctx.save();
-        ctx.translate(SX(p.x, cam), SY(p.y, cam));
-        ctx.scale(1, TILT);
-        ctx.rotate(p.ang);
-        ctx.globalAlpha = p.life / p.max;
-        ctx.fillStyle = "#ffe9a8";
-        ctx.beginPath();
-        ctx.moveTo(6, 0); ctx.lineTo(14, -3); ctx.lineTo(20, 0); ctx.lineTo(14, 3);
-        ctx.closePath();
-        ctx.fill();
-        ctx.globalAlpha = 1;
-        ctx.restore();
-      }
-
-      ctx.textAlign = "center";
-      // SUNK and MAST DOWN are white, outlined in a dark halo so they carry on open water — which is a
-      // mid tone, where plain white would sit too close to it. Halo first: the stroke is centred on the
-      // glyph edge and eats half its width into the letter, so the fill has to go down over it.
-      ctx.lineJoin = "round";
-      for (const t of g.texts) {
-        ctx.globalAlpha = Math.min(1, t.life);
-        ctx.font = `600 10px ${UI}`;
-        const tx = SX(t.x, cam), ty = SY(t.y, cam);
-        ctx.lineWidth = 3.4;
-        ctx.strokeStyle = "rgba(6,32,31,0.7)";
-        ctx.strokeText(t.t, tx, ty);
-        ctx.fillStyle = C.ink;
-        ctx.fillText(t.t, tx, ty);
-        ctx.globalAlpha = 1;
-      }
-      ctx.textAlign = "left";
-    }
-
-    function roundRect(x, y, w, h, r) {
-      ctx.beginPath();
-      ctx.moveTo(x + r, y);
-      ctx.arcTo(x + w, y, x + w, y + h, r);
-      ctx.arcTo(x + w, y + h, x, y + h, r);
-      ctx.arcTo(x, y + h, x, y, r);
-      ctx.arcTo(x, y, x + w, y, r);
-      ctx.closePath();
-    }
-
-    function drawRadar() {
-      const g = gameRef.current;
-      // Placed against the HUD's own figures, inside the safe area the DOM controls sit in, so
-      // sideways it lands to the left of the fire buttons rather than under them.
-      const size = HUD.radar, rx = Wd - safe.r - radarRight(Wd - safe.l - safe.r, Hd - safe.t - safe.b, g.rules.guns) - size, ry = safe.t + HUD.pad;
-      ctx.save();
-      ctx.fillStyle = "rgba(11,51,49,0.92)";
-      ctx.strokeStyle = C.hair;
-      ctx.lineWidth = 1;
-      roundRect(rx, ry, size, size, 8);
-      ctx.fill();
-      ctx.stroke();
-      ctx.beginPath();
-      roundRect(rx, ry, size, size, 8);
-      ctx.clip();
-      const sc = size / WORLD;
-      ctx.fillStyle = "rgba(111,174,92,0.85)";
-      for (const isl of g.islands) { ctx.beginPath(); ctx.arc(rx + isl.x * sc, ry + isl.y * sc, Math.max(1.5, isl.r * sc), 0, Math.PI * 2); ctx.fill(); }
-      const ang = clock * 1.4;
-      ctx.strokeStyle = "rgba(95,168,160,0.25)";
-      ctx.beginPath();
-      ctx.moveTo(rx + size / 2, ry + size / 2);
-      ctx.lineTo(rx + size / 2 + Math.cos(ang) * size, ry + size / 2 + Math.sin(ang) * size);
-      ctx.stroke();
-      ctx.strokeStyle = "rgba(236,226,204,0.3)";
-      ctx.strokeRect(rx + g.cam.x * sc, ry + g.cam.y * sc, Vw * sc, (Vh / TILT) * sc);
-      if (g.rules.storm) {
-        ctx.strokeStyle = "rgba(209,91,91,0.85)";
-        ctx.lineWidth = 1.2;
-        ctx.beginPath();
-        ctx.arc(rx + (WORLD / 2) * sc, ry + (WORLD / 2) * sc, g.stormR * sc, 0, Math.PI * 2);
-        ctx.stroke();
-      }
-      for (const s of g.ships) {
-        if (!s.alive || s.isPlayer) continue;
-        ctx.fillStyle = g.rules.ranked && s.rank === 1 ? C.gold : s.fill;
-        ctx.beginPath();
-        ctx.arc(rx + s.x * sc, ry + s.y * sc, g.rules.ranked && s.rank === 1 ? 3 : 2.3, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      if (g.player.alive) {
-        ctx.fillStyle = C.player;
-        ctx.beginPath();
-        ctx.arc(rx + g.player.x * sc, ry + g.player.y * sc, 3, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      ctx.restore();
     }
 
     /**
@@ -3553,74 +415,171 @@ export default function App() {
       const el = railRef.current;
       if (!el) { railFaded = false; return; } // a new round mounts a fresh rail, fully lit
       const g = gameRef.current;
-      let under = false;
-      if (g && g.running) {
-        const r = el.getBoundingClientRect();
-        for (const s of g.ships) {
-          if (!s.alive) continue;
-          const sx = SX(s.x, g.cam) * zoom, sy = SY(s.y, g.cam) * zoom;
-          const rad = (s.hullA + 16) * zoom; // her half length, and a little of her rig
-          const nx = clamp(sx, r.left, r.right), ny = clamp(sy, r.top, r.bottom);
-          if ((nx - sx) ** 2 + (ny - sy) ** 2 < rad * rad) { under = true; break; }
-        }
-      }
+      const under = !!g && liveRef.current && renderer.under(el.getBoundingClientRect(), g);
       if (under !== railFaded) {
         railFaded = under;
         el.style.opacity = under ? "0.3" : "1";
       }
     }
 
-    function drawVignette() {
-      const v = gameRef.current.vign;
-      if (v <= 0) return;
-      const grd = ctx.createRadialGradient(Wd / 2, Hd / 2, Math.min(Wd, Hd) * 0.3, Wd / 2, Hd / 2, Math.max(Wd, Hd) * 0.7);
-      grd.addColorStop(0, "rgba(209,91,91,0)");
-      grd.addColorStop(1, `rgba(209,91,91,${0.38 * v})`);
-      ctx.fillStyle = grd;
-      ctx.fillRect(0, 0, Wd, Hd);
-    }
-
-    function render() {
-      const g = gameRef.current;
-      if (!g) return;
-      const cam = g.cam;
-      worldSpace();
-      drawWater(cam);
-      drawStormWater(cam);
-      drawWakes(cam);
-      drawIslands(cam);
-      if (g.running) drawArcGuides(g.player, cam);
-      drawShots(cam);
-      const order = g.ships.filter((s) => s.alive).slice().sort((a, b) => a.y - b.y);
-      for (const s of order) drawShip(s, cam);
-      drawParts(cam);
-      drawStormEdge(cam);
-      screenSpace(); // the two that belong to the screen rather than to the sea
-      drawVignette();
-      drawRadar();
-      fadeRail();
-    }
-
     function loop(ts) {
       if (!last) last = ts;
-      let dt = (ts - last) / 1000;
+      const frame = (ts - last) / 1000;
       last = ts;
-      if (dt > 0.05) dt = 0.05;
-      clock += dt;
+      const dt = Math.min(frame, 0.05); // the frame's own time, for what only decorates the sea
+      renderer.tick(dt);
       const g = gameRef.current;
-      if (g && g.running) update(dt);
-      render();
+      let alpha = 1;
+      if (g && liveRef.current) {
+        bank += Math.min(frame, 0.25);
+        const events = [];
+        const net = onlineRef.current;
+        if (net && net.state.round && net.state.round.world === g) {
+          // Sailing with friends: her controls go to the server, and the world steps only on the
+          // ticks the server sends back, at the pace real time pays for, catching up when frames
+          // bunch on the wire. The server's world is the round; this one is stepped to match it.
+          net.send(controls.read()[ME]);
+          const behind = net.behind;
+          let want = Math.floor(bank / TICK);
+          if (behind > 9) want = Math.max(want, behind - 6);
+          want = Math.min(want, behind, 30);
+          for (const e of net.advance(want)) events.push(e);
+          // never expected (the engine steps to the same bits everywhere), but said if it happens
+          if (net.state.round.desynced && !window.__sternchaseDesync) { window.__sternchaseDesync = true; console.warn("this round has parted company with the server's"); }
+          bank = Math.min(Math.max(0, bank - want * TICK), 3 * TICK);
+        } else {
+          let steps = 0;
+          // her controls are read once a step, so a repair she tapped is spent by the first of them
+          while (bank >= TICK && steps < MAX_STEPS && !g.result.over) {
+            const input = controls.read();
+            if (recorder) recorder.record(g.tick, input[meRef.current]);
+            for (const e of step(g, input)) events.push(e);
+            bank -= TICK;
+            steps++;
+          }
+          if (bank >= TICK) bank %= TICK; // behind by more than a frame can pay: let it go
+        }
+        alpha = g.result.over ? 1 : Math.min(1, bank / TICK);
+        // what the steps did, drawn: the engine only said it happened
+        fxEvents(fx, events);
+        stepFx(fx, g, dt);
+        renderer.follow(shipOf(g, meRef.current), alpha);
+        updateButtons();
+        let hudNow = false;
+        for (const e of events) {
+          if (e.type === "repaired" && e.shipId === fx.me) hudNow = true; // the rail answers the tap
+          if (onlineRef.current && onlineRef.current.state.round && onlineRef.current.state.round.world === g) {
+            if (e.type === "player_out" && e.playerId === meRef.current) onlineOut(g, e);
+            if (e.type === "round_over") {
+              const won = e.result.winners.find((w) => w.playerId === meRef.current);
+              if (won) onlineOut(g, { ...won, won: true });
+              liveRef.current = false;
+            }
+          } else if (e.type === "round_over") endRound(g, e.result);
+        }
+        hudAcc += dt;
+        if (hudNow || hudAcc > 0.09) {
+          const key = hudKey(g);
+          if (hudNow || key !== hudLast) { syncRef.current(); hudLast = key; hudAcc = 0; }
+        }
+      }
+      renderer.render(g, fx, { live: liveRef.current, input: controls.input, alpha });
+      fadeRail();
       raf = requestAnimationFrame(loop);
     }
 
-    function start(m) {
-      reset(m);
-      camUpdate();
-      const g = gameRef.current;
-      if (g.rules.ranked) computeMeta();
-      g.running = true;
-      inputRef.current = { joyMag: 0, joyAng: 0, broadside: false, bow: false, musket: false };
+    // What the HUD shows, as one string, so the loop can tell whether any of it has moved since React
+    // last heard: her purse, the field, her rank, her three bars, and the weather's countdown, phase
+    // and whether she is out in it. The repair rail is priced off the same purse and bars.
+    let hudAcc = 0, hudLast = "";
+    function hudKey(g) {
+      const p = shipOf(g, meRef.current), w = g.rules.storm;
+      return [
+        Math.floor(p.coins), g.sunk, g.ships.filter((s) => s.alive).length, p.alive, p.rank, g.aliveCount,
+        p.hull, p.mast, p.crew,
+        w ? Math.max(0, Math.ceil(w.grace - g.time)) : 0, w ? outInWeather(g, p) : false, w ? stormPhase(g.time, w) : "",
+      ].join(",");
+    }
+
+    /**
+     * The round is over: the end screen, the voyage banked, and the one analytics event that says how
+     * it ended. The engine only said who won and how whoever sank went down; what that is worth, what
+     * it is called and where it is written down is the screen's business, and happens once, here.
+     */
+    function endRound(g, result) {
+      liveRef.current = false;
+      const won = result.winners.some((w) => w.playerId === meRef.current);
+      const mine = (won ? result.winners : result.losers).find((r) => r.playerId === meRef.current) || { rank: 0, cause: "hull" };
+      if (g.rules.ranked) setPlace({ rank: mine.rank, total: result.field });
+      const s = voyageStats(g, meRef.current);
+      setStats(s);
+      // A voyage banks once, at the end screen, whichever end it was. The engine ends a round once,
+      // and the flag on the world is the guard behind that.
+      if (!g.banked) {
+        g.banked = true;
+        // the server replays the voyage and banks what its replay says; until it answers the end
+        // screen says it is counting, and if it refuses, that nothing was banked
+        setBanked(null);
+        setBounty(0);
+        const rec = recorder;
+        recorder = null;
+        pendingFinish = rec.finish(g.tick).then((out) => {
+          if (gameRef.current !== g) return; // she has sailed again since
+          if (out.ok) {
+            adoptHold(out.data);
+            setBanked(out.data.banked);
+            setBounty(out.data.bounty);
+          } else setBanked(false);
+        });
+        // What the privacy policy says Analytics counts: how voyages end. Nothing is sent without consent.
+        track("voyage_end", { mode: g.mode, result: won ? "won" : "sunk", rank: mine.rank, kills: s.kills, seconds: Math.round(s.time) });
+      }
+      setResult(won ? (g.rules.ladder ? WON_LADDER : WON_LAST) : SUNK_LINE[mine.cause] || SUNK_LINE.crew);
+      setPhase(won ? "won" : "dead");
+      syncRef.current();
+    }
+
+    // The sea behind the menu: her ship read fresh out of the hold, on a seed of its own.
+    function newRound(m) {
+      gameRef.current = createWorld({ mode: m, seed: newSeed(), players: [{ id: meRef.current, loadout: shipLoadout(getHold()) }] });
+      fx = createFx(shipOf(gameRef.current, meRef.current).id);
+    }
+
+    // A voyage: the server's seed and the loadout off its copy of her hold, sent as the very JSON
+    // its replay will build the world from, and a recorder for the controls she sails it with.
+    let recorder = null;
+    let starting = false;
+    let pendingFinish = Promise.resolve(); // the last voyage's finish, which a new one waits for
+    async function start(m) {
+      if (starting) return;
+      starting = true;
+      setNotice("");
+      // her last voyage is banked before the next begins (starting one abandons any still open), and
+      // the shop's changes reach the server first, so she sails the ship her screen shows
+      await pendingFinish;
+      if (!holdSettled()) {
+        setNotice(SAVING_NOTE);
+        for (let i = 0; i < 300 && !holdSettled(); i++) await new Promise((r) => setTimeout(r, 100));
+        setNotice("");
+      }
+      const s = await startVoyage(m);
+      starting = false;
+      if (!s.ok) {
+        setNotice(VOYAGE_REFUSED[s.reason]);
+        setPhase("start");
+        return;
+      }
+      const { round } = s;
+      gameRef.current = createWorld({ mode: round.mode, seed: round.seed, players: [{ id: meRef.current, loadout: round.loadout }] });
+      fx = createFx(shipOf(gameRef.current, meRef.current).id);
+      recorder = recorderFor(round.roundId);
+      renderer.follow(shipOf(gameRef.current, meRef.current));
+      liveRef.current = true;
+      controls.reset();
       last = 0;
+      bank = 0;
+      hudAcc = 0;
+      hudLast = "";
       syncRef.current();
       setResult("");
       setBanked(0);
@@ -3632,8 +591,49 @@ export default function App() {
     }
     startRef.current = start;
 
+    /**
+     * A round with friends begins: the world the server sent the seed and the captains for, built
+     * here exactly as it built its own, and her ship the one it said is hers.
+     */
+    function startOnline(round) {
+      gameRef.current = round.world;
+      meRef.current = round.you;
+      fx = createFx(shipOf(round.world, round.you).id);
+      fx.names = round.names; // her friends' ship names, drawn over their ships
+      recorder = null;
+      renderer.follow(shipOf(round.world, round.you));
+      liveRef.current = true;
+      controls.reset();
+      last = 0;
+      bank = 0;
+      hudAcc = 0;
+      hudLast = "";
+      syncRef.current();
+      setResult("");
+      setBanked(null);
+      setBounty(0);
+      setMode("ffa");
+      setOnlineEnd(false);
+      setPhase("playing");
+      track("voyage_start", { mode: "online" });
+    }
+    startOnlineRef.current = startOnline;
+
+    /** She is out of the round with friends, sunk or the last afloat: the end screen, over the sea. */
+    function onlineOut(g, out) {
+      const s = voyageStats(g, meRef.current);
+      setStats(s);
+      setPlace({ rank: out.rank, total: g.ships.length });
+      setResult(out.won ? WON_LAST : SUNK_LINE[out.cause] || SUNK_LINE.crew);
+      setOnlineEnd(true);
+      setPhase(out.won ? "won" : "dead");
+      track("voyage_end", { mode: "online", result: out.won ? "won" : "sunk", rank: out.rank, kills: s.kills, seconds: Math.round(s.time) });
+      syncRef.current();
+    }
+
     resize();
-    reset("wave");
+    // the sea behind the menu: a round laid out and never sailed
+    newRound("wave");
     window.addEventListener("resize", resize);
     raf = requestAnimationFrame(loop);
     return () => {
@@ -3642,34 +642,6 @@ export default function App() {
     };
   }, []);
 
-  const joyDown = (e) => {
-    e.preventDefault();
-    const r = e.currentTarget.getBoundingClientRect();
-    joyState.current = { id: e.pointerId, cx: r.left + r.width / 2, cy: r.top + r.height / 2, R: r.width / 2 - 22 };
-    e.currentTarget.setPointerCapture(e.pointerId);
-    joyMove(e);
-  };
-  const joyMove = (e) => {
-    const js = joyState.current;
-    if (js.id !== e.pointerId) return;
-    const dx = e.clientX - js.cx, dy = e.clientY - js.cy;
-    const len = Math.hypot(dx, dy) || 1;
-    const cl = Math.min(len, js.R);
-    if (knobRef.current) knobRef.current.style.transform = `translate(${(dx / len) * cl}px, ${(dy / len) * cl}px)`;
-    inputRef.current.joyMag = cl / js.R;
-    // The stick is read in screen space and steers a world heading, and the sea is squashed by
-    // TILT on the screen, so the two are not the same angle off the axes: a stick at 45 degrees
-    // steered a course that showed at 31. Dividing the vertical by TILT is the world direction
-    // that draws where the stick points.
-    inputRef.current.joyAng = Math.atan2(dy / TILT, dx);
-  };
-  const joyUp = (e) => {
-    if (joyState.current.id !== e.pointerId) return;
-    joyState.current.id = null;
-    inputRef.current.joyMag = 0;
-    if (knobRef.current) knobRef.current.style.transform = "translate(0px,0px)";
-  };
-  const holdBtn = (key, val) => (e) => { e.preventDefault(); inputRef.current[key] = val; };
   const rules = modeOf(mode);
   const box = useBox(hudRef);
   const wide = box.w > box.h;
@@ -3787,20 +759,17 @@ export default function App() {
           )}
 
           <div
-            onPointerDown={joyDown}
-            onPointerMove={joyMove}
-            onPointerUp={joyUp}
-            onPointerCancel={joyUp}
+            {...controls.stick}
             style={{ position: "absolute", left: 24, bottom: 28, width: 120, height: 120, borderRadius: "50%", border: `1px solid ${C.hair}`, background: "rgba(13,58,56,0.55)", touchAction: "none", pointerEvents: "auto" }}
           >
-            <div ref={knobRef} style={{ position: "absolute", left: "50%", top: "50%", width: 52, height: 52, marginLeft: -26, marginTop: -26, borderRadius: "50%", background: "rgba(236,226,204,0.9)", boxShadow: "0 2px 6px rgba(0,0,0,0.4)", pointerEvents: "none" }} />
+            <div ref={controls.knobRef} style={{ position: "absolute", left: "50%", top: "50%", width: 52, height: 52, marginLeft: -26, marginTop: -26, borderRadius: "50%", background: "rgba(236,226,204,0.9)", boxShadow: "0 2px 6px rgba(0,0,0,0.4)", pointerEvents: "none" }} />
           </div>
 
           {rules.guns && (
           <div style={{ position: "absolute", right: HUD.fireRight, bottom: HUD.fireBottom, display: "flex", flexDirection: "column", gap: HUD.fireGap, pointerEvents: "auto" }}>
-            <FireButton refEl={btnRefs.broadside} name="SIDE" sub="hull" color={C.hull} onDown={holdBtn("broadside", true)} onUp={holdBtn("broadside", false)} />
-            <FireButton refEl={btnRefs.bow} name="FRONT" sub="mast" color={C.mast} onDown={holdBtn("bow", true)} onUp={holdBtn("bow", false)} />
-            <FireButton refEl={btnRefs.musket} name="MUSKET" sub="crew" color={C.crew} onDown={holdBtn("musket", true)} onUp={holdBtn("musket", false)} />
+            <FireButton refEl={btnRefs.broadside} name="SIDE" sub="hull" color={C.hull} onDown={controls.hold("broadside", true)} onUp={controls.hold("broadside", false)} />
+            <FireButton refEl={btnRefs.bow} name="FRONT" sub="mast" color={C.mast} onDown={controls.hold("bow", true)} onUp={controls.hold("bow", false)} />
+            <FireButton refEl={btnRefs.musket} name="MUSKET" sub="crew" color={C.crew} onDown={controls.hold("musket", true)} onUp={controls.hold("musket", false)} />
           </div>
           )}
         </>
@@ -3810,12 +779,27 @@ export default function App() {
       {phase === "start" && (
         <StartOverlay
           onStart={(m) => startRef.current(m)}
+          note={[notice, LINK_NOTE[link]].filter(Boolean).join(" ")}
           onEdit={(id) => { setYardShip(id || null); setPhase("yard"); }}
           onOutfit={(id) => { setYardShip(id || null); setOutfitStart(null); setPhase("outfitter"); }}
           onRecords={() => setPhase("records")}
           onCookies={openCookies}
           onPrivacy={() => setPhase("privacy")}
+          onFriends={() => (link === "ready" ? openOnline() : setNotice(LINK_NOTE[link] || ""))}
           hold={hold}
+        />
+      )}
+      {phase === "lobby" && (
+        <LobbyScreen
+          net={net}
+          note={netNote}
+          onMake={() => onlineRef.current && onlineRef.current.create()}
+          onJoin={(code) => onlineRef.current && onlineRef.current.join(code)}
+          onRivals={(n) => onlineRef.current && onlineRef.current.setRivals(n)}
+          onStart={() => onlineRef.current && onlineRef.current.start()}
+          onLeave={() => onlineRef.current && onlineRef.current.leave()}
+          onBack={closeOnline}
+          onRetry={openOnline}
         />
       )}
       {phase === "yard" && (
@@ -3841,9 +825,9 @@ export default function App() {
       {phase === "privacy" && <PrivacyScreen onBack={() => setPhase("start")} />}
       {phase === "records" && <RecordsScreen hold={hold} onBack={() => setPhase("start")} onAchievements={() => setPhase("achievements")} />}
       {phase === "achievements" && <AchievementsScreen hold={hold} onBack={() => setPhase("records")} />}
-      {phase === "won" && <EndOverlay title={rules.ladder ? "LADDER CLIMBED" : "LAST AFLOAT"} titleColor={C.gold} result={result} stats={stats} mode={mode} place={place} hold={hold} banked={banked} bounty={bounty} onAgain={() => startRef.current(mode)} onMenu={() => setPhase("start")} />}
+      {phase === "won" && <EndOverlay title={rules.ladder && !onlineEnd ? "LADDER CLIMBED" : "LAST AFLOAT"} titleColor={C.gold} result={result} stats={stats} mode={mode} place={place} hold={hold} banked={banked} bounty={bounty} online={onlineEnd} onAgain={() => startRef.current(mode)} onMenu={() => (onlineEnd ? setPhase("lobby") : setPhase("start"))} />}
       {phase === "dead" && (
-        <EndOverlay title="SUNK" titleColor={C.crew} result={result} stats={stats} mode={mode} place={place} hold={hold} banked={banked} bounty={bounty} onAgain={() => startRef.current(mode)} onMenu={() => setPhase("start")} />
+        <EndOverlay title="SUNK" titleColor={C.crew} result={result} stats={stats} mode={mode} place={place} hold={hold} banked={banked} bounty={bounty} online={onlineEnd} onAgain={() => startRef.current(mode)} onMenu={() => (onlineEnd ? setPhase("lobby") : setPhase("start"))} />
       )}
     </div>
   );
@@ -4016,38 +1000,6 @@ function HealthPanel({ ph, phMax }) {
     </div>
   );
 }
-
-/**
- * WHERE THE FIXED PIECES OF THE HUD SIT.
- *
- * The fire buttons and the joystick are DOM, and the radar is drawn on the canvas, so the two sides
- * have to agree on the figures without seeing each other. They are named once here: the canvas
- * places the radar off them and the HUD keeps its top row clear of where the radar will be.
- *
- * The screen has two layouts, chosen on its shape. Upright, the counters sit over the bars in the
- * top left, the repair rail runs the width of the screen under them, and the radar takes the top
- * right corner. Sideways there is no width to spare and no height to lose: a rail the width of the
- * screen ran straight across the middle of the sea. So the rank and bars stay in the top left, and
- * beside them the counters and the repair rail stack in the room before the radar.
- *
- * The radar keeps its corner unless the fire buttons would reach up into it. Three buttons stacked
- * from the bottom edge stand 188 tall, so on a phone in Safari, where the address bar and tabs
- * leave under 300 of height, their top is inside the radar's square and the radar steps inboard of
- * them; from the home screen, with the whole height, the two clear each other and it stays put.
- * That is a test of height rather than of orientation, worked out in `radarRight`.
- *
- * Both sides measure the same box: the DOM its safe-area wrapper, the canvas its own size less the
- * insets read off that wrapper, so the two never disagree about where the radar is.
- */
-const HUD = { pad: 10, radar: 96, fireW: 66, fireH: 56, fireRight: 20, fireBottom: 26, fireGap: 10 };
-// How far in from the right edge the radar's right side sits, for a safe-area box w by h. The
-// ordinary margin, unless there are fire buttons and their column's top would land inside the
-// radar's square plus one gap; then it clears the column.
-const radarRight = (w, h, guns) => {
-  if (!guns) return HUD.pad;
-  const fireTop = h - HUD.fireBottom - (3 * HUD.fireH + 2 * HUD.fireGap);
-  return fireTop < HUD.pad + HUD.radar + HUD.fireGap ? HUD.fireRight + HUD.fireW + HUD.fireGap : HUD.pad;
-};
 
 // Whether the viewport is wider than tall, for the menus, which are laid out on the viewport rather
 // than on the HUD's box: sideways the shell widens and the ship plate goes three abreast.
@@ -6323,7 +3275,7 @@ function ArrowButton({ back, label, onClick }) {
 // would let a captain think a gun fits when it does not.
 const fmtTons = (t) => t.toFixed(1);
 
-function StartOverlay({ onStart, onEdit, onOutfit, onRecords, onCookies, onPrivacy, hold }) {
+function StartOverlay({ onStart, onEdit, onOutfit, onRecords, onCookies, onPrivacy, onFriends, hold, note }) {
   return (
     <Shell>
       {/* The name is a lockup of two lines, and the first one carries it. STERNCHASE is the word a
@@ -6334,6 +3286,13 @@ function StartOverlay({ onStart, onEdit, onOutfit, onRecords, onCookies, onPriva
           It gives size back on a narrow screen rather than being set small everywhere. */}
       <div style={{ fontFamily: DISPLAY, fontSize: "clamp(34px, 12vw, 44px)", color: C.gold, letterSpacing: 2, lineHeight: 1.05 }}>STERNCHASE</div>
       <div style={{ fontFamily: DISPLAY, fontSize: 15, color: "rgba(232,200,119,0.62)", letterSpacing: 3, marginTop: 4 }}>HELM &amp; HULL</div>
+      {/* What the server has to say: still loading, out of reach, a voyage it would not start, or that
+          progress moved to it. One line of plain prose, over the plate it is about. */}
+      {note && (
+        <div role="status" style={{ marginTop: 12, padding: "9px 12px", borderRadius: 10, border: `1px solid ${C.hair}`, background: "rgba(11,51,49,0.6)", fontSize: 12, lineHeight: 1.5, color: "rgba(238,244,242,0.85)", textAlign: "left" }}>
+          {note}
+        </div>
+      )}
       <ShipPlate hold={hold} onEdit={onEdit} onOutfit={onOutfit} />
       <HoldPanel hold={hold} onRecords={onRecords} />
       {/* A heading over the modes, in the display face like the screens' own titles, so the mode
@@ -6354,6 +3313,9 @@ function StartOverlay({ onStart, onEdit, onOutfit, onRecords, onCookies, onPriva
         const m = MODES[key];
         return <ModeCard key={key} color={m.color} title={m.title} desc={m.desc} onClick={() => onStart(key)} />;
       })}
+      {/* The one mode sailed with other people: a free-for-all in a lobby a captain makes and her
+          friends join with its code. Last in the list, because it is the one that needs friends. */}
+      <ModeCard color={C.gold} title="WITH FRIENDS" desc="A free-for-all with up to 8 captains. Make a lobby and send your friends its code, or join theirs." onClick={onFriends} />
       <div style={{ marginTop: 16, fontSize: 11, color: "rgba(238,244,242,0.5)", lineHeight: 1.6 }}>
         Stick to sail. Your side guns hit the hull, the bow gun brings down the mast, muskets clear
         the crew. Rams can pack a punch.
@@ -6404,8 +3366,8 @@ function CookieConsent({ onClose, onPrivacy }) {
       >
         <div id="cookie-title" style={{ fontSize: 10, letterSpacing: 1, color: "rgba(238,244,242,0.55)", textTransform: "uppercase", marginBottom: 6 }}>Cookie preferences</div>
         <div id="cookie-body" style={{ fontSize: 11, color: "rgba(238,244,242,0.78)", lineHeight: 1.6 }}>
-          Your progress is saved on this device so it is here next time you play. That is essential
-          and always on. The game is free because it shows ads from Google, which uses cookies
+          A cookie keeps you signed in to your progress on the game's server, so it is here next time
+          you play. That is essential and always on. The game is free because it shows ads from Google, which uses cookies
           to limit how often you see an ad, to measure ads and to stop fraud. You choose whether
           those ads are personalized.{measures && ` The game also ${measures}, unless you turn that off.`} Read the{" "}
           <button onClick={onPrivacy} style={{ font: "inherit", color: C.gold, background: "transparent", border: "none", padding: 0, textDecoration: "underline", cursor: "pointer", WebkitTapHighlightColor: "transparent" }}>
@@ -6416,7 +3378,7 @@ function CookieConsent({ onClose, onPrivacy }) {
 
         {choosing && (
           <div style={{ marginTop: 10 }}>
-            <ConsentRow title="Essential" note="Saves your coins, ships and records on this device. Always on." on locked />
+            <ConsentRow title="Essential" note="Keeps you signed in to your coins, ships and records on the game's server. Always on." on locked />
             <ConsentRow title="Personalized ads" note="Lets Google choose ads based on your interests. With this off you still see ads, but they are not based on your interests."
               on={prefs.advertising} onToggle={() => setPrefs((p) => ({ ...p, advertising: !p.advertising }))} />
             <ConsentRow title={analyticsLive() || !conversionsLive() ? "Analytics" : "Ad measurement"}
@@ -6464,6 +3426,102 @@ function FootLink({ label, onClick }) {
  * The privacy policy, as a screen off the menu. The words are `privacy.jsx`, which the page at
  * /privacy/ reads as well; this dresses them in the menu's slabs.
  */
+/**
+ * SAIL WITH FRIENDS: the lobby. Before a lobby, a captain makes one or types a friend's code; in one,
+ * she sees its code and the link that carries it, who has joined, and how many AI ships will sail
+ * besides them, which the host sets. Only the host starts. A round already under way when she joins
+ * is one she waits out, and the next starts with her in it.
+ */
+function LobbyScreen({ net, note, onMake, onJoin, onRivals, onStart, onLeave, onBack, onRetry }) {
+  const [code, setCode] = useState("");
+  const [copied, setCopied] = useState(false);
+  const lobby = net && net.lobby;
+  const me = net && net.you;
+  const host = lobby && lobby.host === me;
+  const link = lobby ? `${window.location.origin}/?join=${lobby.code}` : "";
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch { /* the link is on screen to copy by hand */ }
+  };
+  const small = { fontSize: 12, color: "rgba(238,244,242,0.78)", lineHeight: 1.6, textAlign: "left" };
+  const field = { flex: 1, minWidth: 0, fontFamily: UI, fontSize: 16, letterSpacing: 2, textTransform: "uppercase", color: C.ink, background: "rgba(8,38,37,0.9)", border: `1px solid ${C.hair}`, borderRadius: 10, padding: "10px 12px" };
+  // the sea takes 11 ships, so the AI the host can ask for shrinks as captains join; what is shown
+  // and what Fewer and More count from is that, not the figure stored before they did
+  const most = Math.max(0, 10 - (lobby ? lobby.captains.length - 1 : 0));
+  const shown = lobby ? Math.min(lobby.rivals, most) : 0;
+  return (
+    <Shell>
+      <BackLink label="Back to the menu" onClick={onBack} />
+      <div style={{ fontFamily: DISPLAY, fontSize: "clamp(19px, 6.2vw, 24px)", color: C.gold, letterSpacing: 0.5 }}>SAIL WITH FRIENDS</div>
+      {note && (
+        <div role="status" style={{ ...small, marginTop: 12, padding: "9px 12px", borderRadius: 10, border: `1px solid ${C.hair}`, background: "rgba(11,51,49,0.6)" }}>
+          {note}
+          {net === null && !/^Connecting/.test(note) && (
+            <div style={{ marginTop: 8 }}><StartButton onClick={onRetry} label="Try again" /></div>
+          )}
+        </div>
+      )}
+      {net && net.open && !lobby && (
+        <>
+          <Slab title="Make a lobby">
+            <div style={small}>You will get a code to send your friends. Up to 8 captains can sail together, with AI ships filling the rest of the sea.</div>
+            <div style={{ marginTop: 10 }}><StartButton onClick={onMake} label="Make a lobby" /></div>
+          </Slab>
+          <Slab title="Join a lobby">
+            <div style={small}>Type the code a friend sent you.</div>
+            <form onSubmit={(e) => { e.preventDefault(); if (code.trim()) onJoin(code.trim()); }} style={{ display: "flex", gap: 8, marginTop: 10 }}>
+              <input aria-label="Lobby code" value={code} maxLength={5} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="Code" autoCapitalize="characters" autoComplete="off" style={field} />
+              <StartButton label="Join" onClick={() => { if (code.trim()) onJoin(code.trim()); }} />
+            </form>
+          </Slab>
+        </>
+      )}
+      {lobby && (
+        <>
+          <Slab title="Lobby code">
+            <div style={{ fontFamily: DISPLAY, fontSize: 34, color: C.gold, letterSpacing: 6, textAlign: "center", margin: "4px 0" }}>{lobby.code}</div>
+            <div style={{ ...small, textAlign: "center", wordBreak: "break-all" }}>{link}</div>
+            <div style={{ display: "flex", justifyContent: "center", marginTop: 8 }}>
+              <StartButton onClick={copy} label={copied ? "Link copied" : "Copy the invite link"} ghost />
+            </div>
+          </Slab>
+          <Slab title={`Captains, ${lobby.captains.length} of 8`}>
+            {lobby.captains.map((c) => (
+              <div key={c.userId} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderTop: "1px solid rgba(160,224,210,0.14)", fontSize: 13, color: C.ink }}>
+                <span>{c.name}</span>
+                <span style={{ fontSize: 11, color: "rgba(238,244,242,0.55)" }}>
+                  {[c.userId === lobby.host ? "Host" : "", c.userId === me ? "You" : ""].filter(Boolean).join(", ")}
+                </span>
+              </div>
+            ))}
+          </Slab>
+          <Slab title="AI ships">
+            <div>
+              <div style={small}>{host ? "How many AI ships sail besides you and your friends." : "The host chooses how many AI ships sail."}</div>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 14, marginTop: 8 }}>
+                {host && <StartButton ghost label="Fewer" onClick={() => onRivals(Math.max(0, shown - 1))} />}
+                <span style={{ fontSize: 18, fontWeight: 800, color: C.gold, minWidth: 24, textAlign: "center" }}>{shown}</span>
+                {host && <StartButton ghost label="More" onClick={() => onRivals(Math.min(most, shown + 1))} />}
+              </div>
+            </div>
+          </Slab>
+          {lobby.state === "sailing" ? (
+            <div style={{ ...small, textAlign: "center", margin: "14px 0" }}>A round is under way. You will sail in the next one.</div>
+          ) : host ? (
+            <div style={{ display: "flex", justifyContent: "center", margin: "14px 0" }}>
+              <StartButton onClick={onStart} label={lobby.state === "starting" ? "Starting" : "Start the round"} />
+            </div>
+          ) : (
+            <div style={{ ...small, textAlign: "center", margin: "14px 0" }}>Waiting for the host to start the round.</div>
+          )}
+          <div style={{ display: "flex", justifyContent: "center" }}>
+            <StartButton onClick={onLeave} label="Leave the lobby" ghost />
+          </div>
+        </>
+      )}
+    </Shell>
+  );
+}
+
 function PrivacyScreen({ onBack }) {
   const P = ({ children }) => <p style={{ fontSize: 11, color: "rgba(238,244,242,0.78)", lineHeight: 1.6, margin: "6px 0", textAlign: "left" }}>{children}</p>;
   return (
@@ -6616,7 +3674,7 @@ function TallyRow({ label, value, rule, labelColor, valueColor, valueSize, value
   );
 }
 
-function EndOverlay({ title, titleColor, result, stats, mode, place, hold, banked, bounty, onAgain, onMenu }) {
+function EndOverlay({ title, titleColor, result, stats, mode, place, hold, banked, bounty, online, onAgain, onMenu }) {
   const rules = modeOf(mode);
 
   // How she sailed.
@@ -6654,17 +3712,30 @@ function EndOverlay({ title, titleColor, result, stats, mode, place, hold, banke
         {statRows.map(([l, v], i) => <TallyRow key={l} label={l} value={v} rule={i > 0 ? "hair" : ""} />)}
         {payRows.map(([l, v, col], i) => <TallyRow key={l} label={l} value={v} valueColor={col} rule={i === 0 ? "group" : "hair"} />)}
         {/* The voyage is over and the ship's purse with it; this is the part that sails on. */}
-        <TallyRow label="Into the hold" value={`+${fmtCoins(banked)}`} rule="group"
-          valueColor={banked > 0 ? C.grass : "rgba(238,244,242,0.5)"} />
+        {/* What the server banked once it had replayed the voyage: "Counting" until it answers, and
+            "Not banked" if it would not, with the reason under the column. */}
+        <TallyRow label="Into the hold" value={banked === null ? "Counting" : banked === false ? "Not banked" : `+${fmtCoins(banked)}`} rule="group"
+          valueColor={banked > 0 ? C.grass : banked === false ? C.crew : "rgba(238,244,242,0.5)"} />
         {/* Paid by the achievements this voyage finished, apart from what the voyage was worth,
             and between that and the total so the column still adds up. Only shown when there is
             one: most voyages finish nothing, and a row of noughts would say so every time. */}
         {bounty > 0 && <TallyRow label="For achievements" value={`+${fmtCoins(bounty)}`} valueColor={C.grass} rule="hair" />}
         <TallyRow label="Hold total" value={<span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><CoinIcon size={15} />{fmtCoins(hold.coins)}</span>} valueSize={15} valueWeight={800} />
       </div>
+      {banked === false && (
+        <div style={{ fontSize: 12, color: "rgba(238,244,242,0.75)", margin: "-8px 0 16px", lineHeight: 1.5 }}>
+          The server could not confirm this voyage, so nothing from it was added to your hold.
+        </div>
+      )}
       <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
-        <StartButton onClick={onAgain} label="Rematch" />
-        <StartButton onClick={onMenu} label="Menu" ghost />
+        {online ? (
+          <StartButton onClick={onMenu} label="Back to the lobby" />
+        ) : (
+          <>
+            <StartButton onClick={onAgain} label="Rematch" />
+            <StartButton onClick={onMenu} label="Menu" ghost />
+          </>
+        )}
       </div>
     </Shell>
   );

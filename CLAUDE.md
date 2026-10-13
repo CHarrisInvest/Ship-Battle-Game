@@ -7,13 +7,50 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
 `sternchase.org`, so the Vite base path is `/` and nothing in the build carries the repo's name.
 `broadside` in the code is the side guns, not the old title, and stays.
 
-- `src/SternchaseIso.jsx` is the game: state, AI, rendering, and the React HUD.
+- `src/SternchaseIso.jsx` is the screen: the menus, the shipyard screens, the HUD, the end screen, and
+  the frame loop that joins the engine, the renderer and the controls. It holds no rule of play.
+- **`src/sim/` is the engine, and only the engine decides what happens in a round.** The world, the
+  step, ships, guns, rams, the AI, the weather, the round's rules and its end, the mode rules and the
+  dice live there. `createWorld({ mode, seed, players, rivals })`, `step(world, inputs)`, `voyageStats`,
+  `voyageRun`, `repairQuote` and `isInput` are the whole of its interface: controls go in as one input
+  record per player id (a repair included, so it travels the road the wheel does), `isInput` says
+  whether a record is one the controls could have made, `voyageRun` is what a finished voyage banks,
+  read off the world once for the browser and the server alike, and what happened comes back as events
+  carrying ids and numbers, never a reference into the world, with `world.result` once the round is
+  over. The world is plain data that `structuredClone` copies. `docs/ENGINE.md` is its design note.
+- **The engine is pure, and `npm run purity` says so.** Nothing under `src/sim/` imports anything but
+  itself, `shipyard.js`, `shipref.js`, `hullform.js` and `exact.js`, or mentions `window`, `document`,
+  `localStorage`, a canvas, `Math.random`, `Date.now` or `performance`. Nor does it, or the catalogue
+  modules it reads, call a `Math` function JavaScript lets each engine round its own way (`sin`,
+  `cos`, `atan2`, `asin`, `exp`, `log`, `pow`, `hypot` and the rest) or use `**`: those come from
+  `src/exact.js`, built from operations IEEE 754 fixes, so Node, Chromium, WebKit and Firefox step a
+  round to the same bits, which is what will let the server replay a voyage and bank what really
+  happened. `npm run determinism` sails the recorded rounds in all four and fails on a difference.
+  That is what lets it run unchanged in Node, where `npm run sim-test` plays every mode, and what
+  makes the same seed and the same inputs the same round. The hold, analytics, ads and consent are
+  reached from the component and never from the engine, so banking a voyage and tracking it happen
+  once, in the component's `round_over` handler. Every random number a round uses comes off `world.rng`; only what decorates
+  the sea keeps `Math.random`, in the renderer.
+- **The engine says what happened, and the screen decides how it looks.** Smoke, splinters, wakes, the
+  words over a sinking, the vignette, a ship's colours, her heel and her drawn rig are `src/render/`'s,
+  built from the step's events and the world and never read back by the engine. The end screen's
+  sentences are the component's, picked from `world.result`. A visual field on a ship or a line of
+  copy in the engine is the old tangle coming back.
+- **The round steps at a fixed `TICK`, a sixtieth of a second, and the screen draws between steps.**
+  The frame loop banks real time and takes a step for every whole tick, five a frame at most, and the
+  renderer blends each ship and ball by what is left over. A figure tuned per frame is per step now,
+  the same on a 60 Hz phone, a 120 Hz one and a server.
+- `src/render/` is the canvas: `renderer.js` draws a world and holds the camera, `effects.js` is one
+  viewer's picture of the round, and the palette, the view, the island planting, the sea rig and the
+  HUD's placement sit beside them. `src/input/controls.js` turns the joystick, the fire buttons and
+  the repair rail into the input record.
 - `src/galleon.js` draws the rotating ship on the menu. It draws a rig rather than *the* rig:
   `drawGalleon(ctx, w, h, deg, spec)` builds whatever is stepped and bent on, and falls back to the
   galleon it was written around when given no spec.
 - `src/shipyard.js` is the catalogue and the maths for buying ships and parts. Hulls, masts, sails
   and guns as data, what fits what, and `rate()` turning a set of them into the figures a fight
-  reads. It holds no state, touches no storage and imports nothing, and it should stay that way.
+  reads. It holds no state, touches no storage and imports nothing but `exact.js`, and it should
+  stay that way.
 - **A ship's rate is read off her ports, and her strength off her stat line. Neither is ever
   declared.** `rateOf(hull)` counts `guns.broadside` both sides and lands her on one of the eight
   rungs in `RATES`, the way the navy rated a ship: a hull pierced for fifty a side is a hundred-gun
@@ -39,8 +76,54 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   row and her ports come out of the same `portsOf` as everyone's, because an anchor the port rules do
   not apply to is an anchor nobody can check them against. She was drawn pierced for eight guns on a
   130-foot hull; she carries the forty-six a great galleon of her size really did.
-- `src/hold.js` persists coins, lifetime stats and the yard to localStorage. Nothing else is saved;
-  worlds and islands are generated fresh every match.
+- **The hold's rules are pure, and the server will run them too.** `src/holdrules.js` is what the
+  record is (`blank`, `sanitize`), what a voyage banks (`bank`), what achievements pay (`settle`),
+  every reader the screens use, and the shop as a table of actions behind one door,
+  `applyAction(rec, name, args)`, which settles what it returns and answers junk arguments with
+  `null` rather than throwing, because from the server they come off the network. Banking is not a
+  shop action. It imports only the catalogue and `achievements.js`, never edits the record it is
+  handed, and `npm run purity` holds it to the engine's rules; `npm run hold-test` holds it to the
+  shipyard's. `src/hold.js` is this browser's copy of the server's record: a shop action is applied
+  here at once, shown and sent, the server's answer replaces the guess, a refusal rolls the screen
+  back, and a stale version (another tab) is tried again on the record the server sent. It keeps the
+  exports the screen has always read, adds `connect` and the connection's status for the menu, and
+  deletes the save this browser kept before the hold moved (a local record could have been edited).
+  `src/voyage.js` starts a voyage on the server's seed and loadout and records the controls it is
+  sailed with, in pieces, for the server's replay; the stick is rounded in `controls.js` before the
+  step sees it, so what is sailed is what is logged, and the end screen shows what the server banked.
+  `src/net.js` is the one line to `/api`. `npm run client-test` runs all three against a real server.
+  Nothing else is saved; worlds and islands are generated fresh every match.
+- **`server/` is the game server, on Railway, and it believes nothing the browser computed.** Plain
+  `node:http`, Better Auth at `/auth/*` (every visitor a guest through the anonymous plugin), and
+  Postgres for the holds and the voyages. A shop action is `applyAction` under a row lock with the
+  record's `version` as the check, so a stale tab is refused with the record as it stands. A voyage is
+  started by the server (its seed, the loadout off its own copy of the hold, sent as the JSON the
+  browser builds the world from), fed its input log in pieces no faster than real time, and banked
+  only after the server replays it and finds it ends where the browser said. The replay runs in a
+  worker and outside any transaction, holding no connection and no lock, one finish per round at a
+  time; only a replay that says yes locks anything, the hold and then the round, the order every
+  route takes them in. One voyage at a time; a refusal banks nothing, and three close the round. `GET /health` reports the engine's fingerprint
+  (`enginehash.js`) and a round for another engine is refused, because a replay under other rules
+  would bank what the captain never saw. Document columns are `json`, never `jsonb`, which reorders
+  keys. `purge` keeps only what the privacy policy says is kept. `npm run server-test` runs it all
+  against a real Postgres (a throwaway Docker container, or CI's service container).
+  **The browser never talks to Railway.** The game has no domain of its own, and a server on another
+  site sets a third-party cookie Safari refuses, so `api/proxy.js`, a Vercel edge function `vercel.json` routes every `/api/*` path to,
+  forwards `/api/*` on the game's address to the server, which answers under `API_PREFIX` (`/api`).
+  The function adds the `PROXY_SECRET` the server demands of every route but `/health`, and the
+  visitor's address as Vercel saw it (`x-client-ip`), which the server's limits count by; whatever a
+  visitor sends in either header is dropped first.
+- **Sailing with friends is one round the server runs and every browser steps.** `server/online.js`
+  keeps lobbies (a five-letter code, up to 8 captains, the host sets the AI ships and starts) and runs
+  each round at 60 ticks a second on its own clock, from its own seed and each captain's loadout off
+  her own hold. What it sends is not the world but each tick's controls, twenty frames a second, and
+  every browser (`src/online.js`) steps the same world through them: the engine steps to the same
+  bits everywhere, which is what `exact.js` and `npm run determinism` are for, so this is safe, and a
+  fingerprint of the ships every two seconds says if it ever is not. Each captain is banked off the
+  server's world as she goes out or the round ends, connected or not. The socket goes straight to
+  Railway (`PUBLIC_WS_URL`), because Vercel's proxy cannot carry one, so it is opened with a short-lived
+  ticket from `/api/online/ticket`, where the cookie still travels. `npm run online-test` sails two
+  captains through a round over real sockets; `npm run online-smoke` does it in two real browsers.
 - `src/consent.js` is the cookie prompt's answer: essential, analytics and advertising, kept
   under its own key. **The hold is the essential category and is never gated on
   it**: "Reject all" must not touch a captain's progress.
@@ -86,8 +169,9 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   `name`, empty until she is given one, and `shipName(rec, id)` is the one reader: the name if she
   has one, her class if not. Every screen that prints a ship's name reads it from there, so she is
   called one thing everywhere and an unnamed ship reads exactly as she did before names existed.
-  `NAME_LIMIT` and `cleanName` are the whole of the rule; there is no filter, because the hold is
-  local and the only reader is the captain who wrote it.
+  `NAME_LIMIT` and `cleanName` are the whole of the rule. There is no filter, because until online
+  play the only reader was the captain who wrote it; sailing with friends shows a ship's name to
+  them, and those are people she chose to sail with.
 - **Her tonnage is a hard limit, and the rail refuses a gun she cannot bear.** `hull.tons` is the
   iron she carries, in the tons the guns are weighed in, and a broadside gun counts twice because it
   is mounted both sides. `gunTons` and `gunFits` in `shipyard.js` are the one statement of that rule;
@@ -102,7 +186,7 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   `start` naming the tab and the yard screens take a `shipId`. `ownedFill` is "fit what you own" worked out
   on a copy, so the button can say how many parts it will fit before it is tapped, and `readiness`
   is the same run against a hull she has not bought, for the shelf.
-- **A part sells back in full.** `REFUND_SHARE` in `hold.js` is 1 and `sellPart` is the one door:
+- **A part sells back in full.** `REFUND_SHARE` in `holdrules.js` is 1 and `sellPart` is the one door:
   the part comes off every ship carrying it and the refund comes off `spent`, so the ledger still
   reconstructs what she earned. Lower the constant if a part ever needs to be a commitment; do not
   add a second price.
@@ -117,9 +201,9 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
 - `src/achievements.js` is the achievement list, and **an achievement is a question asked of the hold,
   never a stored flag**: a `count(hold)` and a `goal`, or `goals` for a ladder climbed rung by rung.
   So one added tomorrow credits what a captain did last week, and it can only ask what the hold
-  actually keeps. Wanting one the record cannot answer means adding what it counts to `hold.js` first,
+  actually keeps. Wanting one the record cannot answer means adding what it counts to `holdrules.js` first,
   then the achievement is a row. **A rung pays coins, and what is stored is the payment, not the
-  achievement.** `rewards` on the row says what each rung is worth; `settle` in `hold.js` pays every
+  achievement.** `rewards` on the row says what each rung is worth; `settle` in `holdrules.js` pays every
   rung earned above the `paid` ledger on every write and once on load, and `bounties` totals it so the
   purse still reconstructs. Do not write an achievement's state anywhere else.
 - **Nothing is bought at sea but repairs.** A ship is what she was when she sailed; what she is comes
@@ -330,7 +414,7 @@ Buttons take size over tracking. Wide letterspacing makes every control read as 
   sideways screen ran across the middle of the sea. **The radar keeps its corner unless the fire
   buttons would reach up into it**, which is a test of height rather than of orientation: in Safari
   sideways they do and it steps inboard of them, from the home screen they do not and it stays.
-  `HUD` and `radarRight` in `SternchaseIso.jsx` are the one statement of where the fixed pieces sit
+  `HUD` and `radarRight` in `src/render/hud.js`, which the radar and the DOM both read, are the one statement of where the fixed pieces sit
   and of that test; do not put a second copy of a fire button's size in the radar's code. The
   repair rail fades while a ship is under it (`fadeRail`, written straight to the element each
   frame like the joystick's knob), because sideways it sits where the sea is fought on. The menus
@@ -373,6 +457,14 @@ Buttons take size over tracking. Wide letterspacing makes every control read as 
   1.01 against the bar's own dark backing, which would have made a full bar look empty.
 
 ## Checking work
+
+A change to the engine runs `npm run sim-test` and `npm run determinism` before and after: the first
+plays every mode to its end in Node, sails each round twice from one seed, and fails on a round that
+ends differently the second time, which is how an unseeded random number or a figure read off the
+screen shows itself. The second sails the recorded rounds in `tools/rounds.js` in Node, Chromium,
+WebKit and Firefox and fails unless all four end every round on the same bits. A change to the hold's
+rules runs `npm run hold-test`, and a change to `server/` runs `npm run server-test`, which needs
+Docker locally.
 
 Verify visual changes in the running game, not only in a standalone harness. A harness that
 replicates the draw code is useful for iterating on geometry and for comparing before and after, but

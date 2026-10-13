@@ -1,7 +1,9 @@
 # Sternchase: Helm & Hull
 
 Pirate ship combat on a tilted (isometric-ish) sea, rendered to a single HTML canvas from React.
-`src/SternchaseIso.jsx` is the whole game and serves as the base for further development.
+The round itself is played by a plain JavaScript engine in `src/sim/`, which runs the same in a
+browser and in Node; `src/SternchaseIso.jsx` is the screen around it, and `docs/ENGINE.md` says how
+the two meet.
 
 The repository is still called `Ship-Battle-Game`; the game is served at <https://sternchase.org/>.
 "Broadside" appears throughout as the name of the side guns; that is the weapon,
@@ -21,8 +23,15 @@ npm run preview  # serve the built bundle
 
 ```bash
 npm run catalogue  # check the fleet is riggable and drawable, and print it
+npm run purity     # check the engine imports and touches nothing it must not; a second
+npm run sim-test   # play every mode to its end in plain Node, twice from each seed; seconds
 npm run smoke      # play every mode headless to its end screen; about four minutes
 ```
+
+`npm run sim-test` is the engine on its own, with no browser at all. It fails on a round that never
+ends, a ship whose position or bars stop being numbers, a round that ends differently the second
+time it is sailed from the same seed with the same inputs, or a repair that charges for something
+other than what it puts back. The deploy runs it and the purity check before every build.
 
 The smoke test needs a Chromium: `npx playwright install chromium` fetches one, or set `SMOKE_CHROME`
 to an executable. It fails on a screen that throws, a mode that never ends, an end screen whose
@@ -46,47 +55,75 @@ test uses.
 
 ## Deploying
 
-### Vercel
+The game is a static site on **Vercel**, and its server (accounts, the hold, voyage replays and
+sailing with friends) is a Node service with Postgres on **Railway**. The browser only ever talks
+to the game's own address: `api/proxy.js`, a Vercel edge function, forwards `/api/*` to the server,
+so the login cookie is first-party. The one exception is the online socket, which Vercel cannot
+carry, so it goes straight to Railway with a short-lived ticket.
 
-Import the repository in Vercel and leave the project settings at their defaults: `vercel.json`
-names the framework (Vite), the install and build commands and the `dist` output, so nothing needs
-entering by hand. The production branch is `main`; every other branch gets a preview deployment.
+### Railway: the server and its database
 
-- **Checks.** The build command runs `npm run purity` and `npm run sim-test` before `npm run build`,
-  so an engine that reaches for the page, or a round that no longer plays to its end, stops the
-  deploy, and a pull request's preview fails rather than going up. Both scripts come with the
-  engine's move into `src/sim/`; on a branch that does not have them yet, `--if-present` skips them
-  and the build goes ahead.
-- **Domain.** Add `sternchase.org` (and `www.sternchase.org`, redirecting to it) under Settings →
-  Domains and point the DNS records Vercel asks for at it. Only the apex is the canonical address;
-  `index.html`, `robots.txt` and `sitemap.xml` all name it.
-- **Trailing slash.** `vercel.json` sets `trailingSlash`, so `/privacy` redirects to `/privacy/`,
-  the address in the sitemap and the one AdSense and Google's consent message are given.
-- **Caching.** Vite's hashed bundles under `/assets/` are cached for a year; the pages and
-  everything in `public/` keep Vercel's default of revalidating on every load, so a deploy is seen
-  at once.
-- **Privacy policy.** Vercel sets `VERCEL=1` while it builds, and `vite.config.js` passes that to
-  the policy, so its hosting section names Vercel on a Vercel build and GitHub Pages on a Pages one.
-  Turning on Vercel Web Analytics or Speed Insights would load something new and needs the policy
-  changed the same day, so leave both off unless that is done.
+1. Make a project, and add **PostgreSQL** to it (the template, as it comes).
+2. Add a service from this repository, branch `main`. In its settings:
+   - start command `npm run server`, build command `node --version` (the server runs from source);
+   - health check path `/health`;
+   - generate a domain for it (Settings, Networking), e.g. `server-production-xxxx.up.railway.app`.
+3. Its variables:
 
-Once the domain points at Vercel, disable `.github/workflows/deploy.yml` (or delete it) so `main`
-is not published to two hosts.
+   | Variable | Value |
+   | --- | --- |
+   | `DATABASE_URL` | `${{Postgres.DATABASE_URL}}` (a reference to the Postgres service) |
+   | `BETTER_AUTH_SECRET` | a long random secret, e.g. `openssl rand -hex 32` |
+   | `PROXY_SECRET` | another long random secret, the **same value** given to Vercel below |
+   | `BETTER_AUTH_URL` | the game's address on Vercel, e.g. `https://your-project.vercel.app` |
+   | `CLIENT_ORIGINS` | the same address (comma-separate several) |
+   | `API_PREFIX` | `/api` |
+   | `PUBLIC_WS_URL` | `wss://<the Railway domain>/ws` |
+   | `NODE_ENV` | `production` |
 
-### GitHub Pages
+   The server makes its own tables on first boot. `https://<the Railway domain>/health` answers with
+   the engine's fingerprint once it is up; any other route without the proxy's secret is refused.
 
-Pushing to `main` builds the site and publishes it to GitHub Pages via
-`.github/workflows/deploy.yml`:
+### Vercel: the game
 
-<https://sternchase.org/>
+Import the repository and leave the project settings at their defaults: `vercel.json` names the
+framework (Vite), the install and build commands, the `dist` output, the `/api` rewrite to the proxy
+and the caching. Production is `main`; every other branch gets a preview (which plays, but cannot
+save: the server trusts only `CLIENT_ORIGINS`). Two environment variables, for Production and Preview:
 
-This requires Pages to be set to the **GitHub Actions** source once, under
-Settings → Pages. The custom domain is set on the same page rather than by a `CNAME` file, which
-an Actions deploy does not read.
+| Variable | Value |
+| --- | --- |
+| `API_UPSTREAM` | `https://<the Railway domain>` |
+| `PROXY_SECRET` | the same secret as on Railway |
+
+Each build runs `npm run purity` and `npm run sim-test` first, so a broken engine never ships. The
+game and the server both fingerprint the engine; after a deploy that changes it, a page left open
+is asked to reload rather than sail a round the server would replay under other rules.
+
+To serve it from a domain of your own, add it under the Vercel project's Domains and set
+`BETTER_AUTH_URL` and `CLIENT_ORIGINS` on Railway to it.
+
+### Running it locally
+
+`npm run dev` serves the game and forwards `/api` to a server on `localhost:8787`. To run one, with
+Postgres in Docker:
+
+```
+docker run -d --name sternchase-pg -e POSTGRES_PASSWORD=dev -p 5432:5432 postgres:17
+DATABASE_URL=postgres://postgres:dev@localhost:5432/postgres BETTER_AUTH_SECRET=dev-secret-that-is-long-enough \
+  BETTER_AUTH_URL=http://localhost:5173 CLIENT_ORIGINS=http://localhost:5173 API_PREFIX=/api \
+  PUBLIC_WS_URL=ws://localhost:8787/ws npm run server
+```
+
+The server's tests (`npm run server-test`, `client-test`, `online-test`) start a throwaway Postgres
+in Docker themselves.
+
+`.github/workflows/ci.yml` runs the engine's checks on every push and pull request, and the server's
+tests against a Postgres service, and publishes nothing: Vercel and Railway deploy `main` themselves.
 
 The site is served from the domain root, so `vite.config.js` builds with `base: "/"`. Deploying
 somewhere that serves it from a subpath needs that path set at build time, for example
-`BASE_PATH=/Ship-Battle-Game/ npm run build` for the old project URL.
+`BASE_PATH=/Ship-Battle-Game/ npm run build`.
 
 ## Modes
 
@@ -538,12 +575,16 @@ Ships track three separate pools instead of one health bar:
 index.html            # Vite entry
 src/main.jsx          # React root
 src/index.css         # full-bleed, no-scroll page shell
-src/SternchaseIso.jsx  # game: simulation, canvas renderer, and UI
+src/SternchaseIso.jsx  # the screen: menus, shipyard screens, HUD, end screen, and the frame loop
+src/sim/              # the engine: world, step, ships, guns, rams, AI, weather, modes, the round's end
+src/render/           # the canvas: camera, sea, islands, hulls, shot, smoke, radar, interpolation
+src/input/            # the joystick and fire buttons, as the input record the engine reads
 src/galleon.js        # the ship turning on the menu
 src/hold.js           # coins, records and the yard, all outliving a round
 src/achievements.js   # what a captain has done, worked out from the hold
 src/shipyard.js       # what a captain can buy, and what it makes of her ship
 docs/SHIPYARD.md      # design note for the shipyard groundwork
+docs/ENGINE.md        # design note for the engine and how the screen drives it
 vite.config.js
 ```
 
@@ -558,12 +599,13 @@ cached, so changing ships costs one build and every frame after it costs
 nothing.
 
 The game has no dependencies beyond React — all rendering is hand-rolled canvas drawing and all UI is
-inline-styled, so `SternchaseIso.jsx` can be dropped into any React app as-is.
+inline-styled, and the engine needs nothing at all, not even React.
 
 ### Tuning constants
 
-The balance knobs sit at the top of `src/SternchaseIso.jsx`: `WORLD` and `TILT` for the arena and
-camera, `VIEW`/`MAX_ZOOM` for how much sea the square view holds and `EDGE_PEEK` for how far the
+The balance knobs sit in the engine, each beside the system it tunes (`src/sim/tables.js` holds the
+ones several systems share), and the view's in `src/render/view.js`: `WORLD` and `TILT` for the arena
+and camera, `VIEW`/`MAX_ZOOM` for how much sea the square view holds and `EDGE_PEEK` for how far the
 boundary is let inside it, `BASE`/`HP_GAIN` for the health
 pools, `WP` for per-weapon cooldown, projectile speed, and lifetime, `RAM_*` for ramming, and
 `HULL_RATE` for what a point of hull damage costs to put right (deliberately 1), and

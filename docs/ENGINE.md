@@ -1,0 +1,160 @@
+# The engine
+
+Design note for `src/sim/`, the part of Sternchase that decides what happens in a round, and for how
+the screen drives it. It is Stage A of the road to online play: the game plays as it always did, but
+the simulation now lives in plain JavaScript that a browser or a Node server can run unchanged.
+
+## The split
+
+| Folder | Holds | Reads |
+| --- | --- | --- |
+| `src/sim/` | The world, the step, ships, guns, rams, the AI, the weather, the round's rules and its end, the mode rules, the dice | Itself, `shipyard.js`, `shipref.js`, `hullform.js` |
+| `src/render/` | The canvas: camera, water, islands and their planting, hulls and rigs, shot, smoke and wakes, the vignette, the radar, interpolation | The world, never writing to it |
+| `src/input/` | The joystick, the fire buttons and the repair rail, turned into an input record | Nothing of the round |
+| `src/SternchaseIso.jsx` | The menus, the shipyard screens, the HUD, the end screen, and the frame loop that joins the rest | Everything above |
+
+Only the engine decides what happens in a round. `hold.js`, `analytics.js`, `ads.js` and `consent.js`
+are called from the component, never from the engine.
+
+## The interface
+
+```js
+import { createWorld, step, voyageStats, voyageRun, repairQuote, isInput, TICK } from "./sim/index.js";
+
+const world = createWorld({ mode: "ffa", seed, players: [{ id: "p1", loadout }], rivals });
+const events = step(world, { p1: { joyMag, joyAng, broadside, bow, musket, repair } });
+voyageStats(world, "p1");            // what she has earned so far
+voyageRun(world, "p1");              // once it is over, what the voyage banks
+repairQuote(world, "p1", "hull");    // what a patch would cost her now
+isInput(record);                     // whether the controls could have made this record
+```
+
+- **`createWorld`** lays out a round. `players` lists the humans aboard: one opens in the middle of
+  the sea as the game always began, and several are scattered across it, `HUMAN_SPAWN_GAP` apart
+  where the sea allows. `rivals`, when given, replaces the mode's count of AI ships. The field is
+  matched against the captain whose ship measures nearest the lobby's average (`fieldCaptain`).
+- **`step`** advances exactly one `TICK` (1/60 s) and returns what happened in it. A round that is
+  over stays over.
+- **Inputs** are one record per human, keyed by player id: the stick's reach and world heading, the
+  three fire buttons, and `repair`, `"hull"` or `"mast"`, which the step that reads it spends. A repair
+  goes the same road as the wheel so that it reaches the engine the same way wherever the engine is.
+  `isInput` is true only of a record the controls could make, exactly those keys with those types
+  and ranges, because the server replays a round from the records the browser says it stepped with
+  and must not read anything else in a way the browser did not.
+- **`voyageRun`** is what a finished voyage banks: the summary `bank` in `holdrules.js` takes, read
+  off the world once. The end screen banks it today and the server will bank it off its own replay.
+- **The world** is plain data: no functions, nothing from the page. `structuredClone(world)` works,
+  and the headless test checks it every round. Ships keep the field names the game always used;
+  `controller` (`"human"` or `"ai"`) and `playerId` replaced `isPlayer`, and `world.players` maps a
+  player id to her ship's id. The mode's rules ride on the world as its row of `MODES`, which is data
+  too: the two rules that are worked out rather than read name a function in `modes.js`.
+- **`world.result`** is `{ over, winners, losers, field }` once the round ends: each winner is a
+  `{ playerId, rank }`, each loser carries her `cause` as well (`"hull"`, `"crew"`, `"storm"` or
+  `"together"`), and `field` is how many ships started, for the placement line.
+  Each captain is placed as she goes under, so `losers` lists them in the order they sank, and two
+  who sink on one step share a place.
+
+## Events
+
+The engine says what happened and never how it looks. Every event carries ids and numbers, never a
+reference into the world, so it can be drawn, counted or sent anywhere.
+
+| Event | Fields | Who uses it |
+| --- | --- | --- |
+| `fired` | `shipId, weapon, x, y, dir` | the renderer: flash and smoke, one per gun per side for a broadside |
+| `hit` | `targetId, bar, dmg, x, y, by, cause` | the renderer: splinters where it bit, the hull's flash, the vignette |
+| `splash` | `x, y` | the renderer |
+| `sunk` | `shipId, by, cause, x, y` | the renderer: wreckage, and `SUNK` or `LOST` over a rival |
+| `dismasted` | `shipId, by, x, y` | the renderer: `MAST DOWN` or `OUR MAST!` |
+| `player_out` | `playerId, rank, cause` | the screen: a captain is placed the step she sinks, while the round goes on for the rest |
+| `repaired` | `shipId, system, coins` | the HUD, which answers the tap at once |
+| `round_over` | `result` | the component: end screen, its sentence, banking and analytics, once |
+
+The HUD needs no event: the frame loop reads the world at most every 0.09 s and tells React only when
+something it shows has moved. Wakes, bow spray and a ship's heel are worked out by the renderer from
+how each ship is sailing. The end screen's sentences are the component's, picked from `cause`; a
+server should never carry copy.
+
+## Determinism
+
+The same seed and the same inputs give the same round, on a phone, a laptop or a server.
+
+- **The dice.** `rng.js` is mulberry32 with its whole state on `world.rng`. Every gameplay draw comes
+  off it: ship personalities, islands, spawns, loadout picks, the AI's retargeting and wandering, the
+  way out of a heap, gun timing and spread. What only decorates the sea (smoke, sparks, splashes,
+  spray, the idle heel) stays on `Math.random()` in the renderer, so two viewers' smoke may differ.
+  An island's planting is grown by the renderer from dice seeded where the island stands.
+- **The step.** The frame loop banks real time and steps once per whole `TICK` banked, at most five a
+  frame, so a backgrounded tab does not try to catch up minutes of play. Drawing blends each ship
+  and each ball between where the last step found it and where it left it, by the time left over.
+  The effects, the camera's clock and the waves still run on real frame time.
+
+## Purity
+
+Nothing under `src/sim/` imports React, the renderer, the menus, the hold, analytics, ads or consent,
+or anything from npm, and nothing there mentions `window`, `document`, `localStorage`, a canvas,
+`Math.random`, `Date.now` or `performance`. It may import the three catalogue modules and
+`exact.js`. `npm run purity` enforces it, and holds those four to the same rules. It runs first in
+the smoke test and in the deploy, before the build.
+
+Nor does the engine, or a catalogue module it imports, call `Math.sin`, `cos`, `atan2`, `asin`,
+`exp`, `log`, `pow`, `hypot` or any other `Math` function JavaScript lets each engine round its own
+way, or use `**`. `src/exact.js` has them built from `+ - * /`, `%` and `Math.sqrt`, which IEEE 754
+fixes, so a round steps to the same bits in every browser and in Node. That is what lets the server
+replay a voyage from its seed and its inputs. The renderer keeps the built-in `Math`: nothing it draws
+is read back.
+
+`hullform.js` is on the allowed list as well as `shipyard.js` and `shipref.js`: a ship's length and
+beam are her collision ellipse, and they live with her art there. It imports only `shipref.js` and
+touches nothing of the page.
+
+## Tests
+
+- `npm run determinism` sails the recorded rounds in `tools/rounds.js` (every mode, two ships, three
+  pairs of hands, and a four-captain free-for-all) in Node, Chromium, WebKit and Firefox, and fails
+  unless every engine's fingerprints match Node's, or if a browser will not start. `npm run
+  exact-test` holds `src/exact.js` to the built-in `Math` it replaces.
+- `npm run sim-test` plays every mode to its end in plain Node, idle and driven, in the starter's
+  gundalow and in a fully found first rate, and sails each round twice from one seed. It fails on a
+  round that never ends, a ship whose figures stop being numbers, a world or a result that differs
+  between the two sailings, a world that is not plain data, an event that carries a reference, a
+  voyage that does not add up, an end said more than once, or a repair that charges for something
+  other than what it puts back. It runs in the deploy too.
+- `npm run smoke` plays the built game in a browser as before.
+
+## Questions this stage answered
+
+- **Does the AI read anything but the world?** No. Every AI function takes the world and her own
+  ship; target choice reads ships' positions, headings, bars, strength and earnings, and nothing on
+  the screen. The purity check would fail if one reached for the page.
+- **Do `CLAUDE.md`'s rules move into the code they describe?** No. The rules stay in `CLAUDE.md`,
+  where a change to one is a change to the one statement of it; the code keeps the reasoning in its
+  comments, as it always has, and moved with it.
+- **Does banking survive the move?** It happens once, in the component's `round_over` handler,
+  guarded by `world.banked`, and the smoke test still checks the end screen's column against the
+  hold.
+
+## Questions Stage B answered
+
+- **Where does a second captain start?** In a world with several, every captain is dropped once
+  the islands are down, clear of them and `HUMAN_SPAWN_GAP` from every other captain, or in the
+  clearest water left when a full lobby cannot fit at that gap.
+- **Whose round goes on when one sinks?** Everyone's. She is placed at once, and the round ends
+  when no captain is afloat, or when the last ship afloat is a captain.
+- **How does a ranked mode place several humans?** By the order they went under: ships still
+  afloat plus one. The winner is 1st.
+- **How is a second viewer's ship drawn?** That is the screen's, and Stage D's: each viewer draws
+  her own ship as hers and every other as a rival.
+- `byPlayer` became `byPlayers`, keyed by player id, so "worn down" and "by the bow alone" are
+  credited to the captain who did the work.
+- `npm run sim-test` runs `tools/captains-test.mjs` as well, which plays rounds with 2, 4 and 8
+  captains and fails on a pile-up at the drop, a captain placed twice or never, or a round that
+  ends while a captain and another ship are still afloat.
+
+## Left for later stages
+
+- **The tick rate on a server (Stage D).** 60 steps a second matches what a 60 Hz phone always ran.
+  A server with six players might want 30, which changes how volleys and rams resolve; that trade is
+  for measurements, not for this stage.
+- **What goes over the wire (Stage D).** Events are already ids and numbers. The world copies with
+  `structuredClone`; a network snapshot will want less of it.

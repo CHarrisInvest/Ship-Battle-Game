@@ -33,6 +33,8 @@
  * so adopting it is one substitution rather than a rebalance of everything at once.
  */
 
+import * as exact from "./exact.js";
+
 /* ---------------------------------------------------------------------------------------------- */
 /* Sockets and berths                                                                              */
 /* ---------------------------------------------------------------------------------------------- */
@@ -1360,7 +1362,7 @@ const FADE = 0.58;
  */
 export function canvasFalloff(index, station) {
   const free = station === "main" ? FREE_MAIN : FREE_OTHER;
-  return index < free ? 1 : Math.pow(FADE, index - free + 1);
+  return index < free ? 1 : exact.pow(FADE, index - free + 1);
 }
 
 /* ---------------------------------------------------------------------------------------------- */
@@ -2022,13 +2024,13 @@ export function measure(r) {
   // a hull with a great battery and no crew to work her should not rate alongside a whole ship. It
   // needs every component to be above zero, and every one of them is — `muskets` has a floor of 1,
   // and a hull with no canvas still carries steerage way.
-  const norm = (v, k) => Math.pow(v / REF[k], MIX[k]);
+  const norm = (v, k) => exact.pow(v / REF[k], MIX[k]);
   const overall = 100 * norm(throwWeight, "throwWeight") * norm(endurance, "endurance") * norm(mobility, "mobility");
 
   // The derby's measure: no guns aboard, so what matters is what she can take and how hard she can
   // put her bow into somebody. Weighted to endurance, because in a ramming match the ship still
   // floating is the ship that wins.
-  const ram = 100 * Math.pow(endurance / REF.endurance, 0.7) * Math.pow(mobility / REF.mobility, 0.3);
+  const ram = 100 * exact.pow(endurance / REF.endurance, 0.7) * exact.pow(mobility / REF.mobility, 0.3);
 
   return { throwWeight, endurance, mobility, overall, ram };
 }

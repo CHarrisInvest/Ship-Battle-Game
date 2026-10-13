@@ -1,6 +1,9 @@
-node_modules/
+node_modules
 dist/
 .DS_Store
 *.local
 .vite/
 npm-debug.log*
+.vercel
+.env*
+.worktrees/

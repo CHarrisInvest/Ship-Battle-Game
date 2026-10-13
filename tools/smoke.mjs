@@ -8,10 +8,12 @@
  * fight is fair, whether the AI is any good, or whether a screen looks right. Screenshots and the
  * text of every screen are written to a folder for a person to look at, and the folder is printed.
  *
- * It builds the bundle with a root base path into a temporary folder, serves it with vite preview,
- * tours the menu, the yard, the outfitter, the shop and the records, then plays every mode twice in
- * parallel, once with no input and once with the stick held and every fire button down, until the
- * end screen. About four minutes. Needs `playwright-core` (a dev dependency) and a Chromium:
+ * It checks the engine's purity (`npm run purity`), builds the bundle with a root base path into a
+ * temporary folder, serves it with vite preview, tours the menu, the yard, the outfitter, the shop
+ * and the records, then plays every mode twice in parallel, once with no input and once with the
+ * stick held and every fire button down, until the end screen. About four minutes. The hold is the
+ * server's, so it starts the game server too, on a throwaway Postgres (Docker, or TEST_DATABASE_URL),
+ * and the preview forwards `/api` to it the way Vercel does; every browser context is a new guest. Needs `playwright-core` (a dev dependency) and a Chromium:
  * `npx playwright install chromium` fetches one, or point SMOKE_CHROME at an executable.
  */
 
@@ -21,6 +23,7 @@ import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
+import { testDatabase } from "../server/testdb.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const out = mkdtempSync(join(tmpdir(), "sternchase-smoke-"));
@@ -45,10 +48,32 @@ function run(cmd, args, opts = {}) {
   });
 }
 
+// The engine's purity first: it is a second, and a build that would ship an engine reaching for the
+// page or an unseeded random number is not worth four minutes of play to find out about.
+try { console.log((await run("node", ["tools/purity.mjs"])).trim()); }
+catch (e) { fail(`purity: ${e.message.split("\n").slice(1).join(" ").trim()}`); }
+
 // Built and served from the root, which is the default base now that the site has its own domain,
 // but pinned here all the same: the preview reads `vite.config.js` too, and a `BASE_PATH` left in
 // the environment would send the build and the preview to a folder this run does not serve.
-const env = { ...process.env, BASE_PATH: "/" };
+const SERVER_PORT = Number(process.env.SMOKE_SERVER_PORT || 8797);
+const env = { ...process.env, BASE_PATH: "/", API_TARGET: `http://127.0.0.1:${SERVER_PORT}` };
+
+// The game server, under /api as in production, trusting the preview's origin.
+const db = await testDatabase();
+const origin = SITE.replace(/\/$/, "");
+const game = spawn("node", ["server/index.js"], {
+  cwd: root, stdio: "ignore", detached: true,
+  env: {
+    ...process.env, DATABASE_URL: db.url, PORT: String(SERVER_PORT), API_PREFIX: "/api",
+    BETTER_AUTH_SECRET: "smoke-test-secret-0123456789abcdef0123456789abcdef", BETTER_AUTH_URL: origin,
+    CLIENT_ORIGINS: origin, GUESTS_PER_MINUTE: "1000",
+  },
+});
+const gameUp = async () => { try { return (await fetch(`http://127.0.0.1:${SERVER_PORT}/health`)).ok; } catch { return false; } };
+for (let i = 0; i < 60 && !(await gameUp()); i++) await new Promise((r) => setTimeout(r, 500));
+if (!(await gameUp())) { try { process.kill(-game.pid); } catch { game.kill(); } await db.stop(); throw new Error("the game server did not start"); }
+say("game server on", SERVER_PORT);
 say("building into", dist);
 await run("npx", ["vite", "build", "--outDir", dist], { env });
 // Spawned as its own process group and killed as one at the end, because `npx` starts vite as a
@@ -96,7 +121,8 @@ async function snap(page, name) {
   await page.screenshot({ path: join(out, `${page.tag}-${name}.png`) });
   writeFileSync(join(out, `${page.tag}-${name}.txt`), await text(page));
 }
-const hold = async (page) => JSON.parse((await page.evaluate(() => localStorage.getItem("sternchase.hold"))) || "null");
+// The hold, as the server holds it for this page's guest.
+const hold = async (page) => page.evaluate(async () => { const r = await fetch("/api/hold"); return r.ok ? (await r.json()).hold : null; });
 const coins = (s) => Number(String(s).replace(/[^\d-]/g, ""));
 
 /* ---- the tour -------------------------------------------------------------------------------- */
@@ -200,6 +226,8 @@ async function round(modeTitle, key, drive) {
     ended = (await page.locator("button", { hasText: /^Rematch$/ }).count()) > 0;
   }
   const secs = Math.round((Date.now() - t0) / 1000);
+  // the server replays the voyage before it banks it: wait for "Counting" to become a figure
+  for (let w = 0; w < 40 && /Into the hold\nCounting/.test(await text(page)); w++) await page.waitForTimeout(500);
   await snap(page, "03-end");
   if (!ended) { fail(`${page.tag}: no end screen after ${secs} s`); await page.context().close(); return; }
   ok(`${page.tag}: ended after ${secs} s`);
@@ -242,6 +270,8 @@ try {
 } finally {
   await browser.close();
   try { process.kill(-server.pid); } catch { server.kill(); }
+  try { process.kill(-game.pid); } catch { game.kill(); }
+  await db.stop();
 }
 
 console.log(`\nscreens and text in ${out}`);
