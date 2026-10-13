@@ -22,7 +22,7 @@ are cheap to change and are deliberately left rough.
 | `src/shipyard.js` | The catalogue and the maths. Hulls, masts, sails, guns as data; what fits what; what a set of them rates. No state, no storage, no imports. |
 | `src/shipref.js` | GENERATED. What each class was: her dimensions, her shape, her timber, her era. `hullform.js` reads it and nothing else does. |
 | `src/hullform.js` | Each class's hull, modelled from her reference row: the menu's 3-D model and the hull at sea, size, collision, stern type and timber included. The galleon's numbers are the authored anchor. |
-| `src/hold.js` | What a captain owns. The yard sits in the same record as the coins, so a purchase moves both in one write. |
+| `src/holdrules.js` | What a captain owns, and the rules for changing it. The yard sits in the same record as the coins, so a purchase moves both in one write. `src/hold.js` keeps the record in the browser. |
 | `src/galleon.js` | Draws a rig rather than *the* rig. Given a spec it builds the ship; given nothing it builds the galleon it always drew. |
 | `src/SternchaseIso.jsx` | The menu ship plate, the yard, the Boat Commission and the Rigging Outfitter, plus the repair rail that replaced the upgrade rail. |
 | `data/hulls.tsv`, `data/masts.tsv`, `data/sails.tsv`, `data/guns.tsv` | The tables a person edits. One row per class, per mast type, per sail and per gun. |
@@ -136,7 +136,7 @@ its area comes off that sail rather than off a place in the rig: its `drive` in 
 of its host's, half to four fifths, and `rate()` multiplies the two. A square sail carries at most
 one, matched by `level`: which square sail up the mast it booms out from, counting square canvas from
 the deck, so a lower studdingsail goes beside the lowest square sail even on a driver mast whose
-course sits at berth 1 with a spanker under it. `studFitsSail` is the rule, `fitStud` in `hold.js` is
+course sits at berth 1 with a spanker under it. `studFitsSail` is the rule, `fitStud` in `holdrules.js` is
 the move, and the stud comes loose the moment its host sail does. `fitOut` runs them out only near
 fully found, because they are the last thing aboard rather than a step on the way. The bench still
 refuses a berth that asks for `STU`, so a mast cannot pretend to carry studdingsails in a slot.
@@ -178,7 +178,7 @@ her scantlings will not stand an eighteen abeam they will not stand one over the
 collision ellipse in the fight, come out of that model. There is still nothing in the catalogue for a
 balance pass to multiply, which is the point.
 
-Parts are catalogue **types**; a captain owns **instances**. `hold.js` keeps a flat table of every
+Parts are catalogue **types**; a captain owns **instances**. `holdrules.js` keeps a flat table of every
 spar, sail and gun owned, and a ship record says which instance sits in which slot.
 
 **Exclusivity is per ship and only per ship.** An instance is in one slot of one ship or in none of
@@ -627,7 +627,7 @@ round, not her savings.
   reference row, menu and sea alike, and her size and collision ellipse come with the model. There is
   still no size figure in the catalogue, which is why none can go stale.
 - No sail designs or cloth patterns. Those hang off ids without touching any of the numbers here.
-- ~~No selling parts back.~~ Built, and it refunds in full: `REFUND_SHARE` in `hold.js` is 1, because
+- ~~No selling parts back.~~ Built, and it refunds in full: `REFUND_SHARE` in `holdrules.js` is 1, because
   the shipyard is where a captain tries things and a gun bought, felt at sea and taken off again
   should not have cost her the trying. It is one constant to lower if a part ever needs to be a
   commitment. Selling is from the outfitter's Spares tab, which lists everything she owns that this

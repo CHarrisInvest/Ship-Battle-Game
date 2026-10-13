@@ -18,7 +18,9 @@
  *   round and has to get the bits the captain's browser got. `src/exact.js` has them done one way.
  *
  * The catalogue modules and the exact maths are held to the same rules, since the engine is only as
- * pure as what it imports. Comments are skipped, so a file can say in words what it must never call.
+ * pure as what it imports, and so are the hold's rules (`holdrules.js` and the `achievements.js` it
+ * reads), which the server runs as well as the browser; they may import the catalogue and each
+ * other, but not the engine. Comments are skipped, so a file can say in words what it must never call.
  * The smoke test runs this first, and so does the deploy, before the build.
  */
 
@@ -29,6 +31,9 @@ import { fileURLToPath } from "node:url";
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const SIM = join(root, "src", "sim");
 const PURE = ["shipyard.js", "shipref.js", "hullform.js", "exact.js"].map((f) => join(root, "src", f));
+// The hold's rules, which the browser and the server both run, held to the same two rules as the
+// engine. They may import the catalogue, the exact maths and each other, and not the engine.
+const RULES = ["holdrules.js", "achievements.js"].map((f) => join(root, "src", f));
 
 const FORBIDDEN = [
   [/\bwindow\b/, "window"],
@@ -81,7 +86,7 @@ function code(src) {
 const failures = [];
 const at = (file, text, index) => `${relative(root, file)}:${text.slice(0, index).split("\n").length}`;
 
-function check(file) {
+function check(file, allowed) {
   const text = code(readFileSync(file, "utf8"));
   for (const [re, name] of FORBIDDEN) {
     for (const m of text.matchAll(new RegExp(re.source, "g"))) failures.push(`${at(file, text, m.index)} mentions ${name}`);
@@ -90,18 +95,21 @@ function check(file) {
   for (const m of text.matchAll(imports)) {
     const spec = m[1] || m[2] || m[3];
     const target = spec.startsWith(".") ? resolve(dirname(file), spec) : null;
-    const ok = target && (target.startsWith(SIM + "/") || PURE.includes(target));
+    const ok = target && allowed(target);
     if (!ok) failures.push(`${at(file, text, m.index)} imports ${spec}`);
   }
 }
 
 const files = walk(SIM);
-for (const f of files) check(f);
-for (const f of PURE) check(f);
+const engine = (target) => target.startsWith(SIM + "/") || PURE.includes(target);
+const rules = (target) => PURE.includes(target) || RULES.includes(target);
+for (const f of files) check(f, engine);
+for (const f of PURE) check(f, engine);
+for (const f of RULES) check(f, rules);
 
 if (failures.length) {
   console.log("The engine is not pure:");
   for (const f of failures) console.log("  " + f);
   process.exit(1);
 }
-console.log(`purity: ${files.length} engine files and ${PURE.length} catalogue modules are clean`);
+console.log(`purity: ${files.length} engine files, ${PURE.length} catalogue modules and ${RULES.length} hold-rule modules are clean`);

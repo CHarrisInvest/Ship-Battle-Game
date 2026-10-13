@@ -74,8 +74,16 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   row and her ports come out of the same `portsOf` as everyone's, because an anchor the port rules do
   not apply to is an anchor nobody can check them against. She was drawn pierced for eight guns on a
   130-foot hull; she carries the forty-six a great galleon of her size really did.
-- `src/hold.js` persists coins, lifetime stats and the yard to localStorage. Nothing else is saved;
-  worlds and islands are generated fresh every match.
+- **The hold's rules are pure, and the server will run them too.** `src/holdrules.js` is what the
+  record is (`blank`, `sanitize`), what a voyage banks (`bank`), what achievements pay (`settle`),
+  every reader the screens use, and the shop as a table of actions behind one door,
+  `applyAction(rec, name, args)`, which settles what it returns and answers junk arguments with
+  `null` rather than throwing, because from the server they come off the network. Banking is not a
+  shop action. It imports only the catalogue and `achievements.js`, never edits the record it is
+  handed, and `npm run purity` holds it to the engine's rules; `npm run hold-test` holds it to the
+  shipyard's. `src/hold.js` is the store: it keeps the record in this browser's localStorage, runs a
+  rule when the captain asks for something, and keeps the exports the screen has always read.
+  Nothing else is saved; worlds and islands are generated fresh every match.
 - `src/consent.js` is the cookie prompt's answer: essential, analytics and advertising, kept
   under its own key. **The hold is the essential category and is never gated on
   it**: "Reject all" must not touch a captain's progress.
@@ -137,7 +145,7 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   `start` naming the tab and the yard screens take a `shipId`. `ownedFill` is "fit what you own" worked out
   on a copy, so the button can say how many parts it will fit before it is tapped, and `readiness`
   is the same run against a hull she has not bought, for the shelf.
-- **A part sells back in full.** `REFUND_SHARE` in `hold.js` is 1 and `sellPart` is the one door:
+- **A part sells back in full.** `REFUND_SHARE` in `holdrules.js` is 1 and `sellPart` is the one door:
   the part comes off every ship carrying it and the refund comes off `spent`, so the ledger still
   reconstructs what she earned. Lower the constant if a part ever needs to be a commitment; do not
   add a second price.
@@ -152,9 +160,9 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
 - `src/achievements.js` is the achievement list, and **an achievement is a question asked of the hold,
   never a stored flag**: a `count(hold)` and a `goal`, or `goals` for a ladder climbed rung by rung.
   So one added tomorrow credits what a captain did last week, and it can only ask what the hold
-  actually keeps. Wanting one the record cannot answer means adding what it counts to `hold.js` first,
+  actually keeps. Wanting one the record cannot answer means adding what it counts to `holdrules.js` first,
   then the achievement is a row. **A rung pays coins, and what is stored is the payment, not the
-  achievement.** `rewards` on the row says what each rung is worth; `settle` in `hold.js` pays every
+  achievement.** `rewards` on the row says what each rung is worth; `settle` in `holdrules.js` pays every
   rung earned above the `paid` ledger on every write and once on load, and `bounties` totals it so the
   purse still reconstructs. Do not write an achievement's state anywhere else.
 - **Nothing is bought at sea but repairs.** A ship is what she was when she sailed; what she is comes

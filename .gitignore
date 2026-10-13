@@ -1,4 +1,4 @@
-node_modules/
+node_modules
 dist/
 .DS_Store
 *.local
@@ -6,3 +6,4 @@ dist/
 npm-debug.log*
 .vercel
 .env*
+.worktrees/
