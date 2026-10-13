@@ -8,6 +8,7 @@ import { random } from "./rng.js";
 import { WORLD, WP } from "./tables.js";
 import { isHuman } from "./ships.js";
 import { applyHit, canHit } from "./round.js";
+import * as exact from "../exact.js";
 
 // THE VOLLEY: how long her whole side takes to go off, and why it is not one order.
 //
@@ -59,7 +60,7 @@ export const LAY_RANGE = 150;
 // Her turn within the step is not counted, only her passage. A hull under helm sweeps her bow
 // through about a pace at the worst of it, against the ten or more the shoving throws her.
 export const shotHitsHull = (s, x0, y0, x1, y1, pad) => {
-  const c = Math.cos(s.heading), sn = Math.sin(s.heading);
+  const c = exact.cos(s.heading), sn = exact.sin(s.heading);
   const A = s.hullA + pad, B = s.hullB + pad;
   const wx = s.x - (s.px ?? s.x), wy = s.y - (s.py ?? s.y); // the ground she made this step
   const px = ((x0 + wx - s.x) * c + (y0 + wy - s.y) * sn) / A;
@@ -136,11 +137,11 @@ export function fire(world, s, weapon) {
   const w = WP[weapon];
   const h = s.heading;
   const dmg = weapon === "broadside" ? sideDmg(s) : weapon === "bow" ? frontDmg(s) : musketDmg(s);
-  const bx = s.x + Math.cos(h) * s.hullA;
-  const by = s.y + Math.sin(h) * s.hullA;
+  const bx = s.x + exact.cos(h) * s.hullA;
+  const by = s.y + exact.sin(h) * s.hullA;
   const noise = isHuman(s) ? 0 : weapon === "musket" ? AI_MUSKET_AIM : AI_CANNON_AIM;
   const push = (px, py, ang) =>
-    world.shots.push({ x: px, y: py, vx: Math.cos(ang) * w.speed, vy: Math.sin(ang) * w.speed, life: w.life, r: w.r, bar: w.bar, dmg, owner: s, kind: weapon });
+    world.shots.push({ x: px, y: py, vx: exact.cos(ang) * w.speed, vy: exact.sin(ang) * w.speed, life: w.life, r: w.r, bar: w.bar, dmg, owner: s, kind: weapon });
   if (weapon === "broadside") {
     // She does not throw her broadside, she gives the order. Every port down her side takes her
     // own moment inside the window, in the order they happen to come, so several go off together
@@ -192,23 +193,23 @@ export function fireGun(world, v, off) {
   // covers 51, near enough one hull and a half, and a shot lined up properly lands more of
   // itself. It is deliberately not nothing: a broadside is a wall of iron, not a rifle.
   const FAN = 0.0045;
-  const px = s.x + Math.cos(h) * off, py = s.y + Math.sin(h) * off;
+  const px = s.x + exact.cos(h) * off, py = s.y + exact.sin(h) * off;
   // the ground she has made along her own heading since the order, which every gun still to fire
   // takes off its lay
-  const made = (s.x - v.x0) * Math.cos(v.h0) + (s.y - v.y0) * Math.sin(v.h0);
+  const made = (s.x - v.x0) * exact.cos(v.h0) + (s.y - v.y0) * exact.sin(v.h0);
   const lay = made / LAY_RANGE;
   for (const sd of [-1, 1]) {
     const dir = h + (sd * Math.PI) / 2;
     const ang = dir + sd * lay - sd * FAN * off + (random(world) - 0.5) * (0.05 + v.noise);
     world.shots.push({
-      x: px, y: py, vx: Math.cos(ang) * w.speed, vy: Math.sin(ang) * w.speed,
+      x: px, y: py, vx: exact.cos(ang) * w.speed, vy: exact.sin(ang) * w.speed,
       life: w.life, r: w.r, bar: w.bar, dmg: v.dmg, owner: s, kind: "broadside",
     });
     // A GUN FIRES OUT OF A PORT IN HER SIDE, so its flash and its smoke both stand at the rail
     // it fired over rather than on her keel. The flash was amidships on her centreline, where a
     // gun deck is stores rather than gunports, and with fifty of them going off in half a second
     // that is the difference between a ship firing her broadside and a ship on fire.
-    const rx = px + Math.cos(dir) * s.hullB, ry = py + Math.sin(dir) * s.hullB;
+    const rx = px + exact.cos(dir) * s.hullB, ry = py + exact.sin(dir) * s.hullB;
     world.events.push({ type: "fired", shipId: s.id, weapon: "broadside", x: rx, y: ry, dir });
   }
 }

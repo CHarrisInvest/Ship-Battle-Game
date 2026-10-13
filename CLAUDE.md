@@ -17,12 +17,17 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   carrying ids and numbers, never a reference into the world, with `world.result` once the round is
   over. The world is plain data that `structuredClone` copies. `docs/ENGINE.md` is its design note.
 - **The engine is pure, and `npm run purity` says so.** Nothing under `src/sim/` imports anything but
-  itself, `shipyard.js`, `shipref.js` and `hullform.js`, or mentions `window`, `document`,
-  `localStorage`, a canvas, `Math.random`, `Date.now` or `performance`. That is what lets it run
-  unchanged in Node, where `npm run sim-test` plays every mode, and what makes the same seed and the
-  same inputs the same round. The hold, analytics, ads and consent are reached from the component
-  and never from the engine, so banking a voyage and tracking it happen once, in the component's
-  `round_over` handler. Every random number a round uses comes off `world.rng`; only what decorates
+  itself, `shipyard.js`, `shipref.js`, `hullform.js` and `exact.js`, or mentions `window`, `document`,
+  `localStorage`, a canvas, `Math.random`, `Date.now` or `performance`. Nor does it, or the catalogue
+  modules it reads, call a `Math` function JavaScript lets each engine round its own way (`sin`,
+  `cos`, `atan2`, `asin`, `exp`, `log`, `pow`, `hypot` and the rest) or use `**`: those come from
+  `src/exact.js`, built from operations IEEE 754 fixes, so Node, Chromium, WebKit and Firefox step a
+  round to the same bits, which is what will let the server replay a voyage and bank what really
+  happened. `npm run determinism` sails the recorded rounds in all four and fails on a difference.
+  That is what lets it run unchanged in Node, where `npm run sim-test` plays every mode, and what
+  makes the same seed and the same inputs the same round. The hold, analytics, ads and consent are
+  reached from the component and never from the engine, so banking a voyage and tracking it happen
+  once, in the component's `round_over` handler. Every random number a round uses comes off `world.rng`; only what decorates
   the sea keeps `Math.random`, in the renderer.
 - **The engine says what happened, and the screen decides how it looks.** Smoke, splinters, wakes, the
   words over a sinking, the vignette, a ship's colours, her heel and her drawn rig are `src/render/`'s,
@@ -42,7 +47,8 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   galleon it was written around when given no spec.
 - `src/shipyard.js` is the catalogue and the maths for buying ships and parts. Hulls, masts, sails
   and guns as data, what fits what, and `rate()` turning a set of them into the figures a fight
-  reads. It holds no state, touches no storage and imports nothing, and it should stay that way.
+  reads. It holds no state, touches no storage and imports nothing but `exact.js`, and it should
+  stay that way.
 - **A ship's rate is read off her ports, and her strength off her stat line. Neither is ever
   declared.** `rateOf(hull)` counts `guns.broadside` both sides and lands her on one of the eight
   rungs in `RATES`, the way the navy rated a ship: a hull pierced for fifty a side is a hundred-gun
@@ -403,9 +409,11 @@ Buttons take size over tracking. Wide letterspacing makes every control read as 
 
 ## Checking work
 
-A change to the engine runs `npm run sim-test` before and after: it plays every mode to its end in
-Node, sails each round twice from one seed, and fails on a round that ends differently the second
-time, which is how an unseeded random number or a figure read off the screen shows itself.
+A change to the engine runs `npm run sim-test` and `npm run determinism` before and after: the first
+plays every mode to its end in Node, sails each round twice from one seed, and fails on a round that
+ends differently the second time, which is how an unseeded random number or a figure read off the
+screen shows itself. The second sails the recorded rounds in `tools/rounds.js` in Node, Chromium,
+WebKit and Firefox and fails unless all four end every round on the same bits.
 
 Verify visual changes in the running game, not only in a standalone harness. A harness that
 replicates the draw code is useful for iterating on geometry and for comparing before and after, but

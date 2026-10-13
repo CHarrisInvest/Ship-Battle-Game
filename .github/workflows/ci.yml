@@ -23,4 +23,10 @@ jobs:
       - run: npm run purity
       # every mode played to its end in plain Node, twice from one seed, with no browser
       - run: npm run sim-test
+      # the exact maths agree with the built-in ones they replace
+      - run: npm run exact-test
+      # every round ends on the same bits in Chromium, WebKit and Firefox as in Node, which is what
+      # lets the server replay a voyage
+      - run: npx playwright-core install --with-deps chromium-headless-shell webkit firefox
+      - run: npm run determinism
       - run: npm run build

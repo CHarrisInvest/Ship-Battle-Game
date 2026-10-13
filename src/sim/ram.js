@@ -4,6 +4,7 @@
 
 import { clamp } from "./math.js";
 import { applyHit } from "./round.js";
+import * as exact from "../exact.js";
 
 export const HULL_PAD = 3; // rigging and oars, so hulls never touch pixels
 export const RAM_MIN_CLOSE = 25; // closing speed at which a collision starts to count as a ram
@@ -63,8 +64,8 @@ export const hullTouch = (a, b) => a.hullB + b.hullB + 2 * HULL_PAD;
 // closest approach of the two keels: distance, and the unit vector from a's keel to b's
 export function keelGap(a, b) {
   const aK = keelHalf(a), bK = keelHalf(b);
-  const ux = Math.cos(a.heading) * aK, uy = Math.sin(a.heading) * aK;
-  const vx = Math.cos(b.heading) * bK, vy = Math.sin(b.heading) * bK;
+  const ux = exact.cos(a.heading) * aK, uy = exact.sin(a.heading) * aK;
+  const vx = exact.cos(b.heading) * bK, vy = exact.sin(b.heading) * bK;
   // segments a.x±u and b.x±v, walked as p0 + s*(2u) and q0 + t*(2v)
   const wx = a.x - ux - (b.x - vx), wy = a.y - uy - (b.y - vy);
   const A2 = 4 * (ux * ux + uy * uy), B2 = 4 * (ux * vx + uy * vy), C2 = 4 * (vx * vx + vy * vy);
@@ -76,8 +77,8 @@ export function keelGap(a, b) {
   const px = a.x - ux + 2 * ux * s, py = a.y - uy + 2 * uy * s;
   const qx = b.x - vx + 2 * vx * t, qy = b.y - vy + 2 * vy * t;
   let gx = qx - px, gy = qy - py;
-  let d = Math.hypot(gx, gy);
-  if (d < 1e-6) { gx = b.x - a.x; gy = b.y - a.y; d = Math.hypot(gx, gy) || 1; } // dead aboard her
+  let d = exact.hypot(gx, gy);
+  if (d < 1e-6) { gx = b.x - a.x; gy = b.y - a.y; d = exact.hypot(gx, gy) || 1; } // dead aboard her
   return { d, nx: gx / d, ny: gy / d };
 }
 
@@ -109,7 +110,7 @@ export function stepRam(world, dt) {
         if (d >= touch + RAM_REARM_GAP) { a.locked.delete(b); b.locked.delete(a); }
         continue;
       }
-      const toB = Math.atan2(ny, nx); // the line of the impact, from her side to theirs
+      const toB = exact.atan2(ny, nx); // the line of the impact, from her side to theirs
       // always de-overlap so hulls never sit inside each other
       const ov = touch - d;
       a.x -= nx * ov * 0.5; a.y -= ny * ov * 0.5;
@@ -120,7 +121,7 @@ export function stepRam(world, dt) {
       const closing = (a.vx - b.vx) * nx + (a.vy - b.vy) * ny;
       // ...and how much of each ship's own way is driving into the other. That is the ram:
       // a ship crossing or running has none of it, however hard the hulls meet
-      const bowA = Math.cos(a.heading - toB), bowB = -Math.cos(b.heading - toB);
+      const bowA = exact.cos(a.heading - toB), bowB = -exact.cos(b.heading - toB);
       // A hull that has been held on someone's timbers for a while is not ramming anybody: whatever
       // her helmsman is asking for, she is not going anywhere, and the ground she covers between
       // one frame and the next is the shoving rather than any way of her own. Two ships jammed bow
@@ -129,15 +130,15 @@ export function stepRam(world, dt) {
       // One curve for every angle: how hard the hulls met. Harder is always worse, whoever you
       // are and wherever it lands, which is what makes a ram something a captain can judge
       const t = clamp((closing - RAM_MIN_CLOSE) / (RAM_FULL_CLOSE - RAM_MIN_CLOSE), 0, 99);
-      const force = Math.min(Math.pow(t, RAM_CURVE), RAM_MAX_FORCE);
+      const force = Math.min(exact.pow(t, RAM_CURVE), RAM_MAX_FORCE);
       // ...and then where it lands only sets its weight: square on the beam a hull is staved in,
       // caught on her fine ends the blow glances along her
       const weigh = (aspect) => RAM_FINE + (RAM_BEAM - RAM_FINE) * aspect;
 
       let hurtB = 0, hurtA = 0;
       if (hostile && force > 0 && !a.locked.has(b)) {
-        if (driveA > 0 && a.ramCd <= 0) hurtB = ramDmg(a) * force * bowA * bowA * weigh(Math.abs(Math.sin(b.heading - toB)));
-        if (driveB > 0 && b.ramCd <= 0) hurtA = ramDmg(b) * force * bowB * bowB * weigh(Math.abs(Math.sin(a.heading - toB)));
+        if (driveA > 0 && a.ramCd <= 0) hurtB = ramDmg(a) * force * bowA * bowA * weigh(Math.abs(exact.sin(b.heading - toB)));
+        if (driveB > 0 && b.ramCd <= 0) hurtA = ramDmg(b) * force * bowB * bowB * weigh(Math.abs(exact.sin(a.heading - toB)));
       }
       if (hurtB > 0 && hurtA > 0) {
         // both bows in it: the one with less way behind her comes off worse, because the ship
@@ -203,7 +204,7 @@ export function measureWay(world, dt) {
   if (dt <= 0) return;
   for (const s of world.ships) {
     if (!s.alive) continue;
-    const ch = Math.cos(s.heading), sh = Math.sin(s.heading);
+    const ch = exact.cos(s.heading), sh = exact.sin(s.heading);
     const k = Math.min(1, dt * WAY_SMOOTH);
     s.vx += ((s.x - s.px) / dt - s.vx) * k;
     s.vy += ((s.y - s.py) / dt - s.vy) * k;
@@ -213,6 +214,6 @@ export function measureWay(world, dt) {
     // means, and a ship merely knocked off her stride is still free to sail
     if (s.foul && s.spdCur > 5 && s.way < s.spdCur * BAULK_TOL) s.baulkT += dt;
     else s.baulkT = Math.max(0, s.baulkT - dt * 2);
-    if (s.baulkT > BAULK_GRACE) s.spdCur *= Math.exp(-dt * BAULK_RATE);
+    if (s.baulkT > BAULK_GRACE) s.spdCur *= exact.exp(-dt * BAULK_RATE);
   }
 }

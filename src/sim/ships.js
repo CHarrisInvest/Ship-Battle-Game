@@ -10,6 +10,7 @@ import { random } from "./rng.js";
 import { WORLD } from "./tables.js";
 import { repair } from "./repairs.js";
 import { canFire, fire, reloadOf } from "./weapons.js";
+import * as exact from "../exact.js";
 
 // A hull with way on her does not answer her rudder as she does at a crawl. The loss is weighted to
 // the top of the range: handling in and out of a fight is left where it was, and only a ship running
@@ -36,7 +37,7 @@ export const RUDDER_CURVE = 2.2; // how late in the range it starts to bite
  * would never find the end of her range and a clipper would live in it.
  */
 export const topSpeed = (s) => BASE_SPEED * s.rating.speed;
-export const rudder = (s) => 1 - RUDDER_HEAVY * Math.pow(clamp(s.spdCur / topSpeed(s), 0, 1), RUDDER_CURVE);
+export const rudder = (s) => 1 - RUDDER_HEAVY * exact.pow(clamp(s.spdCur / topSpeed(s), 0, 1), RUDDER_CURVE);
 export const speedCap = (s) => topSpeed(s) * (0.5 + 0.5 * (s.mast / s.maxMast));
 export const turnCap = (s) => 2.4 * s.rating.turn * (0.22 + 0.78 * (s.mast / s.maxMast)) * rudder(s);
 
@@ -50,7 +51,7 @@ export const isHuman = (s) => s.controller === "human";
 export const shipOf = (world, playerId) => world.ships.find((s) => s.id === world.players[playerId]) || null;
 /** How far the nearest human ship lies from a point, or a very long way when there is none afloat. */
 export const humanRange = (world, x, y) =>
-  world.ships.reduce((d, s) => (isHuman(s) && s.alive ? Math.min(d, Math.hypot(x - s.x, y - s.y)) : d), 1e9);
+  world.ships.reduce((d, s) => (isHuman(s) && s.alive ? Math.min(d, exact.hypot(x - s.x, y - s.y)) : d), 1e9);
 
 export function makeShip(world, x, y, heading, opts) {
   // She sails as what she was built: her loadout comes aboard with her captain if she is a
@@ -124,11 +125,11 @@ export function moveShip(world, s, dt, desired, throttle) {
   s.turnVel = dt > 0 ? dH / dt : 0;
   const tgt = throttle * speedCap(s);
   s.spdCur += (tgt - s.spdCur) * Math.min(1, dt * 3);
-  s.x += Math.cos(s.heading) * s.spdCur * dt;
-  s.y += Math.sin(s.heading) * s.spdCur * dt;
+  s.x += exact.cos(s.heading) * s.spdCur * dt;
+  s.y += exact.sin(s.heading) * s.spdCur * dt;
   s.x += s.kx * dt;
   s.y += s.ky * dt;
-  const kf = Math.exp(-dt * 3.5);
+  const kf = exact.exp(-dt * 3.5);
   s.kx *= kf;
   s.ky *= kf;
   s.x = clamp(s.x, 28, WORLD - 28);
@@ -136,7 +137,7 @@ export function moveShip(world, s, dt, desired, throttle) {
   if (world.islands)
     for (const isl of world.islands) {
       const dx = s.x - isl.x, dy = s.y - isl.y;
-      const d = Math.hypot(dx, dy) || 1;
+      const d = exact.hypot(dx, dy) || 1;
       // her own half-length, so a first rate grounds where her bow reaches the shallows and a
       // launch can work right in under the beach
       const minD = isl.r + s.hullA * 0.76;

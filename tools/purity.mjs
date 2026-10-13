@@ -6,15 +6,19 @@
  * file there:
  *
  *   imports anything but another file under `src/sim/` or one of the catalogue modules that are
- *   already pure (`shipyard.js`, `shipref.js` and `hullform.js`). That shuts out React, the
- *   renderer, the menus, the hold, analytics, ads and consent in one rule, and anything from npm;
+ *   already pure (`shipyard.js`, `shipref.js`, `hullform.js` and `exact.js`). That shuts out React,
+ *   the renderer, the menus, the hold, analytics, ads and consent in one rule, and anything from npm;
  *
  *   mentions the page or the clock or an unseeded random number: `window`, `document`,
  *   `localStorage`, `sessionStorage`, `navigator`, `globalThis`, a canvas, `requestAnimationFrame`,
- *   `Math.random`, `Date.now`, `new Date` or `performance`.
+ *   `Math.random`, `Date.now`, `new Date` or `performance`;
  *
- * The three catalogue modules are held to the same two rules, since the engine is only as pure as
- * what it imports. Comments are skipped, so a file can say in words what it must never call.
+ *   calls a `Math` function that JavaScript lets each engine round its own way (`sin`, `cos`,
+ *   `atan2`, `exp`, `log`, `pow`, `hypot` and the rest) or uses `**`, because the server replays a
+ *   round and has to get the bits the captain's browser got. `src/exact.js` has them done one way.
+ *
+ * The catalogue modules and the exact maths are held to the same rules, since the engine is only as
+ * pure as what it imports. Comments are skipped, so a file can say in words what it must never call.
  * The smoke test runs this first, and so does the deploy, before the build.
  */
 
@@ -24,7 +28,7 @@ import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const SIM = join(root, "src", "sim");
-const PURE = ["shipyard.js", "shipref.js", "hullform.js"].map((f) => join(root, "src", f));
+const PURE = ["shipyard.js", "shipref.js", "hullform.js", "exact.js"].map((f) => join(root, "src", f));
 
 const FORBIDDEN = [
   [/\bwindow\b/, "window"],
@@ -39,6 +43,8 @@ const FORBIDDEN = [
   [/\bDate\s*\.\s*now\b/, "Date.now"],
   [/\bnew\s+Date\b/, "new Date"],
   [/\bperformance\b/, "performance"],
+  [/\bMath\s*\.\s*(?:sin|cos|tan|asin|acos|atan2?|sinh|cosh|tanh|asinh|acosh|atanh|exp|expm1|log|log1p|log2|log10|pow|hypot|cbrt)\b/, "a Math function engines may round differently (use src/exact.js)"],
+  [/\*\*/, "the ** operator (use exact.pow)"],
 ];
 
 const walk = (dir) => readdirSync(dir).flatMap((f) => {
@@ -78,8 +84,7 @@ const at = (file, text, index) => `${relative(root, file)}:${text.slice(0, index
 function check(file) {
   const text = code(readFileSync(file, "utf8"));
   for (const [re, name] of FORBIDDEN) {
-    const m = re.exec(text);
-    if (m) failures.push(`${at(file, text, m.index)} mentions ${name}`);
+    for (const m of text.matchAll(new RegExp(re.source, "g"))) failures.push(`${at(file, text, m.index)} mentions ${name}`);
   }
   const imports = /\b(?:import|export)\b[^;]*?\bfrom\s*["']([^"']+)["']|\bimport\s*\(\s*["']([^"']+)["']\s*\)|\bimport\s*["']([^"']+)["']/g;
   for (const m of text.matchAll(imports)) {

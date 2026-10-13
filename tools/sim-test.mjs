@@ -24,48 +24,11 @@
  */
 
 import { createWorld, step, voyageStats, repairQuote, shipOf, NO_INPUT, TICK } from "../src/sim/index.js";
-import { STARTER, resolve, ladder } from "../src/shipyard.js";
+import { LIMIT, MODES, SHIPS, idle, drive, dump } from "./rounds.js";
 
-// Seconds of round before a round that has not ended is a failure. An hour, because the ladder is
-// the longest round in the game and a fully found first rate can take twenty minutes to climb
-// part of it, and a round in Node costs about a second for every twenty minutes of it.
-const LIMIT = 3600;
-const MODES = ["ffa", "derby", "wave", "ladder"];
 const failures = [];
 const fail = (what) => { failures.push(what); console.log("  FAIL  " + what); };
 const ok = (what) => console.log("  ok    " + what);
-
-const SHIPS = {
-  gundalow: resolve(STARTER),
-  "first rate": ladder()[ladder().length - 1].loadout,
-};
-
-/** The scripted captain: hands off, or hard over with every gun going and a repair now and then. */
-const idle = () => NO_INPUT;
-const drive = (tick) => ({
-  joyMag: 1, joyAng: -0.8, broadside: true, bow: true, musket: true,
-  repair: tick % 160 === 0 ? (tick % 320 === 0 ? "hull" : "mast") : null,
-});
-
-/**
- * A world written out in full, the same way every time it is written: a ship or anything else met
- * a second time is written as a reference to where it was first met, and a Map as its entries. Two
- * worlds that write out the same are the same world down to the last bit of every float.
- */
-function dump(value) {
-  const seen = new Map();
-  const walk = (v, path) => {
-    if (v === null || typeof v !== "object") return typeof v === "number" && !Number.isFinite(v) ? String(v) : v;
-    if (seen.has(v)) return { ref: seen.get(v) };
-    seen.set(v, path);
-    if (v instanceof Map) return { map: [...v.entries()].map(([k, x], i) => [walk(k, `${path}.k${i}`), walk(x, `${path}.v${i}`)]) };
-    if (Array.isArray(v)) return v.map((x, i) => walk(x, `${path}[${i}]`));
-    const out = {};
-    for (const k of Object.keys(v)) out[k] = walk(v[k], `${path}.${k}`);
-    return out;
-  };
-  return JSON.stringify(walk(value, "$"));
-}
 
 const FIGURES = ["x", "y", "heading", "spdCur", "hull", "mast", "crew", "px", "py"];
 
