@@ -23,8 +23,8 @@
  * * Under ten seconds.
  */
 
-import { createWorld, step, voyageStats, repairQuote, shipOf, NO_INPUT, TICK } from "../src/sim/index.js";
-import { LIMIT, MODES, SHIPS, idle, drive, dump } from "./rounds.js";
+import { createWorld, step, voyageStats, voyageRun, isInput, repairQuote, shipOf, NO_INPUT, TICK } from "../src/sim/index.js";
+import { LIMIT, MODES, SHIPS, idle, drive, wander, dump } from "./rounds.js";
 
 const failures = [];
 const fail = (what) => { failures.push(what); console.log("  FAIL  " + what); };
@@ -105,7 +105,49 @@ for (const mode of MODES) {
     round(mode, shipName, drive, "driven");
   }
 }
+/**
+ * What the server will read off a captain's controls and off the end of her round. `isInput` is the
+ * whole of what the controls can produce and nothing else, because a replayed round has to be fed
+ * exactly what the browser stepped with. `voyageRun` is what a finished voyage banks, the summary the
+ * end screen used to build by hand, so the browser and the server bank one thing.
+ */
+function inputsAndRuns() {
+  const good = [NO_INPUT, ...Array.from({ length: 2000 }, (_, t) => drive(t)), ...Array.from({ length: 2000 }, (_, t) => wander(t))];
+  if (!good.every(isInput)) fail("isInput refuses a record the scripted controls produce");
+  else ok(`isInput takes every record the scripted controls produce (${good.length})`);
+  const BAD = [
+    ["an extra key", { ...NO_INPUT, extra: 1 }], ["a missing key", (({ musket, ...r }) => r)(NO_INPUT)],
+    ["joyMag over 1", { ...NO_INPUT, joyMag: 1.01 }], ["joyMag NaN", { ...NO_INPUT, joyMag: NaN }],
+    ["joyMag below 0", { ...NO_INPUT, joyMag: -0.1 }], ["joyAng Infinity", { ...NO_INPUT, joyAng: Infinity }],
+    ["a string for a boolean", { ...NO_INPUT, bow: "true" }], ["a repair that is not one", { ...NO_INPUT, repair: "crew" }],
+    ["an array", [0, 0, false, false, false, null]], ["null", null], ["a number", 3],
+  ];
+  const let_through = BAD.filter(([, x]) => isInput(x)).map(([what]) => what);
+  if (let_through.length) fail(`isInput lets through ${let_through.join(", ")}`);
+  else ok(`isInput refuses ${BAD.length} records the controls could never produce`);
+
+  for (const mode of MODES) {
+    const world = createWorld({ mode, seed: 77, players: [{ id: "p1", loadout: SHIPS.gundalow }] });
+    while (!world.result.over && world.time < LIMIT) step(world, { p1: drive(world.tick) });
+    const result = world.result;
+    const won = result.winners.some((w) => w.playerId === "p1");
+    const mine = (won ? result.winners : result.losers).find((r) => r.playerId === "p1") || { rank: 0, cause: "hull" };
+    const s = voyageStats(world, "p1");
+    const byHand = {
+      mode: world.mode, earned: s.total, repaired: s.repaired, kills: s.kills, dmg: s.dmg,
+      time: s.time, rams: s.rams, patches: s.patches, won, rank: mine.rank,
+      dismasted: s.dismasted, healed: s.healed,
+      sunkByRam: s.sunkByRam, sunkByGuns: s.sunkByGuns, sunkByMuskets: s.sunkByMuskets,
+      rammedWhole: s.rammedWhole, wornDown: s.wornDown,
+    };
+    const run = voyageRun(world, "p1");
+    if (JSON.stringify(run) !== JSON.stringify(byHand)) fail(`voyageRun in ${mode} is not what the end screen banked`);
+    else ok(`voyageRun in ${mode} is what the end screen banked (${run.earned} earned, rank ${run.rank})`);
+  }
+}
+
 repairs();
+inputsAndRuns();
 console.log(`\n${((Date.now() - t0) / 1000).toFixed(1)} s`);
 if (failures.length) {
   console.log(`\n${failures.length} FAILURE${failures.length === 1 ? "" : "S"}`);

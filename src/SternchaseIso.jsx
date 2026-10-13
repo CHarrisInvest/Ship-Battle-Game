@@ -17,7 +17,7 @@ import { getAdRegion, onAdRegion, openGoogleChoices } from "./ads.js";
 import { analyticsLive, conversionsLive, measurementLive, track } from "./analytics.js";
 import { PrivacyPolicy } from "./privacy.jsx";
 import {
-  createWorld, step, TICK, voyageStats, repairQuote, shipOf, outInWeather, stormPhase, volleyWindow, reloadOf, canFire,
+  createWorld, step, TICK, voyageStats, voyageRun, repairQuote, shipOf, outInWeather, stormPhase, volleyWindow, reloadOf, canFire,
   HULL_PATCH_CAP, MAST_JURY_CAP, barsOf, MODES as RULES, MODE_LIST, modeOf, clamp,
 } from "./sim/index.js";
 import { C, UI } from "./render/palette.js";
@@ -407,13 +407,7 @@ export default function App() {
       // and the flag on the world is the guard behind that.
       if (!g.banked) {
         g.banked = true;
-        const { banked: got, bounty: paid } = bankVoyage({
-          mode: g.mode, earned: s.total, repaired: s.repaired, kills: s.kills, dmg: s.dmg,
-          time: s.time, rams: s.rams, patches: s.patches, won, rank: mine.rank,
-          dismasted: s.dismasted, healed: s.healed,
-          sunkByRam: s.sunkByRam, sunkByGuns: s.sunkByGuns, sunkByMuskets: s.sunkByMuskets,
-          rammedWhole: s.rammedWhole, wornDown: s.wornDown,
-        });
+        const { banked: got, bounty: paid } = bankVoyage(voyageRun(g, ME));
         setBanked(got);
         setBounty(paid);
         // What the privacy policy says Analytics counts: how voyages end. Nothing is sent without consent.

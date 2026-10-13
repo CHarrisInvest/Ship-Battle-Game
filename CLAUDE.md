@@ -11,9 +11,11 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   the frame loop that joins the engine, the renderer and the controls. It holds no rule of play.
 - **`src/sim/` is the engine, and only the engine decides what happens in a round.** The world, the
   step, ships, guns, rams, the AI, the weather, the round's rules and its end, the mode rules and the
-  dice live there. `createWorld({ mode, seed, players, rivals })`, `step(world, inputs)`, `voyageStats` and
-  `repairQuote` are the whole of its interface: controls go in as one input record per player id
-  (a repair included, so it travels the road the wheel does), and what happened comes back as events
+  dice live there. `createWorld({ mode, seed, players, rivals })`, `step(world, inputs)`, `voyageStats`,
+  `voyageRun`, `repairQuote` and `isInput` are the whole of its interface: controls go in as one input
+  record per player id (a repair included, so it travels the road the wheel does), `isInput` says
+  whether a record is one the controls could have made, `voyageRun` is what a finished voyage banks,
+  read off the world once for the browser and the server alike, and what happened comes back as events
   carrying ids and numbers, never a reference into the world, with `world.result` once the round is
   over. The world is plain data that `structuredClone` copies. `docs/ENGINE.md` is its design note.
 - **The engine is pure, and `npm run purity` says so.** Nothing under `src/sim/` imports anything but
@@ -84,6 +86,20 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   shipyard's. `src/hold.js` is the store: it keeps the record in this browser's localStorage, runs a
   rule when the captain asks for something, and keeps the exports the screen has always read.
   Nothing else is saved; worlds and islands are generated fresh every match.
+- **`server/` is the game server, on Railway, and it believes nothing the browser computed.** Plain
+  `node:http`, Better Auth at `/auth/*` (every visitor a guest through the anonymous plugin), and
+  Postgres for the holds and the voyages. A shop action is `applyAction` under a row lock with the
+  record's `version` as the check, so a stale tab is refused with the record as it stands. A voyage is
+  started by the server (its seed, the loadout off its own copy of the hold, sent as the JSON the
+  browser builds the world from), fed its input log in pieces no faster than real time, and banked
+  only after the server replays it and finds it ends where the browser said. The replay runs in a
+  worker and outside any transaction, holding no connection and no lock, one finish per round at a
+  time; only a replay that says yes locks anything, the hold and then the round, the order every
+  route takes them in. One voyage at a time; a refusal banks nothing, and three close the round. `GET /health` reports the engine's fingerprint
+  (`enginehash.js`) and a round for another engine is refused, because a replay under other rules
+  would bank what the captain never saw. Document columns are `json`, never `jsonb`, which reorders
+  keys. `purge` keeps only what the privacy policy says is kept. `npm run server-test` runs it all
+  against a real Postgres (a throwaway Docker container, or CI's service container).
 - `src/consent.js` is the cookie prompt's answer: essential, analytics and advertising, kept
   under its own key. **The hold is the essential category and is never gated on
   it**: "Reject all" must not touch a captain's progress.
@@ -421,7 +437,9 @@ A change to the engine runs `npm run sim-test` and `npm run determinism` before 
 plays every mode to its end in Node, sails each round twice from one seed, and fails on a round that
 ends differently the second time, which is how an unseeded random number or a figure read off the
 screen shows itself. The second sails the recorded rounds in `tools/rounds.js` in Node, Chromium,
-WebKit and Firefox and fails unless all four end every round on the same bits.
+WebKit and Firefox and fails unless all four end every round on the same bits. A change to the hold's
+rules runs `npm run hold-test`, and a change to `server/` runs `npm run server-test`, which needs
+Docker locally.
 
 Verify visual changes in the running game, not only in a standalone harness. A harness that
 replicates the draw code is useful for iterating on geometry and for comparing before and after, but

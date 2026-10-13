@@ -152,7 +152,8 @@ Actions are queued and sent one at a time, so two quick taps arrive in order.
 | `GET /hold` | The captain's hold and its version, creating the guest and a blank hold on a first visit. |
 | `POST /hold/actions` | One shop action, as above. |
 | `POST /rounds` | Starts a voyage: `{ mode }` in, `{ roundId, seed, loadout }` out. |
-| `POST /rounds/:id/finish` | Ends one: the input log in, `{ hold, version, banked, bounty, rungs }` out. |
+| `POST /rounds/:id/inputs` | A piece of the input log, at no more than real speed. |
+| `POST /rounds/:id/finish` | The last piece and the end tick in, `{ hold, version, banked, bounty, rungs, result }` out. |
 | `/auth/*` | Better Auth's own routes: sessions, the email code, Google, linking, sign-out, deletion. |
 
 ## Voyages: the server replays every round
@@ -176,23 +177,33 @@ angle are rounded in `src/input/controls.js` before they reach `step` (to 1/1024
 full deflection), so the browser plays the same rounded figures it logs, and a captain steering
 steadily writes few entries. The log lives in memory only.
 
-### Finishing
+### Sending the log, and finishing
 
-On `round_over` the browser gzips the log (`CompressionStream`) and posts it with the tick the round
-ended on. The server, in a worker thread so a replay never stalls a live multiplayer round:
+The log goes up in pieces while the round is sailed, `POST /rounds/:id/inputs { entries }`, each
+piece a list of `[tick, input]` with ticks rising from where the last piece stopped, every input
+one `isInput` accepts, and the last tick no further on than real time allows since `POST /rounds`
+(plus five seconds). The server stores each piece as a row, so a long round is appended to rather
+than rewritten. At `round_over` the browser posts the rest and the tick the round ended on to
+`POST /rounds/:id/finish { ticks, entries }`. The server replays in a worker thread and outside any
+transaction, so a replay holds no database connection and no lock, and only one finish of a round
+runs at a time:
 
-1. refuses the round if it is not this captain's, is already finished, or is older than the 1-hour
-   limit `sim-test` already uses;
-2. refuses it if its ticks come to more time than has really passed since `POST /rounds`, less a
-   few seconds' slack, so a round cannot be finished faster than it could be played;
+1. refuses the round if it is not this captain's (404), or already finished or abandoned (409);
+2. refuses a finish whose ticks come to more time than has really passed, or past the 1-hour limit
+   `sim-test` already uses;
 3. rebuilds the world from the stored seed, mode and loadout, steps it through the log, and refuses
-   it if the round does not end on the tick the browser said;
-4. banks `voyageStats` from its own world through `bank`, runs `settle`, stores the hold, marks the
-   round finished, and returns the new hold and what was banked and paid.
+   it unless the round ends exactly on the tick the browser said and every entry was reached;
+4. banks `voyageRun` off its own world through `bank`, stores the hold with its version moved, marks
+   the round finished, and returns the new hold and what was banked and paid.
 
-The end screen shows what the server returns. If the finish fails on the network, the browser
-retries from memory while the tab is open. A closed tab banks nothing, which is today's rule for a
-round abandoned mid-fight.
+Starting a round abandons any other round the captain had open: one voyage at a time, so a bot
+cannot sail several side by side. It is refused while one of hers is being banked. A refusal banks
+nothing, and the third refused finish of a round closes it, so a refusal is not free to repeat.
+A round is replayed only under the engine it was started with.
+
+The end screen shows what the server returns. If a piece or the finish fails on the network, the
+browser retries from memory while the tab is open. A closed tab banks nothing, which is today's
+rule for a round abandoned mid-fight.
 
 Online rounds need no replay: the server ran them, so it banks them directly, as Stage D will.
 
@@ -254,8 +265,12 @@ Better Auth's own tables (`user`, `session`, `account`, `verification`), and two
 
 | Table | Columns |
 | --- | --- |
-| `holds` | `user_id` (primary key), `data` (jsonb, the record `holdrules.js` reads), `version`, `updated_at` |
-| `rounds` | `id`, `user_id`, `mode`, `seed`, `loadout` (jsonb), `started_at`, `finished_at`, `ticks`, `inputs` (gzipped bytes), `result` (jsonb), `banked` |
+| `holds` | `user_id` (primary key), `data` (the record `holdrules.js` reads), `version`, `updated_at` |
+| `rounds` | `id`, `user_id`, `mode`, `seed`, `loadout`, `engine`, `started_at`, `next_tick`, `entry_count`, `abandoned_at`, `finished_at`, `ticks`, `result`, `banked` |
+| `round_inputs` | `round_id`, `seq`, `entries`: the log, a row per piece |
+
+Every document column is `json`, not `jsonb`: jsonb reorders an object's keys, and a loadout fed to
+the engine has to come back exactly as it went in.
 
 The hold stays one record in one row, because it is one object the rules read whole. Splitting it
 into tables waits until something (leaderboards, trading) needs to query across captains.
@@ -299,9 +314,7 @@ Each step is merged on its own and leaves the game playable.
 - **Serve the game from Railway too?** One origin would lift Safari's 7-day cap on the session
   cookie and remove CORS, at the cost of moving off GitHub Pages and its deploy workflow.
 - **Railway region.** The same one multiplayer picks, and the Postgres beside it.
-- **Input log size.** Measured with `npm run inputlog`: a 20-minute round under a captain who
-  holds a course logs 520 entries, 4 KB gzipped; one who steers all the time, 16,832 entries and
-  99 KB; and the worst case, a stick that moves every tick, 709 KB. The worst case is too heavy to
-  post in one request at the end of a round, so step 4 should send the log in pieces during the
-  round instead (which also shows the server the round's pace as it is played), keep the rounding
-  at 1/1024, and change "Finishing" above to match.
+- ~~**Input log size.**~~ Answered: measured with `npm run inputlog`, a 20-minute round under a
+  captain who holds a course logs 520 entries, 4 KB gzipped; one who steers all the time, 16,832
+  entries and 99 KB; and the worst case, a stick that moves every tick, 709 KB. So the log goes up
+  in pieces as the round is sailed ("Sending the log, and finishing"), with the rounding at 1/1024.

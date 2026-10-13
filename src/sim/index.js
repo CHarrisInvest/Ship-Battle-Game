@@ -54,6 +54,24 @@ export const TICK = 1 / 60;
  */
 export const NO_INPUT = { joyMag: 0, joyAng: 0, broadside: false, bow: false, musket: false, repair: null };
 
+const INPUT_KEYS = Object.keys(NO_INPUT);
+
+/**
+ * Whether `x` is a record the controls could have produced: exactly `NO_INPUT`'s keys, the stick's
+ * reach a number from 0 to 1 and its bearing a finite number, the fire buttons true or false, and no
+ * repair or one of the two there are. The server replays a round from what the browser says it
+ * stepped with, so anything else is refused rather than read in some way the browser did not.
+ */
+export function isInput(x) {
+  if (!x || typeof x !== "object" || Array.isArray(x)) return false;
+  const keys = Object.keys(x);
+  if (keys.length !== INPUT_KEYS.length || !INPUT_KEYS.every((k) => Object.prototype.hasOwnProperty.call(x, k))) return false;
+  if (typeof x.joyMag !== "number" || !(x.joyMag >= 0 && x.joyMag <= 1)) return false;
+  if (typeof x.joyAng !== "number" || !Number.isFinite(x.joyAng)) return false;
+  if (typeof x.broadside !== "boolean" || typeof x.bow !== "boolean" || typeof x.musket !== "boolean") return false;
+  return x.repair === null || x.repair === "hull" || x.repair === "mast";
+}
+
 /**
  * One step of the round, exactly one `TICK` long. `inputs` is keyed by player id, one record per
  * human. Returns what

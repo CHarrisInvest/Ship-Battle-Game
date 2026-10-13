@@ -19,12 +19,14 @@ are called from the component, never from the engine.
 ## The interface
 
 ```js
-import { createWorld, step, voyageStats, repairQuote, TICK } from "./sim/index.js";
+import { createWorld, step, voyageStats, voyageRun, repairQuote, isInput, TICK } from "./sim/index.js";
 
 const world = createWorld({ mode: "ffa", seed, players: [{ id: "p1", loadout }], rivals });
 const events = step(world, { p1: { joyMag, joyAng, broadside, bow, musket, repair } });
 voyageStats(world, "p1");            // what she has earned so far
+voyageRun(world, "p1");              // once it is over, what the voyage banks
 repairQuote(world, "p1", "hull");    // what a patch would cost her now
+isInput(record);                     // whether the controls could have made this record
 ```
 
 - **`createWorld`** lays out a round. `players` lists the humans aboard: one opens in the middle of
@@ -36,6 +38,11 @@ repairQuote(world, "p1", "hull");    // what a patch would cost her now
 - **Inputs** are one record per human, keyed by player id: the stick's reach and world heading, the
   three fire buttons, and `repair`, `"hull"` or `"mast"`, which the step that reads it spends. A repair
   goes the same road as the wheel so that it reaches the engine the same way wherever the engine is.
+  `isInput` is true only of a record the controls could make, exactly those keys with those types
+  and ranges, because the server replays a round from the records the browser says it stepped with
+  and must not read anything else in a way the browser did not.
+- **`voyageRun`** is what a finished voyage banks: the summary `bank` in `holdrules.js` takes, read
+  off the world once. The end screen banks it today and the server will bank it off its own replay.
 - **The world** is plain data: no functions, nothing from the page. `structuredClone(world)` works,
   and the headless test checks it every round. Ships keep the field names the game always used;
   `controller` (`"human"` or `"ai"`) and `playerId` replaced `isPlayer`, and `world.players` maps a
