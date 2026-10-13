@@ -47,3 +47,29 @@ export async function transaction(pool, fn) {
     client.release();
   }
 }
+
+const DAY = 24 * 3600 * 1000;
+
+/**
+ * Keep only what the privacy policy says is kept. A guest last seen more than 90 days ago (her
+ * account, her newest session and her hold all older than that) is deleted, and her hold and rounds
+ * with her, by cascade; a signed-in captain is never deleted for being idle. A voyage's input log is
+ * kept 30 days after it was finished or abandoned, and an open voyage nobody finished is abandoned
+ * after a day. Returns how many guests and logs went.
+ */
+export async function purge(pool, now) {
+  const guests = await pool.query(
+    `delete from "user" u
+      where u."isAnonymous" = true and u."updatedAt" < $1
+        and not exists (select 1 from session s where s."userId" = u.id and s."updatedAt" >= $1)
+        and not exists (select 1 from holds h where h.user_id = u.id and h.updated_at >= $1)`,
+    [new Date(now - 90 * DAY)],
+  );
+  await pool.query("update rounds set abandoned_at = $1 where finished_at is null and abandoned_at is null and started_at < $2",
+    [new Date(now), new Date(now - DAY)]);
+  const logs = await pool.query(
+    "delete from round_inputs where round_id in (select id from rounds where coalesce(finished_at, abandoned_at) < $1)",
+    [new Date(now - 30 * DAY)],
+  );
+  return { guests: guests.rowCount, logs: logs.rowCount };
+}

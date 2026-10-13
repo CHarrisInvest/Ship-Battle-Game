@@ -24,6 +24,13 @@ import { lockHold, parseAction, act } from "./hold.js";
 import { engineHash } from "./enginehash.js";
 import { replayer, startRound, addInputs, finishRound } from "./rounds.js";
 
+/**
+ * How hard one captain may lean on the hold and round routes: a bucket of 60 requests refilled at
+ * 20 a second. A browser playing honestly sends a piece of log every few seconds and a shop action
+ * per tap, nowhere near it; past it, 429.
+ */
+const BUCKET = 60, REFILL = 20;
+
 export async function createApp({ pool, config, now = () => Date.now() }) {
   const options = authOptions({ pool, config });
   await migrate(pool, options);
@@ -32,9 +39,27 @@ export async function createApp({ pool, config, now = () => Date.now() }) {
   const engine = engineHash();
   const replays = replayer();
 
+  const buckets = new Map();
+  function spend(userId) {
+    const t = now();
+    const b = buckets.get(userId) || { tokens: BUCKET, at: t };
+    b.tokens = Math.min(BUCKET, b.tokens + ((t - b.at) / 1000) * REFILL);
+    b.at = t;
+    buckets.set(userId, b);
+    if (b.tokens < 1) throw new HttpError(429, "slow down");
+    b.tokens -= 1;
+  }
+  // a bucket left full for a minute is forgotten, so the map holds only captains at sea
+  const sweep = setInterval(() => {
+    const t = now();
+    for (const [id, b] of buckets) if (t - b.at > 60000) buckets.delete(id);
+  }, 60000);
+  sweep.unref();
+
   async function userOf(req) {
     const s = await auth.api.getSession({ headers: fromNodeHeaders(req.headers) });
     if (!s || !s.user) throw new HttpError(401, "no session");
+    spend(s.user.id);
     return s.user;
   }
 
@@ -86,5 +111,5 @@ export async function createApp({ pool, config, now = () => Date.now() }) {
     }
   }
 
-  return { handler, auth, engine, close: async () => { await replays.close(); } };
+  return { handler, auth, engine, close: async () => { clearInterval(sweep); await replays.close(); } };
 }

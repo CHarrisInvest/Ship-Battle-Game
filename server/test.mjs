@@ -265,6 +265,44 @@ try {
       `the server answers during a replay (${voyage.ticks} ticks took ${took} ms; /health at worst ${worst} ms over ${polls} calls)`);
   }
 
+  // ---- retention and rate limits --------------------------------------------------------------------
+
+  {
+    const { purge } = await import("./db.js");
+    const day = 24 * 3600 * 1000;
+    const oldGuest = await guest();
+    const freshGuest = await guest();
+    const ids = async (ask) => (await ask("GET", "/auth/get-session")).data.user.id;
+    const [oldId, freshId] = [await ids(oldGuest), await ids(freshGuest)];
+    await oldGuest("GET", "/hold");
+    const past = new Date(clock.t - 91 * day);
+    await pool.query(`update "user" set "updatedAt" = $2, "createdAt" = $2 where id = $1`, [oldId, past]);
+    await pool.query(`update session set "updatedAt" = $2, "createdAt" = $2 where "userId" = $1`, [oldId, past]);
+    await pool.query("update holds set updated_at = $2 where user_id = $1", [oldId, past]);
+    // a signed-in captain as old as the guest: not anonymous, so never cleared for being idle
+    await pool.query(`update "user" set "isAnonymous" = false, "updatedAt" = $2 where id = $1`, [freshId, past]);
+    await pool.query(`update session set "updatedAt" = $2 where "userId" = $1`, [freshId, past]);
+    const finished = (await pool.query("select id from rounds where finished_at is not null limit 1")).rows[0].id;
+    await pool.query("update rounds set finished_at = $2 where id = $1", [finished, new Date(clock.t - 31 * day)]);
+    const out = await purge(pool, clock.t);
+    const left = async (id) => (await pool.query(`select 1 from "user" where id = $1`, [id])).rows.length;
+    const pieces = (await pool.query("select count(*)::int as n from round_inputs where round_id = $1", [finished])).rows[0].n;
+    check(out.guests >= 1 && !(await left(oldId)) && (await pool.query("select 1 from holds where user_id = $1", [oldId])).rows.length === 0,
+      "a guest not seen for 90 days is cleared, hold and all");
+    check(await left(freshId), "a signed-in captain is never cleared for being idle");
+    check(pieces === 0, "the input log of a voyage finished over 30 days ago is cleared");
+  }
+
+  {
+    const e = await guest();
+    let limited = 0;
+    const calls = [];
+    for (let i = 0; i < 80; i++) calls.push(e("GET", "/hold").then((r) => { if (r.status === 429) limited++; }));
+    await Promise.all(calls);
+    check(limited > 0, `a captain hammering the server is slowed (${limited} of 80 quick calls refused)`);
+    clock.t += 10000;
+    check((await e("GET", "/hold")).status === 200, "and let back in once she eases off");
+  }
 } catch (e) {
   fail(`the test itself broke: ${e.stack || e.message}`);
 } finally {
