@@ -169,6 +169,19 @@ const act = (rec, name, ...args) => R.applyAction(rec, name, args);
   check(!threw && !broken, `real ids beside junk never throw or build a bad record (${tried} calls)`);
 }
 
+// A cap on the yard: free parts bought in a loop must not grow a record without bound.
+{
+  const full = rich(1e9);
+  for (let i = 0; Object.keys(full.yard.parts).length < R.MAX_PARTS; i++) full.yard.parts[`x${i}`] = { type: "gun3" };
+  check(act(full, "buyPart", "gun3") === null, `buyPart refuses past ${R.MAX_PARTS} parts`);
+  const some = rich(1e9);
+  check(act(some, "buyPart", "gun3") !== null, "and buys under it");
+  const fleet = rich(1e9);
+  for (let i = 0; Object.keys(fleet.yard.ships).length < R.MAX_SHIPS; i++) fleet.yard.ships[`y${i}`] = { ...fleet.yard.ships[fleet.yard.active] };
+  check(act(fleet, "buyShip", "gundalow") === null, `buyShip refuses past ${R.MAX_SHIPS} ships`);
+  check(act(rich(1e9), "buyShip", "gundalow") !== null, "and buys under it");
+}
+
 // Purity: no action edits the record it was handed.
 {
   const base = act(act(rich(), "buyShip", "sloop").rec, "buyPart", "gun3").rec;

@@ -51,6 +51,14 @@ import { ACHIEVEMENTS, progressOf, rewardOf } from "./achievements.js";
 export const VERSION = 2;
 
 /**
+ * How big a yard may grow. Far above any honest fleet (a fully found first rate is about 130 parts)
+ * and there only because some parts are free: a gundalow or a pole mast bought in a loop would
+ * otherwise grow a record, and the server's row, without end.
+ */
+export const MAX_SHIPS = 50;
+export const MAX_PARTS = 2000;
+
+/**
  * The longest name a captain can give a ship. Long enough for "Royal Sovereign" with room over, short
  * enough that the plate on the menu never has to wrap it under her turning hull.
  */
@@ -687,7 +695,7 @@ function pull(ship, partId) {
 /** Buy a bare hull. She arrives with no rig and no guns; the parts to fill her are bought separately. */
 function buyShip(rec, hullId) {
   const hull = own(HULLS, hullId);
-  if (!hull) return null;
+  if (!hull || Object.keys(rec.yard.ships).length >= MAX_SHIPS) return null;
   const yard = cloneYard(rec.yard);
   const id = nextId(yard, "s");
   yard.ships[id] = {
@@ -856,7 +864,7 @@ function fitOwned(rec, shipId) {
 /** Buy one part. It lands loose in the hold; fitting it is a separate, free act. */
 function buyPart(rec, typeId) {
   const type = own(PARTS, typeId);
-  if (!type) return null;
+  if (!type || Object.keys(rec.yard.parts).length >= MAX_PARTS) return null;
   const yard = cloneYard(rec.yard);
   const id = mintPart(yard, typeId);
   const next = withYard(rec, yard, type.price);
