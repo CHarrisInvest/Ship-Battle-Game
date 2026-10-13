@@ -1,6 +1,6 @@
 import React, { Fragment, useRef, useState, useEffect, useCallback, useMemo } from "react";
 import { drawGalleon } from "./galleon.js";
-import { hullForm, tintTimber } from "./hullform.js";
+import { hullForm } from "./hullform.js";
 import {
   getHold, bankVoyage, subscribeHold, modeRecord, shipLoadout, shortfall,
   buyShip, buyPart, fitMast, fitSail, fitStud, fitGun, unfitGun, setActiveShip, spareParts, ownedShips, partOf,
@@ -32,10 +32,11 @@ import {
   STOCK_LOADOUT, barsOf, speedCap, turnCap, KILL_SHARE,
   MODES as RULES, MODE_LIST, modeOf, hunterOf, reinforcementsOf, clamp, norm, random, seedOf, seedFrom,
 } from "./sim/index.js";
-import { C, AI_COLORS, UI } from "./render/palette.js";
+import { C, UI } from "./render/palette.js";
 import { TILT, ZUP, VIEW, MAX_ZOOM, EDGE_PEEK, SIDE_PEEK, SHOT_DRAW, SHOT_LIT_MIN } from "./render/view.js";
 import { genFoliage, drawShadows, drawPalm, drawBush } from "./render/foliage.js";
-import { SEA_FOREAFT, buildSeaRig } from "./render/searig.js";
+import { SEA_FOREAFT } from "./render/searig.js";
+import { createFx, fxEvents, stepFx, lookOf } from "./render/effects.js";
 
 /**
  * STERNCHASE: HELM & HULL — pirate battles at sea, on a tilted (isometric-ish) sea with tall wooden
@@ -268,6 +269,8 @@ export default function App() {
       // the phone's notch, corners and home bar, as the distance in from each edge of the canvas
       // that the HUD keeps clear; read off the HUD's wrapper, which is inset by the same amounts
       safe = { l: 0, t: 0, r: 0, b: 0 };
+    // this viewer's picture of the round: smoke, wakes, words on the water, and how each ship looks
+    let fx = createFx();
 
     // View space is world space seen from the camera: across is one to one, and down is squashed by
     // TILT. `zoom` is the only thing between it and the screen, so every distance the sea is drawn
@@ -297,7 +300,7 @@ export default function App() {
     const SY = (y, cam) => (y - cam.y) * TILT;
 
     function makeShip(x, y, heading, opts) {
-      const pal = AI_COLORS[opts.ci % AI_COLORS.length];
+      const g = gameRef.current;
       // She sails as what she was built: her loadout comes in from the hold if she is the player's,
       // and from the stock fleet if she is not. `rate()` is asked once, here, because nothing about
       // a ship changes at sea except her damage.
@@ -307,23 +310,18 @@ export default function App() {
       // A captain picking prey reads it against her own, so a plain sloop no longer charges a fully
       // found one three times her strength as if the two were the same hull.
       const measured = measure(rating);
-      const strength = gameRef.current && !gameRef.current.rules.guns ? measured.ram : measured.overall;
+      const strength = !g.rules.guns ? measured.ram : measured.overall;
       // Her hull's own size, from the class's form: what she draws as, and also what she collides
-      // as, because a first rate really is a bigger target than a yawl. Her timber comes with it,
-      // so a pine boat sits pale on the water beside an oak brig.
-      const form = hullForm(loadout.hull.id);
-      const sea = form.sea;
+      // as, because a first rate really is a bigger target than a yawl.
+      const sea = hullForm(loadout.hull.id).sea;
       const s = {
+        // who she is, for the events that name her, and which colours she flies, which every
+        // viewer of the round has to agree on
+        id: g.nextId++, livery: opts.ci || 0,
         x, y, heading, spdCur: 0, alive: true,
         isPlayer: !!opts.isPlayer,
-        loadout, rating, strength, sea, seaRig: buildSeaRig(loadout, sea),
+        loadout, rating, strength,
         hullA: sea.L / 2, hullB: sea.W / 2,
-        cols: {
-          dark: tintTimber(C.hullDark, form.timber),
-          deck: tintTimber(C.hullDeck, form.timber),
-          wood: tintTimber(C.hullWood, form.timber),
-          spar: tintTimber(C.wood, form.timber),
-        },
         coins: 0, earned: 0, repaired: 0, patches: 0, rank: 0, kills: 0, dmgDealt: 0, rams: 0, exposure: 0,
         // What the record wants to know beyond the count of sinkings: how each one was done, and
         // what the carpenter gave back. `sunkBy` is keyed by the cause `applyHit` is told.
@@ -338,18 +336,15 @@ export default function App() {
         // to start on a random reload of up to half a second so ten of them would not fire as one;
         // the trigger discipline in `serveGuns` and their own spread of positions do that now.
         cd: { broadside: 0, bow: 0, musket: 0 },
-        mastDown: false, flash: 0, ramCd: 0, locked: new Map(), wakeT: 0, sprayT: 0,
-        roll: 0, rollPhase: Math.random() * Math.PI * 2, turnVel: 0, kx: 0, ky: 0,
+        mastDown: false, ramCd: 0, locked: new Map(), turnVel: 0, kx: 0, ky: 0,
         px: x, py: y, vx: 0, vy: 0, way: 0, baulkT: 0, foul: false, // where she was, and the ground she truly made
-        fill: opts.isPlayer ? C.player : pal.fill,
-        stroke: opts.isPlayer ? C.playerStroke : pal.stroke,
       };
       if (!opts.isPlayer) {
-        s.wander = random(gameRef.current) * Math.PI * 2;
+        s.wander = random(g) * Math.PI * 2;
         s.wanderT = 0;
         s.oppT = 0;
-        s.oppHold = 1.8 + random(gameRef.current) * 2.6; // trigger discipline: some captains waste less powder
-        s.nerve = random(gameRef.current); // how late she leaves it before turning to face a charge
+        s.oppHold = 1.8 + random(g) * 2.6; // trigger discipline: some captains waste less powder
+        s.nerve = random(g); // how late she leaves it before turning to face a charge
         s.baffled = 0; // how long she has been getting nowhere with the hull she is engaged with
         s.sheerT = 0; // time left on a deliberate break-off
         s.sheerHeading = 0; // and the course out of the heap she picked when she began it
@@ -451,13 +446,6 @@ export default function App() {
       return iTo + side * Math.asin(Math.min(1, R / id)); // the tangent
     }
 
-    function splash(x, y) {
-      const parts = gameRef.current.parts;
-      for (let i = 0; i < 5; i++) {
-        const a = Math.random() * Math.PI * 2, sp = 30 + Math.random() * 60;
-        parts.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 0.3, max: 0.4, col: "rgba(240,252,249,0.9)", kind: "spark" });
-      }
-    }
 
     // A point on the map edge, as far from the player as we can manage and clear of islands.
     function edgePos(g, minFromPlayer) {
@@ -532,9 +520,11 @@ export default function App() {
     function reset(m, seed) {
       const rules = modeOf(m);
       gameRef.current = {
-        mode: m, rules, player: null, ships: [], shots: [], volleys: [], parts: [], wakes: [], islands: [], texts: [],
+        mode: m, rules, player: null, ships: [], shots: [], volleys: [], islands: [],
         cam: { x: 0, y: 0 }, sunk: 0, fieldSize: 0, aliveCount: 0, leader: null, avgEarned: 0,
-        _lastRank: 0, spawnT: 0, spawnQueue: 0, vign: 0, running: false, hudDirty: false, hudAcc: 0, time: 0,
+        _lastRank: 0, spawnT: 0, spawnQueue: 0, running: false, hudDirty: false, hudAcc: 0, time: 0,
+        events: [], // what happened this step, for the screen to draw: the engine never draws it itself
+        nextId: 0,
         banked: false, stormR: STORM_R0, stormTick: -1, stormPhase: "", playerOut: false,
         rng: seedOf(seed), // the round's dice: every random number the round uses comes off these
       };
@@ -557,52 +547,6 @@ export default function App() {
         }
       }
       g.fieldSize = g.ships.length;
-    }
-
-    function pushText(x, y, t) {
-      gameRef.current.texts.push({ x, y: y - 26, t, life: 1.3 });
-    }
-    function muzzle(x, y, ang) {
-      gameRef.current.parts.push({ x, y, ang, life: 0.12, max: 0.12, kind: "muzzle" });
-    }
-    // A gun going off leaves a bank of smoke hanging where it fired. It is thrown out along the
-    // barrel, slows almost at once, and then swells and thins where it stands, which is why the
-    // puffs carry heavy drag rather than a short life: what says "a gun fired here" is the smoke
-    // still sitting there a second later, well after the flash has gone.
-    //
-    // It has to stay on her rail to read as her smoke. Thrown any harder than this the puffs end up
-    // a full beam off the hull, where they stop looking like gunsmoke and start looking like the
-    // foam on a shoal. Drag being what it is, a puff settles about a third of its starting speed
-    // away from the gun, so these numbers put the bank within a few paces of her side.
-    function smoke(x, y, ang, n, power) {
-      const parts = gameRef.current.parts;
-      for (let i = 0; i < n; i++) {
-        const a = ang + (Math.random() - 0.5) * 1.1;
-        const sp = (11 + Math.random() * 15) * power;
-        const life = (0.55 + Math.random() * 0.45) * power;
-        parts.push({
-          x: x + (Math.random() - 0.5) * 2.5, y: y + (Math.random() - 0.5) * 2.5,
-          vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, drag: 3.4,
-          life, max: life, r0: 1.2 * power, r1: (5.6 + Math.random() * 3) * power, kind: "puff",
-        });
-      }
-    }
-    function burst(x, y, bar) {
-      const col = bar === "hull" ? C.splinter : bar === "mast" ? "#d8e6e0" : C.crew;
-      const parts = gameRef.current.parts;
-      for (let i = 0; i < 7; i++) {
-        const a = Math.random() * Math.PI * 2, sp = 40 + Math.random() * 90;
-        parts.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 0.4, max: 0.6, col, kind: "spark" });
-      }
-      parts.push({ x, y, life: 0.3, max: 0.3, col, kind: "ring" });
-    }
-    function sinkFx(x, y, col) {
-      const parts = gameRef.current.parts;
-      for (let i = 0; i < 16; i++) {
-        const a = Math.random() * Math.PI * 2, sp = 30 + Math.random() * 120;
-        parts.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 0.6, max: 0.9, col: C.splinter, kind: "spark" });
-      }
-      parts.push({ x, y, life: 0.5, max: 0.5, col, kind: "ring" });
     }
 
     function finalStats(won) {
@@ -665,7 +609,6 @@ export default function App() {
     function playerDied(bar) {
       const g = gameRef.current;
       g.running = false;
-      g.vign = 1;
       g.player.alive = false;
       const standing = g.ships.filter((s) => s.alive).length;
       const rank = g.rules.ranked ? standing + 1 : 0;
@@ -737,13 +680,12 @@ export default function App() {
           if (cause === "ram" && b.ram >= s.maxHull - 1e-6) attacker.rammedWhole += 1;
         }
       }
-      sinkFx(s.x, s.y, s.fill);
+      g.events.push({ type: "sunk", shipId: s.id, by: attacker ? attacker.id : null, cause: s._deathBar, human: s.isPlayer, x: s.x, y: s.y });
       // she is marked and left where she lies; `judge` reads the frame when it is over
-      if (s.isPlayer) { s.alive = false; g.vign = 1; g.hudDirty = true; return; }
+      if (s.isPlayer) { s.alive = false; g.hudDirty = true; return; }
       const i = g.ships.indexOf(s);
       if (i >= 0) g.ships.splice(i, 1);
       for (const o of g.ships) o.locked.delete(s); // she is on the bottom; nobody is fouled on her
-      pushText(s.x, s.y, s._deathBar === "storm" ? "LOST" : "SUNK");
       if (g.rules.reinforcements) {
         g.sunk += 1;
         g.spawnQueue = Math.min(g.spawnQueue + reinforcementsOf(g.rules, g.sunk), g.rules.fleetCap);
@@ -763,16 +705,17 @@ export default function App() {
      * carried because the bar alone cannot say: a ram and a broadside both stave in the hull, and
      * the record wants to know which one finished her.
      */
-    function applyHit(target, bar, amt, attacker, cause, standing = !!(attacker && attacker.alive)) {
+    function applyHit(target, bar, amt, attacker, cause, standing = !!(attacker && attacker.alive), x = target.x, y = target.y) {
       const g = gameRef.current;
       const before = target[bar];
       target[bar] = Math.max(0, before - amt);
-      if (bar !== "mast") target.flash = 0.35;
       // Credited as what she actually lost, not what was thrown, so the sum over every hit she took
       // is her whole bar and a single ball cannot overshoot it. That goes for the coins as well as
       // the tallies: a coin a point is the promise the repair rail makes, and a ram worth seven
       // hundred landing on a boat with a hundred to lose was being paid the seven hundred.
       const took = before - target[bar];
+      // said before anything it leads to, so a ball that sinks her breaks on her timbers first
+      g.events.push({ type: "hit", targetId: target.id, bar, dmg: took, x, y, by: attacker ? attacker.id : null, cause });
       // `standing` is whether the attacker counts for the credit. It is her being afloat, unless the
       // caller says otherwise: two bows meeting resolve both blows, and the second is still hers
       // even if the first has just put her under.
@@ -786,14 +729,11 @@ export default function App() {
           if (cause === "ram") target.byPlayer.ram += took;
         }
       }
-      if (target.isPlayer) {
-        g.hudDirty = true;
-        if (bar !== "mast") g.vign = Math.min(1, g.vign + 0.45);
-      }
+      if (target.isPlayer) g.hudDirty = true;
       if (bar === "mast" && before > 0 && target[bar] <= 0 && !target.mastDown) {
         target.mastDown = true;
         if (attacker && standing) attacker.dismasted += 1;
-        pushText(target.x, target.y, target.isPlayer ? "OUR MAST!" : "MAST DOWN");
+        g.events.push({ type: "dismasted", shipId: target.id, by: attacker ? attacker.id : null, x: target.x, y: target.y });
       }
       if ((bar === "hull" || bar === "crew") && target[bar] <= 0 && target.alive) {
         target._deathBar = bar;
@@ -850,15 +790,13 @@ export default function App() {
         // that sprays is no use to anybody.
         const angs = spread(balls(s, "bow"), 0.045);
         for (const o of angs) push(bx, by, h + o + (random(g) - 0.5) * noise);
-        muzzle(bx, by, h);
-        smoke(bx, by, h, 4, 0.92);
+        g.events.push({ type: "fired", shipId: s.id, weapon, x: bx, y: by, dir: h });
       } else {
         // The hands at the rail and the swivels on it, firing together. The count, the weight of
         // one ball and the scatter all come off the loadout now; only `noise`, an AI captain's own
         // aim, is the fight's to add.
         for (let i = 0; i < s.rating.muskets; i++) push(bx, by, h + (random(g) - 0.5) * (musketArc(s) + noise));
-        muzzle(bx, by, h);
-        smoke(bx, by, h, 2, 0.45); // muskets make little enough of it, and fire often
+        g.events.push({ type: "fired", shipId: s.id, weapon, x: bx, y: by, dir: h });
       }
     }
 
@@ -1302,8 +1240,9 @@ export default function App() {
           // meeting at speed can now put both ships under, and each is credited for her blow even
           // when the other's has just sunk her, because she was afloat when she struck.
           const aStanding = a.alive, bStanding = b.alive;
-          if (hurtB > 0) { applyHit(b, "hull", hurtB, a, "ram", aStanding); a.ramCd = RAM_CD; a.baffled = 0; if (hurtB >= RAM_GRAZE) a.rams++; rammed = true; }
-          if (hurtA > 0) { applyHit(a, "hull", hurtA, b, "ram", bStanding); b.ramCd = RAM_CD; b.baffled = 0; if (hurtA >= RAM_GRAZE) b.rams++; rammed = true; }
+          const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2; // where the blow lands, for the screen
+          if (hurtB > 0) { applyHit(b, "hull", hurtB, a, "ram", aStanding, mx, my); a.ramCd = RAM_CD; a.baffled = 0; if (hurtB >= RAM_GRAZE) a.rams++; rammed = true; }
+          if (hurtA > 0) { applyHit(a, "hull", hurtA, b, "ram", bStanding, mx, my); b.ramCd = RAM_CD; b.baffled = 0; if (hurtA >= RAM_GRAZE) b.rams++; rammed = true; }
           if (rammed) {
             a.locked.set(b, g.time); b.locked.set(a, g.time);
             // each ship spends the part of her way that went into the impact, so one driving
@@ -1320,7 +1259,6 @@ export default function App() {
             // speed, which is not what spending her way into a blow means
             a.spdCur *= 1 - RAM_DRIVE_LOSS * clamp(driveA / Math.max(1, a.spdCur), 0, 1);
             b.spdCur *= 1 - RAM_DRIVE_LOSS * clamp(driveB / Math.max(1, b.spdCur), 0, 1);
-            burst((a.x + b.x) / 2, (a.y + b.y) / 2, "hull");
           } else {
             // hulls touching without a charge behind them: gentle nudge, no damage, by the second
             const nudge = HULL_NUDGE * dt;
@@ -1350,11 +1288,7 @@ export default function App() {
         // a share of her full complement, not of what is left, so the last hands go as fast as the first
         const bite = STORM_BITE * s.maxCrew;
         s.crew = Math.max(0, s.crew - bite * dt);
-        if (s.isPlayer) {
-          // a steady tint that deepens with the exposure, rather than the jolt a hit gives
-          g.vign = Math.max(g.vign, 0.2 + 0.55 * (s.exposure / STORM_RAMP));
-          g.hudDirty = true;
-        }
+        if (s.isPlayer) g.hudDirty = true;
         if (s.crew <= 0 && s.alive) { s._deathBar = "storm"; killShip(s, null, "storm"); }
       }
       // the countdown ticks in whole seconds, and going in or out of the weather, or the weather
@@ -1449,12 +1383,7 @@ export default function App() {
         // gun deck is stores rather than gunports, and with fifty of them going off in half a second
         // that is the difference between a ship firing her broadside and a ship on fire.
         const rx = px + Math.cos(dir) * s.hullB, ry = py + Math.sin(dir) * s.hullB;
-        // The bank stands just OUTSIDE the rail, and each puff is small enough that fifty of them
-        // make a band down her side rather than one cloud sitting on her. A puff as wide as she is
-        // long is a ship in a fog bank: her hull, her flashes and the first few paces of her shot
-        // all disappear into it, which is the opposite of what the smoke is there to show.
-        smoke(rx + Math.cos(dir) * 2.5, ry + Math.sin(dir) * 2.5, dir, 1, 0.9);
-        muzzle(rx, ry, dir);
+        g.events.push({ type: "fired", shipId: s.id, weapon: "broadside", x: rx, y: ry, dir });
       }
     }
 
@@ -1501,34 +1430,11 @@ export default function App() {
         if (hit) {
           // and it breaks where it bit her, not at the end of a step it never finished
           const hx = fromX + (b.x - fromX) * when, hy = fromY + (b.y - fromY) * when;
-          if (struck) { applyHit(struck, b.bar, b.dmg, b.owner, b.kind); burst(hx, hy, b.bar); }
-          else splash(hx, hy);
+          if (struck) applyHit(struck, b.bar, b.dmg, b.owner, b.kind, undefined, hx, hy);
+          else g.events.push({ type: "splash", x: hx, y: hy });
         }
         if (hit || b.life <= 0 || b.x < 0 || b.x > WORLD || b.y < 0 || b.y > WORLD) s.splice(i, 1);
       }
-    }
-
-    function stepParts(dt) {
-      const g = gameRef.current;
-      for (let i = g.parts.length - 1; i >= 0; i--) {
-        const p = g.parts[i];
-        p.life -= dt;
-        // Smoke says how fast it slows in its own terms, so a bank of it stands the same on a phone
-        // dropping frames as on a screen holding sixty. The sparks keep the old per-frame damping,
-        // which is brief enough that nobody was ever going to catch it drifting.
-        if (p.vx !== undefined) {
-          p.x += p.vx * dt; p.y += p.vy * dt;
-          const k = p.drag !== undefined ? Math.exp(-dt * p.drag) : 0.9;
-          p.vx *= k; p.vy *= k;
-        }
-        if (p.life <= 0) g.parts.splice(i, 1);
-      }
-      for (let i = g.texts.length - 1; i >= 0; i--) {
-        const t = g.texts[i]; t.life -= dt; t.y -= 14 * dt; if (t.life <= 0) g.texts.splice(i, 1);
-      }
-      for (let i = g.wakes.length - 1; i >= 0; i--) { g.wakes[i].life -= dt; if (g.wakes[i].life <= 0) g.wakes.splice(i, 1); }
-      for (const s of g.ships) s.flash = Math.max(0, s.flash - dt);
-      g.vign = Math.max(0, g.vign - dt * 1.6);
     }
 
     function maintain(dt) {
@@ -1601,44 +1507,8 @@ export default function App() {
       stepStorm(dt);
       stepVolley();
       stepShots(dt);
-      stepParts(dt);
       maintain(dt);
-      for (const s of g.ships) {
-        if (!s.alive || s.spdCur < 22) continue;
-        s.wakeT -= dt;
-        if (s.wakeT <= 0) {
-          s.wakeT = 0.05;
-          const sf = clamp(s.spdCur / 130, 0, 1); // longer trail only when she's really moving
-          const wlife = 0.24 + 0.42 * sf;
-          const h = s.heading;
-          const bx = s.x - Math.cos(h) * s.hullA, by = s.y - Math.sin(h) * s.hullA;
-          const px = Math.cos(h + Math.PI / 2), py = Math.sin(h + Math.PI / 2);
-          for (const sd of [-1, 1]) g.wakes.push({ x: bx + px * sd * 4, y: by + py * sd * 4, life: wlife, max: wlife });
-        }
-        if (s.spdCur > speedCap(s) * 0.82) {
-          s.sprayT -= dt;
-          if (s.sprayT <= 0) {
-            s.sprayT = 0.05;
-            const h = s.heading;
-            const fx = s.x + Math.cos(h) * (s.hullA + 2), fy = s.y + Math.sin(h) * (s.hullA + 2);
-            for (const sd of [-1, 1]) {
-              const a = h + sd * 0.28 + (Math.random() - 0.5) * 0.18, sp = 35 + Math.random() * 45;
-              g.parts.push({ x: fx, y: fy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 0.28, max: 0.38, col: "rgba(232,246,244,0.9)", kind: "spark" });
-            }
-          }
-        }
-      }
-      for (const s of g.ships) {
-        if (!s.alive) continue;
-        s.rollPhase += dt;
-        const target = clamp(-s.turnVel * 0.16, -0.4, 0.4);
-        s.roll += (target - s.roll) * Math.min(1, dt * 6);
-      }
       judge();
-      camUpdate();
-      updateButtons();
-      g.hudAcc += dt;
-      if (g.hudDirty && g.hudAcc > 0.09) { syncRef.current(); g.hudDirty = false; g.hudAcc = 0; }
     }
 
     function updateButtons() {
@@ -1860,8 +1730,7 @@ export default function App() {
     }
 
     function drawWakes(cam) {
-      const g = gameRef.current;
-      for (const w of g.wakes) {
+      for (const w of fx.wakes) {
         const k = w.life / w.max;
         ctx.globalAlpha = k * 0.55;
         ctx.fillStyle = "#eefaf6";
@@ -1978,10 +1847,11 @@ export default function App() {
     function drawShip(s, cam) {
       const g = gameRef.current;
       const H = s.heading, cH = Math.cos(H), sH = Math.sin(H);
-      const roll = s.roll + Math.sin(s.rollPhase * 1.2) * 0.05; // bank into turns + gentle idle heel
+      const look = lookOf(fx, s);
+      const roll = look.roll + Math.sin(look.rollPhase * 1.2) * 0.05; // bank into turns + gentle idle heel
       const cR = Math.cos(roll), sR = Math.sin(roll);
       const gx = SX(s.x, cam), gy = SY(s.y, cam);
-      const sea = s.sea;
+      const sea = look.sea;
       const deckH = sea.deckH;
       // local (u=fore, v=starboard, z=up) -> screen, via roll about keel, yaw, then iso projection
       const P3 = (u, v, z) => {
@@ -2025,7 +1895,7 @@ export default function App() {
       }
 
       // ship colour reads as TRIM; the hull itself is brown wood
-      const trim = s.isPlayer ? C.gold : s.fill;
+      const trim = s.isPlayer ? C.gold : look.fill;
 
       // hull: dark waterline body + brown deck, trimmed in the ship's colour. The outline is the
       // class's own: her length, her beam, her entry and her stern.
@@ -2035,15 +1905,15 @@ export default function App() {
         hull.forEach(([u, v], i) => { const [X, Y] = P3(u, v, z); if (i === 0) ctx.moveTo(X, Y); else ctx.lineTo(X, Y); });
         ctx.closePath();
       };
-      tracePoly(0); ctx.fillStyle = s.cols.dark; ctx.fill();
+      tracePoly(0); ctx.fillStyle = look.cols.dark; ctx.fill();
       tracePoly(deckH);
-      ctx.fillStyle = s.cols.deck; ctx.fill();
-      if (s.flash > 0) { ctx.globalAlpha = s.flash; ctx.fillStyle = "#fff"; ctx.fill(); ctx.globalAlpha = 1; }
+      ctx.fillStyle = look.cols.deck; ctx.fill();
+      if (look.flash > 0) { ctx.globalAlpha = look.flash; ctx.fillStyle = "#fff"; ctx.fill(); ctx.globalAlpha = 1; }
       ctx.lineWidth = s.isPlayer ? 2 : 1.6; ctx.strokeStyle = trim; ctx.stroke(); // gunwale trim
       // painted trim stripe around the hull side
       tracePoly(deckH * 0.5); ctx.lineWidth = 1.6; ctx.strokeStyle = trim; ctx.globalAlpha = 0.85; ctx.stroke(); ctx.globalAlpha = 1;
       // bowsprit, on the hulls that have one
-      if (s.loadout.hull.bowsprit) line(P3(-0.11 * sea.L, 0, deckH + 1), P3(0.61 * sea.L, 0, deckH + 2), s.cols.spar, 1.4);
+      if (s.loadout.hull.bowsprit) line(P3(-0.11 * sea.L, 0, deckH + 1), P3(0.61 * sea.L, 0, deckH + 2), look.cols.spar, 1.4);
 
       // raised stern castle (quarterdeck cabin) on the back quarter, on the classes built up
       // enough to carry one: an open boat has no cabin at all
@@ -2062,9 +1932,9 @@ export default function App() {
           ctx.beginPath();
           w.q.forEach((p, i) => { if (i === 0) ctx.moveTo(p[0], p[1]); else ctx.lineTo(p[0], p[1]); });
           ctx.closePath();
-          ctx.fillStyle = s.cols.wood; ctx.fill();
+          ctx.fillStyle = look.cols.wood; ctx.fill();
           ctx.globalAlpha = 0.2; ctx.fillStyle = "#000"; ctx.fill(); ctx.globalAlpha = 1;
-          ctx.lineWidth = 1; ctx.strokeStyle = s.cols.dark; ctx.stroke();
+          ctx.lineWidth = 1; ctx.strokeStyle = look.cols.dark; ctx.stroke();
           if (w.edge === 2) { // cabin windows on the aft wall (BR -> BL)
             for (const t of [0.32, 0.68]) {
               const bx2 = baseC[2][0] + (baseC[3][0] - baseC[2][0]) * t, by2 = baseC[2][1] + (baseC[3][1] - baseC[2][1]) * t;
@@ -2077,14 +1947,14 @@ export default function App() {
         ctx.beginPath();
         topC.forEach((p, i) => { if (i === 0) ctx.moveTo(p[0], p[1]); else ctx.lineTo(p[0], p[1]); });
         ctx.closePath();
-        ctx.fillStyle = s.cols.deck; ctx.fill();
+        ctx.fillStyle = look.cols.deck; ctx.fill();
         ctx.lineWidth = 1.2; ctx.strokeStyle = trim; ctx.stroke();
       }
 
       // masts and canvas, off her own loadout: each mast at its station, each band of sail in the
       // shape of its category. Square canvas bellies on the BOW side of the pole as it always has;
       // fore-and-aft canvas stands along the keel line.
-      const rig = s.seaRig;
+      const rig = look.rig;
       const masts = s.mastDown ? [] : rig.masts;
       const fwd = 1.5, belly = 3, MINW = 4, N = 6;
       // a mast stands on the quarterdeck only if she has one and it's aft of its front wall
@@ -2125,10 +1995,10 @@ export default function App() {
         for (let k = N; k >= 0; k--) ctx.lineTo(cols[k].bot[0], cols[k].bot[1]);
         ctx.closePath();
         ctx.lineWidth = 1; ctx.strokeStyle = "rgba(0,0,0,0.28)"; ctx.stroke();
-        line(cols[0].top, cols[N].top, s.cols.spar, 1.3);
+        line(cols[0].top, cols[N].top, look.cols.spar, 1.3);
       };
       const drawPole = (m, base, top) => {
-        line(base, top, s.cols.spar, 1.7);
+        line(base, top, look.cols.spar, 1.7);
         const bz = mz(m.u);
         const f2 = P3(m.u - 5, 0, bz + m.h - 0.6), f3 = P3(m.u, 0, bz + m.h - 2.4);
         ctx.fillStyle = trim;
@@ -2194,7 +2064,7 @@ export default function App() {
         else if (p.kind === "head") drawHead(p.hd);
         else drawSail(p.u, p.band);
       }
-      if (s.mastDown) line(P3(-2, 0, deckH), P3(-2, 3, deckH + 8), s.cols.spar, 1.8);
+      if (s.mastDown) line(P3(-2, 0, deckH), P3(-2, 3, deckH + 8), look.cols.spar, 1.8);
 
       // health bars + rank, above the rig
       if (!s.isPlayer) {
@@ -2275,8 +2145,7 @@ export default function App() {
      * lived thing on the water and the one that says a gun is going off HERE, so it is drawn last.
      */
     function drawParts(cam) {
-      const g = gameRef.current;
-      for (const p of g.parts) {
+      for (const p of fx.parts) {
         if (p.kind === "muzzle") continue;
         const sx = SX(p.x, cam), sy = SY(p.y, cam);
         if (p.kind === "puff") {
@@ -2318,7 +2187,7 @@ export default function App() {
       }
 
       // and now every flash, over all of it
-      for (const p of g.parts) {
+      for (const p of fx.parts) {
         if (p.kind !== "muzzle") continue;
         ctx.save();
         ctx.translate(SX(p.x, cam), SY(p.y, cam));
@@ -2339,7 +2208,7 @@ export default function App() {
       // mid tone, where plain white would sit too close to it. Halo first: the stroke is centred on the
       // glyph edge and eats half its width into the letter, so the fill has to go down over it.
       ctx.lineJoin = "round";
-      for (const t of g.texts) {
+      for (const t of fx.texts) {
         ctx.globalAlpha = Math.min(1, t.life);
         ctx.font = `600 10px ${UI}`;
         const tx = SX(t.x, cam), ty = SY(t.y, cam);
@@ -2398,7 +2267,7 @@ export default function App() {
       }
       for (const s of g.ships) {
         if (!s.alive || s.isPlayer) continue;
-        ctx.fillStyle = g.rules.ranked && s.rank === 1 ? C.gold : s.fill;
+        ctx.fillStyle = g.rules.ranked && s.rank === 1 ? C.gold : lookOf(fx, s).fill;
         ctx.beginPath();
         ctx.arc(rx + s.x * sc, ry + s.y * sc, g.rules.ranked && s.rank === 1 ? 3 : 2.3, 0, Math.PI * 2);
         ctx.fill();
@@ -2444,7 +2313,7 @@ export default function App() {
     }
 
     function drawVignette() {
-      const v = gameRef.current.vign;
+      const v = fx.vign;
       if (v <= 0) return;
       const grd = ctx.createRadialGradient(Wd / 2, Hd / 2, Math.min(Wd, Hd) * 0.3, Wd / 2, Hd / 2, Math.max(Wd, Hd) * 0.7);
       grd.addColorStop(0, "rgba(209,91,91,0)");
@@ -2481,13 +2350,25 @@ export default function App() {
       if (dt > 0.05) dt = 0.05;
       clock += dt;
       const g = gameRef.current;
-      if (g && g.running) update(dt);
+      if (g && g.running) {
+        update(dt);
+        // what the step did, drawn: the engine only said it happened
+        const events = g.events;
+        g.events = [];
+        fxEvents(fx, events, g.player.id);
+        stepFx(fx, g, g.player.id, dt);
+        camUpdate();
+        updateButtons();
+        g.hudAcc += dt;
+        if (g.hudDirty && g.hudAcc > 0.09) { syncRef.current(); g.hudDirty = false; g.hudAcc = 0; }
+      }
       render();
       raf = requestAnimationFrame(loop);
     }
 
     function start(m) {
       reset(m, newSeed());
+      fx = createFx();
       camUpdate();
       const g = gameRef.current;
       if (g.rules.ranked) computeMeta();
