@@ -11,9 +11,8 @@
  *   no action edits the record it was handed, which would corrupt the store's copy and the server's;
  *   a write pays any achievement rung that is owed, as `settle` always did on every write;
  *
- * and then the store, `src/hold.js`, over an in-memory localStorage: it still exports everything the
- * screen imports, every write through it is the rule's answer, a refusal writes nothing and tells
- * nobody, and what it saves reads back after a reload.
+ * The store the browser keeps the server's record in, `src/hold.js`, is held to the server by
+ * `npm run client-test`.
  */
 
 import { HULLS, PARTS, STARTER } from "../src/shipyard.js";
@@ -216,83 +215,6 @@ const act = (rec, name, ...args) => R.applyAction(rec, name, args);
     "a shop action pays the rung that was owed, in the record it returns");
 
   check(R.spend(fresh(), 10) === null && R.spend(rich(100), 40).rec.coins === 60, "spend refuses what she does not have");
-}
-
-// ---- the store ---------------------------------------------------------------------------------------
-
-const memory = () => {
-  const m = new Map();
-  let writes = 0;
-  return {
-    getItem: (k) => (m.has(k) ? m.get(k) : null),
-    setItem: (k, v) => { writes++; m.set(k, String(v)); },
-    removeItem: (k) => m.delete(k),
-    get writes() { return writes; },
-    dump: () => Object.fromEntries(m),
-  };
-};
-
-const storage = memory();
-globalThis.window = { localStorage: storage, addEventListener() {} };
-const H = await import("../src/hold.js");
-
-{
-  const WANTS = [
-    "getHold", "bankVoyage", "subscribeHold", "modeRecord", "shipLoadout", "shortfall",
-    "buyShip", "buyPart", "fitMast", "fitSail", "fitStud", "fitGun", "unfitGun", "setActiveShip", "spareParts", "ownedShips", "partOf",
-    "shipName", "nameShip", "fitOwned", "ownedFill", "NAME_LIMIT", "readiness", "sellPart", "refundOf",
-    "holdIsPersistent", "spendFromHold", "getYard", "voyageValue", "cleanName", "HOLD_SHARE", "REFUND_SHARE",
-  ];
-  const missing = WANTS.filter((k) => !(k in H));
-  check(!missing.length, `the store still exports everything the screen reads${missing.length ? ` (missing ${missing.join(", ")})` : ""}`);
-}
-
-{
-  // A script of writes through the store, each compared with the rule applied to the record before it.
-  let calls = 0;
-  const unsub = H.subscribeHold(() => calls++);
-  const step = (label, run, rule) => {
-    const before = H.getHold();
-    const want = rule(before);
-    const got = run();
-    const after = H.getHold();
-    const same = want ? json(after) === json(want.rec) : json(after) === json(before);
-    if (!same) fail(`${label}: the store's record is not the rule's`);
-    return got;
-  };
-
-  const banked = step("bankVoyage", () => H.bankVoyage({ mode: "ffa", earned: 20000, kills: 2, won: true, rank: 1, time: 90 }),
-    (r) => R.bank(r, { mode: "ffa", earned: 20000, kills: 2, won: true, rank: 1, time: 90 }));
-  check(banked && banked.hold && typeof banked.banked === "number" && typeof banked.bounty === "number" && Array.isArray(banked.rungs),
-    "bankVoyage returns { hold, banked, bounty, rungs }");
-
-  const part = step("buyPart", () => H.buyPart("gun4"), (r) => act(r, "buyPart", "gun4"));
-  check(part && part.hold && typeof part.part === "string", "buyPart returns { hold, part }");
-  const ship = step("buyShip", () => H.buyShip("sloop"), (r) => act(r, "buyShip", "sloop"));
-  check(ship && ship.hold && typeof ship.ship === "string", "buyShip returns { hold, ship }");
-  const named = step("nameShip", () => H.nameShip(ship.ship, "Swift"), (r) => act(r, "nameShip", ship.ship, "Swift"));
-  check(named && named.yard && named.yard.ships[ship.ship].name === "Swift", "nameShip returns the record");
-  const fitted = step("fitOwned", () => H.fitOwned(ship.ship), (r) => act(r, "fitOwned", ship.ship));
-  check(fitted && fitted.hold && fitted.fitted > 0, "fitOwned returns { hold, fitted }");
-  const gun = H.getHold().yard.ships[ship.ship].guns.broadside[0];
-  step("unfitGun", () => H.unfitGun(ship.ship, gun), (r) => act(r, "unfitGun", ship.ship, gun));
-  step("fitGun", () => H.fitGun(ship.ship, "broadside", gun), (r) => act(r, "fitGun", ship.ship, "broadside", gun));
-  step("setActiveShip", () => H.setActiveShip(ship.ship), (r) => act(r, "setActiveShip", ship.ship));
-  step("sellPart", () => H.sellPart(part.part), (r) => act(r, "sellPart", part.part));
-  ok("every write through the store is the rule's answer on the record before it");
-
-  // A refusal writes nothing and tells nobody.
-  const snap = json(H.getHold());
-  const writes = storage.writes, heard = calls;
-  check(H.buyShip("firstRate") === null && H.fitGun("nope", "broadside", "nope") === null, "a refused write returns null");
-  check(json(H.getHold()) === snap && storage.writes === writes && calls === heard, "and saves nothing and tells no subscriber");
-  unsub();
-
-  // What was saved reads back after a reload.
-  const saved = JSON.parse(storage.dump()["sternchase.hold"]);
-  check(json(R.sanitize(saved)) === json(H.getHold()), "what the store saved sanitizes to what it holds");
-  const again = await import("../src/hold.js?reload=1");
-  check(json(again.getHold()) === json(H.getHold()), "and a reload reads the same record back");
 }
 
 if (failures.length) {

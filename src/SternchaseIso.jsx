@@ -1,10 +1,11 @@
 import React, { Fragment, useRef, useState, useEffect, useCallback, useMemo } from "react";
 import { drawGalleon } from "./galleon.js";
 import {
-  getHold, bankVoyage, subscribeHold, modeRecord, shipLoadout, shortfall,
+  getHold, subscribeHold, modeRecord, shipLoadout, shortfall, connect, holdStatus, subscribeStatus, hadLocalSave, adoptHold, holdSettled,
   buyShip, buyPart, fitMast, fitSail, fitStud, fitGun, unfitGun, setActiveShip, spareParts, ownedShips, partOf,
   shipName, nameShip, fitOwned, ownedFill, NAME_LIMIT, readiness, sellPart, refundOf,
 } from "./hold.js";
+import { startVoyage, recorderFor } from "./voyage.js";
 import {
   kindOf, rate, rateOf, rigSpec, ladderHeight,
   HULLS, HULL_LIST, PARTS, statBand, maximumLoadout, outfitCost,
@@ -17,7 +18,7 @@ import { getAdRegion, onAdRegion, openGoogleChoices } from "./ads.js";
 import { analyticsLive, conversionsLive, measurementLive, track } from "./analytics.js";
 import { PrivacyPolicy } from "./privacy.jsx";
 import {
-  createWorld, step, TICK, voyageStats, voyageRun, repairQuote, shipOf, outInWeather, stormPhase, volleyWindow, reloadOf, canFire,
+  createWorld, step, TICK, voyageStats, repairQuote, shipOf, outInWeather, stormPhase, volleyWindow, reloadOf, canFire,
   HULL_PATCH_CAP, MAST_JURY_CAP, barsOf, MODES as RULES, MODE_LIST, modeOf, clamp,
 } from "./sim/index.js";
 import { C, UI } from "./render/palette.js";
@@ -133,9 +134,28 @@ const SUNK_LINE = {
   crew: "Crew routed. You strike your colors.",
 };
 
-// A fresh seed for each round's dice. The one place the game rolls them itself: the engine is handed
-// the seed and never reaches for `Math.random`, so the same seed always gives it the same round.
+// A seed for the sea behind the menu, a round laid out and never sailed. A voyage's seed is the
+// server's: the engine is handed it and never reaches for `Math.random`, so the server's replay of
+// the round is the round she sailed.
 const newSeed = () => (Math.random() * 2 ** 32) >>> 0;
+
+/**
+ * What the menu says when a voyage could not start, by the reason the server gave, and what it says
+ * about the connection itself. Plain words: a captain needs to know what happened and what to do.
+ */
+const VOYAGE_REFUSED = {
+  engine: "The game has been updated since this page opened. Reload the page to sail.",
+  busy: "Your last voyage is still being counted. Try again in a moment.",
+  offline: "The server cannot be reached, so no voyage can start. Your progress is safe.",
+  refused: "The server would not start that voyage. Try again in a moment.",
+};
+const LINK_NOTE = {
+  loading: "Loading your progress from the server.",
+  blocked: "Your browser is blocking this site's cookies, so your progress cannot be kept. Allow cookies for this site to play.",
+  offline: "The server cannot be reached. Your progress is safe, and the shop and voyages open again as soon as it answers.",
+};
+const MOVED_NOTE = "Your progress now saves to the server. Progress saved in this browser earlier could not be moved.";
+const SAVING_NOTE = "Saving your changes to the server first.";
 
 export default function App() {
   const canvasRef = useRef(null);
@@ -189,6 +209,15 @@ export default function App() {
   const [bounty, setBounty] = useState(0); // ...and what the achievements it finished paid besides
 
   useEffect(() => subscribeHold(setHold), []);
+  // The hold is the server's: sign in as a guest if need be, and load it. `link` is the connection,
+  // so the menu can say when the hold is still loading or the server is out of reach.
+  const [link, setLink] = useState(holdStatus);
+  const [notice, setNotice] = useState("");
+  useEffect(() => {
+    const off = subscribeStatus(setLink);
+    connect().then(() => { if (hadLocalSave()) setNotice(MOVED_NOTE); });
+    return off;
+  }, []);
 
   // What the browser paints around the page: the strip behind a phone's clock and the bars Safari
   // tints to match a site, and the ground shown when a scroll rubber-bands past the edge. It is
@@ -351,7 +380,9 @@ export default function App() {
         let steps = 0;
         // her controls are read once a step, so a repair she tapped is spent by the first of them
         while (bank >= TICK && steps < MAX_STEPS && !g.result.over) {
-          for (const e of step(g, controls.read())) events.push(e);
+          const input = controls.read();
+          if (recorder) recorder.record(g.tick, input[ME]);
+          for (const e of step(g, input)) events.push(e);
           bank -= TICK;
           steps++;
         }
@@ -407,9 +438,20 @@ export default function App() {
       // and the flag on the world is the guard behind that.
       if (!g.banked) {
         g.banked = true;
-        const { banked: got, bounty: paid } = bankVoyage(voyageRun(g, ME));
-        setBanked(got);
-        setBounty(paid);
+        // the server replays the voyage and banks what its replay says; until it answers the end
+        // screen says it is counting, and if it refuses, that nothing was banked
+        setBanked(null);
+        setBounty(0);
+        const rec = recorder;
+        recorder = null;
+        pendingFinish = rec.finish(g.tick).then((out) => {
+          if (gameRef.current !== g) return; // she has sailed again since
+          if (out.ok) {
+            adoptHold(out.data);
+            setBanked(out.data.banked);
+            setBounty(out.data.bounty);
+          } else setBanked(false);
+        });
         // What the privacy policy says Analytics counts: how voyages end. Nothing is sent without consent.
         track("voyage_end", { mode: g.mode, result: won ? "won" : "sunk", rank: mine.rank, kills: s.kills, seconds: Math.round(s.time) });
       }
@@ -418,15 +460,40 @@ export default function App() {
       syncRef.current();
     }
 
-    // A new round: her ship read fresh out of the hold rather than off a closure, so a mast bought
-    // between rounds is aboard for the next one.
+    // The sea behind the menu: her ship read fresh out of the hold, on a seed of its own.
     function newRound(m) {
       gameRef.current = createWorld({ mode: m, seed: newSeed(), players: [{ id: ME, loadout: shipLoadout(getHold()) }] });
       fx = createFx(shipOf(gameRef.current, ME).id);
     }
 
-    function start(m) {
-      newRound(m);
+    // A voyage: the server's seed and the loadout off its copy of her hold, sent as the very JSON
+    // its replay will build the world from, and a recorder for the controls she sails it with.
+    let recorder = null;
+    let starting = false;
+    let pendingFinish = Promise.resolve(); // the last voyage's finish, which a new one waits for
+    async function start(m) {
+      if (starting) return;
+      starting = true;
+      setNotice("");
+      // her last voyage is banked before the next begins (starting one abandons any still open), and
+      // the shop's changes reach the server first, so she sails the ship her screen shows
+      await pendingFinish;
+      if (!holdSettled()) {
+        setNotice(SAVING_NOTE);
+        for (let i = 0; i < 300 && !holdSettled(); i++) await new Promise((r) => setTimeout(r, 100));
+        setNotice("");
+      }
+      const s = await startVoyage(m);
+      starting = false;
+      if (!s.ok) {
+        setNotice(VOYAGE_REFUSED[s.reason]);
+        setPhase("start");
+        return;
+      }
+      const { round } = s;
+      gameRef.current = createWorld({ mode: round.mode, seed: round.seed, players: [{ id: ME, loadout: round.loadout }] });
+      fx = createFx(shipOf(gameRef.current, ME).id);
+      recorder = recorderFor(round.roundId);
       renderer.follow(shipOf(gameRef.current, ME));
       liveRef.current = true;
       controls.reset();
@@ -593,6 +660,7 @@ export default function App() {
       {phase === "start" && (
         <StartOverlay
           onStart={(m) => startRef.current(m)}
+          note={[notice, LINK_NOTE[link]].filter(Boolean).join(" ")}
           onEdit={(id) => { setYardShip(id || null); setPhase("yard"); }}
           onOutfit={(id) => { setYardShip(id || null); setOutfitStart(null); setPhase("outfitter"); }}
           onRecords={() => setPhase("records")}
@@ -3074,7 +3142,7 @@ function ArrowButton({ back, label, onClick }) {
 // would let a captain think a gun fits when it does not.
 const fmtTons = (t) => t.toFixed(1);
 
-function StartOverlay({ onStart, onEdit, onOutfit, onRecords, onCookies, onPrivacy, hold }) {
+function StartOverlay({ onStart, onEdit, onOutfit, onRecords, onCookies, onPrivacy, hold, note }) {
   return (
     <Shell>
       {/* The name is a lockup of two lines, and the first one carries it. STERNCHASE is the word a
@@ -3085,6 +3153,13 @@ function StartOverlay({ onStart, onEdit, onOutfit, onRecords, onCookies, onPriva
           It gives size back on a narrow screen rather than being set small everywhere. */}
       <div style={{ fontFamily: DISPLAY, fontSize: "clamp(34px, 12vw, 44px)", color: C.gold, letterSpacing: 2, lineHeight: 1.05 }}>STERNCHASE</div>
       <div style={{ fontFamily: DISPLAY, fontSize: 15, color: "rgba(232,200,119,0.62)", letterSpacing: 3, marginTop: 4 }}>HELM &amp; HULL</div>
+      {/* What the server has to say: still loading, out of reach, a voyage it would not start, or that
+          progress moved to it. One line of plain prose, over the plate it is about. */}
+      {note && (
+        <div role="status" style={{ marginTop: 12, padding: "9px 12px", borderRadius: 10, border: `1px solid ${C.hair}`, background: "rgba(11,51,49,0.6)", fontSize: 12, lineHeight: 1.5, color: "rgba(238,244,242,0.85)", textAlign: "left" }}>
+          {note}
+        </div>
+      )}
       <ShipPlate hold={hold} onEdit={onEdit} onOutfit={onOutfit} />
       <HoldPanel hold={hold} onRecords={onRecords} />
       {/* A heading over the modes, in the display face like the screens' own titles, so the mode
@@ -3155,8 +3230,8 @@ function CookieConsent({ onClose, onPrivacy }) {
       >
         <div id="cookie-title" style={{ fontSize: 10, letterSpacing: 1, color: "rgba(238,244,242,0.55)", textTransform: "uppercase", marginBottom: 6 }}>Cookie preferences</div>
         <div id="cookie-body" style={{ fontSize: 11, color: "rgba(238,244,242,0.78)", lineHeight: 1.6 }}>
-          Your progress is saved on this device so it is here next time you play. That is essential
-          and always on. The game is free because it shows ads from Google, which uses cookies
+          A cookie keeps you signed in to your progress on the game's server, so it is here next time
+          you play. That is essential and always on. The game is free because it shows ads from Google, which uses cookies
           to limit how often you see an ad, to measure ads and to stop fraud. You choose whether
           those ads are personalized.{measures && ` The game also ${measures}, unless you turn that off.`} Read the{" "}
           <button onClick={onPrivacy} style={{ font: "inherit", color: C.gold, background: "transparent", border: "none", padding: 0, textDecoration: "underline", cursor: "pointer", WebkitTapHighlightColor: "transparent" }}>
@@ -3167,7 +3242,7 @@ function CookieConsent({ onClose, onPrivacy }) {
 
         {choosing && (
           <div style={{ marginTop: 10 }}>
-            <ConsentRow title="Essential" note="Saves your coins, ships and records on this device. Always on." on locked />
+            <ConsentRow title="Essential" note="Keeps you signed in to your coins, ships and records on the game's server. Always on." on locked />
             <ConsentRow title="Personalized ads" note="Lets Google choose ads based on your interests. With this off you still see ads, but they are not based on your interests."
               on={prefs.advertising} onToggle={() => setPrefs((p) => ({ ...p, advertising: !p.advertising }))} />
             <ConsentRow title={analyticsLive() || !conversionsLive() ? "Analytics" : "Ad measurement"}
@@ -3405,14 +3480,21 @@ function EndOverlay({ title, titleColor, result, stats, mode, place, hold, banke
         {statRows.map(([l, v], i) => <TallyRow key={l} label={l} value={v} rule={i > 0 ? "hair" : ""} />)}
         {payRows.map(([l, v, col], i) => <TallyRow key={l} label={l} value={v} valueColor={col} rule={i === 0 ? "group" : "hair"} />)}
         {/* The voyage is over and the ship's purse with it; this is the part that sails on. */}
-        <TallyRow label="Into the hold" value={`+${fmtCoins(banked)}`} rule="group"
-          valueColor={banked > 0 ? C.grass : "rgba(238,244,242,0.5)"} />
+        {/* What the server banked once it had replayed the voyage: "Counting" until it answers, and
+            "Not banked" if it would not, with the reason under the column. */}
+        <TallyRow label="Into the hold" value={banked === null ? "Counting" : banked === false ? "Not banked" : `+${fmtCoins(banked)}`} rule="group"
+          valueColor={banked > 0 ? C.grass : banked === false ? C.crew : "rgba(238,244,242,0.5)"} />
         {/* Paid by the achievements this voyage finished, apart from what the voyage was worth,
             and between that and the total so the column still adds up. Only shown when there is
             one: most voyages finish nothing, and a row of noughts would say so every time. */}
         {bounty > 0 && <TallyRow label="For achievements" value={`+${fmtCoins(bounty)}`} valueColor={C.grass} rule="hair" />}
         <TallyRow label="Hold total" value={<span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><CoinIcon size={15} />{fmtCoins(hold.coins)}</span>} valueSize={15} valueWeight={800} />
       </div>
+      {banked === false && (
+        <div style={{ fontSize: 12, color: "rgba(238,244,242,0.75)", margin: "-8px 0 16px", lineHeight: 1.5 }}>
+          The server could not confirm this voyage, so nothing from it was added to your hold.
+        </div>
+      )}
       <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
         <StartButton onClick={onAgain} label="Rematch" />
         <StartButton onClick={onMenu} label="Menu" ghost />

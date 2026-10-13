@@ -1,121 +1,174 @@
 /**
- * THE HOLD, KEPT — where this browser keeps a captain's record, and how the screen reaches it.
+ * THE HOLD, AS THIS BROWSER SEES IT — a copy of the server's, and how the screen reaches it.
  *
- * The rules are not here. What the record is, what a voyage banks, what the shipyard sells and what
- * fits where all live in `holdrules.js`, as pure functions the server runs too. This file is the
- * store: it loads the record out of `localStorage`, runs a rule on it when the captain asks for
- * something, saves what comes back, and tells every screen that is watching. Its exports are the
- * ones the screen has always read, so nothing above it knows the rules moved.
+ * The record lives on the server, which decides every change to it. The rules are `holdrules.js`,
+ * the same functions the server runs, so this file can answer a captain the moment she taps: a shop
+ * action is applied here at once, shown, and sent; the server's answer then replaces the guess, and a
+ * refusal puts the screen back to the record as the server holds it. Actions go one at a time, in
+ * order, each against the version the last answer carried. A version gone stale (another tab) is
+ * caught by the server, and the action is tried once more on the record it sent back.
+ *
+ * Until the server has answered, the screens see a blank record and `holdStatus()` says "loading";
+ * if it cannot be reached it says "offline", nothing can be bought, no voyage can start, and it keeps
+ * trying. A voyage's coins come back from the server with the record they were banked into, through
+ * `adoptHold`. The exports the screens have always read are all still here.
+ *
+ * The record used to live in this browser's localStorage. On the first visit after it moved, that
+ * old save is deleted: a local record could have been edited, so nothing in it is carried over.
  */
 
-import { blank, sanitize, settle, applyAction, bank, spend } from "./holdrules.js";
+import { blank, applyAction } from "./holdrules.js";
+import { call, ensureSession } from "./net.js";
 
 export {
   NAME_LIMIT, HOLD_SHARE, REFUND_SHARE, cleanName, refundOf,
   modeRecord, voyageValue, partOf, ownedShips, shipName, spareParts, shipLoadout, shortfall, ownedFill, readiness,
 } from "./holdrules.js";
 
-const KEY = "sternchase.hold";
+const OLD_KEY = "sternchase.hold";
+const RETRY_MS = 4000;
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// localStorage throws rather than returning null in a few real cases — Safari's private browsing, a
-// blocked third-party frame, a full quota. None of them should cost anyone their game, so the hold
-// falls back to living in memory for the session and the UI never has to know the difference.
-let writable = true;
-
-function store() {
-  try {
-    return typeof window !== "undefined" ? window.localStorage : null;
-  } catch {
-    return null;
-  }
-}
-
-function load() {
-  const s = store();
-  if (!s) return blank();
-  try {
-    const raw = s.getItem(KEY);
-    return raw ? sanitize(JSON.parse(raw)) : blank();
-  } catch {
-    return blank();
-  }
-}
-
-function save(rec) {
-  const s = store();
-  if (!s) return;
-  try {
-    s.setItem(KEY, JSON.stringify(rec));
-    writable = true;
-  } catch {
-    writable = false; // out of quota or denied; the in-memory copy carries the session
-  }
-}
-
-let cache = null;
+let confirmed = blank(); // the record as the server last said it is
+let version = 0;
+let queue = []; // shop actions applied here and not yet answered, oldest first
+let shown = confirmed; // `confirmed` with `queue` applied: what the screens see
+let status = "loading"; // "loading" | "ready" | "offline" | "blocked" (the browser refuses the cookie)
+let hadOldSave = false;
 const listeners = new Set();
+const statusListeners = new Set();
 
-function current() {
-  if (!cache) {
-    // An old record opened under a longer list is paid for what it already holds, once, here.
-    const s = settle(load());
-    cache = s.rec;
-    if (s.paid > 0) save(cache);
-  }
-  return cache;
+function publish() {
+  shown = queue.reduce((r, q) => { const o = applyAction(r, q.name, q.args); return o ? o.rec : r; }, confirmed);
+  for (const fn of listeners) fn(shown);
 }
 
-function publish(rec) {
-  cache = rec;
-  for (const fn of listeners) fn(rec);
+function setStatus(s) {
+  if (s === status) return;
+  status = s;
+  for (const fn of statusListeners) fn(s);
 }
 
-function commit(rec) {
-  const settled = settle(rec).rec;
-  save(settled);
-  publish(settled);
-  return settled;
+function forgetOldSave() {
+  try {
+    const s = typeof window !== "undefined" ? window.localStorage : null;
+    if (s && s.getItem(OLD_KEY) !== null) { s.removeItem(OLD_KEY); hadOldSave = true; }
+  } catch { /* storage refused: there is nothing to forget */ }
 }
 
-/** The hold as it stands. Treat the returned record as read-only; every writer here returns a fresh one. */
+let connecting = null;
+/**
+ * Sign in (as a guest, if she has no session) and load her hold. Resolves once the hold is in, or
+ * once the server is found to be out of reach, in which case it tries again until it is not.
+ */
+export function connect() {
+  if (connecting) return connecting;
+  forgetOldSave();
+  connecting = (async () => {
+    for (;;) {
+      if (status !== "ready") setStatus(status === "offline" || status === "blocked" ? status : "loading");
+      const session = await ensureSession();
+      if (session === "blocked") {
+        // her browser will not keep the cookie: another try would only make another account
+        setStatus("blocked");
+        await wait(60000);
+        continue;
+      }
+      if (session) {
+        const r = await call("GET", "/hold");
+        if (r.status === 200) {
+          confirmed = r.data.hold;
+          version = r.data.version;
+          publish();
+          setStatus("ready");
+          connecting = null;
+          return true;
+        }
+      }
+      setStatus("offline");
+      await wait(RETRY_MS);
+    }
+  })();
+  return connecting;
+}
+
+/** The hold as it stands on this screen. Treat it as read-only. */
 export function getHold() {
-  return current();
+  return shown;
 }
 
-/** True while the hold is only in memory — storage refused the last write. */
-export function holdIsPersistent() {
-  return !!store() && writable;
+/** "loading", "ready" or "offline". */
+export const holdStatus = () => status;
+
+/** True once the server's record is in and the hold can be changed. */
+export const holdIsPersistent = () => status === "ready";
+
+/** Whether this browser held a save from before the hold moved to the server (deleted on load). */
+export const hadLocalSave = () => hadOldSave;
+
+export const getYard = () => shown.yard;
+
+/** Watch the hold. Fires on every change, whether made here or come back from the server. */
+export function subscribeHold(fn) {
+  listeners.add(fn);
+  return () => listeners.delete(fn);
 }
 
-/**
- * Bank one finished voyage and return the new hold alongside the coins it added, and beside them
- * `bounty`, what the achievements the voyage completed paid, with the rungs they were paid for in
- * `rungs`. See `bank` in `holdrules.js` for what `run` carries.
- */
-export function bankVoyage(run) {
-  const out = bank(current(), run);
-  return { hold: commit(out.rec), banked: out.banked, bounty: out.bounty, rungs: out.rungs };
+/** Watch the connection: "loading", "ready" or "offline". */
+export function subscribeStatus(fn) {
+  statusListeners.add(fn);
+  return () => statusListeners.delete(fn);
 }
 
-/**
- * Draw `amount` out of the hold. Returns the new record on success and `null` if the coins are not
- * there, so a caller can treat it as the whole check — nothing is deducted on a refusal.
- */
-export function spendFromHold(amount) {
-  const out = spend(current(), amount);
-  return out ? commit(out.rec) : null;
+/** Take a record the server has sent, with the version it is at: a banked voyage, say. */
+export function adoptHold({ hold, version: v }) {
+  confirmed = hold;
+  version = v;
+  publish();
 }
 
-export const getYard = () => current().yard;
+let sending = false;
+/** Send the queued actions, one at a time, each against the version the last answer left. */
+async function send() {
+  if (sending) return;
+  sending = true;
+  while (queue.length) {
+    const q = queue[0];
+    const r = await call("POST", "/hold/actions", { action: q.name, args: q.args, version });
+    if (r.status === 200 || r.status === 422 || r.status === 409) {
+      // an answer older than the record already here (a voyage banked meanwhile) is not taken
+      if (r.data.version >= version) { confirmed = r.data.hold; version = r.data.version; }
+      // 409: another tab moved the record on; the action is tried again on the record it sent back.
+      // 200 and 422: done, applied or refused, and the record is the server's either way.
+      if (r.status !== 409) queue.shift();
+      publish();
+    } else if (r.status === 401) {
+      const session = await ensureSession();
+      if (session !== true) setStatus(session === "blocked" ? "blocked" : "offline");
+      await wait(RETRY_MS);
+    } else if (r.status === 0 || r.status === 429 || r.status >= 500) {
+      setStatus("offline");
+      await wait(RETRY_MS);
+    } else {
+      // a request the server could not read: drop it rather than send it for ever
+      queue.shift();
+      publish();
+    }
+    if (status === "offline" && r.status !== 0 && r.status < 500) setStatus("ready");
+  }
+  sending = false;
+  if (status === "offline") setStatus("ready");
+}
 
-/**
- * Run one shop action on the hold as it stands and keep what it gives. A refusal saves nothing and
- * tells nobody. Every writer below is this, with its answer put back in the shape the screen reads.
- */
+/** Apply one shop action here, show it, and send it. What the rule answered, or null. */
 function act(name, ...args) {
-  const out = applyAction(current(), name, args);
+  if (status !== "ready") return null;
+  const out = applyAction(shown, name, args);
   if (!out) return null;
-  return { ...out, rec: commit(out.rec) };
+  queue.push({ name, args });
+  publish();
+  send();
+  return { ...out, rec: shown };
 }
 const recOf = (out) => (out ? out.rec : null);
 
@@ -161,17 +214,5 @@ export const fitGun = (shipId, mount, partId) => recOf(act("fitGun", shipId, mou
 /** Take one gun back off her rail. She keeps it: it is off this ship, not out of the hold. */
 export const unfitGun = (shipId, partId) => recOf(act("unfitGun", shipId, partId));
 
-/** Watch the hold. Fires on every bank, spend, reset, and on a change made in another tab. */
-export function subscribeHold(fn) {
-  listeners.add(fn);
-  return () => listeners.delete(fn);
-}
-
-// Two tabs of the same game share one hold, and whoever writes last would otherwise silently paint
-// over the other's voyage. Picking up the write keeps both windows on the same number.
-if (typeof window !== "undefined" && window.addEventListener) {
-  window.addEventListener("storage", (e) => {
-    if (e.key !== KEY && e.key !== null) return;
-    publish(load());
-  });
-}
+/** Whether every shop action sent so far has been answered: nothing is waiting on the server. */
+export const holdSettled = () => queue.length === 0 && !sending;
