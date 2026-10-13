@@ -6,7 +6,23 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import pg from "pg";
 import { getMigrations } from "better-auth/db/migration";
+
+/**
+ * The pool, with limits, so a slow query or a stuck transaction cannot hold a connection for ever:
+ * a connection is waited on for 5 seconds at most, a statement runs for 15, and a transaction left
+ * idle is ended after 20.
+ */
+export function makePool(url) {
+  return new pg.Pool({
+    connectionString: url,
+    max: 10,
+    connectionTimeoutMillis: 5000,
+    statement_timeout: 15000,
+    idle_in_transaction_session_timeout: 20000,
+  });
+}
 
 const dir = join(dirname(fileURLToPath(import.meta.url)), "migrations");
 
@@ -35,16 +51,19 @@ export async function migrate(pool, authOptions) {
 /** Run `fn(client)` in a transaction, committing what it returns and rolling back what it throws. */
 export async function transaction(pool, fn) {
   const client = await pool.connect();
+  let broken = null;
   try {
     await client.query("begin");
     const out = await fn(client);
     await client.query("commit");
     return out;
   } catch (e) {
-    await client.query("rollback");
+    // a client whose rollback fails is broken and goes back to be destroyed, and the error that
+    // started it is the one that is thrown
+    try { await client.query("rollback"); } catch (r) { broken = r; }
     throw e;
   } finally {
-    client.release();
+    client.release(broken || undefined);
   }
 }
 

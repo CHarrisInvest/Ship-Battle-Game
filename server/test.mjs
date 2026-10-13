@@ -20,6 +20,7 @@ import { createServer } from "node:http";
 import pg from "pg";
 import { testDatabase } from "./testdb.mjs";
 import { createApp } from "./app.js";
+import { makePool } from "./db.js";
 import { PARTS } from "../src/shipyard.js";
 import * as R from "../src/holdrules.js";
 import { createWorld, step, voyageRun, NO_INPUT } from "../src/sim/index.js";
@@ -33,7 +34,7 @@ const json = (v) => JSON.stringify(v);
 
 const ORIGIN = "http://localhost:5173";
 const db = await testDatabase();
-const pool = new pg.Pool({ connectionString: db.url, max: 8 });
+const pool = makePool(db.url);
 const clock = { t: Date.parse("2026-10-13T12:00:00Z") };
 
 const server = createServer();
@@ -50,8 +51,7 @@ server.on("request", app.handler);
 function captain(origin = ORIGIN) {
   const jar = new Map();
   return async (method, path, body, extra = {}) => {
-    const headers = { origin, ...extra };
-    if (body !== undefined) headers["content-type"] = "application/json";
+    const headers = { origin, ...(body !== undefined ? { "content-type": "application/json" } : {}), ...extra };
     if (jar.size) headers.cookie = [...jar].map(([k, v]) => `${k}=${v}`).join("; ");
     const res = await fetch(base + path, { method, headers, body: body === undefined ? undefined : typeof body === "string" ? body : json(body) });
     for (const c of res.headers.getSetCookie()) {
@@ -66,9 +66,11 @@ function captain(origin = ORIGIN) {
   };
 }
 
+let visitor = 0;
+/** A new guest, from an address of her own, as separate visitors are. */
 async function guest() {
   const ask = captain();
-  const r = await ask("POST", "/auth/sign-in/anonymous", {});
+  const r = await ask("POST", "/auth/sign-in/anonymous", {}, { "x-real-ip": `10.0.${visitor >> 8}.${visitor++ & 255}` });
   if (r.status !== 200) throw new Error(`guest sign-in failed: ${r.status} ${json(r.data)}`);
   return ask;
 }
@@ -263,6 +265,98 @@ try {
     const out = await finished;
     check(out.status === 200 && polls > 3 && worst < took / 2,
       `the server answers during a replay (${voyage.ticks} ticks took ${took} ms; /health at worst ${worst} ms over ${polls} calls)`);
+  }
+
+  // ---- what one captain must not be able to do to the others -----------------------------------------
+
+  {
+    // thirty finishes of one round at once, every one of them wrong: they cost the captain sending
+    // them, and nobody else waits for them
+    const f = await guest();
+    const g = await guest();
+    const start = await begin(f, "ffa");
+    const voyage = sail(start, idle);
+    await upload(f, start, voyage.entries);
+    sailedTo(start.startedAt, voyage.ticks);
+    let storm = true, worst = 0;
+    const bad = Promise.all(Array.from({ length: 30 }, () => f("POST", `/rounds/${start.roundId}/finish`, { ticks: voyage.ticks + 1, entries: [] })))
+      .finally(() => { storm = false; });
+    while (storm) {
+      const s0 = Date.now();
+      await g("GET", "/hold");
+      worst = Math.max(worst, Date.now() - s0);
+    }
+    const answers = (await bad).map((r) => r.status);
+    check(!answers.includes(500) && answers.every((st) => st === 409 || st === 422 || st === 429),
+      `a storm of bad finishes is refused without a 500 (${[...new Set(answers)].join(", ")})`);
+    check(worst < 300, `and another captain is not kept waiting by it (worst ${worst} ms)`);
+    // one of the storm was replayed (the rest were turned away busy); two more wrong finishes make three
+    for (let n = 0; n < 2; n++) await f("POST", `/rounds/${start.roundId}/finish`, { ticks: voyage.ticks + 1, entries: [] });
+    const closed = await f("POST", `/rounds/${start.roundId}/finish`, { ticks: voyage.ticks, entries: [] });
+    check(closed.status === 409, "three refused finishes close the round, so a refusal is not free to repeat");
+  }
+
+  {
+    // a new voyage asked for while the last one is being banked: the bank wins, nothing deadlocks
+    const h = await guest();
+    const start = await begin(h, "ffa");
+    const voyage = sail(start, idle);
+    await upload(h, start, voyage.entries);
+    sailedTo(start.startedAt, voyage.ticks);
+    const finishing = h("POST", `/rounds/${start.roundId}/finish`, { ticks: voyage.ticks, entries: [] });
+    await new Promise((r) => setTimeout(r, 30));
+    const next = await h("POST", "/rounds", { mode: "ffa", engine });
+    const done = await finishing;
+    check(done.status === 200 && (next.status === 200 || next.status === 409),
+      `a round started during a finish never costs the voyage (finish ${done.status}, start ${next.status})`);
+  }
+
+  {
+    // a voyage left open across a deploy is not replayed under the new rules
+    const i = await guest();
+    const start = await begin(i, "ffa");
+    const voyage = sail(start, idle);
+    await pool.query("update rounds set engine = 'an-older-engine' where id = $1", [start.roundId]);
+    sailedTo(start.startedAt, voyage.ticks);
+    const out = await i("POST", `/rounds/${start.roundId}/finish`, { ticks: voyage.ticks, entries: voyage.entries });
+    check(out.status === 409 && out.data.error === "engine", "a round started under another engine is not replayed under this one");
+  }
+
+  {
+    const { replayer } = await import("./rounds.js");
+    const r = replayer();
+    const start = { mode: "ladder", seed: 3, loadout: JSON.parse(json(R.shipLoadout(R.blank()))) };
+    let timedOut = false;
+    try { await r.run(start, [[0, NO_INPUT]], 216000, 5); } catch { timedOut = true; }
+    const after = await r.run({ ...start, mode: "ffa" }, [[0, { ...NO_INPUT, joyMag: 1, broadside: true }]], 600, 5000);
+    check(timedOut && after.ticks === 600, "a replay that runs too long is stopped, and the next one still runs");
+    await r.close();
+  }
+
+  {
+    const j = await guest();
+    const id = (await j("GET", "/auth/get-session")).data.user.id;
+    const { rows } = await pool.query(`select "expiresAt", "createdAt" from session where "userId" = $1`, [id]);
+    const days = (rows[0].expiresAt - rows[0].createdAt) / (24 * 3600 * 1000);
+    check(days >= 89, `a guest's session lasts as long as her hold is kept (${days.toFixed(0)} days)`);
+  }
+
+  {
+    const one = { "x-real-ip": "203.0.113.9" };
+    const statuses = [];
+    for (let n = 0; n < 12; n++) statuses.push((await captain()("POST", "/auth/sign-in/anonymous", {}, one)).status);
+    check(statuses.includes(429) && statuses[0] === 200, `one address cannot mint guests without end (${statuses.filter((x) => x === 429).length} of 12 refused)`);
+  }
+
+  {
+    const k = await guest();
+    const plain = await k("POST", "/hold/actions", json({ action: "buyPart", args: ["gun3"], version: 1 }), { "content-type": "text/plain" });
+    check(plain.status === 415, "a POST that is not JSON is refused, so another site's form cannot make one");
+  }
+
+  {
+    pool.emit("error", new Error("an idle client lost its connection"));
+    check((await captain()("GET", "/health")).status === 200, "a database connection dropping does not take the server down");
   }
 
   // ---- retention and rate limits --------------------------------------------------------------------

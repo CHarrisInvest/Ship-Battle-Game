@@ -184,8 +184,9 @@ piece a list of `[tick, input]` with ticks rising from where the last piece stop
 one `isInput` accepts, and the last tick no further on than real time allows since `POST /rounds`
 (plus five seconds). The server stores each piece as a row, so a long round is appended to rather
 than rewritten. At `round_over` the browser posts the rest and the tick the round ended on to
-`POST /rounds/:id/finish { ticks, entries }`. The server, in a worker thread so a replay never
-stalls the rest of it:
+`POST /rounds/:id/finish { ticks, entries }`. The server replays in a worker thread and outside any
+transaction, so a replay holds no database connection and no lock, and only one finish of a round
+runs at a time:
 
 1. refuses the round if it is not this captain's (404), or already finished or abandoned (409);
 2. refuses a finish whose ticks come to more time than has really passed, or past the 1-hour limit
@@ -196,7 +197,9 @@ stalls the rest of it:
    the round finished, and returns the new hold and what was banked and paid.
 
 Starting a round abandons any other round the captain had open: one voyage at a time, so a bot
-cannot sail several side by side. Every refusal changes nothing.
+cannot sail several side by side. It is refused while one of hers is being banked. A refusal banks
+nothing, and the third refused finish of a round closes it, so a refusal is not free to repeat.
+A round is replayed only under the engine it was started with.
 
 The end screen shows what the server returns. If a piece or the finish fails on the network, the
 browser retries from memory while the tab is open. A closed tab banks nothing, which is today's

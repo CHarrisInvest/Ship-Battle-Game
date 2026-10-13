@@ -13,7 +13,8 @@
  *   POST /rounds/:id/finish      { ticks, entries }    the last piece, and the end tick she saw
  *
  * A refusal is 422 with a reason (`pace`, `order`, `input`, `tick`, `ended`), 404 for a round that
- * is not hers, 409 for one already finished or abandoned, and it changes nothing.
+ * is not hers, 409 for one already finished or abandoned, one being finished (`busy`), or one started
+ * under another engine. A refusal banks nothing; three refused finishes close the round.
  */
 
 import { randomUUID, randomInt } from "node:crypto";
@@ -22,6 +23,7 @@ import { isInput, MODE_LIST } from "../src/sim/index.js";
 import { bank, shipLoadout } from "../src/holdrules.js";
 import { HttpError } from "./http.js";
 import { lockHold, writeHold } from "./hold.js";
+import { transaction } from "./db.js";
 
 /** Steps in the longest round there may be: an hour, as the engine's own tests allow. */
 export const MAX_TICKS = 3600 * 60;
@@ -53,25 +55,53 @@ function checkPiece(entries, from) {
   return null;
 }
 
-/** One worker, replays queued to it in turn. */
-export function replayer() {
-  const worker = new Worker(new URL("./replay-worker.js", import.meta.url));
-  worker.unref();
+/**
+ * One worker, replays queued to it in turn. A replay that runs past `timeoutMs` (queue wait
+ * included) has its worker terminated, and a worker that dies for any reason fails everything
+ * waiting on it and is replaced, so a finish is never left hanging. More than `limit` replays
+ * waiting is a 503: the queue is a line, not a store.
+ */
+export function replayer({ limit = 8, timeoutMs = 30000 } = {}) {
+  const url = new URL("./replay-worker.js", import.meta.url);
   const waiting = new Map();
-  let next = 0;
-  worker.on("message", ({ id, out, error }) => {
-    const w = waiting.get(id);
-    waiting.delete(id);
-    if (error) w.reject(new Error(error));
-    else w.resolve(out);
-  });
+  let worker = null, next = 0, closing = false;
+
+  function spawn() {
+    const w = new Worker(url);
+    w.unref();
+    w.on("message", ({ id, out, error }) => {
+      const job = waiting.get(id);
+      if (!job) return;
+      waiting.delete(id);
+      clearTimeout(job.timer);
+      if (error) job.reject(new Error(error));
+      else job.resolve(out);
+    });
+    w.on("error", (e) => { console.error("replay worker failed:", e.message); });
+    w.on("exit", () => {
+      if (worker !== w) return;
+      for (const job of waiting.values()) { clearTimeout(job.timer); job.reject(new HttpError(503, "replay interrupted")); }
+      waiting.clear();
+      worker = closing ? null : spawn();
+    });
+    return w;
+  }
+  worker = spawn();
+
   return {
-    run: (round, entries, maxTicks) => new Promise((resolve, reject) => {
-      const id = next++;
-      waiting.set(id, { resolve, reject });
-      worker.postMessage({ id, round, entries, maxTicks });
-    }),
-    close: () => worker.terminate(),
+    run(round, entries, maxTicks, ms = timeoutMs) {
+      if (waiting.size >= limit) return Promise.reject(new HttpError(503, "busy"));
+      return new Promise((resolve, reject) => {
+        const id = next++;
+        const timer = setTimeout(() => { worker.terminate(); }, ms);
+        waiting.set(id, { resolve, reject, timer });
+        worker.postMessage({ id, round, entries, maxTicks });
+      });
+    },
+    async close() {
+      closing = true;
+      if (worker) await worker.terminate();
+    },
   };
 }
 
@@ -101,6 +131,9 @@ export async function startRound(client, userId, body, { engine, now }) {
   if (!body || typeof body !== "object" || typeof body.mode !== "string" || typeof body.engine !== "string") throw new HttpError(400, "shape");
   if (body.engine !== engine) return { status: 409, body: { error: "engine", engine } };
   if (!MODE_LIST.includes(body.mode)) throw new HttpError(400, "mode");
+  // a voyage being banked is not abandoned under it: she waits for the bank, then sails again
+  if (finishing.busy(userId)) return { status: 409, body: { error: "busy" } };
+  // the hold is locked before any round, here as in a finish, so the two can never wait on each other
   const { hold } = await lockHold(client, userId, now);
   const at = new Date(now());
   // one voyage at a time: whatever she had open is abandoned and can no longer bank
@@ -122,30 +155,66 @@ export async function addInputs(client, userId, id, body, { now }) {
   return (await append(client, round, body.entries, now)) || { status: 200, body: { nextTick: round.next_tick } };
 }
 
-export async function finishRound(client, userId, id, body, { now, replays }) {
+/** The rounds being finished right now, so each is replayed once at a time and never abandoned mid-bank. */
+export const finishing = {
+  rounds: new Map(), // round id to user id
+  busy(userId) { for (const u of this.rounds.values()) if (u === userId) return true; return false; },
+};
+
+/** How many refused finishes a round may take before it is closed, so a refusal is not free to repeat. */
+export const MAX_REFUSED = 3;
+
+/**
+ * Finish a voyage. The replay runs outside any transaction, holding no connection and no lock, so
+ * a long or a malicious one costs its own captain time and nobody else anything. Only once the
+ * replay has said yes is anything locked: her hold first and then the round, the order every route
+ * takes them in, and the round is checked again to be open and fed no further since it was read.
+ */
+export async function finishRound(pool, userId, id, body, { engine, now, replays }) {
   if (!body || typeof body !== "object" || !Number.isInteger(body.ticks)) throw new HttpError(400, "shape");
   const entries = body.entries === undefined ? [] : body.entries;
-  const { round, closed } = await lockRound(client, userId, id);
-  if (closed) return { status: 409, body: { error: "closed" } };
-  const bad = checkPiece(entries, round.next_tick);
-  if (bad) return bad;
-  const ticks = body.ticks;
-  if (ticks < round.next_tick || ticks > MAX_TICKS) return refuse("tick");
-  if (ticks > reachable(round.started_at, now())) return refuse("pace");
+  if (finishing.rounds.has(id)) return { status: 409, body: { error: "busy" } };
+  finishing.rounds.set(id, userId);
+  try {
+    const { rows } = await pool.query("select * from rounds where id = $1 and user_id = $2", [id, userId]);
+    if (!rows.length) throw new HttpError(404, "no such round");
+    const round = rows[0];
+    if (round.finished_at || round.abandoned_at) return { status: 409, body: { error: "closed" } };
+    if (round.engine !== engine) return { status: 409, body: { error: "engine", engine } };
+    const bad = checkPiece(entries, round.next_tick);
+    if (bad) return bad;
+    const ticks = body.ticks;
+    if (ticks < round.next_tick || ticks > MAX_TICKS) return refuse("tick");
+    if (ticks > reachable(round.started_at, now())) return refuse("pace");
 
-  const { rows } = await client.query("select entries from round_inputs where round_id = $1 order by seq", [round.id]);
-  const log = rows.flatMap((r) => r.entries).concat(entries);
-  const out = await replays.run({ mode: round.mode, seed: Number(round.seed), loadout: round.loadout }, log, ticks);
-  if (!out.over || out.ticks !== ticks || out.unread) return refuse(out.over ? "tick" : "ended");
+    const pieces = await pool.query("select entries from round_inputs where round_id = $1 order by seq", [id]);
+    const log = pieces.rows.flatMap((r) => r.entries).concat(entries);
+    const out = await replays.run({ mode: round.mode, seed: Number(round.seed), loadout: round.loadout }, log, ticks);
 
-  // only now does anything change: the last piece, the hold, the round
-  const failed = await append(client, round, entries, now);
-  if (failed) return failed;
-  const cur = await lockHold(client, userId, now);
-  const banked = bank(cur.hold, out.run);
-  const version = cur.version + 1;
-  await writeHold(client, userId, banked.rec, version, now);
-  await client.query("update rounds set finished_at = $2, ticks = $3, result = $4, banked = $5 where id = $1",
-    [round.id, new Date(now()), ticks, JSON.stringify(out.result), banked.banked]);
-  return { status: 200, body: { hold: banked.rec, version, banked: banked.banked, bounty: banked.bounty, rungs: banked.rungs, result: out.result } };
+    if (!out.over || out.ticks !== ticks || out.unread) {
+      // refused: the one thing that changes is the count, and the third closes the round
+      await pool.query(
+        "update rounds set failed_finishes = failed_finishes + 1, abandoned_at = case when failed_finishes + 1 >= $2 then $3 else abandoned_at end where id = $1",
+        [id, MAX_REFUSED, new Date(now())],
+      );
+      return refuse(out.over ? "tick" : "ended");
+    }
+
+    return await transaction(pool, async (client) => {
+      const cur = await lockHold(client, userId, now);
+      const again = (await client.query("select * from rounds where id = $1 for update", [id])).rows[0];
+      if (again.finished_at || again.abandoned_at) return { status: 409, body: { error: "closed" } };
+      if (again.next_tick !== round.next_tick || again.entry_count !== round.entry_count) return { status: 409, body: { error: "changed" } };
+      const failed = await append(client, again, entries, now);
+      if (failed) return failed;
+      const banked = bank(cur.hold, out.run);
+      const version = cur.version + 1;
+      await writeHold(client, userId, banked.rec, version, now);
+      await client.query("update rounds set finished_at = $2, ticks = $3, result = $4, banked = $5 where id = $1",
+        [id, new Date(now()), ticks, JSON.stringify(out.result), banked.banked]);
+      return { status: 200, body: { hold: banked.rec, version, banked: banked.banked, bounty: banked.bounty, rungs: banked.rungs, result: out.result } };
+    });
+  } finally {
+    finishing.rounds.delete(id);
+  }
 }

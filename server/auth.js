@@ -17,7 +17,20 @@ export function authOptions({ pool, config }) {
     trustedOrigins: config.origins,
     telemetry: { enabled: false },
     plugins: [anonymous()],
+    // a guest is kept 90 days from her last visit, so her session is too, renewed once a day of play;
+    // the default week would hand a returning guest a new, empty account long before her hold went
+    session: { expiresIn: 90 * 24 * 3600, updateAge: 24 * 3600 },
+    // on everywhere, not only in production, and tighter on making guests: an account is one request,
+    // and each brings its own share of everything else the server allows a captain
+    rateLimit: {
+      enabled: true,
+      window: 60,
+      max: 100,
+      customRules: { "/sign-in/anonymous": { window: 60, max: config.guestsPerMinute || 10 } },
+    },
     advanced: {
+      // the address a visitor is counted by: Railway's edge sets X-Real-IP to the client's own
+      ipAddress: { ipAddressHeaders: ["x-real-ip", "x-forwarded-for"] },
       // The game and the server are one site (sternchase.org and api.sternchase.org), so the cookie
       // is set on the game's domain and stays first-party; locally there is no domain to share.
       ...(config.cookieDomain ? { crossSubDomainCookies: { enabled: true, domain: config.cookieDomain } } : {}),

@@ -92,8 +92,10 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   record's `version` as the check, so a stale tab is refused with the record as it stands. A voyage is
   started by the server (its seed, the loadout off its own copy of the hold, sent as the JSON the
   browser builds the world from), fed its input log in pieces no faster than real time, and banked
-  only after the server replays it in a worker and finds it ends where the browser said; one voyage at
-  a time, and a refusal changes nothing. `GET /health` reports the engine's fingerprint
+  only after the server replays it and finds it ends where the browser said. The replay runs in a
+  worker and outside any transaction, holding no connection and no lock, one finish per round at a
+  time; only a replay that says yes locks anything, the hold and then the round, the order every
+  route takes them in. One voyage at a time; a refusal banks nothing, and three close the round. `GET /health` reports the engine's fingerprint
   (`enginehash.js`) and a round for another engine is refused, because a replay under other rules
   would bank what the captain never saw. Document columns are `json`, never `jsonb`, which reorders
   keys. `purge` keeps only what the privacy policy says is kept. `npm run server-test` runs it all

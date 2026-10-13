@@ -32,6 +32,9 @@ import { replayer, startRound, addInputs, finishRound } from "./rounds.js";
 const BUCKET = 60, REFILL = 20;
 
 export async function createApp({ pool, config, now = () => Date.now() }) {
+  // a pooled connection that drops (a database restart, a network blip) is logged and replaced, not
+  // left to throw and take the process with it
+  pool.on("error", (e) => console.error("database connection lost:", e.message));
   const options = authOptions({ pool, config });
   await migrate(pool, options);
   const auth = betterAuth(options);
@@ -89,7 +92,7 @@ export async function createApp({ pool, config, now = () => Date.now() }) {
     const user = await userOf(req);
     const body = await readJson(req);
     if (m[2] === "inputs") return transaction(pool, (c) => addInputs(c, user.id, m[1], body, { now }));
-    return transaction(pool, (c) => finishRound(c, user.id, m[1], body, { now, replays }));
+    return finishRound(pool, user.id, m[1], body, { engine, now, replays });
   }
 
   async function handler(req, res) {

@@ -16,6 +16,9 @@ export class HttpError extends Error {
 
 /** The request's JSON body, or an `HttpError` 400 for one that is not JSON or 413 for one too big. */
 export async function readJson(req) {
+  // JSON only: a body another site's form could send (text/plain, a form encoding) is refused, so a
+  // cross-site POST always needs a preflight, which CORS answers only for the game's own origins
+  if (!/^application\/json\b/i.test(req.headers["content-type"] || "")) throw new HttpError(415, "json only");
   if (Number(req.headers["content-length"]) > BODY_LIMIT) throw new HttpError(413, "too big");
   let size = 0;
   const chunks = [];

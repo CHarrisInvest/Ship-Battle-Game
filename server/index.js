@@ -1,13 +1,12 @@
 /** The game server, as Railway runs it: `npm run server`. */
 
 import { createServer } from "node:http";
-import pg from "pg";
 import { configFromEnv } from "./config.js";
 import { createApp } from "./app.js";
-import { purge } from "./db.js";
+import { purge, makePool } from "./db.js";
 
 const config = configFromEnv();
-const pool = new pg.Pool({ connectionString: config.databaseUrl, max: 10 });
+const pool = makePool(config.databaseUrl);
 const app = await createApp({ pool, config });
 const server = createServer(app.handler);
 server.listen(config.port, () => console.log(`sternchase server on :${config.port}, engine ${app.engine}`));

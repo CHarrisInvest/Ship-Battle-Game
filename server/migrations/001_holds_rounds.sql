@@ -22,6 +22,7 @@ create table rounds (
   started_at timestamptz not null,
   next_tick integer not null default 0,
   entry_count integer not null default 0,
+  failed_finishes integer not null default 0,
   abandoned_at timestamptz,
   finished_at timestamptz,
   ticks integer,
