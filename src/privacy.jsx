@@ -17,6 +17,24 @@ import { analyticsLive, conversionsLive } from "./analytics.js";
 
 export const PRIVACY_UPDATED = "13 October 2026";
 
+// The host this build was made for, set by `vite.config.js`. Each host's build names itself, so the
+// page is true wherever it is served from.
+const HOSTS = {
+  vercel: {
+    name: "Vercel",
+    company: "Vercel",
+    policy: "Vercel Privacy Policy",
+    href: "https://vercel.com/legal/privacy-policy",
+  },
+  pages: {
+    name: "GitHub Pages",
+    company: "GitHub",
+    policy: "GitHub General Privacy Statement",
+    href: "https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement",
+  },
+};
+const HOST = HOSTS[typeof __HOST__ === "string" ? __HOST__ : "pages"] ?? HOSTS.pages;
+
 // Where a player writes about this policy. Empty, the line is left out rather than pointing nowhere.
 export const PRIVACY_CONTACT = "sternchasegame@gmail.com";
 
@@ -160,10 +178,9 @@ export function PrivacyPolicy({ Section, P, linkColor }) {
 
       <Section title="Hosting">
         <P>
-          The site is hosted on GitHub Pages. Like any web host, GitHub receives your IP address when your
-          browser loads the site and may keep it in its logs for security. The game itself never sees it.
-          The <L href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement">GitHub General Privacy Statement</L> says
-          how GitHub handles it.
+          The site is hosted on {HOST.name}. Like any web host, {HOST.company} receives your IP address when
+          your browser loads the site and may keep it in its logs for security. The game itself never sees
+          it. The <L href={HOST.href}>{HOST.policy}</L> says how {HOST.company} handles it.
         </P>
       </Section>
 
