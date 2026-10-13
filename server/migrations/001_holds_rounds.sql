@@ -11,7 +11,7 @@ create table holds (
 );
 
 -- A voyage: started by the server with its own seed and the loadout off its own hold, fed its
--- input log in pieces, and finished once, by a replay.
+-- input log in pieces, and finished once, by a replay, or abandoned when the captain starts another.
 create table rounds (
   id text primary key,
   user_id text not null references "user"(id) on delete cascade,
@@ -20,11 +20,21 @@ create table rounds (
   loadout json not null,
   engine text not null,
   started_at timestamptz not null,
-  finished_at timestamptz,
-  inputs json not null default '[]',
   next_tick integer not null default 0,
+  entry_count integer not null default 0,
+  abandoned_at timestamptz,
+  finished_at timestamptz,
   ticks integer,
   result json,
   banked integer
 );
 create index rounds_user on rounds (user_id, started_at);
+
+-- A round's input log, a row per piece as it arrives, so a long round is appended to rather than
+-- rewritten whole every few seconds.
+create table round_inputs (
+  round_id text not null references rounds(id) on delete cascade,
+  seq integer not null,
+  entries json not null,
+  primary key (round_id, seq)
+);

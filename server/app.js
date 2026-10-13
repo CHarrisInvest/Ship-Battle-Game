@@ -10,7 +10,9 @@
  *   GET  /hold                   the captain's hold and its version
  *   POST /hold/actions           one shop action, `{ action, args, version }`
  *
- * and the round routes `rounds.js` adds.
+ *   POST /rounds                 start a voyage
+ *   POST /rounds/:id/inputs      a piece of its input log
+ *   POST /rounds/:id/finish      the last piece; the server replays it and banks what it finds
  */
 
 import { toNodeHandler, fromNodeHeaders } from "better-auth/node";
@@ -20,6 +22,7 @@ import { migrate, transaction } from "./db.js";
 import { cors, send, readJson, HttpError } from "./http.js";
 import { lockHold, parseAction, act } from "./hold.js";
 import { engineHash } from "./enginehash.js";
+import { replayer, startRound, addInputs, finishRound } from "./rounds.js";
 
 export async function createApp({ pool, config, now = () => Date.now() }) {
   const options = authOptions({ pool, config });
@@ -27,6 +30,7 @@ export async function createApp({ pool, config, now = () => Date.now() }) {
   const auth = betterAuth(options);
   const authHandler = toNodeHandler(auth);
   const engine = engineHash();
+  const replays = replayer();
 
   async function userOf(req) {
     const s = await auth.api.getSession({ headers: fromNodeHeaders(req.headers) });
@@ -46,7 +50,22 @@ export async function createApp({ pool, config, now = () => Date.now() }) {
       const body = parseAction(await readJson(req));
       return transaction(pool, (c) => act(c, user.id, body, now));
     },
+    "POST /rounds": async (req) => {
+      const user = await userOf(req);
+      const body = await readJson(req);
+      return transaction(pool, (c) => startRound(c, user.id, body, { engine, now }));
+    },
   };
+  // the routes with a round's id in them
+  const ROUND = /^\/rounds\/([0-9a-f-]{36})\/(inputs|finish)$/;
+  async function roundRoute(req, path) {
+    const m = ROUND.exec(path);
+    if (!m || req.method !== "POST") return null;
+    const user = await userOf(req);
+    const body = await readJson(req);
+    if (m[2] === "inputs") return transaction(pool, (c) => addInputs(c, user.id, m[1], body, { now }));
+    return transaction(pool, (c) => finishRound(c, user.id, m[1], body, { now, replays }));
+  }
 
   async function handler(req, res) {
     try {
@@ -54,8 +73,8 @@ export async function createApp({ pool, config, now = () => Date.now() }) {
       const path = new URL(req.url, "http://x").pathname;
       if (path === "/auth" || path.startsWith("/auth/")) return await authHandler(req, res);
       const route = routes[`${req.method} ${path}`];
-      if (!route) return send(res, 404, { error: "not found" });
-      const out = await route(req, path);
+      const out = route ? await route(req, path) : await roundRoute(req, path);
+      if (!out) return send(res, 404, { error: "not found" });
       send(res, out.status, out.body);
     } catch (e) {
       if (e instanceof HttpError) {
@@ -67,5 +86,5 @@ export async function createApp({ pool, config, now = () => Date.now() }) {
     }
   }
 
-  return { handler, auth, engine, close: async () => {} };
+  return { handler, auth, engine, close: async () => { await replays.close(); } };
 }

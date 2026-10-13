@@ -22,6 +22,8 @@ import { testDatabase } from "./testdb.mjs";
 import { createApp } from "./app.js";
 import { PARTS } from "../src/shipyard.js";
 import * as R from "../src/holdrules.js";
+import { createWorld, step, voyageRun, NO_INPUT } from "../src/sim/index.js";
+import { idle, wander } from "../tools/rounds.js";
 
 const failures = [];
 const fail = (what) => { failures.push(what); console.log("  FAIL  " + what); };
@@ -149,7 +151,120 @@ try {
     check(!evil.headers.get("access-control-allow-origin"), "and one from anywhere else gets no CORS headers");
   }
 
-  // ROUNDS
+  // ---- voyages -------------------------------------------------------------------------------------
+
+  /**
+   * Sail a round here, as the browser will: the world built from what the server sent, the input in
+   * force at each step logged only when it changes, against the tick it was read at.
+   */
+  function sail(start, hands) {
+    const world = createWorld({ mode: start.mode, seed: start.seed, players: [{ id: "p1", loadout: start.loadout }] });
+    const entries = [];
+    let last = "";
+    while (!world.result.over && world.tick < 216000) {
+      const input = hands(world.tick);
+      const key = json(input);
+      if (key !== last) { entries.push([world.tick, input]); last = key; }
+      step(world, { p1: input });
+    }
+    return { entries, ticks: world.tick, run: voyageRun(world, "p1"), over: world.result.over };
+  }
+  const engine = (await captain()("GET", "/health")).data.engine;
+  /** Move the test's clock to where it would be once `tick` had really been sailed, plus a margin. */
+  const sailedTo = (startedAt, tick) => { clock.t = startedAt + Math.ceil((tick / 60) * 1000) + 200; };
+  /** Post a log in pieces of `size` entries, keeping the clock at real speed. */
+  async function upload(ask, start, entries, size = 400) {
+    for (let i = 0; i < entries.length; i += size) {
+      const piece = entries.slice(i, i + size);
+      sailedTo(start.startedAt, piece[piece.length - 1][0]);
+      const r = await ask("POST", `/rounds/${start.roundId}/inputs`, { entries: piece });
+      if (r.status !== 200) return r;
+    }
+    return { status: 200 };
+  }
+  async function begin(ask, mode) {
+    const r = await ask("POST", "/rounds", { mode, engine });
+    if (r.status !== 200) throw new Error(`could not start a round: ${r.status} ${json(r.data)}`);
+    return { ...r.data, startedAt: clock.t };
+  }
+
+  const c = await guest();
+  {
+    const wrong = await c("POST", "/rounds", { mode: "ffa", engine: "0000000000000000" });
+    check(wrong.status === 409 && wrong.data.engine === engine, "a round for another engine is refused, and told which engine to load");
+    const bad = await c("POST", "/rounds", { mode: "tea party", engine });
+    check(bad.status === 400, "a mode that does not exist is refused");
+  }
+
+  {
+    const before = (await c("GET", "/hold")).data;
+    const start = await begin(c, "ffa");
+    check(Number.isInteger(start.seed) && start.seed >= 0 && json(start.loadout) === json(JSON.parse(json(R.shipLoadout(before.hold)))),
+      "a round starts with the server's seed and the loadout off her own hold");
+    const voyage = sail(start, wander);
+    const tail = voyage.entries.slice(-3);
+    const up = await upload(c, start, voyage.entries.slice(0, -3));
+    check(up.status === 200, `the log goes up in pieces at real speed (${voyage.entries.length} entries, ${voyage.ticks} ticks)`);
+    sailedTo(start.startedAt, voyage.ticks);
+    const done = await c("POST", `/rounds/${start.roundId}/finish`, { ticks: voyage.ticks, entries: tail });
+    const want = R.bank(before.hold, voyage.run);
+    check(done.status === 200 && done.data.banked === want.banked && done.data.bounty === want.bounty
+      && json(done.data.hold) === json(want.rec) && done.data.version === before.version + 1,
+      `the server banks what its own replay says (${done.data && done.data.banked} coins, ${done.data && done.data.bounty} in bounties)`);
+    const again = await c("POST", `/rounds/${start.roundId}/finish`, { ticks: voyage.ticks, entries: [] });
+    check(again.status === 409, "a round is finished once");
+    const d = await guest();
+    const theirs = await d("POST", `/rounds/${start.roundId}/inputs`, { entries: [] });
+    check(theirs.status === 404, "nobody else can feed a captain's round");
+  }
+
+  {
+    const start = await begin(c, "ffa");
+    const voyage = sail(start, idle);
+    const fast = await c("POST", `/rounds/${start.roundId}/inputs`, { entries: [[0, NO_INPUT], [6000, { ...NO_INPUT, joyMag: 1 }]] });
+    check(fast.status === 422 && fast.data.error === "pace", `a log further on than real time allows is refused (pace) [${fast.status} ${json(fast.data)}]`);
+    sailedTo(start.startedAt, voyage.ticks);
+    const wrongEnd = await c("POST", `/rounds/${start.roundId}/finish`, { ticks: voyage.ticks + 1, entries: voyage.entries });
+    check(wrongEnd.status === 422 && wrongEnd.data.error === "tick", "a finish that claims another end tick is refused (tick)");
+    const right = await c("POST", `/rounds/${start.roundId}/finish`, { ticks: voyage.ticks, entries: voyage.entries });
+    check(right.status === 200, "and a refusal changed nothing: the true finish still banks");
+  }
+
+  {
+    const start = await begin(c, "ffa");
+    const order = await c("POST", `/rounds/${start.roundId}/inputs`, { entries: [[5, NO_INPUT], [3, NO_INPUT]] });
+    check(order.status === 422 && order.data.error === "order", "entries out of order are refused (order)");
+    const input = await c("POST", `/rounds/${start.roundId}/inputs`, { entries: [[0, { ...NO_INPUT, joyMag: 2 }]] });
+    check(input.status === 422 && input.data.error === "input", "an input the controls could not make is refused (input)");
+    const shape = await c("POST", `/rounds/${start.roundId}/inputs`, { entries: "lots" });
+    check(shape.status === 400, "entries that are not a list are 400");
+    const later = await begin(c, "ffa");
+    const stale = await c("POST", `/rounds/${start.roundId}/finish`, { ticks: 10, entries: [] });
+    check(stale.status === 409, "starting a new voyage abandons the last: one voyage at a time");
+    void later;
+  }
+
+  {
+    // a replay runs off the request loop: the server keeps answering while a long one runs
+    const start = await begin(c, "ffa");
+    const voyage = sail(start, idle);
+    await upload(c, start, voyage.entries);
+    sailedTo(start.startedAt, voyage.ticks);
+    let finishing = true, worst = 0, polls = 0;
+    const t0 = Date.now();
+    const finished = c("POST", `/rounds/${start.roundId}/finish`, { ticks: voyage.ticks, entries: [] }).finally(() => { finishing = false; });
+    while (finishing) {
+      const s = Date.now();
+      await captain()("GET", "/health");
+      worst = Math.max(worst, Date.now() - s);
+      polls++;
+    }
+    const took = Date.now() - t0;
+    const out = await finished;
+    check(out.status === 200 && polls > 3 && worst < took / 2,
+      `the server answers during a replay (${voyage.ticks} ticks took ${took} ms; /health at worst ${worst} ms over ${polls} calls)`);
+  }
+
 } catch (e) {
   fail(`the test itself broke: ${e.stack || e.message}`);
 } finally {
