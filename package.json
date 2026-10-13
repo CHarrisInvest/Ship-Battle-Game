@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "catalogue": "node tools/catalogue.mjs",
     "smoke": "node tools/smoke.mjs",
+    "online-smoke": "node tools/online-smoke.mjs",
     "purity": "node tools/purity.mjs",
     "sim-test": "node tools/sim-test.mjs && node tools/captains-test.mjs",
     "exact-test": "node tools/exact-test.mjs",

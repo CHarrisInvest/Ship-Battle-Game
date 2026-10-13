@@ -444,6 +444,8 @@ export default function App() {
           if (behind > 9) want = Math.max(want, behind - 6);
           want = Math.min(want, behind, 30);
           for (const e of net.advance(want)) events.push(e);
+          // never expected (the engine steps to the same bits everywhere), but said if it happens
+          if (net.state.round.desynced && !window.__sternchaseDesync) { window.__sternchaseDesync = true; console.warn("this round has parted company with the server's"); }
           bank = Math.min(Math.max(0, bank - want * TICK), 3 * TICK);
         } else {
           let steps = 0;
@@ -3441,7 +3443,10 @@ function LobbyScreen({ net, note, onMake, onJoin, onRivals, onStart, onLeave, on
   };
   const small = { fontSize: 12, color: "rgba(238,244,242,0.78)", lineHeight: 1.6, textAlign: "left" };
   const field = { flex: 1, minWidth: 0, fontFamily: UI, fontSize: 16, letterSpacing: 2, textTransform: "uppercase", color: C.ink, background: "rgba(8,38,37,0.9)", border: `1px solid ${C.hair}`, borderRadius: 10, padding: "10px 12px" };
+  // the sea takes 11 ships, so the AI the host can ask for shrinks as captains join; what is shown
+  // and what Fewer and More count from is that, not the figure stored before they did
   const most = Math.max(0, 10 - (lobby ? lobby.captains.length - 1 : 0));
+  const shown = lobby ? Math.min(lobby.rivals, most) : 0;
   return (
     <Shell>
       <BackLink label="Back to the menu" onClick={onBack} />
@@ -3492,9 +3497,9 @@ function LobbyScreen({ net, note, onMake, onJoin, onRivals, onStart, onLeave, on
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
               <div style={small}>{host ? "How many AI ships sail besides you and your friends." : "The host chooses how many AI ships sail."}</div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                {host && <StartButton ghost label="Fewer" onClick={() => onRivals(Math.max(0, lobby.rivals - 1))} />}
-                <span style={{ fontSize: 18, fontWeight: 800, color: C.gold, minWidth: 24, textAlign: "center" }}>{Math.min(lobby.rivals, most)}</span>
-                {host && <StartButton ghost label="More" onClick={() => onRivals(Math.min(most, lobby.rivals + 1))} />}
+                {host && <StartButton ghost label="Fewer" onClick={() => onRivals(Math.max(0, shown - 1))} />}
+                <span style={{ fontSize: 18, fontWeight: 800, color: C.gold, minWidth: 24, textAlign: "center" }}>{shown}</span>
+                {host && <StartButton ghost label="More" onClick={() => onRivals(Math.min(most, shown + 1))} />}
               </div>
             </div>
           </Slab>
