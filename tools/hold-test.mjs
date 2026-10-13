@@ -135,6 +135,40 @@ const act = (rec, name, ...args) => R.applyAction(rec, name, args);
   check(!threw && !dirty, `every action takes junk without throwing or leaving a bad record (${applied} of them still did something legal)`);
 }
 
+// Junk beside real ids: a real ship, socket and part in some places and junk in the rest, which is
+// what a crafted request looks like. Every action, every position: no throw, and whatever comes back
+// can be written down (a record JSON cannot hold would fail the server's write) and reads back.
+{
+  const base = act(act(rich(), "buyShip", "sloop").rec, "buyPart", "gun3").rec;
+  const ship = base.yard.active;
+  const socket = Object.keys(base.yard.ships[ship].rig)[0];
+  const slot = base.yard.ships[ship].rig[socket];
+  const REAL = [ship, socket, 0, slot.mast, slot.sails[0], base.yard.ships[ship].guns.broadside[0], "broadside", null];
+  const JUNK = [undefined, null, "__proto__", "constructor", "toString", "", 1, -1, 1.5, 1e9, 2 ** 53, NaN, [], {}, "bow", "swivel"];
+  let threw = 0, broken = 0, tried = 0;
+  for (const name of Object.keys(R.ACTIONS)) {
+    for (let width = 1; width <= 4; width++) {
+      for (let at = 0; at < width; at++) {
+        for (const real of REAL) {
+          for (const junk of JUNK) {
+            const args = Array.from({ length: width }, (_, i) => (i === at ? junk : i === 0 ? ship : real));
+            tried++;
+            let out;
+            try { out = R.applyAction(base, name, args); } catch (e) { threw++; if (threw < 4) fail(`${name}(${String(args)}) threw: ${e.message}`); continue; }
+            if (!out) continue;
+            let text;
+            try { text = json(out.rec); } catch (e) { broken++; if (broken < 4) fail(`${name}(${String(args)}) built a record JSON cannot hold: ${e.message}`); continue; }
+            if (text.length > 1e6 || json(R.sanitize(JSON.parse(text))) !== json(R.sanitize(R.sanitize(JSON.parse(text))))) {
+              broken++; if (broken < 4) fail(`${name}(${String(args)}) built a record that does not read back`);
+            }
+          }
+        }
+      }
+    }
+  }
+  check(!threw && !broken, `real ids beside junk never throw or build a bad record (${tried} calls)`);
+}
+
 // Purity: no action edits the record it was handed.
 {
   const base = act(act(rich(), "buyShip", "sloop").rec, "buyPart", "gun3").rec;

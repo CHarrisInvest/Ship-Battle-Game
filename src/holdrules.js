@@ -493,6 +493,9 @@ function withYard(rec, yard, cost = 0) {
   return { ...rec, coins: rec.coins - price, spent: rec.spent + price, yard };
 }
 
+/** The three places a gun is mounted, and the only keys `guns` on a hull or a ship has. */
+const MOUNTS = ["broadside", "bow", "swivel"];
+
 /** `{ rec }` for a record, `null` for a refusal: the shape every action returns. */
 const done = (rec) => (rec ? { rec } : null);
 
@@ -933,6 +936,7 @@ function fitStud(rec, shipId, socketId, berth, partId) {
   if (!Number.isInteger(berth) || berth < 0 || (partId !== null && partId !== undefined && typeof partId !== "string")) return null;
   if (!slot || !slot.mast) return null;
   const mast = partOf(rec, slot.mast);
+  if (!mast.berths[berth]) return null; // a berth the mast does not have, as fitSail refuses it
   const host = slot.sails[berth] ? partOf(rec, slot.sails[berth]) : null;
   const yard = cloneYard(rec.yard);
   if (partId) {
@@ -959,7 +963,7 @@ function fitGun(rec, shipId, mount, partId) {
   const ship = own(rec.yard.ships, shipId);
   const hull = ship && HULLS[ship.hull];
   const gun = partOf(rec, partId);
-  if (!hull || !gun || gun.mount !== mount) return null;
+  if (!hull || !gun || gun.part !== "gun" || !MOUNTS.includes(mount) || gun.mount !== mount) return null;
   const yard = cloneYard(rec.yard);
   const her = yard.ships[shipId];
   pull(her, partId);
