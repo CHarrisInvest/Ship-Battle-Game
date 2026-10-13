@@ -55,18 +55,17 @@ test uses.
 
 ## Deploying
 
-Pushing to `main` builds the site and publishes it to GitHub Pages via
-`.github/workflows/deploy.yml`:
+The site is hosted on Vercel. The Vercel project is connected to this repository, so pushing to
+`main` deploys to production and every pull request gets a preview deployment. `vercel.json` makes
+each deploy run the purity check and the headless round tests before the build, so a broken
+engine never ships. `vercel --prod` from the CLI deploys by hand if it is ever wanted.
 
-<https://sternchase.org/>
-
-This requires Pages to be set to the **GitHub Actions** source once, under
-Settings → Pages. The custom domain is set on the same page rather than by a `CNAME` file, which
-an Actions deploy does not read.
+`.github/workflows/ci.yml` runs the same three checks on every push and pull request, and
+publishes nothing.
 
 The site is served from the domain root, so `vite.config.js` builds with `base: "/"`. Deploying
 somewhere that serves it from a subpath needs that path set at build time, for example
-`BASE_PATH=/Ship-Battle-Game/ npm run build` for the old project URL.
+`BASE_PATH=/Ship-Battle-Game/ npm run build`.
 
 ## Modes
 
