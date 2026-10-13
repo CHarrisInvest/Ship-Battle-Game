@@ -13,6 +13,8 @@
     "sim-test": "node tools/sim-test.mjs && node tools/captains-test.mjs",
     "exact-test": "node tools/exact-test.mjs",
     "hold-test": "node tools/hold-test.mjs",
+    "server": "node server/index.js",
+    "server-test": "node server/test.mjs",
     "determinism": "node tools/determinism.mjs",
     "inputlog": "node tools/inputlog.mjs",
     "icon": "node tools/icon.mjs",
@@ -22,6 +24,8 @@
     "workbook:read": "node tools/workbook.mjs --read"
   },
   "dependencies": {
+    "better-auth": "^1.7.7",
+    "pg": "^8.23.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
