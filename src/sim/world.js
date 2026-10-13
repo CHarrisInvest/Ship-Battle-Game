@@ -5,7 +5,7 @@
 
 import { STARTER, ladder, measure, peers, rate, rateOf, stockOfHull, stockOfRate } from "../shipyard.js";
 import { random, seedOf } from "./rng.js";
-import { WORLD, ARENA_SPAWN_CLEAR, ARENA_SPAWN_GAP, STORM_R0 } from "./tables.js";
+import { WORLD, ARENA_SPAWN_CLEAR, ARENA_SPAWN_GAP, STORM_R0, HUMAN_SPAWN_GAP } from "./tables.js";
 import { hunterOf, modeOf } from "./modes.js";
 import { isHuman, humanRange, makeShip } from "./ships.js";
 import { computeMeta } from "./round.js";
@@ -14,15 +14,17 @@ import { computeMeta } from "./round.js";
  * A FRESH ROUND: the sea, its islands, each captain's ship and the rivals her mode opens with.
  *
  * `players` lists the humans aboard, each with the loadout she sails, as `[{ id: "p1", loadout }]`.
- * A round has one today; it is a list so a second can come aboard without the call changing. The
- * field is matched against the first. `seed` decides everything else that is left to chance, so
- * the same seed and the same players give the same round.
+ * One captain opens in the middle of the sea with her bow to the north, as the game always began.
+ * Several are scattered across it once the islands are down, as far apart as the sea allows.
+ * `rivals`, when given, is how many AI ships sail besides them, in place of the mode's own count:
+ * it is the host's setting in an online lobby. `seed` decides everything else that is left to
+ * chance, so the same seed and the same players give the same round.
  *
  * The world is plain data, with no functions in it and nothing from the page, so a copy of it is a
  * copy of the round. What the engine looks up rather than carries, the rules a mode's row names and
  * a class's hull, comes out of tables that never change.
  */
-export function createWorld({ mode, seed, players }) {
+export function createWorld({ mode, seed, players, rivals }) {
   const rules = modeOf(mode);
   const world = {
     mode, rules,
@@ -35,21 +37,34 @@ export function createWorld({ mode, seed, players }) {
     events: [], // what happened during the step under way, handed back by `step`
     nextId: 0,
     banked: false, // set by whoever banks the voyage, so it is banked once
+    out: [], // each captain already placed, in the order they went under
     result: { over: false, winners: [], losers: [], field: 0 }, // how the round ended, once it has
   };
-  // The field is matched against the first captain's ship: who she meets, and on the ladder which
-  // rung is next.
-  world.playerLoadout = players[0].loadout;
+  // The field is matched against one captain's ship: who she meets, and on the ladder which rung
+  // is next. With one aboard it is hers; with several it is whichever of them is most typical.
+  const field = fieldCaptain(rules, players);
+  world.playerLoadout = field.loadout;
   world.playerStrength = measure(rate(world.playerLoadout));
-  // Each captain's own ship, in the middle of the sea with her bow to the north. A second would lie
-  // a little way off the first.
-  players.forEach((pl, i) => {
-    const ship = makeShip(world, WORLD / 2 + i * 90, WORLD / 2, -Math.PI / 2, { playerId: pl.id, loadout: pl.loadout });
+  const board = (pl, x, y, heading) => {
+    const ship = makeShip(world, x, y, heading, { playerId: pl.id, loadout: pl.loadout });
     world.players[pl.id] = ship.id;
     world.ships.push(ship);
-  });
-  genIslands(world);
-  for (let i = 0; i < rules.rivals; i++) {
+  };
+  if (players.length === 1) {
+    // her own ship, in the middle of the sea with her bow to the north, before the islands are
+    // planted, which is the order the dice have always been thrown in for a single captain
+    board(players[0], WORLD / 2, WORLD / 2, -Math.PI / 2);
+    genIslands(world);
+  } else {
+    // islands first, so nobody is dropped on one, then each captain in the clearest water left
+    genIslands(world);
+    for (const pl of players) {
+      const pos = spawnPos(world, HUMAN_SPAWN_GAP);
+      board(pl, pos.x, pos.y, random(world) * Math.PI * 2);
+    }
+  }
+  const count = rivals ?? rules.rivals;
+  for (let i = 0; i < count; i++) {
     // where a mode replaces its losses, rivals sail in from the horizon the same way the
     // reinforcements will; where the field is fixed, they are scattered across the whole sea
     if (rules.reinforcements) world.ships.push(spawnArenaEnemy(world));
@@ -78,6 +93,39 @@ export function farPos(world, minFromPlayer) {
     tries++;
   } while (!ok && tries < 40);
   return { x, y };
+}
+
+/**
+ * Where a captain is dropped when a round has several: clear of the islands and at least `gap`
+ * from every captain already aboard. A crowded sea may have no such place, and then she gets the
+ * water furthest from anyone that the search turned up, never the last place it happened to try.
+ */
+export function spawnPos(world, gap) {
+  let best = null, bestD = -1;
+  for (let t = 0; t < 80; t++) {
+    const x = 180 + random(world) * (WORLD - 360);
+    const y = 180 + random(world) * (WORLD - 360);
+    if (world.islands.some((isl) => Math.hypot(x - isl.x, y - isl.y) < isl.r + 55)) continue;
+    const d = humanRange(world, x, y);
+    if (d >= gap) return { x, y };
+    if (d > bestD) { bestD = d; best = { x, y }; }
+  }
+  return best || { x: WORLD / 2, y: WORLD / 2 };
+}
+
+/**
+ * The captain the AI are matched against. With one aboard it is her. With several it is the one
+ * whose ship measures nearest the lobby's average, on the scale the mode fights on, so the field
+ * suits the lobby rather than whoever joined first, and is still matched to a real class.
+ */
+export function fieldCaptain(rules, players) {
+  if (players.length === 1) return players[0];
+  const key = rules.guns ? "overall" : "ram";
+  const m = players.map((pl) => measure(rate(pl.loadout))[key]);
+  const avg = m.reduce((a, b) => a + b, 0) / m.length;
+  let best = 0;
+  for (let i = 1; i < m.length; i++) if (Math.abs(m[i] - avg) < Math.abs(m[best] - avg)) best = i;
+  return players[best];
 }
 
 // The middle of the sea is left open, and a mode with weather has it left open out to the whole

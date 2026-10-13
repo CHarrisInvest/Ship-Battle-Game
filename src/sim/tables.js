@@ -9,6 +9,10 @@
  */
 
 export const WORLD = 2000;
+// How far apart captains are dropped when a round has more than one of them: about a quarter of
+// the sea, so nobody opens the round inside another captain's broadside. A full lobby may not fit
+// at this gap, and then each takes the clearest water left.
+export const HUMAN_SPAWN_GAP = 450;
 export const FFA_AI = 10;
 
 // THE ARENAS: two modes that replace what she sinks from the horizon, and differ in what they send.
