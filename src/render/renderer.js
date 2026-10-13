@@ -705,7 +705,7 @@ export function createRenderer(canvas) {
         // moment it lands under a pixel, where a shape narrowing to a point keeps its weight at
         // the ball and simply runs out. Two wedges, a long faint one and a short bright one,
         // give it a falling-off without a gradient per ball per frame.
-        const dr = b.r * (b.draw ?? SHOT_DRAW); // what it looks like, which is not always what it bites
+        const dr = b.r * (WP[b.kind].draw ?? SHOT_DRAW); // what it looks like, which is not always what it bites
         const tail = 0.06; // seconds of her flight lie behind her
         const px = -b.vx * tail, py = -b.vy * tail * TILT; // astern, in screen terms
         const nx = -py, ny = px; // across the trail, to give the wedge its width at the ball

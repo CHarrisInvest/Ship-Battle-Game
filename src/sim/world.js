@@ -179,7 +179,7 @@ const nearestRung = (rungs, key, want) =>
 
 export function maintain(world, dt) {
   if (!world.rules.reinforcements) return;
-  // nothing left to send: the ladder is climbed, and `judge` ends the round on this frame
+  // nothing left to send: the ladder is climbed, and `judge` ends the round on this step
   if (!hunterOf(world.rules, world.playerStrength, world.sunk)) return;
   world.spawnT -= dt;
   const enemies = world.ships.filter((s) => !isHuman(s)).length;

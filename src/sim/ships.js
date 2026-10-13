@@ -11,10 +11,6 @@ import { WORLD } from "./tables.js";
 import { repair } from "./repairs.js";
 import { canFire, fire, reloadOf } from "./weapons.js";
 
-// A ship's length, beam and collision ellipse are her own now, set per class by `hullform.js` and
-// carried on the ship as `hullA` and `hullB` (semi-length and semi-beam). The galleon anchors the
-// scale at the 36 by 13 every hull at sea used to share.
-
 // A hull with way on her does not answer her rudder as she does at a crawl. The loss is weighted to
 // the top of the range: handling in and out of a fight is left where it was, and only a ship running
 // flat out finds she cannot turn inside her own wake. It keys off the way she actually carries rather
@@ -57,8 +53,8 @@ export const humanRange = (world, x, y) =>
   world.ships.reduce((d, s) => (isHuman(s) && s.alive ? Math.min(d, Math.hypot(x - s.x, y - s.y)) : d), 1e9);
 
 export function makeShip(world, x, y, heading, opts) {
-  // She sails as what she was built: her loadout comes in from the hold if she is the player's,
-  // and from the stock fleet if she is not. `rate()` is asked once, here, because nothing about
+  // She sails as what she was built: her loadout comes aboard with her captain if she is a
+  // player's, and from the stock fleet if she is not. `rate()` is asked once, here, because nothing about
   // a ship changes at sea except her damage.
   const loadout = opts.loadout || STOCK_LOADOUT;
   const rating = rate(loadout);
@@ -68,7 +64,9 @@ export function makeShip(world, x, y, heading, opts) {
   const measured = measure(rating);
   const strength = !world.rules.guns ? measured.ram : measured.overall;
   // Her hull's own size, from the class's form: what she draws as, and also what she collides
-  // as, because a first rate really is a bigger target than a yawl.
+  // as, because a first rate really is a bigger target than a yawl. It is carried as `hullA` and
+  // `hullB`, her semi-length and semi-beam; the galleon anchors the scale at the 36 by 13 every
+  // hull at sea used to share.
   const sea = hullForm(loadout.hull.id).sea;
   const s = {
     // who she is, for the events that name her, and which colours she flies, which every

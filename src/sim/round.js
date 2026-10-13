@@ -43,11 +43,11 @@ export function voyageStats(world, playerId) {
 }
 
 /**
- * THE ROUND ENDS ONCE, HERE, at the end of the frame. Hits and the weather only mark ships dead;
- * nothing inside a hit handler ends the round, because a frame is not over when a hull goes
+ * THE ROUND ENDS ONCE, HERE, at the end of the step. Hits and the weather only mark ships dead;
+ * nothing inside a hit handler ends the round, because a step is not over when a hull goes
  * under. A rival's ball already in the air can still find the player after her last rival sank,
  * and the storm can take the last two crews on one tick, and each of those used to raise both
- * ends at once: a win banked, then a sinking painted over it. So the frame plays out and one
+ * ends at once: a win banked, then a sinking painted over it. So the step plays out and one
  * question is asked of what it left. A sinking outranks a win: if she is not afloat she was not
  * the last afloat, whatever else went down beside her.
  */
@@ -104,7 +104,7 @@ export function killShip(world, s, attacker, cause, standing = !!(attacker && at
     }
   }
   world.events.push({ type: "sunk", shipId: s.id, by: attacker ? attacker.id : null, cause: s._deathBar, x: s.x, y: s.y });
-  // she is marked and left where she lies; `judge` reads the frame when it is over
+  // she is marked and left where she lies; `judge` reads the step when it is over
   if (isHuman(s)) { s.alive = false; return; }
   const i = world.ships.indexOf(s);
   if (i >= 0) world.ships.splice(i, 1);

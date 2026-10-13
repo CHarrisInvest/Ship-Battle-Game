@@ -120,6 +120,14 @@ export function fxEvents(fx, events) {
   for (const e of events) {
     if (e.type === "fired") {
       if (e.weapon === "broadside") {
+        // Her smoke stands at the rail she fired over, not on her keel, or the bank comes up
+        // through the middle of the deck. A rolling broadside spends a second putting its smoke
+        // out, so the first guns' has begun to thin before the last has fired, and a bank has to
+        // be built to last that long or she looks as though she is firing blanks. One puff to a
+        // gun and a bigger, longer-standing one, rather than two apiece: a fleet of first rates in
+        // company is eleven hundred guns a volley, and the same bank drawn in half the pieces held
+        // sixty frames a second where two apiece did not.
+        //
         // The bank stands just OUTSIDE the rail, and each puff is small enough that fifty of them
         // make a band down her side rather than one cloud sitting on her. A puff as wide as she is
         // long is a ship in a fog bank: her hull, her flashes and the first few paces of her shot

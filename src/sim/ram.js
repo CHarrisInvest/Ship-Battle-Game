@@ -185,11 +185,11 @@ export function stepRam(world, dt) {
   }
 }
 
-// What each ship actually did with the frame, measured once the hulls have been pushed out of one
+// What each ship actually did with the step, measured once the hulls have been pushed out of one
 // another: her velocity over the ground, and how much of it carried her bow forward. A hull that
 // could not go forward — jammed against another, shouldered off an island, pinned on the boundary,
 // or thrown back by a blow — loses her way to match, and has to gather it again like anyone else.
-// Next frame's ram is resolved from these.
+// The next step's ram is resolved from these.
 //
 // It is her plain velocity along her heading, with nothing taken back out of it for the shoving.
 // An earlier turn of this subtracted the knock, meaning to leave only what she made under her own

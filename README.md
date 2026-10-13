@@ -1,7 +1,9 @@
 # Sternchase: Helm & Hull
 
 Pirate ship combat on a tilted (isometric-ish) sea, rendered to a single HTML canvas from React.
-`src/SternchaseIso.jsx` is the whole game and serves as the base for further development.
+The round itself is played by a plain JavaScript engine in `src/sim/`, which runs the same in a
+browser and in Node; `src/SternchaseIso.jsx` is the screen around it, and `docs/ENGINE.md` says how
+the two meet.
 
 The repository is still called `Ship-Battle-Game`; the game is served at <https://sternchase.org/>.
 "Broadside" appears throughout as the name of the side guns; that is the weapon,
@@ -21,8 +23,15 @@ npm run preview  # serve the built bundle
 
 ```bash
 npm run catalogue  # check the fleet is riggable and drawable, and print it
+npm run purity     # check the engine imports and touches nothing it must not; a second
+npm run sim-test   # play every mode to its end in plain Node, twice from each seed; seconds
 npm run smoke      # play every mode headless to its end screen; about four minutes
 ```
+
+`npm run sim-test` is the engine on its own, with no browser at all. It fails on a round that never
+ends, a ship whose position or bars stop being numbers, a round that ends differently the second
+time it is sailed from the same seed with the same inputs, or a repair that charges for something
+other than what it puts back. The deploy runs it and the purity check before every build.
 
 The smoke test needs a Chromium: `npx playwright install chromium` fetches one, or set `SMOKE_CHROME`
 to an executable. It fails on a screen that throws, a mode that never ends, an end screen whose
@@ -509,12 +518,16 @@ Ships track three separate pools instead of one health bar:
 index.html            # Vite entry
 src/main.jsx          # React root
 src/index.css         # full-bleed, no-scroll page shell
-src/SternchaseIso.jsx  # game: simulation, canvas renderer, and UI
+src/SternchaseIso.jsx  # the screen: menus, shipyard screens, HUD, end screen, and the frame loop
+src/sim/              # the engine: world, step, ships, guns, rams, AI, weather, modes, the round's end
+src/render/           # the canvas: camera, sea, islands, hulls, shot, smoke, radar, interpolation
+src/input/            # the joystick and fire buttons, as the input record the engine reads
 src/galleon.js        # the ship turning on the menu
 src/hold.js           # coins, records and the yard, all outliving a round
 src/achievements.js   # what a captain has done, worked out from the hold
 src/shipyard.js       # what a captain can buy, and what it makes of her ship
 docs/SHIPYARD.md      # design note for the shipyard groundwork
+docs/ENGINE.md        # design note for the engine and how the screen drives it
 vite.config.js
 ```
 
@@ -529,12 +542,13 @@ cached, so changing ships costs one build and every frame after it costs
 nothing.
 
 The game has no dependencies beyond React — all rendering is hand-rolled canvas drawing and all UI is
-inline-styled, so `SternchaseIso.jsx` can be dropped into any React app as-is.
+inline-styled, and the engine needs nothing at all, not even React.
 
 ### Tuning constants
 
-The balance knobs sit at the top of `src/SternchaseIso.jsx`: `WORLD` and `TILT` for the arena and
-camera, `VIEW`/`MAX_ZOOM` for how much sea the square view holds and `EDGE_PEEK` for how far the
+The balance knobs sit in the engine, each beside the system it tunes (`src/sim/tables.js` holds the
+ones several systems share), and the view's in `src/render/view.js`: `WORLD` and `TILT` for the arena
+and camera, `VIEW`/`MAX_ZOOM` for how much sea the square view holds and `EDGE_PEEK` for how far the
 boundary is let inside it, `BASE`/`HP_GAIN` for the health
 pools, `WP` for per-weapon cooldown, projectile speed, and lifetime, `RAM_*` for ramming, and
 `HULL_RATE` for what a point of hull damage costs to put right (deliberately 1), and

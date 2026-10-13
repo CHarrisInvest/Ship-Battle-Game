@@ -28,8 +28,15 @@ import { useControls } from "./input/controls.js";
 
 /**
  * STERNCHASE: HELM & HULL — pirate battles at sea, on a tilted (isometric-ish) sea with tall wooden
- * ships. "Broadside" survives below as the name of the side guns, which is the job it was always
- * doing in the simulation; the game's own name is Sternchase.
+ * ships. "Broadside" survives in the engine as the name of the side guns, which is the job it was
+ * always doing in the simulation; the game's own name is Sternchase.
+ *
+ * THIS FILE IS THE SCREEN, AND NOT THE GAME'S RULES. It holds the menus, the shipyard's screens,
+ * the HUD, the end screen, and the frame loop that joins the three parts beside it: the engine in
+ * `sim/`, which decides everything that happens in a round and runs as well in Node as here, the
+ * renderer in `render/`, which draws a world and never changes one, and the controls in `input/`.
+ * The hold, analytics and the end screen's words are reached from here, never from the engine.
+ *
  * WAVE ARENA: endless survival. One hunter to start, a stock ship a shade under the player's own;
  * kills bring reinforcements in from the edge of the map, well clear of your bow, 1-2-1-2 and then
  * two a kill, and every second kill the next rung of the stock ladder comes out of the horizon,
@@ -132,7 +139,7 @@ const newSeed = () => (Math.random() * 2 ** 32) >>> 0;
 
 export default function App() {
   const canvasRef = useRef(null);
-  const gameRef = useRef(null);
+  const gameRef = useRef(null); // the world: the round being sailed, or the one lying behind the menu
   const startRef = useRef(() => {});
   const syncRef = useRef(() => {});
   const liveRef = useRef(false); // a round is being sailed, rather than lying behind the menu

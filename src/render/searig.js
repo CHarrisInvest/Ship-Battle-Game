@@ -9,8 +9,8 @@ import { rigSpec } from "../shipyard.js";
  * bellied band the fight has always drawn; triangular, gaff and lug canvas are fore-and-aft panels;
  * headsails run from the bowsprit up toward the foremost masthead.
  *
- * Worked out once per ship at `makeShip`, because nothing about her rig changes at sea short of the
- * whole thing coming down.
+ * Worked out once per ship, the first time she is drawn (`lookOf` in `effects.js`), because nothing
+ * about her rig changes at sea short of the whole thing coming down.
  */
 export const SEA_FOREAFT = new Set(["TRI", "LAT", "GAF", "LUG"]);
 export function buildSeaRig(loadout, sea) {

@@ -41,7 +41,7 @@ export const volleyWindow = (n) => clamp(n * GUN_STAGGER, VOLLEY_MIN, VOLLEY_MAX
 // for a range you have guessed has always been worth.
 export const LAY_RANGE = 150;
 
-// How far along this frame's flight does a shot bite? Works on the whole step from where the ball
+// How far along this step's flight does a shot bite? Works on the whole step from where the ball
 // was to where it is, so a fast ball cannot skip through a hull only thirteen paces across. `pad`
 // widens the hull by the radius of what is arriving: a heavy round shot bites where a musket ball
 // would whistle past her rail. Scaling the hull's ellipse to a unit circle makes it one quadratic.
@@ -49,19 +49,19 @@ export const LAY_RANGE = 150;
 // which of two hulls on one step is the nearer, and -1 for a clean miss.
 //
 // The flight is measured against the hull as the hull herself sees it, which means carrying the
-// ball's starting point forward by the ground the ship made this frame. Testing it against where
-// the frame left her was near enough for a ship under sail, but a ship in a melee does not move
+// ball's starting point forward by the ground the ship made this step. Testing it against where
+// the step left her was near enough for a ship under sail, but a ship in a melee does not move
 // like one: a ram throws her aside at better than her own top speed, and hulls foul of each other
-// are shoved apart bodily every frame, all of it done before the shots are stepped. A hull moved
-// half her own beam in one frame slid out from under a ball that had gone through her amidships,
+// are shoved apart bodily every step, all of it done before the shots are stepped. A hull moved
+// half her own beam in one step slid out from under a ball that had gone through her amidships,
 // and the ball sailed on. That is why it happened to ships in company and rarely anywhere else.
 //
-// Her turn within the frame is not counted, only her passage. A hull under helm sweeps her bow
+// Her turn within the step is not counted, only her passage. A hull under helm sweeps her bow
 // through about a pace at the worst of it, against the ten or more the shoving throws her.
 export const shotHitsHull = (s, x0, y0, x1, y1, pad) => {
   const c = Math.cos(s.heading), sn = Math.sin(s.heading);
   const A = s.hullA + pad, B = s.hullB + pad;
-  const wx = s.x - (s.px ?? s.x), wy = s.y - (s.py ?? s.y); // the ground she made this frame
+  const wx = s.x - (s.px ?? s.x), wy = s.y - (s.py ?? s.y); // the ground she made this step
   const px = ((x0 + wx - s.x) * c + (y0 + wy - s.y) * sn) / A;
   const py = ((y0 + wy - s.y) * c - (x0 + wx - s.x) * sn) / B;
   const qx = ((x1 - s.x) * c + (y1 - s.y) * sn) / A, qy = ((y1 - s.y) * c - (x1 - s.x) * sn) / B;
@@ -74,11 +74,11 @@ export const shotHitsHull = (s, x0, y0, x1, y1, pad) => {
   const disc = half * half - len2 * out;
   if (disc < 0) return -1; // the flight passes her by
   const t = (-half - Math.sqrt(disc)) / len2;
-  return t >= 0 && t <= 1 ? t : -1; // she is touched within this step, or not this frame
+  return t >= 0 && t <= 1 ? t : -1; // she is touched within this step, or not this one
 };
 
 // The same question for an island, which is a plain circle and never moves. Asked of the whole
-// step for the same reason: a ball tested only where the frame left it can step over a shoal.
+// step for the same reason: a ball tested only where the step left it can step over a shoal.
 export const shotHitsCircle = (cx, cy, r, x0, y0, x1, y1) => {
   const px = x0 - cx, py = y0 - cy, dx = x1 - x0, dy = y1 - y0;
   const out = px * px + py * py - r * r;
@@ -178,8 +178,8 @@ export function fire(world, s, weapon) {
  * Fired from where she is at this instant rather than from where she was when the order was
  * given, which is the whole point of spreading the volley at all: a ship holding her course lays
  * a straight bank of iron, and a ship swinging her helm mid-volley walks it across the water,
- * exactly as she would have. The gun's own smoke and flash go with it, at the port it came out
- * of.
+ * exactly as she would have. It says it fired at the port it came out of, which is where the
+ * screen puts its flash and its smoke.
  */
 export function fireGun(world, v, off) {
   const s = v.s;
@@ -202,16 +202,8 @@ export function fireGun(world, v, off) {
     const ang = dir + sd * lay - sd * FAN * off + (random(world) - 0.5) * (0.05 + v.noise);
     world.shots.push({
       x: px, y: py, vx: Math.cos(ang) * w.speed, vy: Math.sin(ang) * w.speed,
-      life: w.life, r: w.r, draw: w.draw, bar: w.bar, dmg: v.dmg, owner: s, kind: "broadside",
+      life: w.life, r: w.r, bar: w.bar, dmg: v.dmg, owner: s, kind: "broadside",
     });
-    // her smoke stands at the rail she fired over, not on her keel, or the bank comes up
-    // through the middle of the deck. Two puffs a gun, and a little more of each than a gun
-    // used to make: a rolling broadside spends a second putting its smoke out, so the first
-    // guns' has begun to thin before the last has fired, and a bank has to be built to last
-    // that long or she looks as though she is firing blanks. One puff to a gun and a bigger,
-    // longer-standing one, rather than two apiece: a fleet of first rates in company is eleven
-    // hundred guns a volley, and the same bank drawn in half the pieces held sixty frames a
-    // second where two apiece did not.
     // A GUN FIRES OUT OF A PORT IN HER SIDE, so its flash and its smoke both stand at the rail
     // it fired over rather than on her keel. The flash was amidships on her centreline, where a
     // gun deck is stores rather than gunports, and with fifty of them going off in half a second
@@ -226,7 +218,7 @@ export function fireGun(world, v, off) {
  *
  * A ship sunk mid-broadside stops firing, which is the difference between a gun crew and a
  * timer. Everything else is arithmetic: a gun goes off when her moment comes, however many that
- * is in one frame, and the entry is done when her last one has.
+ * is in one step, and the entry is done when her last one has.
  */
 export function stepVolley(world) {
   for (let i = world.volleys.length - 1; i >= 0; i--) {

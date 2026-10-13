@@ -7,7 +7,36 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
 `sternchase.org`, so the Vite base path is `/` and nothing in the build carries the repo's name.
 `broadside` in the code is the side guns, not the old title, and stays.
 
-- `src/SternchaseIso.jsx` is the game: state, AI, rendering, and the React HUD.
+- `src/SternchaseIso.jsx` is the screen: the menus, the shipyard screens, the HUD, the end screen, and
+  the frame loop that joins the engine, the renderer and the controls. It holds no rule of play.
+- **`src/sim/` is the engine, and only the engine decides what happens in a round.** The world, the
+  step, ships, guns, rams, the AI, the weather, the round's rules and its end, the mode rules and the
+  dice live there. `createWorld({ mode, seed, players })`, `step(world, inputs)`, `voyageStats` and
+  `repairQuote` are the whole of its interface: controls go in as one input record per player id
+  (a repair included, so it travels the road the wheel does), and what happened comes back as events
+  carrying ids and numbers, never a reference into the world, with `world.result` once the round is
+  over. The world is plain data that `structuredClone` copies. `docs/ENGINE.md` is its design note.
+- **The engine is pure, and `npm run purity` says so.** Nothing under `src/sim/` imports anything but
+  itself, `shipyard.js`, `shipref.js` and `hullform.js`, or mentions `window`, `document`,
+  `localStorage`, a canvas, `Math.random`, `Date.now` or `performance`. That is what lets it run
+  unchanged in Node, where `npm run sim-test` plays every mode, and what makes the same seed and the
+  same inputs the same round. The hold, analytics, ads and consent are reached from the component
+  and never from the engine, so banking a voyage and tracking it happen once, in the component's
+  `round_over` handler. Every random number a round uses comes off `world.rng`; only what decorates
+  the sea keeps `Math.random`, in the renderer.
+- **The engine says what happened, and the screen decides how it looks.** Smoke, splinters, wakes, the
+  words over a sinking, the vignette, a ship's colours, her heel and her drawn rig are `src/render/`'s,
+  built from the step's events and the world and never read back by the engine. The end screen's
+  sentences are the component's, picked from `world.result`. A visual field on a ship or a line of
+  copy in the engine is the old tangle coming back.
+- **The round steps at a fixed `TICK`, a sixtieth of a second, and the screen draws between steps.**
+  The frame loop banks real time and takes a step for every whole tick, five a frame at most, and the
+  renderer blends each ship and ball by what is left over. A figure tuned per frame is per step now,
+  the same on a 60 Hz phone, a 120 Hz one and a server.
+- `src/render/` is the canvas: `renderer.js` draws a world and holds the camera, `effects.js` is one
+  viewer's picture of the round, and the palette, the view, the island planting, the sea rig and the
+  HUD's placement sit beside them. `src/input/controls.js` turns the joystick, the fire buttons and
+  the repair rail into the input record.
 - `src/galleon.js` draws the rotating ship on the menu. It draws a rig rather than *the* rig:
   `drawGalleon(ctx, w, h, deg, spec)` builds whatever is stepped and bent on, and falls back to the
   galleon it was written around when given no spec.
@@ -330,7 +359,7 @@ Buttons take size over tracking. Wide letterspacing makes every control read as 
   sideways screen ran across the middle of the sea. **The radar keeps its corner unless the fire
   buttons would reach up into it**, which is a test of height rather than of orientation: in Safari
   sideways they do and it steps inboard of them, from the home screen they do not and it stays.
-  `HUD` and `radarRight` in `SternchaseIso.jsx` are the one statement of where the fixed pieces sit
+  `HUD` and `radarRight` in `src/render/hud.js`, which the radar and the DOM both read, are the one statement of where the fixed pieces sit
   and of that test; do not put a second copy of a fire button's size in the radar's code. The
   repair rail fades while a ship is under it (`fadeRail`, written straight to the element each
   frame like the joystick's knob), because sideways it sits where the sea is fought on. The menus
@@ -373,6 +402,10 @@ Buttons take size over tracking. Wide letterspacing makes every control read as 
   1.01 against the bar's own dark backing, which would have made a full bar look empty.
 
 ## Checking work
+
+A change to the engine runs `npm run sim-test` before and after: it plays every mode to its end in
+Node, sails each round twice from one seed, and fails on a round that ends differently the second
+time, which is how an unseeded random number or a figure read off the screen shows itself.
 
 Verify visual changes in the running game, not only in a standalone harness. A harness that
 replicates the draw code is useful for iterating on geometry and for comparing before and after, but
