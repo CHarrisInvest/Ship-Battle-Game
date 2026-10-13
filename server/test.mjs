@@ -264,7 +264,8 @@ try {
     }
     const took = Date.now() - t0;
     const out = await finished;
-    check(out.status === 200 && polls > 3 && worst < took / 2,
+    // a replay on the request loop would let one or two calls through while it ran; off it, dozens
+    check(out.status === 200 && polls >= 10 && worst < took,
       `the server answers during a replay (${voyage.ticks} ticks took ${took} ms; /health at worst ${worst} ms over ${polls} calls)`);
   }
 
