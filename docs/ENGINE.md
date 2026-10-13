@@ -21,14 +21,16 @@ are called from the component, never from the engine.
 ```js
 import { createWorld, step, voyageStats, repairQuote, TICK } from "./sim/index.js";
 
-const world = createWorld({ mode: "ffa", seed, players: [{ id: "p1", loadout }] });
+const world = createWorld({ mode: "ffa", seed, players: [{ id: "p1", loadout }], rivals });
 const events = step(world, { p1: { joyMag, joyAng, broadside, bow, musket, repair } });
 voyageStats(world, "p1");            // what she has earned so far
 repairQuote(world, "p1", "hull");    // what a patch would cost her now
 ```
 
-- **`createWorld`** lays out a round. `players` is a list so a second human can come aboard without
-  the call changing; today there is one. The field is matched against the first.
+- **`createWorld`** lays out a round. `players` lists the humans aboard: one opens in the middle of
+  the sea as the game always began, and several are scattered across it, `HUMAN_SPAWN_GAP` apart
+  where the sea allows. `rivals`, when given, replaces the mode's count of AI ships. The field is
+  matched against the captain whose ship measures nearest the lobby's average (`fieldCaptain`).
 - **`step`** advances exactly one `TICK` (1/60 s) and returns what happened in it. A round that is
   over stays over.
 - **Inputs** are one record per human, keyed by player id: the stick's reach and world heading, the
@@ -42,6 +44,8 @@ repairQuote(world, "p1", "hull");    // what a patch would cost her now
 - **`world.result`** is `{ over, winners, losers, field }` once the round ends: each winner is a
   `{ playerId, rank }`, each loser carries her `cause` as well (`"hull"`, `"crew"`, `"storm"` or
   `"together"`), and `field` is how many ships started, for the placement line.
+  Each captain is placed as she goes under, so `losers` lists them in the order they sank, and two
+  who sink on one step share a place.
 
 ## Events
 
@@ -55,6 +59,7 @@ reference into the world, so it can be drawn, counted or sent anywhere.
 | `splash` | `x, y` | the renderer |
 | `sunk` | `shipId, by, cause, x, y` | the renderer: wreckage, and `SUNK` or `LOST` over a rival |
 | `dismasted` | `shipId, by, x, y` | the renderer: `MAST DOWN` or `OUR MAST!` |
+| `player_out` | `playerId, rank, cause` | the screen: a captain is placed the step she sinks, while the round goes on for the rest |
 | `repaired` | `shipId, system, coins` | the HUD, which answers the tap at once |
 | `round_over` | `result` | the component: end screen, its sentence, banking and analytics, once |
 
@@ -111,13 +116,25 @@ touches nothing of the page.
   guarded by `world.banked`, and the smoke test still checks the end screen's column against the
   hold.
 
+## Questions Stage B answered
+
+- **Where does a second captain start?** In a world with several, every captain is dropped once
+  the islands are down, clear of them and `HUMAN_SPAWN_GAP` from every other captain, or in the
+  clearest water left when a full lobby cannot fit at that gap.
+- **Whose round goes on when one sinks?** Everyone's. She is placed at once, and the round ends
+  when no captain is afloat, or when the last ship afloat is a captain.
+- **How does a ranked mode place several humans?** By the order they went under: ships still
+  afloat plus one. The winner is 1st.
+- **How is a second viewer's ship drawn?** That is the screen's, and Stage D's: each viewer draws
+  her own ship as hers and every other as a rival.
+- `byPlayer` became `byPlayers`, keyed by player id, so "worn down" and "by the bow alone" are
+  credited to the captain who did the work.
+- `npm run sim-test` runs `tools/captains-test.mjs` as well, which plays rounds with 2, 4 and 8
+  captains and fails on a pile-up at the drop, a captain placed twice or never, or a round that
+  ends while a captain and another ship are still afloat.
+
 ## Left for later stages
 
-- **More than one human in a world (Stage B).** The interface already takes a list of players and an
-  input record per player id, ships say who sails them, and a non-melee mode's hunters chase the
-  nearest human afloat. What is not decided: where a second captain starts, whose round goes on when
-  one sinks (today her sinking ends it), how a second viewer's ship is drawn, and how a ranked mode
-  places several humans.
 - **The tick rate on a server (Stage D).** 60 steps a second matches what a 60 Hz phone always ran.
   A server with six players might want 30, which changes how volleys and rams resolve; that trade is
   for measurements, not for this stage.

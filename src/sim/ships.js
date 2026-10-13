@@ -81,10 +81,11 @@ export function makeShip(world, x, y, heading, opts) {
     // What the record wants to know beyond the count of sinkings: how each one was done, and
     // what the carpenter gave back. `sunkBy` is keyed by the cause `applyHit` is told.
     dismasted: 0, healed: 0, sunkBy: { ram: 0, broadside: 0, musket: 0 }, rammedWhole: 0, wornDown: 0,
-    // What the PLAYER has done to this ship, bar by bar, and how much of her hull went to the
-    // player's bow. Rivals hit each other in a melee and the storm takes crew, so "you wore her
-    // down" and "you sank her by the bow alone" are judged on this and never on her bars.
-    byPlayer: { hull: 0, mast: 0, crew: 0, ram: 0 },
+    // What each PLAYER has done to this ship, bar by bar, and how much of her hull went to that
+    // player's bow, keyed by player id and opened on her first blow. Rivals hit each other in a
+    // melee, the storm takes crew, and in an online round other captains fire too, so "you wore
+    // her down" and "you sank her by the bow alone" are judged on this and never on her bars.
+    byPlayers: {},
     maxHull: rating.hull, maxMast: rating.mast, maxCrew: rating.crew,
     hull: rating.hull, mast: rating.mast, crew: rating.crew,
     // every gun aboard is loaded at the drop, the player's and a rival's alike. A rival's used

@@ -158,10 +158,40 @@ function standings(tag, a) {
   for (const w of r.winners) if (!shipOf(a.world, w.playerId).alive) fail(`${tag}: ${w.playerId} won from the bottom`);
 }
 
+/**
+ * "Worn down" is judged on what the captain who sank her did, not on what everyone did. Before
+ * Stage B there was one human and one tally, so another captain's work counted as hers.
+ */
+function credit() {
+  const wear = (world, t, who) => {
+    for (const bar of ["hull", "mast", "crew"]) applyHit(world, t, bar, t["max" + bar[0].toUpperCase() + bar.slice(1)] * 0.6, who, "broadside");
+  };
+  {
+    const world = createWorld({ mode: "ffa", seed: 31, players: captains(2), rivals: 1 });
+    const t = world.ships.find((s) => !isHuman(s));
+    const p1 = shipOf(world, "p1");
+    wear(world, t, p1);
+    applyHit(world, t, "hull", t.hull + 1, p1, "broadside");
+    if (p1.wornDown !== 1) fail(`credit: p1 wore her down herself and was credited ${p1.wornDown}`);
+    else ok("credit: a captain who wore her down herself is credited");
+  }
+  {
+    const world = createWorld({ mode: "ffa", seed: 31, players: captains(2), rivals: 1 });
+    const t = world.ships.find((s) => !isHuman(s));
+    const p1 = shipOf(world, "p1"), p2 = shipOf(world, "p2");
+    wear(world, t, p2);
+    applyHit(world, t, "hull", t.hull + 1, p1, "broadside");
+    if (p1.wornDown !== 0) fail("credit: p1 was credited with wearing her down on p2's work");
+    else if (p2.wornDown !== 0) fail("credit: p2 was credited for a ship p1 sank");
+    else ok("credit: one captain's work is not another's");
+  }
+}
+
 const t0 = Date.now();
 spawns();
 aiCount();
 placing();
+credit();
 rounds();
 console.log(`\n${((Date.now() - t0) / 1000).toFixed(1)} s`);
 if (failures.length) {

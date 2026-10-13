@@ -102,11 +102,11 @@ export function killShip(world, s, attacker, cause, standing = !!(attacker && at
     attacker.kills = (attacker.kills || 0) + 1;
     if (cause in attacker.sunkBy) attacker.sunkBy[cause] += 1;
     if (isHuman(attacker)) {
-      // Both are judged on what the player did to her and not on the state she went down in,
+      // Both are judged on what this captain did to her and not on the state she went down in,
       // because in a melee her bars carry every rival's work and the storm's besides. Worn down
-      // is half of each of her three bars off the player's own guns and bow; by the bow alone is
-      // her whole hull gone to the player's ram, with a hair of tolerance for the float sum.
-      const b = s.byPlayer;
+      // is half of each of her three bars off this captain's own guns and bow; by the bow alone is
+      // her whole hull gone to her own ram, with a hair of tolerance for the float sum.
+      const b = s.byPlayers[attacker.playerId] || { hull: 0, mast: 0, crew: 0, ram: 0 };
       const half = (got, max) => max <= 0 || got >= max * 0.5;
       if (half(b.hull, s.maxHull) && half(b.mast, s.maxMast) && half(b.crew, s.maxCrew)) attacker.wornDown += 1;
       if (cause === "ram" && b.ram >= s.maxHull - 1e-6) attacker.rammedWhole += 1;
@@ -154,8 +154,9 @@ export function applyHit(world, target, bar, amt, attacker, cause, standing = !!
     attacker.earned += took;
     attacker.dmgDealt = (attacker.dmgDealt || 0) + took;
     if (isHuman(attacker)) {
-      target.byPlayer[bar] += took;
-      if (cause === "ram") target.byPlayer.ram += took;
+      const b = (target.byPlayers[attacker.playerId] ||= { hull: 0, mast: 0, crew: 0, ram: 0 });
+      b[bar] += took;
+      if (cause === "ram") b.ram += took;
     }
   }
   if (bar === "mast" && before > 0 && target[bar] <= 0 && !target.mastDown) {
