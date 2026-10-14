@@ -35,7 +35,7 @@ import { createOnline, makeTicket } from "./online.js";
  */
 const BUCKET = 60, REFILL = 20;
 
-export async function createApp({ pool, config, now = () => Date.now(), catchUp }) {
+export async function createApp({ pool, config, now = () => Date.now(), catchUp, awayMs }) {
   // a pooled connection that drops (a database restart, a network blip) is logged and replaced, not
   // left to throw and take the process with it
   pool.on("error", (e) => console.error("database connection lost:", e.message));
@@ -45,7 +45,7 @@ export async function createApp({ pool, config, now = () => Date.now(), catchUp 
   const authHandler = toNodeHandler(auth);
   const engine = engineHash();
   const replays = replayer();
-  const online = createOnline({ pool, engine, secret: config.secret, publicWs: config.publicWs || null, now, catchUp });
+  const online = createOnline({ pool, engine, secret: config.secret, publicWs: config.publicWs || null, now, catchUp, awayMs });
 
   const buckets = new Map();
   function spend(userId) {
@@ -103,6 +103,11 @@ export async function createApp({ pool, config, now = () => Date.now(), catchUp 
       const user = await userOf(req);
       const body = parseAction(await readJson(req));
       return transaction(pool, (c) => act(c, user.id, body, now));
+    },
+    // whether she still has a place in a lobby: a reopened app asks, and goes straight back to it
+    "GET /online/where": async (req) => {
+      const user = await userOf(req);
+      return { status: 200, body: { code: online.whereIs(user.id) } };
     },
     // a ticket for the online socket, which reaches the server directly and so cannot carry the cookie
     "POST /online/ticket": async (req) => {

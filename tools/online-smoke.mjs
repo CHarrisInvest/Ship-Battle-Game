@@ -92,7 +92,7 @@ try {
   await snap(host, "01-lobby");
 
   // a friend finds the public lobby in the list and joins it
-  const friend = await open("friend");
+  let friend = await open("friend");
   await page_wait(friend);
   await friend.locator("button", { hasText: "WITH FRIENDS" }).click();
   if (await until(friend, (t) => /Open lobbies/i.test(t) && t.includes("1 of 8"))) ok("friend: the public lobby is listed");
@@ -107,6 +107,20 @@ try {
   // fewer AI ships, so the round is quick; the host waits for the friend to be ready, then starts
   for (let i = 0; i < 8; i++) await host.locator("button", { hasText: /^Fewer$/ }).click();
   if (await until(host, (t) => /Waiting for 1 captain to be ready/.test(t))) ok("host: Start waits for the friend to be ready"); else fail("host: Start did not wait");
+  // the friend closes the app (the page goes, the cookie stays) and opens it again: she is shown
+  // away meanwhile, and the reopened app goes straight back to her place in the lobby
+  const ctx = friend.context();
+  await friend.close();
+  if (await until(host, (t) => /Away/.test(t), 20000)) ok("host: sees the friend away when her app closes"); else fail("host: never saw the friend away");
+  const reopened = await ctx.newPage();
+  reopened.tag = "friend";
+  reopened.errs = [];
+  reopened.on("pageerror", (e) => reopened.errs.push(e.message));
+  await reopened.goto(SITE + "/", { waitUntil: "networkidle" });
+  friend = reopened;
+  if (await until(friend, (t) => /Captains, 2 of 8/i.test(t) && /I'm ready/.test(t), 20000)) ok("friend: reopening the app goes straight back to the lobby");
+  else fail("friend: reopening the app did not go back to the lobby");
+  if (await until(host, (t) => !/Away/.test(t), 20000)) ok("host: sees the friend back"); else fail("host: the friend still shows away");
   await friend.locator("button", { hasText: /^I'm ready$/ }).click();
   if (await until(host, (t) => /Ready/.test(t) && !/Waiting for 1 captain/.test(t))) ok("host: sees the friend ready"); else fail("host: never saw the friend ready");
   await snap(host, "01b-ready");

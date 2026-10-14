@@ -31,27 +31,21 @@ export const ONLINE_FAILED = {
 
 const askTicket = () => call("POST", "/online/ticket", { engine: ENGINE });
 
-export async function connectOnline({ onChange = () => {}, onEvents = () => {}, Socket = globalThis.WebSocket, getTicket = askTicket } = {}) {
-  const t = await getTicket();
-  if (t.status === 409) return { error: "engine" };
-  if (t.status !== 200) return { error: "offline" };
-
+export async function connectOnline({ onChange = () => {}, onEvents = () => {}, Socket = globalThis.WebSocket, getTicket = askTicket, retryMs = 1000 } = {}) {
   const state = {
     open: false, you: null, lobby: null, error: "", sailing: false, banked: null,
+    reconnecting: false, // the connection dropped and is being made again; her place is held meanwhile
     lobbies: [], // the public lobbies open to join, kept live by the server
     round: null, // { world, you, names, cur, queue, desynced }
   };
-  const ws = new Socket(`${t.data.ws}?ticket=${encodeURIComponent(t.data.ticket)}`);
   const changed = () => onChange({ ...state });
-  const out = (msg) => { if (ws.readyState === 1) ws.send(JSON.stringify(msg)); };
+  let ws = null;
   let lastSent = "";
+  let tries = 0;
+  let retry = null;
+  const out = (msg) => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(msg)); };
 
-  const opened = new Promise((resolve) => {
-    ws.onopen = () => { state.open = true; changed(); resolve(true); };
-    ws.onerror = () => resolve(false);
-  });
-  ws.onclose = () => { state.open = false; if (!state.left) state.error = "closed"; changed(); };
-  ws.onmessage = (ev) => {
+  function onMessage(ev) {
     let msg;
     try { msg = JSON.parse(typeof ev.data === "string" ? ev.data : ev.data.toString()); } catch { return; }
     if (msg.t === "hello") { state.you = msg.you; changed(); }
@@ -60,9 +54,11 @@ export async function connectOnline({ onChange = () => {}, onEvents = () => {}, 
     else if (msg.t === "lobbies" && Array.isArray(msg.list)) { state.lobbies = msg.list; changed(); }
     else if (msg.t === "error") { state.error = msg.error; changed(); }
     else if (msg.t === "start") {
+      // a round, or the round she was sailing when her connection dropped, from its start: the
+      // frames that follow sail it up to the server's tick
       const world = createWorld({ mode: "ffa", seed: msg.seed, players: msg.players.map((p) => ({ id: p.id, loadout: p.loadout })), rivals: msg.rivals });
       state.round = {
-        world, you: msg.you,
+        world, you: msg.you, rejoin: !!msg.rejoin,
         names: Object.fromEntries(msg.players.map((p) => [p.id, p.name])),
         cur: Object.fromEntries(msg.players.map((p) => [p.id, { ...NO_INPUT }])),
         queue: [], desynced: false, over: false,
@@ -76,8 +72,52 @@ export async function connectOnline({ onChange = () => {}, onEvents = () => {}, 
       state.banked = msg;
       changed();
     }
-  };
-  if (!(await opened)) return { error: "offline" };
+  }
+
+  /**
+   * Open the socket with a fresh ticket. Resolves "ok", or the reason it could not. When it drops
+   * without her leaving, it is opened again, sooner while she is looking, and the server puts her
+   * back in the lobby she had a place in.
+   */
+  async function open() {
+    const t = await getTicket();
+    if (t.status === 409) return "engine";
+    if (t.status !== 200) return "offline";
+    const sock = new Socket(`${t.data.ws}?ticket=${encodeURIComponent(t.data.ticket)}`);
+    ws = sock;
+    sock.onmessage = onMessage;
+    const ok = await new Promise((resolve) => {
+      sock.onopen = () => resolve(true);
+      sock.onerror = () => resolve(false);
+    });
+    if (!ok) return "offline";
+    state.open = true;
+    state.reconnecting = false;
+    tries = 0;
+    changed();
+    sock.onclose = () => {
+      if (ws !== sock) return;
+      state.open = false;
+      if (state.left) { changed(); return; }
+      state.reconnecting = true;
+      changed();
+      schedule();
+    };
+    return "ok";
+  }
+  function schedule(now) {
+    clearTimeout(retry);
+    const wait = now ? 0 : Math.min(10000, retryMs * 2 ** tries++);
+    retry = setTimeout(async () => {
+      if (state.left || state.open) return;
+      const r = await open();
+      if (r === "engine") { state.error = "engine"; state.reconnecting = false; changed(); return; }
+      if (r !== "ok") schedule();
+    }, wait);
+  }
+
+  const first = await open();
+  if (first !== "ok") return { error: first };
 
   return {
     get state() { return state; },
@@ -123,6 +163,8 @@ export async function connectOnline({ onChange = () => {}, onEvents = () => {}, 
       if (events.length) onEvents(events);
       return events;
     },
-    close() { state.left = true; ws.close(); },
+    close() { state.left = true; clearTimeout(retry); if (ws) ws.close(); },
+    /** Try the connection again at once, if it is down: she has come back to the screen. */
+    reconnectNow() { if (!state.open && !state.left) schedule(true); },
   };
 }

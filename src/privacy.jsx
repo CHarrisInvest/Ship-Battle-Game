@@ -83,7 +83,8 @@ export function PrivacyPolicy({ Section, P, linkColor }) {
           When you sail with friends, the captains in your lobby see the name of the ship you sail, and
           your browser connects to the game server directly rather than through Vercel, so the server
           sees your IP address on that connection too. Who is in a lobby is kept in the server's memory
-          only, and goes when the lobby empties.
+          only. If your connection drops, your place is held for 2 minutes so you can come back to it,
+          and it goes when you leave or the lobby empties.
         </P>
         <P>Your cookie choices are saved in your browser's local storage, apart from your progress, so you are not asked on every visit.</P>
         <P>
