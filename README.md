@@ -55,13 +55,71 @@ test uses.
 
 ## Deploying
 
-The site is hosted on Vercel. The Vercel project is connected to this repository, so pushing to
-`main` deploys to production and every pull request gets a preview deployment. `vercel.json` makes
-each deploy run the purity check and the headless round tests before the build, so a broken
-engine never ships. `vercel --prod` from the CLI deploys by hand if it is ever wanted.
+The game is a static site on **Vercel**, and its server (accounts, the hold, voyage replays and
+sailing with friends) is a Node service with Postgres on **Railway**. The browser only ever talks
+to the game's own address: `api/proxy.js`, a Vercel edge function, forwards `/api/*` to the server,
+so the login cookie is first-party. The one exception is the online socket, which Vercel cannot
+carry, so it goes straight to Railway with a short-lived ticket.
 
-`.github/workflows/ci.yml` runs the same three checks on every push and pull request, and
-publishes nothing.
+### Railway: the server and its database
+
+1. Make a project, and add **PostgreSQL** to it (the template, as it comes).
+2. Add a service from this repository, branch `main`. In its settings:
+   - start command `npm run server`, build command `node --version` (the server runs from source);
+   - health check path `/health`;
+   - generate a domain for it (Settings, Networking), e.g. `server-production-xxxx.up.railway.app`.
+3. Its variables:
+
+   | Variable | Value |
+   | --- | --- |
+   | `DATABASE_URL` | `${{Postgres.DATABASE_URL}}` (a reference to the Postgres service) |
+   | `BETTER_AUTH_SECRET` | a long random secret, e.g. `openssl rand -hex 32` |
+   | `PROXY_SECRET` | another long random secret, the **same value** given to Vercel below |
+   | `BETTER_AUTH_URL` | the game's address on Vercel, e.g. `https://your-project.vercel.app` |
+   | `CLIENT_ORIGINS` | the same address (comma-separate several) |
+   | `API_PREFIX` | `/api` |
+   | `PUBLIC_WS_URL` | `wss://<the Railway domain>/ws` |
+   | `NODE_ENV` | `production` |
+
+   The server makes its own tables on first boot. `https://<the Railway domain>/health` answers with
+   the engine's fingerprint once it is up; any other route without the proxy's secret is refused.
+
+### Vercel: the game
+
+Import the repository and leave the project settings at their defaults: `vercel.json` names the
+framework (Vite), the install and build commands, the `dist` output, the `/api` rewrite to the proxy
+and the caching. Production is `main`; every other branch gets a preview (which plays, but cannot
+save: the server trusts only `CLIENT_ORIGINS`). Two environment variables, for Production and Preview:
+
+| Variable | Value |
+| --- | --- |
+| `API_UPSTREAM` | `https://<the Railway domain>` |
+| `PROXY_SECRET` | the same secret as on Railway |
+
+Each build runs `npm run purity` and `npm run sim-test` first, so a broken engine never ships. The
+game and the server both fingerprint the engine; after a deploy that changes it, a page left open
+is asked to reload rather than sail a round the server would replay under other rules.
+
+To serve it from a domain of your own, add it under the Vercel project's Domains and set
+`BETTER_AUTH_URL` and `CLIENT_ORIGINS` on Railway to it.
+
+### Running it locally
+
+`npm run dev` serves the game and forwards `/api` to a server on `localhost:8787`. To run one, with
+Postgres in Docker:
+
+```
+docker run -d --name sternchase-pg -e POSTGRES_PASSWORD=dev -p 5432:5432 postgres:17
+DATABASE_URL=postgres://postgres:dev@localhost:5432/postgres BETTER_AUTH_SECRET=dev-secret-that-is-long-enough \
+  BETTER_AUTH_URL=http://localhost:5173 CLIENT_ORIGINS=http://localhost:5173 API_PREFIX=/api \
+  PUBLIC_WS_URL=ws://localhost:8787/ws npm run server
+```
+
+The server's tests (`npm run server-test`, `client-test`, `online-test`) start a throwaway Postgres
+in Docker themselves.
+
+`.github/workflows/ci.yml` runs the engine's checks on every push and pull request, and the server's
+tests against a Postgres service, and publishes nothing: Vercel and Railway deploy `main` themselves.
 
 The site is served from the domain root, so `vite.config.js` builds with `base: "/"`. Deploying
 somewhere that serves it from a subpath needs that path set at build time, for example
