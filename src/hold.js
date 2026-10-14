@@ -92,6 +92,21 @@ export function connect() {
   return connecting;
 }
 
+/**
+ * Load the hold again from nothing, for whoever the session now says she is: after she signs in,
+ * signs out or deletes her account, the record on screen belongs to someone else. Called only once
+ * the hold is settled, so no action of the last captain's is still on its way.
+ */
+export function reconnect() {
+  queue = [];
+  confirmed = blank();
+  version = 0;
+  publish();
+  setStatus("loading");
+  connecting = null;
+  return connect();
+}
+
 /** The hold as it stands on this screen. Treat it as read-only. */
 export function getHold() {
   return shown;
@@ -107,6 +122,9 @@ export const holdIsPersistent = () => status === "ready";
 export const hadLocalSave = () => hadOldSave;
 
 export const getYard = () => shown.yard;
+
+/** Whether the hold has anything in it a fresh one does not: what a guest would lose by switching accounts. */
+export const hasProgress = () => JSON.stringify(shown) !== JSON.stringify(blank());
 
 /** Watch the hold. Fires on every change, whether made here or come back from the server. */
 export function subscribeHold(fn) {

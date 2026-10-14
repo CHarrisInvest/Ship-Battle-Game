@@ -6,7 +6,9 @@
  * waiting for it. Routes:
  *
  *   GET  /health                 alive, and which engine it replays with
- *   *    /auth/*                 Better Auth: guest sign-in, sessions
+ *   *    /auth/*                 Better Auth: guests, the email code, Google, sessions, sign-out
+ *   GET  /account                who she is signed in as, and which ways of signing in are on
+ *   POST /account/delete         delete her account, her hold and her voyages, at once
  *   GET  /hold                   the captain's hold and its version
  *   POST /hold/actions           one shop action, `{ action, args, version }`
  *
@@ -71,6 +73,27 @@ export async function createApp({ pool, config, now = () => Date.now(), catchUp 
 
   const routes = {
     "GET /health": async () => ({ status: 200, body: { ok: true, engine } }),
+    "GET /account": async (req) => {
+      const user = await userOf(req);
+      const { rows } = await pool.query(`select 1 from account where "userId" = $1 and "providerId" = 'google' limit 1`, [user.id]);
+      return {
+        status: 200,
+        body: {
+          guest: !!user.isAnonymous,
+          email: user.isAnonymous ? null : user.email,
+          google: rows.length > 0,
+          methods: { email: !!config.sendCode, google: !!config.google },
+        },
+      };
+    },
+    // a JSON body is asked for, though it carries nothing, so another site's form cannot send this
+    "POST /account/delete": async (req) => {
+      const user = await userOf(req);
+      await readJson(req);
+      // her sessions, sign-in methods, hold, rounds and their logs all go with her, by cascade
+      await pool.query(`delete from "user" where id = $1`, [user.id]);
+      return { status: 200, body: { deleted: true } };
+    },
     "GET /hold": async (req) => {
       const user = await userOf(req);
       const cur = await transaction(pool, (c) => lockHold(c, user.id, now));

@@ -1,11 +1,12 @@
 import React, { Fragment, useRef, useState, useEffect, useCallback, useMemo } from "react";
 import { drawGalleon } from "./galleon.js";
 import {
-  getHold, subscribeHold, modeRecord, shipLoadout, shortfall, connect, holdStatus, subscribeStatus, hadLocalSave, adoptHold, holdSettled,
+  getHold, subscribeHold, modeRecord, shipLoadout, shortfall, connect, holdStatus, subscribeStatus, hadLocalSave, adoptHold, holdSettled, hasProgress,
   buyShip, buyPart, fitMast, fitSail, fitStud, fitGun, unfitGun, setActiveShip, spareParts, ownedShips, partOf,
   shipName, nameShip, fitOwned, ownedFill, NAME_LIMIT, readiness, sellPart, refundOf,
 } from "./hold.js";
 import { startVoyage, recorderFor } from "./voyage.js";
+import { getAccount, sendCode, signInWithCode, signInWithGoogle, signOut, deleteAccount, returnedFromGoogle } from "./account.js";
 import { connectOnline, ONLINE_FAILED } from "./online.js";
 import {
   kindOf, rate, rateOf, rigSpec, ladderHeight,
@@ -156,6 +157,10 @@ const LINK_NOTE = {
   offline: "The server cannot be reached. Your progress is safe, and the shop and voyages open again as soon as it answers.",
 };
 const MOVED_NOTE = "Your progress now saves to the server. Progress saved in this browser earlier could not be moved.";
+const GOOGLE_NOTE = {
+  google: "You are signed in with Google. Your progress is saved to your account.",
+  failed: "Signing in with Google did not work. Try again, or sign in with an email code.",
+};
 const SAVING_NOTE = "Saving your changes to the server first.";
 
 export default function App() {
@@ -276,9 +281,19 @@ export default function App() {
   }, []);
   useEffect(() => {
     const off = subscribeStatus(setLink);
-    connect().then(() => { if (hadLocalSave()) setNotice(MOVED_NOTE); });
+    const google = returnedFromGoogle();
+    connect().then(() => { if (hadLocalSave()) setNotice(MOVED_NOTE); else if (google) setNotice(GOOGLE_NOTE[google]); });
     return off;
   }, []);
+  // Who she is signed in as, asked again whenever the hold is loaded afresh, which is what signing in
+  // or out does. Null until the server says, and the menu shows no account row until it has.
+  const [account, setAccount] = useState(null);
+  useEffect(() => {
+    if (link !== "ready") return;
+    let live = true;
+    getAccount().then((a) => { if (live && a) setAccount(a); });
+    return () => { live = false; };
+  }, [link]);
 
   // What the browser paints around the page: the strip behind a phone's clock and the bars Safari
   // tints to match a site, and the ground shown when a scroll rubber-bands past the edge. It is
@@ -790,6 +805,8 @@ export default function App() {
           onRecords={() => setPhase("records")}
           onCookies={openCookies}
           onPrivacy={() => setPhase("privacy")}
+          account={account}
+          onAccount={() => setPhase("account")}
           onFriends={() => (link === "ready" ? openOnline() : setNotice(LINK_NOTE[link] || ""))}
           hold={hold}
         />
@@ -829,6 +846,9 @@ export default function App() {
           there again on the way back to the menu. */}
       {phase === "start" && cookieAsk && <CookieConsent onClose={() => setCookieAsk(false)} onPrivacy={() => setPhase("privacy")} />}
       {phase === "privacy" && <PrivacyScreen onBack={() => setPhase("start")} />}
+      {phase === "account" && account && (
+        <AccountScreen account={account} onBack={() => setPhase("start")} onDone={(note) => { setNotice(note); setPhase("start"); }} />
+      )}
       {phase === "records" && <RecordsScreen hold={hold} onBack={() => setPhase("start")} onAchievements={() => setPhase("achievements")} />}
       {phase === "achievements" && <AchievementsScreen hold={hold} onBack={() => setPhase("records")} />}
       {phase === "won" && <EndOverlay title={rules.ladder && !onlineEnd ? "LADDER CLIMBED" : "LAST AFLOAT"} titleColor={C.gold} result={result} stats={stats} mode={mode} place={place} hold={hold} banked={banked} bounty={bounty} online={onlineEnd} onAgain={() => startRef.current(mode)} onMenu={() => (onlineEnd ? setPhase("lobby") : setPhase("start"))} />}
@@ -3281,7 +3301,7 @@ function ArrowButton({ back, label, onClick }) {
 // would let a captain think a gun fits when it does not.
 const fmtTons = (t) => t.toFixed(1);
 
-function StartOverlay({ onStart, onEdit, onOutfit, onRecords, onCookies, onPrivacy, onFriends, hold, note }) {
+function StartOverlay({ onStart, onEdit, onOutfit, onRecords, onCookies, onPrivacy, onFriends, onAccount, account, hold, note }) {
   return (
     <Shell>
       {/* The name is a lockup of two lines, and the first one carries it. STERNCHASE is the word a
@@ -3301,6 +3321,7 @@ function StartOverlay({ onStart, onEdit, onOutfit, onRecords, onCookies, onPriva
       )}
       <ShipPlate hold={hold} onEdit={onEdit} onOutfit={onOutfit} />
       <HoldPanel hold={hold} onRecords={onRecords} />
+      <AccountRow account={account} onClick={onAccount} />
       {/* A heading over the modes, in the display face like the screens' own titles, so the mode
           cards read as a section of the menu rather than as more panels after the hold. To its
           right, in small words, what the cards are for: the same coin as the purse above, so a
@@ -3561,6 +3582,184 @@ function LobbyScreen({ net, note, onMake, onJoin, onRivals, onStart, onLeave, on
             <StartButton onClick={onLeave} label="Leave the lobby" ghost />
           </div>
         </>
+      )}
+    </Shell>
+  );
+}
+
+/**
+ * The menu's line about her account, under the hold it keeps. A guest is offered the way to keep her
+ * progress; a signed-in captain sees who she is signed in as. Both open the account screen. Nothing
+ * shows until the server has said who she is, or while it offers no way of signing in to a guest.
+ */
+function AccountRow({ account, onClick }) {
+  if (!account) return null;
+  const { guest, email, google, methods } = account;
+  if (guest && !methods.email && !methods.google) return null;
+  const label = guest ? "Save your progress" : google ? "Signed in with Google" : "Signed in";
+  const sub = guest ? "Sign in to keep your ships and coins, on any device" : email;
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8,
+        width: "100%", margin: "-8px 0 18px", padding: "9px 12px 10px", textAlign: "left",
+        background: "rgba(11,51,49,0.6)", border: `1px solid ${guest ? C.gold : C.hair}`, borderRadius: 10,
+        fontFamily: UI, color: "rgba(238,244,242,0.78)", cursor: "pointer", WebkitTapHighlightColor: "transparent",
+      }}
+    >
+      <span style={{ minWidth: 0 }}>
+        <span style={{ display: "block", fontSize: 11, color: guest ? C.gold : "rgba(238,244,242,0.78)" }}>{label}</span>
+        <span style={{ display: "block", fontSize: 10, color: "rgba(238,244,242,0.5)", lineHeight: 1.6, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sub}</span>
+      </span>
+      <ChevronIcon />
+    </button>
+  );
+}
+
+/**
+ * Her account. A guest signs in here, with a code sent to her email or with Google, whichever the
+ * server has turned on; a signed-in captain sees who she is signed in as, and can sign out or delete
+ * the account. Signing in to an account that already has progress replaces this browser's, so a guest
+ * with something to lose is told that before she starts, not after.
+ */
+function AccountScreen({ account, onBack, onDone }) {
+  const [email, setEmail] = useState("");
+  const [code, setCode] = useState("");
+  const [sentTo, setSentTo] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const small = { fontSize: 12, color: "rgba(238,244,242,0.78)", lineHeight: 1.6, textAlign: "left" };
+  const field = { flex: 1, minWidth: 0, fontFamily: UI, fontSize: 16, color: C.ink, background: "rgba(8,38,37,0.9)", border: `1px solid ${C.hair}`, borderRadius: 10, padding: "10px 12px" };
+  const title = { fontFamily: DISPLAY, fontSize: "clamp(19px, 6.2vw, 24px)", color: C.gold, letterSpacing: 0.5 };
+  // a ref as well as the state: the button inside each form submits it as well as clicking, in the
+  // same tick, and the second must find the first already under way
+  const going = useRef(false);
+  const run = async (fn) => {
+    if (going.current) return;
+    going.current = true;
+    setBusy(true);
+    setNote("");
+    try { await fn(); } finally { going.current = false; setBusy(false); }
+  };
+
+  const send = () => run(async () => {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) { setNote("That does not look like an email address."); return; }
+    const r = await sendCode(email);
+    if (r === "sent") { setSentTo(email.trim()); setCode(""); }
+    else setNote(r === "slow" ? "Too many codes asked for. Wait a minute and try again." : r === "offline" ? "The server cannot be reached. Try again in a moment." : "That email address was not accepted.");
+  });
+  const verify = () => run(async () => {
+    const r = await signInWithCode(sentTo, code);
+    if (r === "ok") onDone("You are signed in. Your progress is saved to your account.");
+    else setNote(r === "wrong" ? "That code is wrong or has run out. Check it, or send a new one." : r === "slow" ? "Too many tries. Wait a minute and try again." : "The server cannot be reached. Try again in a moment.");
+  });
+  const google = () => run(async () => {
+    await signInWithGoogle();
+    setNote("The server cannot be reached. Try again in a moment.");
+  });
+  const leave = () => run(async () => {
+    if (await signOut()) onDone("You are signed out. Sign in again to pick up your progress.");
+    else setNote("Signing out did not work. Try again in a moment.");
+  });
+  const remove = () => run(async () => {
+    if (await deleteAccount()) onDone("Your account and its progress are deleted.");
+    else setNote("Deleting your account did not work. Try again in a moment.");
+  });
+
+  const status = note && (
+    <div role="status" style={{ ...small, marginTop: 12, padding: "9px 12px", borderRadius: 10, border: `1px solid ${C.hair}`, background: "rgba(11,51,49,0.6)" }}>{note}</div>
+  );
+
+  if (!account.guest) {
+    return (
+      <Shell>
+        <BackLink label="Back to the menu" onClick={onBack} />
+        <div style={title}>YOUR ACCOUNT</div>
+        {status}
+        <Slab title="Signed in">
+          <div style={{ fontSize: 14, color: C.ink, overflowWrap: "anywhere" }}>{account.email}</div>
+          <div style={{ ...small, marginTop: 6 }}>
+            {account.google ? "With Google. " : ""}Your progress is saved to this account. Sign in with it on any device to pick it up there.
+          </div>
+        </Slab>
+        <Slab title="Sign out">
+          <div style={small}>This browser starts again as a guest. Your progress stays with your account.</div>
+          <div style={{ marginTop: 10 }}><StartButton ghost onClick={leave} label={busy ? "Signing out" : "Sign out"} /></div>
+        </Slab>
+        <Slab title="Delete my account">
+          {confirmDelete ? (
+            <>
+              <div style={small}>This deletes your account, your ships, your coins and your records for good. It cannot be undone.</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
+                <StartButton onClick={remove} label={busy ? "Deleting" : "Delete everything"} />
+                <StartButton ghost onClick={() => setConfirmDelete(false)} label="Keep my account" />
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={small}>Delete your account and everything saved with it.</div>
+              <div style={{ marginTop: 10 }}><StartButton ghost onClick={() => setConfirmDelete(true)} label="Delete my account" /></div>
+            </>
+          )}
+        </Slab>
+      </Shell>
+    );
+  }
+
+  const { methods } = account;
+  return (
+    <Shell>
+      <BackLink label="Back to the menu" onClick={onBack} />
+      <div style={title}>SAVE YOUR PROGRESS</div>
+      <div style={{ ...small, marginTop: 10 }}>
+        You are playing as a guest, so your progress is kept only in this browser, and only for 90 days
+        after your last visit. Sign in to keep it for good and to play on with it on another device.
+      </div>
+      {hasProgress() && (
+        <div style={{ ...small, marginTop: 10, padding: "9px 12px", borderRadius: 10, border: `1px solid ${C.gold}`, background: "rgba(11,51,49,0.6)" }}>
+          A new account keeps what you have now. If you sign in to an account that already has progress,
+          that account's progress replaces this browser's.
+        </div>
+      )}
+      {status}
+      {methods.email && (
+        <Slab title="Sign in with email">
+          {sentTo ? (
+            <>
+              <div style={small}>We sent a 6-digit code to <span style={{ color: C.ink, overflowWrap: "anywhere" }}>{sentTo}</span>. It works for 10 minutes.</div>
+              <form onSubmit={(e) => { e.preventDefault(); verify(); }} style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                <input
+                  aria-label="Sign-in code" value={code} inputMode="numeric" autoComplete="one-time-code" maxLength={6} placeholder="Code"
+                  onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))} style={{ ...field, letterSpacing: 4 }}
+                />
+                <StartButton onClick={verify} label={busy ? "Checking" : "Sign in"} />
+              </form>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
+                <StartButton ghost onClick={send} label="Send a new code" />
+                <StartButton ghost onClick={() => { setSentTo(null); setNote(""); }} label="Use another email" />
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={small}>We will email you a 6-digit code to type in here. No password.</div>
+              <form onSubmit={(e) => { e.preventDefault(); send(); }} style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                <input
+                  aria-label="Email address" type="email" value={email} autoComplete="email" autoCapitalize="none" placeholder="Email address"
+                  onChange={(e) => setEmail(e.target.value)} style={field}
+                />
+                <StartButton onClick={send} label={busy ? "Sending" : "Send code"} />
+              </form>
+            </>
+          )}
+        </Slab>
+      )}
+      {methods.google && (
+        <Slab title="Sign in with Google">
+          <div style={small}>Google asks which account to use, then brings you back here.</div>
+          <div style={{ marginTop: 10 }}><StartButton ghost onClick={google} label="Continue with Google" /></div>
+        </Slab>
       )}
     </Shell>
   );

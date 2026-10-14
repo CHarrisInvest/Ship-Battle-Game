@@ -11,7 +11,9 @@
  *   stale version (another tab) is caught and the action tried again on the newer record;
  *   with the server out of reach it says so, and comes back by itself;
  *   a voyage sailed and recorded here, its log sent in pieces, is banked by the server for exactly
- *   what the server's own replay says, and the hold the screen shows moves by it.
+ *   what the server's own replay says, and the hold the screen shows moves by it;
+ *   signing in with an email code keeps her progress and reloads it, signing out leaves a fresh guest,
+ *   signing back in brings the account's progress back, and deleting the account leaves a fresh guest.
  */
 
 import { createServer } from "node:http";
@@ -34,12 +36,16 @@ const until = async (cond, ms = 5000) => { const end = Date.now() + ms; while (!
 const db = await testDatabase();
 const pool = makePool(db.url);
 const clock = { t: Date.parse("2026-10-13T12:00:00Z") };
+const codes = new Map(); // the sign-in codes the server "sent", by address
 const server = createServer();
 await new Promise((r) => server.listen(0, "127.0.0.1", r));
 const base = `http://127.0.0.1:${server.address().port}`;
 const app = await createApp({
   pool,
-  config: { secret: "test-secret-that-is-long-enough-for-better-auth-0123456789", baseURL: base, origins: [base], cookieDomain: null, prefix: "/api" },
+  config: {
+    secret: "test-secret-that-is-long-enough-for-better-auth-0123456789", baseURL: base, origins: [base], cookieDomain: null, prefix: "/api",
+    sendCode: async (email, code) => { codes.set(email, code); },
+  },
   now: () => clock.t,
 });
 server.on("request", app.handler);
@@ -154,6 +160,33 @@ try {
     r2.record(0, { joyMag: 2, joyAng: 0, broadside: false, bow: false, musket: false, repair: null });
     const refused = await r2.finish(5);
     check(!refused.ok && refused.refused && refused.refused.status === 422, "a voyage the server refuses comes back refused, not banked");
+  }
+  // ---- signing in ---------------------------------------------------------------------------------
+  {
+    const A = await import("../src/account.js");
+    const progress = json(H.getHold());
+    const who = await A.getAccount();
+    check(who && who.guest && who.methods.email && !who.methods.google, "a guest is told she is one, and that email sign-in is on and Google is not");
+    check(H.hasProgress(), "a guest who has sailed has progress she could lose");
+    check((await A.sendCode(" Captain@Example.com ")) === "sent" && codes.has("captain@example.com"), "a code is sent to her email");
+    const real = codes.get("captain@example.com");
+    check((await A.signInWithCode("captain@example.com", real === "000000" ? "111111" : "000000")) === "wrong" && (await A.getAccount()).guest,
+      "a wrong code is said to be wrong, and she is still a guest");
+    const signed = await A.signInWithCode("captain@example.com", real);
+    const acct = await A.getAccount();
+    check(signed === "ok" && acct && !acct.guest && acct.email === "captain@example.com", "the right code signs her in");
+    check(H.holdStatus() === "ready" && json(H.getHold()) === progress, "and the hold she sees is the progress she had as a guest");
+
+    check((await A.signOut()) && H.holdStatus() === "ready" && json(H.getHold()) === json(R.blank()) && (await A.getAccount()).guest,
+      "signing out leaves a fresh guest, with a blank hold");
+    await A.sendCode("captain@example.com");
+    check((await A.signInWithCode("captain@example.com", codes.get("captain@example.com"))) === "ok" && json(H.getHold()) === progress,
+      "signing back in brings the account's progress back");
+    check((await A.deleteAccount()) && json(H.getHold()) === json(R.blank()) && (await A.getAccount()).guest,
+      "deleting the account leaves a fresh guest, with a blank hold");
+    await A.sendCode("captain@example.com");
+    await A.signInWithCode("captain@example.com", codes.get("captain@example.com"));
+    check(json(H.getHold()) === json(R.blank()), "and the deleted account's progress is gone for good");
   }
 } catch (e) {
   fail(`the test itself broke: ${e.stack || e.message}`);
