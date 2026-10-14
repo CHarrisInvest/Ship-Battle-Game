@@ -53,6 +53,12 @@ isInput(record);                     // whether the controls could have made thi
   `"together"`), and `field` is how many ships started, for the placement line.
   Each captain is placed as she goes under, so `losers` lists them in the order they sank, and two
   who sink on one step share a place.
+- **`playOn(world)`** is the rest of a round to watch once its captains are out of it: a copy of a
+  finished free-for-all or derby with two ships or more still fighting (`playsOn` says whether there
+  is one), which steps on without her until one ship or none is left. Its `result` keeps her winners
+  and losers exactly as they were and adds `lastShip`, the id of the last afloat, or null. Her own
+  world is untouched, because that is the one her voyage is banked on; the copy pays and places
+  nobody. With friends nothing is copied, since the round never stopped for anyone still afloat.
 
 ## Events
 
@@ -68,7 +74,7 @@ reference into the world, so it can be drawn, counted or sent anywhere.
 | `dismasted` | `shipId, by, x, y` | the renderer: `MAST DOWN` or `OUR MAST!` |
 | `player_out` | `playerId, rank, cause` | the screen: a captain is placed the step she sinks, while the round goes on for the rest |
 | `repaired` | `shipId, system, coins` | the HUD, which answers the tap at once |
-| `round_over` | `result` | the component: end screen, its sentence, banking and analytics, once |
+| `round_over` | `result` | the component: end screen, its sentence, banking and analytics, once; from a round being watched, only the line naming who was left |
 
 The HUD needs no event: the frame loop reads the world at most every 0.09 s and tells React only when
 something it shows has moved. Wakes, bow spray and a ship's heel are worked out by the renderer from

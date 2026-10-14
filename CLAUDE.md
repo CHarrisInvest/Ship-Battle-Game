@@ -11,13 +11,15 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   the frame loop that joins the engine, the renderer and the controls. It holds no rule of play.
 - **`src/sim/` is the engine, and only the engine decides what happens in a round.** The world, the
   step, ships, guns, rams, the AI, the weather, the round's rules and its end, the mode rules and the
-  dice live there. `createWorld({ mode, seed, players, rivals })`, `step(world, inputs)`, `voyageStats`,
-  `voyageRun`, `repairQuote` and `isInput` are the whole of its interface: controls go in as one input
-  record per player id (a repair included, so it travels the road the wheel does), `isInput` says
-  whether a record is one the controls could have made, `voyageRun` is what a finished voyage banks,
-  read off the world once for the browser and the server alike, and what happened comes back as events
-  carrying ids and numbers, never a reference into the world, with `world.result` once the round is
-  over. The world is plain data that `structuredClone` copies. `docs/ENGINE.md` is its design note.
+  dice live there. `createWorld({ mode, seed, players, rivals })`, `step(world, inputs)`,
+  `voyageStats`, `voyageRun`, `repairQuote`, `isInput` and `playOn` are the whole of its interface:
+  controls go in as one input record per player id (a repair included, so it travels the road the
+  wheel does), `isInput` says whether a record is one the controls could have made, `voyageRun` is
+  what a finished voyage banks, read off the world once for the browser and the server alike, `playOn`
+  is a copy of a round she has sunk out of that sails on without her so she can watch the rest (it
+  banks and places nobody), and what happened comes back as events carrying ids and numbers, never a
+  reference into the world, with `world.result` once the round is over. The world is plain data that
+  `structuredClone` copies. `docs/ENGINE.md` is its design note.
 - **The engine is pure, and `npm run purity` says so.** Nothing under `src/sim/` imports anything but
   itself, `shipyard.js`, `shipref.js`, `hullform.js` and `exact.js`, or mentions `window`, `document`,
   `localStorage`, a canvas, `Math.random`, `Date.now` or `performance`. Nor does it, or the catalogue
