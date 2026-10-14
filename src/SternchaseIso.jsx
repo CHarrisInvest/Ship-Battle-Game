@@ -7,6 +7,7 @@ import {
 } from "./hold.js";
 import { startVoyage, recorderFor } from "./voyage.js";
 import { connectOnline, ONLINE_FAILED } from "./online.js";
+import { call } from "./net.js";
 import {
   kindOf, rate, rateOf, rigSpec, ladderHeight,
   HULLS, HULL_LIST, PARTS, statBand, maximumLoadout, outfitCost,
@@ -267,12 +268,28 @@ export default function App() {
     setBounty(net.banked.bounty);
   }, [net && net.banked]);
   // An invite link carries the lobby's code: open the lobby screen and join it once the hold is in.
+  // Without one, ask the server whether she still has a place in a lobby (the app was closed or the
+  // phone locked mid-lobby): if she does, go straight back, and the server seats her again.
   useEffect(() => {
     const code = new URLSearchParams(window.location.search).get("join");
-    if (!code) return;
-    window.history.replaceState(null, "", window.location.pathname);
-    pendingJoin.current = code.toUpperCase();
-    connect().then(() => openOnline());
+    if (code) {
+      window.history.replaceState(null, "", window.location.pathname);
+      pendingJoin.current = code.toUpperCase();
+      connect().then(() => openOnline());
+      return;
+    }
+    connect().then(async () => {
+      const r = await call("GET", "/online/where");
+      if (r.status === 200 && r.data && r.data.code) openOnline();
+    });
+  }, []);
+  // Back on screen after the phone locked or the app was switched away: the connection is made again
+  // at once rather than on its back-off, and the server puts her back where she was.
+  useEffect(() => {
+    const back = () => { if (document.visibilityState === "visible" && onlineRef.current) onlineRef.current.reconnectNow(); };
+    document.addEventListener("visibilitychange", back);
+    window.addEventListener("pageshow", back);
+    return () => { document.removeEventListener("visibilitychange", back); window.removeEventListener("pageshow", back); };
   }, []);
   useEffect(() => {
     const off = subscribeStatus(setLink);
@@ -447,7 +464,8 @@ export default function App() {
           const behind = net.behind;
           let want = Math.floor(bank / TICK);
           if (behind > 9) want = Math.max(want, behind - 6);
-          want = Math.min(want, behind, 30);
+          // back in a round after the connection dropped: the round so far, sailed through quickly
+          want = Math.min(want, behind, behind > 300 ? 900 : 30);
           for (const e of net.advance(want)) events.push(e);
           // never expected (the engine steps to the same bits everywhere), but said if it happens
           if (net.state.round.desynced && !window.__sternchaseDesync) { window.__sternchaseDesync = true; console.warn("this round has parted company with the server's"); }
@@ -797,7 +815,7 @@ export default function App() {
       {phase === "lobby" && (
         <LobbyScreen
           net={net}
-          note={netNote}
+          note={net && net.reconnecting ? "Reconnecting to the server. Your place in the lobby is held for 2 minutes." : netNote}
           onMake={(isPublic) => onlineRef.current && onlineRef.current.create(isPublic)}
           onReady={(r) => onlineRef.current && onlineRef.current.setReady(r)}
           onJoin={(code) => onlineRef.current && onlineRef.current.join(code)}
@@ -3461,7 +3479,7 @@ function LobbyScreen({ net, note, onMake, onJoin, onRivals, onStart, onLeave, on
   const most = Math.max(0, 10 - (lobby ? lobby.captains.length - 1 : 0));
   const shown = lobby ? Math.min(lobby.rivals, most) : 0;
   const mine = lobby && lobby.captains.find((c) => c.userId === me);
-  const unready = lobby ? lobby.captains.filter((c) => c.userId !== lobby.host && !c.ready).length : 0;
+  const unready = lobby ? lobby.captains.filter((c) => c.userId !== lobby.host && (!c.ready || c.away)).length : 0;
   const open = (net && net.lobbies) || [];
   return (
     <Shell>
@@ -3521,8 +3539,8 @@ function LobbyScreen({ net, note, onMake, onJoin, onRivals, onStart, onLeave, on
                     {[c.userId === lobby.host ? "host" : "", c.userId === me ? "you" : ""].filter(Boolean).map((t) => `, ${t}`).join("")}
                   </span>
                 </span>
-                <span style={{ fontSize: 12, fontWeight: 700, color: c.userId === lobby.host || c.ready ? C.grass : "rgba(238,244,242,0.55)" }}>
-                  {c.userId === lobby.host ? "Starts the round" : c.ready ? "Ready" : "Not ready"}
+                <span style={{ fontSize: 12, fontWeight: 700, color: c.away ? C.gold : c.userId === lobby.host || c.ready ? C.grass : "rgba(238,244,242,0.55)" }}>
+                  {c.away ? "Away" : c.userId === lobby.host ? "Starts the round" : c.ready ? "Ready" : "Not ready"}
                 </span>
               </div>
             ))}
@@ -3545,7 +3563,7 @@ function LobbyScreen({ net, note, onMake, onJoin, onRivals, onStart, onLeave, on
                 label={lobby.state === "starting" ? "Starting" : "Start the round"} />
               {unready > 0 && (
                 <div style={{ ...small, textAlign: "center", marginTop: 8 }}>
-                  {unready === 1 ? "Waiting for 1 captain to be ready." : `Waiting for ${unready} captains to be ready.`}
+                  {unready === 1 ? "Waiting for 1 captain to be ready or come back." : `Waiting for ${unready} captains to be ready or come back.`}
                 </div>
               )}
             </div>

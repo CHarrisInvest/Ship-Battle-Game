@@ -38,7 +38,7 @@ const server = createServer();
 await new Promise((r) => server.listen(0, "127.0.0.1", r));
 const base = `http://127.0.0.1:${server.address().port}`;
 const app = await createApp({
-  pool, now, catchUp: 30,
+  pool, now, catchUp: 30, awayMs: 1500,
   config: { secret: "test-secret-that-is-long-enough-for-better-auth-0123456789", baseURL: base, origins: [base], cookieDomain: null, prefix: "/api", publicWs: `ws://127.0.0.1:${server.address().port}/ws` },
 });
 server.on("request", app.handler);
@@ -78,8 +78,10 @@ try {
   }
 
   const aState = [], bState = [];
-  A = await connectOnline({ Socket: WebSocket, getTicket: () => alice.ask("POST", "/online/ticket", { engine: engineHash() }), onChange: (s) => aState.push(s) });
-  B = await connectOnline({ Socket: WebSocket, getTicket: () => bob.ask("POST", "/online/ticket", { engine: engineHash() }), onChange: (s) => bState.push(s) });
+  A = await connectOnline({ Socket: WebSocket, retryMs: 100, getTicket: () => alice.ask("POST", "/online/ticket", { engine: engineHash() }), onChange: (s) => aState.push(s) });
+  B = await connectOnline({ Socket: WebSocket, retryMs: 100, getTicket: () => bob.ask("POST", "/online/ticket", { engine: engineHash() }), onChange: (s) => bState.push(s) });
+  /** Cut a captain's connection from the server's side, as a phone locking or an app closing does. */
+  const drop = (userId) => { for (const l of app.online.lobbies.values()) for (const m of l.members) if (m.userId === userId && m.ws) m.ws.terminate(); };
   check(!A.error && !B.error && A.state.open && B.state.open, "both captains open the socket with a ticket");
 
   A.create(true);
@@ -111,6 +113,23 @@ try {
   }
   check(A.state.lobby.host === alice.id, "the captain who made it is the host");
 
+  // the friend's connection drops: she is shown away, keeps her place, and is put back on reconnecting
+  drop(bob.id);
+  check(await until(() => A.state.lobby.captains.find((c) => c.userId === bob.id && c.away)), "a captain whose connection drops is shown away, and keeps her place");
+  check((await bob.ask("GET", "/online/where")).data.code === code, "the server says which lobby she still has a place in");
+  check(await until(() => B.state.open && B.state.lobby && !A.state.lobby.captains.find((c) => c.userId === bob.id).away),
+    "her app reconnects by itself and she is back in the same lobby");
+  check(A.state.lobby.captains.length === 2 && A.state.lobby.host === alice.id, "still two captains, and the host is still the host");
+  {
+    // away for longer than the hold: she is let go
+    const dave = await captain("192.0.2.14");
+    const D = await connectOnline({ Socket: WebSocket, getTicket: () => dave.ask("POST", "/online/ticket", { engine: engineHash() }) });
+    D.join(code);
+    await until(() => A.state.lobby.captains.length === 3);
+    D.close();
+    check(await until(() => A.state.lobby.captains.some((c) => c.userId === dave.id && c.away)), "a captain who closes the app is shown away");
+    check(await until(() => A.state.lobby.captains.length === 2, 5000), "and let go once the hold runs out");
+  }
   B.start();
   await new Promise((r) => setTimeout(r, 200));
   check(!A.state.round && !B.state.round, "only the host can start");
@@ -127,15 +146,25 @@ try {
 
   // sail: Alice drives hard, Bob sits; both browsers step whatever the server has sent
   let ticks = 0;
+  let droppedMidRound = false, rejoined = false;
   const banked = () => A.state.banked && B.state.banked;
   while (!(A.state.round.over && B.state.round.over && banked()) && ticks < 216000 * 2) {
     const r = A.state.round;
     A.send({ ...drive(r.world.tick), joyAng: -0.8 + (r.world.tick % 600) / 300 });
     ticks += A.advance(1000).length >= 0 ? 1 : 0;
     B.advance(1000);
+    // halfway through a minute of round, the friend's connection drops; she rejoins and sails it up to now
+    if (!droppedMidRound && B.state.round && B.state.round.world.tick > 1800 && !B.state.round.over) {
+      droppedMidRound = true;
+      const before = B.state.round;
+      drop(bob.id);
+      await until(() => B.state.round && B.state.round !== before && B.state.round.rejoin);
+      rejoined = true;
+    }
     await new Promise((res) => setTimeout(res, 5));
     if (Date.now() - t0 > 120000) break;
   }
+  check(!droppedMidRound || rejoined, "a captain whose connection drops mid-round is sent the round so far when she is back");
   const ra = A.state.round, rb = B.state.round;
   check(ra.over && rb.over, `the round ran to its end in both browsers (${ra.world.tick} ticks)`);
   check(!ra.desynced && !rb.desynced, "neither browser ever parted company with the server");

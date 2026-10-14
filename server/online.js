@@ -67,11 +67,17 @@ export function readTicket(secret, ticket, now) {
  * The lobbies and their rounds. `pool` for the holds, `engine` to turn away a browser on another
  * one, `now` for the clock. `attach(server, path)` takes WebSocket upgrades on `path`.
  */
-export function createOnline({ pool, engine, secret, publicWs, now = () => Date.now(), catchUp = 10 }) {
+/**
+ * How long a captain whose connection dropped keeps her place: a phone that locks, an app switched
+ * away from, a tunnel. She is shown as away, and she is put back the moment she reconnects.
+ */
+export const AWAY_MS = 2 * 60 * 1000;
+
+export function createOnline({ pool, engine, secret, publicWs, now = () => Date.now(), catchUp = 10, awayMs = AWAY_MS }) {
   const lobbies = new Map(); // code to lobby
   const wss = new WebSocketServer({ noServer: true, maxPayload: 16 * 1024 });
 
-  const send = (ws, msg) => { if (ws.readyState === 1) ws.send(JSON.stringify(msg)); };
+  const send = (ws, msg) => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(msg)); };
 
   function newCode() {
     for (;;) {
@@ -85,7 +91,7 @@ export function createOnline({ pool, engine, secret, publicWs, now = () => Date.
   function lobbyView(lobby) {
     return {
       t: "lobby", code: lobby.code, state: lobby.state, rivals: lobby.rivals, host: lobby.host, public: lobby.public,
-      captains: lobby.members.map((m) => ({ mid: m.mid, userId: m.userId, name: m.name, ready: !!m.ready, playerId: m.playerId || null })),
+      captains: lobby.members.map((m) => ({ mid: m.mid, userId: m.userId, name: m.name, ready: !!m.ready, away: !!m.away, playerId: m.playerId || null })),
     };
   }
   const tellLobby = (lobby) => { const v = lobbyView(lobby); for (const m of lobby.members) send(m.ws, { ...v, you: m.userId }); tellLobbies(); };
@@ -119,11 +125,15 @@ export function createOnline({ pool, engine, secret, publicWs, now = () => Date.
   function leave(member) {
     const lobby = member.lobby;
     if (!lobby) return;
+    clearTimeout(member.awayTimer);
     member.lobby = null;
     member.ready = false;
     lobby.members = lobby.members.filter((m) => m !== member);
     if (!lobby.members.length) { stopRound(lobby); lobbies.delete(lobby.code); tellLobbies(); return; }
-    if (lobby.host === member.userId && !lobby.members.some((m) => m.userId === member.userId)) lobby.host = lobby.members[0].userId;
+    if (lobby.host === member.userId && !lobby.members.some((m) => m.userId === member.userId)) {
+      // the host goes to a captain who is here, if there is one
+      lobby.host = (lobby.members.find((m) => !m.away) || lobby.members[0]).userId;
+    }
     tellLobby(lobby);
   }
 
@@ -150,11 +160,17 @@ export function createOnline({ pool, engine, secret, publicWs, now = () => Date.
         lobby.members[lobby.members.indexOf(earlier)] = member;
         member.ready = earlier.ready;
         member.playerId = earlier.playerId;
+        clearTimeout(earlier.awayTimer);
         earlier.lobby = null;
-        send(earlier.ws, { t: "left", reason: "elsewhere" });
+        if (!earlier.away) send(earlier.ws, { t: "left", reason: "elsewhere" });
       } else lobby.members.push(member);
       tellLobby(lobby);
-      if (lobby.state === "sailing") send(member.ws, { t: "sailing" }); // she waits for the next round
+      if (lobby.state === "sailing") {
+        // back mid-round: the round so far, so her browser can sail it up to the server's tick; or,
+        // if she was not in it, word that she waits for the next one
+        if (member.playerId && lobby.round) catchUpRound(lobby, member);
+        else send(member.ws, { t: "sailing" });
+      }
     } finally {
       member.joining = false;
     }
@@ -183,16 +199,32 @@ export function createOnline({ pool, engine, secret, publicWs, now = () => Date.
       sent: Object.fromEntries(players.map((p) => [p.id, JSON.stringify(NO_INPUT)])),
       next: {}, // the latest input each captain sent since the last tick
       banked: new Set(),
+      bankedSent: {}, // what each captain was told she banked, to tell her again if she reconnects
       frame: [],
+      log: [], // every frame entry sent, so a captain who reconnects can sail the round up to now
       started: now(),
       ticksDone: 0,
     };
     lobby.round = round;
     lobby.state = "sailing";
     const roster = players.map((p) => ({ id: p.id, name: p.name, loadout: p.loadout }));
+    round.roster = roster;
     for (const m of humans) send(m.ws, { t: "start", seed, rivals, players: roster, you: m.playerId });
     tellLobby(lobby);
     round.timer = setInterval(() => tick(lobby), 1000 / 60);
+  }
+
+  /**
+   * A captain back in a round she was sailing: the start again, and every tick so far. Her browser
+   * builds the world from the seed and steps it through them, which is the round the server has
+   * sailed, and then carries on with the live frames. A minute of round steps in well under a second.
+   */
+  function catchUpRound(lobby, member) {
+    const round = lobby.round;
+    send(member.ws, { t: "start", seed: round.seed, rivals: round.rivals, players: round.roster, you: member.playerId, rejoin: true });
+    send(member.ws, { t: "frame", ticks: round.log.concat(round.frame) });
+    const told = round.bankedSent[member.playerId];
+    if (told) send(member.ws, told);
   }
 
   function stopRound(lobby) {
@@ -228,6 +260,7 @@ export function createOnline({ pool, engine, secret, publicWs, now = () => Date.
     }
     if (round.frame.length && (round.frame.length >= FRAME_TICKS || round.world.result.over)) {
       const msg = { t: "frame", ticks: round.frame };
+      for (const f of round.frame) round.log.push(f);
       for (const m of lobby.members) if (m.playerId) send(m.ws, msg);
       round.frame = [];
     }
@@ -255,6 +288,7 @@ export function createOnline({ pool, engine, secret, publicWs, now = () => Date.
       await writeHold(client, p.userId, out.rec, version, now);
       return { hold: out.rec, version, banked: out.banked, bounty: out.bounty, rank: run.rank, won: run.won };
     }).then((done) => {
+      round.bankedSent[playerId] = { t: "banked", ...done };
       for (const m of lobby.members) if (m.userId === p.userId) send(m.ws, { t: "banked", ...done });
     }, (e) => console.error("could not bank an online voyage:", e.message));
   }
@@ -268,7 +302,11 @@ export function createOnline({ pool, engine, secret, publicWs, now = () => Date.
     ws.on("pong", () => { alive = true; });
     const beat = setInterval(() => { if (!alive) return ws.terminate(); alive = false; ws.ping(); }, 15000);
     send(ws, { t: "hello", you: userId });
-    send(ws, { t: "lobbies", list: publicList() });
+    // a captain with a place in a lobby (her connection dropped, or she reopened the app) is put
+    // straight back in it; anyone else is shown the open lobbies
+    const seat = seatOf(userId);
+    if (seat) join(member, seat.code);
+    else send(ws, { t: "lobbies", list: publicList() });
     ws.on("message", async (raw) => {
       let msg;
       try { msg = JSON.parse(raw); } catch { return; }
@@ -294,7 +332,7 @@ export function createOnline({ pool, engine, secret, publicWs, now = () => Date.
         tellLobby(lobby);
       } else if (msg.t === "start" && lobby && lobby.host === userId && lobby.state === "waiting") {
         // everyone but the host has to be ready: nobody is dropped into a round they did not ask for
-        const waiting = lobby.members.filter((m) => m.userId !== lobby.host && !m.ready).length;
+        const waiting = lobby.members.filter((m) => m.userId !== lobby.host && (!m.ready || m.away)).length;
         if (waiting) return send(ws, { t: "error", error: "not-ready", waiting });
         lobby.state = "starting";
         startRound(lobby).catch((e) => { console.error("could not start a round:", e.message); lobby.state = "waiting"; tellLobby(lobby); });
@@ -304,10 +342,27 @@ export function createOnline({ pool, engine, secret, publicWs, now = () => Date.
         lobby.round.next[member.playerId] = { ...msg.input, repair: asked };
       }
     });
-    ws.on("close", () => { clearInterval(beat); sockets.delete(member); leave(member); });
+    ws.on("close", () => {
+      clearInterval(beat);
+      sockets.delete(member);
+      if (!member.lobby) return;
+      // dropped, not left: she keeps her place as away until she is back or the time runs out
+      member.away = true;
+      member.ws = null;
+      tellLobby(member.lobby);
+      member.awayTimer = setTimeout(() => { if (member.away && member.lobby) leave(member); }, awayMs);
+    });
   });
 
+  /** The lobby a captain has a place in, connected or away, or null. */
+  function seatOf(userId) {
+    for (const l of lobbies.values()) if (l.members.some((m) => m.userId === userId)) return l;
+    return null;
+  }
+
   return {
+    /** Which lobby code a captain still has a place in, so a reopened app can go straight back. */
+    whereIs: (userId) => { const l = seatOf(userId); return l ? l.code : null; },
     /** Take an upgrade request if it is for us and carries a good ticket; refuse it otherwise. */
     upgrade(req, socket, head) {
       const url = new URL(req.url, "http://x");

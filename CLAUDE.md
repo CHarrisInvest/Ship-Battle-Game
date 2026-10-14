@@ -122,7 +122,12 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   fingerprint of the ships every two seconds says if it ever is not. Each captain is banked off the
   server's world as she goes out or the round ends, connected or not. The socket goes straight to
   Railway (`PUBLIC_WS_URL`), because Vercel's proxy cannot carry one, so it is opened with a short-lived
-  ticket from `/api/online/ticket`, where the cookie still travels. `npm run online-test` sails two
+  ticket from `/api/online/ticket`, where the cookie still travels. A dropped connection is not a
+  departure: phones drop sockets the moment an app is switched away from, so she is shown away and
+  her place is held for `AWAY_MS` (2 minutes). The socket reopens by itself, the server seats her by
+  her account (no code kept in the browser), a reopened app asks `/api/online/where` and goes back,
+  and mid-round she is sent the start and every tick so far, which her browser sails up to the
+  server's tick in a moment. `npm run online-test` sails two
   captains through a round over real sockets; `npm run online-smoke` does it in two real browsers.
 - `src/consent.js` is the cookie prompt's answer: essential, analytics and advertising, kept
   under its own key. **The hold is the essential category and is never gated on
