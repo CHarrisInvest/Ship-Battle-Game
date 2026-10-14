@@ -13,7 +13,7 @@
  *   a round with several captains does not end, or a voyage does not add up.
  */
 
-import { createWorld, step, voyageStats, shipOf, isHuman, applyHit, HUMAN_SPAWN_GAP } from "../src/sim/index.js";
+import { createWorld, step, voyageStats, shipOf, isHuman, applyHit, playOn, HUMAN_SPAWN_GAP } from "../src/sim/index.js";
 import { STARTER, resolve, ladder } from "../src/shipyard.js";
 
 const LIMIT = 3600;
@@ -218,6 +218,43 @@ function timePay() {
   else ok(`time pay: p1 is paid for her ${at.time.toFixed(1)} s afloat, however long the round ran`);
 }
 
+/**
+ * Watching on: a captain who has sunk can watch the rest of the round. Her own round is over and
+ * banked as it stood; `playOn` hands back a copy that sails on without her until one ship or none
+ * is left, and leaves the round she was banked on exactly as it was.
+ */
+function watching() {
+  const world = createWorld({ mode: "ffa", seed: 8, players: captains(1) });
+  for (let i = 0; i < 300; i++) step(world, {});
+  sink(world, "p1");
+  step(world, {});
+  if (!world.result.over) return fail("watching: her sinking did not end her own round");
+  const banked = JSON.stringify(world.result), tick = world.tick;
+  const w = playOn(world);
+  if (!w) return fail("watching: playOn gave nothing for a free-for-all with rivals still afloat");
+  if (w.result.over) fail("watching: the round to watch starts over");
+  let ends = 0, outs = 0;
+  while (!w.result.over && w.time < LIMIT) {
+    for (const e of step(w, {})) { if (e.type === "round_over") ends++; if (e.type === "player_out") outs++; }
+  }
+  const standing = w.ships.filter((s) => s.alive).length;
+  if (!w.result.over) fail(`watching: the watched round ran past ${LIMIT} s`);
+  else if (standing > 1) fail(`watching: the watched round ended with ${standing} ships afloat`);
+  else if (ends !== 1) fail(`watching: round_over said ${ends} times`);
+  else if (outs) fail("watching: she was placed again while being watched");
+  else if (w.result.winners.length || JSON.stringify(w.result.losers) !== JSON.stringify(world.result.losers)) fail("watching: the watched round changed who won or lost");
+  else if (standing === 1 && w.result.lastShip !== w.ships.find((s) => s.alive).id) fail("watching: the result does not name the last ship afloat");
+  else ok(`watching: the round sailed on ${(w.time - world.time).toFixed(1)} s without her, to ${standing} afloat`);
+  if (world.tick !== tick || JSON.stringify(world.result) !== banked) fail("watching: playOn changed the round she was banked on");
+  // nothing to watch: an arena hunts only her, and a round already down to one ship is settled
+  const arena = createWorld({ mode: "wave", seed: 3, players: captains(1) });
+  sink(arena, "p1");
+  step(arena, {});
+  if (playOn(arena)) fail("watching: an arena with nobody left to hunt offered a round to watch");
+  if (playOn(createWorld({ mode: "ffa", seed: 3, players: captains(1) }))) fail("watching: a round still being sailed offered a copy to watch");
+  else ok("watching: offered only once she is out of a round others are still fighting");
+}
+
 const t0 = Date.now();
 spawns();
 aiCount();
@@ -225,6 +262,7 @@ placing();
 credit();
 rivalSpawns();
 timePay();
+watching();
 rounds();
 console.log(`\n${((Date.now() - t0) / 1000).toFixed(1)} s`);
 if (failures.length) {

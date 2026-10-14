@@ -20,7 +20,7 @@ import { getAdRegion, onAdRegion, openGoogleChoices } from "./ads.js";
 import { analyticsLive, conversionsLive, measurementLive, track } from "./analytics.js";
 import { PrivacyPolicy } from "./privacy.jsx";
 import {
-  createWorld, step, TICK, voyageStats, repairQuote, shipOf, outInWeather, stormPhase, volleyWindow, reloadOf, canFire,
+  createWorld, step, TICK, voyageStats, repairQuote, shipOf, playOn, playsOn, outInWeather, stormPhase, volleyWindow, reloadOf, canFire,
   HULL_PATCH_CAP, MAST_JURY_CAP, barsOf, MODES as RULES, MODE_LIST, modeOf, clamp,
 } from "./sim/index.js";
 import { C, UI } from "./render/palette.js";
@@ -162,6 +162,8 @@ const GOOGLE_NOTE = {
   failed: "Signing in with Google did not work. Try again, or sign in with an email code.",
 };
 const SAVING_NOTE = "Saving your changes to the server first.";
+// a sentence opening on "the Frigate" opens on "The Frigate"
+const cap = (t) => t.charAt(0).toUpperCase() + t.slice(1);
 
 export default function App() {
   const canvasRef = useRef(null);
@@ -228,6 +230,13 @@ export default function App() {
   const [net, setNet] = useState(null);
   const [netNote, setNetNote] = useState("");
   const [onlineEnd, setOnlineEnd] = useState(false);
+  // Watching the rest of a round once she has sunk: whether there is a fight left to watch, the ship
+  // the camera is on (its id in `watchRef`, which the frame loop reads), and how it ended.
+  const [canWatch, setCanWatch] = useState(false);
+  const [watching, setWatching] = useState({ name: "" });
+  const [watchNote, setWatchNote] = useState("");
+  const watchRef = useRef(null);
+  const watchRefs = useRef({ start: () => {}, next: () => {}, stop: () => {} });
   const roundSeen = useRef(null);
   const pendingJoin = useRef(null);
   const onNet = useCallback((st) => {
@@ -301,7 +310,7 @@ export default function App() {
   // screen but the fight is that ground over the sea, and a sea-coloured band over a dark menu
   // read as a browser that had not caught up. Safari follows a change to the meta as it happens.
   useEffect(() => {
-    const tint = phase === "playing" ? C.water : MENU_TINT;
+    const tint = phase === "playing" || phase === "watching" ? C.water : MENU_TINT;
     let meta = document.querySelector('meta[name="theme-color"]');
     if (!meta) {
       meta = document.createElement("meta");
@@ -402,8 +411,111 @@ export default function App() {
     function resize() {
       renderer.resize(hudRef.current?.getBoundingClientRect());
       const g = gameRef.current;
-      if (g) renderer.follow(shipOf(g, meRef.current));
+      if (g) renderer.follow(viewed(g));
     }
+
+    /**
+     * The ship the camera is on: hers, or the one she is watching once she has sunk. A watched ship
+     * that goes under is kept in view a moment, so her sinking is seen, and then the camera moves
+     * to the nearest ship still afloat.
+     */
+    let lostAt = 0;
+    function viewed(g) {
+      const id = watchRef.current;
+      if (id == null) return shipOf(g, meRef.current);
+      const s = g.ships.find((x) => x.id === id);
+      if (s.alive) { lostAt = 0; return s; }
+      if (!lostAt) lostAt = g.time;
+      if (g.time - lostAt < 1.5) return s;
+      const next = nearestAfloat(g, s);
+      if (next) watchShip(g, next);
+      return next || s;
+    }
+
+    function nearestAfloat(g, from) {
+      let best = null, bd = Infinity;
+      for (const s of g.ships) {
+        if (!s.alive || s === from) continue;
+        const d = (s.x - from.x) ** 2 + (s.y - from.y) ** 2;
+        if (d < bd) { bd = d; best = s; }
+      }
+      return best;
+    }
+
+    // what she reads at the head of the screen: a friend's ship by the name she gave her, any other
+    // by her class
+    function shipLabel(s) {
+      const friend = s.playerId && fx && fx.names && fx.names[s.playerId];
+      return friend || `the ${s.loadout.hull.name}`;
+    }
+
+    function watchShip(g, s) {
+      watchRef.current = s.id;
+      lostAt = 0;
+      setWatching({ name: shipLabel(s) });
+    }
+
+    // Her own round is over and banked; the fight goes on. Alone, she watches a copy of her round
+    // the engine sails on without her. With friends, the round never stopped for her.
+    function startWatch() {
+      let g = gameRef.current;
+      if (!g) return;
+      // With friends the round is the server's until the last of them is out, and it stops there even
+      // with AI ships still fighting. This browser holds the whole world, so from then on it sails
+      // the rest itself, the way a voyage alone does.
+      if (!isOnline(g) || g.result.over) {
+        // the first time, the copy to watch; after "Stop watching", the same copy picked up again
+        if (!g.watching) {
+          const w = playOn(g);
+          if (!w) return;
+          gameRef.current = g = w;
+        } else if (g.result.over) return;
+        liveRef.current = true;
+        last = 0;
+        bank = 0;
+      } else if (g.result.over) return;
+      const first = nearestAfloat(g, shipOf(g, meRef.current));
+      if (!first) return;
+      watchShip(g, first);
+      setPhase("watching");
+    }
+
+    // Each ship afloat in turn, in the order they were launched.
+    function nextWatch() {
+      const g = gameRef.current;
+      if (!g || watchRef.current == null) return;
+      const afloat = g.ships.filter((s) => s.alive && s.playerId !== meRef.current);
+      if (!afloat.length) return;
+      const after = afloat.find((s) => s.id > watchRef.current) || afloat[0];
+      watchShip(g, after);
+    }
+
+    // Back to her end screen. Alone, the copy she was watching stops where it is; with friends the
+    // round goes on, because the server is sailing it for everyone.
+    function stopWatch() {
+      const g = gameRef.current;
+      watchRef.current = null;
+      if (g && !isOnline(g)) {
+        liveRef.current = false;
+        setCanWatch(playsOn(g) || !!(g.watching && !g.result.over));
+      }
+      setPhase("dead");
+    }
+
+    // The fight she was watching is over: back to her end screen, which says who was left.
+    function watchOver(g) {
+      const last = g.ships.find((s) => s.alive);
+      setWatchNote(last ? `${cap(shipLabel(last))} was the last ship afloat.` : "No ship was left afloat.");
+      setCanWatch(false);
+      watchRef.current = null;
+      setPhase((ph) => (ph === "watching" ? "dead" : ph));
+    }
+
+    function isOnline(g) {
+      const net = onlineRef.current;
+      return !!(net && net.state.round && net.state.round.world === g);
+    }
+    watchRefs.current = { start: startWatch, next: nextWatch, stop: stopWatch };
 
     function updateButtons() {
       const p = shipOf(gameRef.current, meRef.current);
@@ -483,7 +595,7 @@ export default function App() {
         // what the steps did, drawn: the engine only said it happened
         fxEvents(fx, events);
         stepFx(fx, g, dt);
-        renderer.follow(shipOf(g, meRef.current), alpha);
+        renderer.follow(viewed(g), alpha);
         updateButtons();
         let hudNow = false;
         for (const e of events) {
@@ -492,10 +604,19 @@ export default function App() {
             if (e.type === "player_out" && e.playerId === meRef.current) onlineOut(g, e);
             if (e.type === "round_over") {
               const won = e.result.winners.find((w) => w.playerId === meRef.current);
-              if (won) onlineOut(g, { ...won, won: true });
               liveRef.current = false;
+              if (won) onlineOut(g, { ...won, won: true });
+              else if (watchRef.current != null && playsOn(g)) {
+                // the last of her friends is out and the AI fight on: she watches on, sailed here
+                gameRef.current = playOn(g);
+                liveRef.current = true;
+              } else if (playsOn(g)) setCanWatch(true);
+              else watchOver(g);
             }
-          } else if (e.type === "round_over") endRound(g, e.result);
+          } else if (e.type === "round_over") {
+            if (g.watching) { liveRef.current = false; watchOver(g); }
+            else endRound(g, e.result);
+          }
         }
         hudAcc += dt;
         if (hudNow || hudAcc > 0.09) {
@@ -503,7 +624,7 @@ export default function App() {
           if (hudNow || key !== hudLast) { syncRef.current(); hudLast = key; hudAcc = 0; }
         }
       }
-      renderer.render(g, fx, { live: liveRef.current, input: controls.input, alpha });
+      renderer.render(g, fx, { live: liveRef.current && watchRef.current == null, input: controls.input, alpha });
       fadeRail();
       raf = requestAnimationFrame(loop);
     }
@@ -544,7 +665,7 @@ export default function App() {
         const rec = recorder;
         recorder = null;
         pendingFinish = rec.finish(g.tick).then((out) => {
-          if (gameRef.current !== g) return; // she has sailed again since
+          if (voyage !== g) return; // she has sailed again since
           if (out.ok) {
             adoptHold(out.data);
             setBanked(out.data.banked);
@@ -555,6 +676,7 @@ export default function App() {
         track("voyage_end", { mode: g.mode, result: won ? "won" : "sunk", rank: mine.rank, kills: s.kills, seconds: Math.round(s.time) });
       }
       setResult(won ? (g.rules.ladder ? WON_LADDER : WON_LAST) : SUNK_LINE[mine.cause] || SUNK_LINE.crew);
+      setCanWatch(!won && playsOn(g));
       setPhase(won ? "won" : "dead");
       syncRef.current();
     }
@@ -568,6 +690,7 @@ export default function App() {
     // A voyage: the server's seed and the loadout off its copy of her hold, sent as the very JSON
     // its replay will build the world from, and a recorder for the controls she sails it with.
     let recorder = null;
+    let voyage = null; // the world her voyage is banked off, which a round she watches after it is not
     let starting = false;
     let pendingFinish = Promise.resolve(); // the last voyage's finish, which a new one waits for
     async function start(m) {
@@ -590,9 +713,10 @@ export default function App() {
         return;
       }
       const { round } = s;
-      gameRef.current = createWorld({ mode: round.mode, seed: round.seed, players: [{ id: meRef.current, loadout: round.loadout }] });
+      gameRef.current = voyage = createWorld({ mode: round.mode, seed: round.seed, players: [{ id: meRef.current, loadout: round.loadout }] });
       fx = createFx(shipOf(gameRef.current, meRef.current).id);
       recorder = recorderFor(round.roundId);
+      resetWatch();
       renderer.follow(shipOf(gameRef.current, meRef.current));
       liveRef.current = true;
       controls.reset();
@@ -621,6 +745,7 @@ export default function App() {
       fx = createFx(shipOf(round.world, round.you).id);
       fx.names = round.names; // her friends' ship names, drawn over their ships
       recorder = null;
+      resetWatch();
       renderer.follow(shipOf(round.world, round.you));
       liveRef.current = true;
       controls.reset();
@@ -639,12 +764,19 @@ export default function App() {
     }
     startOnlineRef.current = startOnline;
 
+    function resetWatch() {
+      watchRef.current = null;
+      setCanWatch(false);
+      setWatchNote("");
+    }
+
     /** She is out of the round with friends, sunk or the last afloat: the end screen, over the sea. */
     function onlineOut(g, out) {
       const s = voyageStats(g, meRef.current);
       setStats(s);
       setPlace({ rank: out.rank, total: g.ships.length });
       setResult(out.won ? WON_LAST : SUNK_LINE[out.cause] || SUNK_LINE.crew);
+      setCanWatch(!out.won && !g.result.over);
       setOnlineEnd(true);
       setPhase(out.won ? "won" : "dead");
       track("voyage_end", { mode: "online", result: out.won ? "won" : "sunk", rank: out.rank, kills: s.kills, seconds: Math.round(s.time) });
@@ -853,7 +985,12 @@ export default function App() {
       {phase === "achievements" && <AchievementsScreen hold={hold} onBack={() => setPhase("records")} />}
       {phase === "won" && <EndOverlay title={rules.ladder && !onlineEnd ? "LADDER CLIMBED" : "LAST AFLOAT"} titleColor={C.gold} result={result} stats={stats} mode={mode} place={place} hold={hold} banked={banked} bounty={bounty} online={onlineEnd} onAgain={() => startRef.current(mode)} onMenu={() => (onlineEnd ? setPhase("lobby") : setPhase("start"))} />}
       {phase === "dead" && (
-        <EndOverlay title="SUNK" titleColor={C.crew} result={result} stats={stats} mode={mode} place={place} hold={hold} banked={banked} bounty={bounty} online={onlineEnd} onAgain={() => startRef.current(mode)} onMenu={() => (onlineEnd ? setPhase("lobby") : setPhase("start"))} />
+        <EndOverlay title="SUNK" titleColor={C.crew} result={result} note={watchNote} stats={stats} mode={mode} place={place} hold={hold} banked={banked} bounty={bounty} online={onlineEnd}
+          onWatch={canWatch ? () => watchRefs.current.start() : null}
+          onAgain={() => startRef.current(mode)} onMenu={() => { watchRef.current = null; if (gameRef.current && gameRef.current.watching) liveRef.current = false; setPhase(onlineEnd ? "lobby" : "start"); }} />
+      )}
+      {phase === "watching" && (
+        <WatchBar name={watching.name} afloat={left} onNext={() => watchRefs.current.next()} onStop={() => watchRefs.current.stop()} />
       )}
     </div>
   );
@@ -3917,7 +4054,7 @@ function TallyRow({ label, value, rule, labelColor, valueColor, valueSize, value
   );
 }
 
-function EndOverlay({ title, titleColor, result, stats, mode, place, hold, banked, bounty, online, onAgain, onMenu }) {
+function EndOverlay({ title, titleColor, result, note, stats, mode, place, hold, banked, bounty, online, onWatch, onAgain, onMenu }) {
   const rules = modeOf(mode);
 
   // How she sailed.
@@ -3950,7 +4087,7 @@ function EndOverlay({ title, titleColor, result, stats, mode, place, hold, banke
   return (
     <Shell>
       <div style={{ fontFamily: DISPLAY, fontSize: 40, color: titleColor, letterSpacing: 1 }}>{title}</div>
-      <div style={{ fontSize: 13, color: "rgba(238,244,242,0.85)", margin: "10px 0 14px", lineHeight: 1.6 }}>{result}</div>
+      <div style={{ fontSize: 13, color: "rgba(238,244,242,0.85)", margin: "10px 0 14px", lineHeight: 1.6 }}>{result}{note ? <><br />{note}</> : null}</div>
       <div style={{ background: "rgba(11,51,49,0.6)", border: `1px solid ${C.hair}`, borderRadius: 10, padding: "6px 12px", marginBottom: 18, textAlign: "left" }}>
         {statRows.map(([l, v], i) => <TallyRow key={l} label={l} value={v} rule={i > 0 ? "hair" : ""} />)}
         {payRows.map(([l, v, col], i) => <TallyRow key={l} label={l} value={v} valueColor={col} rule={i === 0 ? "group" : "hair"} />)}
@@ -3970,6 +4107,11 @@ function EndOverlay({ title, titleColor, result, stats, mode, place, hold, banke
           The server could not confirm this voyage, so nothing from it was added to your hold.
         </div>
       )}
+      {onWatch && (
+        <div style={{ marginBottom: 10 }}>
+          <StartButton onClick={onWatch} label="Watch the rest of the round" ghost />
+        </div>
+      )}
       <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
         {online ? (
           <StartButton onClick={onMenu} label="Back to the lobby" />
@@ -3983,6 +4125,33 @@ function EndOverlay({ title, titleColor, result, stats, mode, place, hold, banke
     </Shell>
   );
 }
+
+/**
+ * What she sees while she watches the rest of a round: which ship the camera is on, how many are
+ * still afloat, a button to move to the next and one to go back to her end screen. It sits at the
+ * foot of the screen, where her stick and guns were, clear of the radar in the top corner.
+ */
+function WatchBar({ name, afloat, onNext, onStop }) {
+  return (
+    <div style={{ position: "absolute", bottom: "calc(env(safe-area-inset-bottom, 0px) + 16px)", left: 0, right: 0, display: "flex", justifyContent: "center", padding: "0 16px", pointerEvents: "none" }}>
+      <div style={{ pointerEvents: "auto", background: C.panel, border: `1px solid ${C.hair}`, borderRadius: 10, padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8, width: 340, maxWidth: "100%", boxSizing: "border-box" }}>
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10 }}>
+          <span style={{ fontSize: 14, fontWeight: 700, color: C.ink, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Watching {name}</span>
+          <span style={{ flex: "0 0 auto", fontSize: 12, color: "rgba(238,244,242,0.65)" }}>{afloat} {afloat === 1 ? "ship" : "ships"} afloat</span>
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={onNext} style={watchBtn(false)}>Next ship</button>
+          <button onClick={onStop} style={watchBtn(true)}>Stop watching</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const watchBtn = (ghost) => ({
+  flex: "1 1 0", fontFamily: UI, fontSize: 13, fontWeight: 700, borderRadius: 10, padding: "8px 10px", cursor: "pointer",
+  color: ghost ? C.gold : C.deep, background: ghost ? "transparent" : C.gold, border: ghost ? `1px solid ${C.gold}` : "none", WebkitTapHighlightColor: "transparent",
+});
 
 function StartButton({ onClick, label, ghost, disabled }) {
   return (

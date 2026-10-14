@@ -91,6 +91,14 @@ export function voyageRun(world, playerId) {
  */
 export function judge(world) {
   if (world.result.over) return;
+  if (world.watching) {
+    // a round being watched has nobody left to place: it ends when the fight it is showing does
+    const left = world.ships.filter((s) => s.alive);
+    if (left.length > 1) return;
+    world.result = { ...world.watching, over: true, lastShip: left.length ? left[0].id : null };
+    world.events.push({ type: "round_over", result: world.result });
+    return;
+  }
   const humans = world.ships.filter(isHuman);
   const standing = world.ships.filter((s) => s.alive).length;
   const together = world.rules.lastAfloatWins && standing === 0;
@@ -114,6 +122,29 @@ export function judge(world) {
   } else if (afloat.length) return;
   world.result = { over: true, winners, losers: world.out.map((o) => ({ ...o })), field: world.fieldSize };
   world.events.push({ type: "round_over", result: world.result });
+}
+
+/**
+ * THE ROUND SAILS ON WITHOUT HER: a copy of a round that is over for its captains, to watch the
+ * rest of the fight. Her own round stays exactly as it ended, because that is the one her voyage
+ * was banked on, and the copy is a show, with nobody's coins or placing in it: it keeps her result
+ * as it stood and ends when one ship or none is left afloat, naming the last in `lastShip`.
+ *
+ * Only a round where the last ship afloat wins has a fight left to watch. An arena sends its
+ * hunters after the captains alone, so with her gone they would have nothing to sail for. Returns
+ * null when there is nothing to watch, which `playsOn` says without making the copy.
+ */
+export function playOn(world) {
+  if (!playsOn(world)) return null;
+  const w = structuredClone(world);
+  w.watching = { winners: w.result.winners, losers: w.result.losers, field: w.result.field };
+  w.result = { over: false, winners: [], losers: [], field: w.result.field };
+  return w;
+}
+
+/** Whether a round has a fight left to watch: over for its captains, with two ships or more still at it. */
+export function playsOn(world) {
+  return !!(world.result.over && world.rules.lastAfloatWins && !world.watching && world.ships.filter((s) => s.alive).length > 1);
 }
 
 /**
