@@ -20,7 +20,7 @@
  * all) for a ticket, a short-lived signed note of who she is, and presents that on connecting.
  */
 
-import { createHmac, randomInt, timingSafeEqual } from "node:crypto";
+import { createHmac, randomInt, randomUUID, timingSafeEqual } from "node:crypto";
 import { WebSocketServer } from "ws";
 import { createWorld, step, voyageRun, isInput, shipsPrint, NO_INPUT, TICK } from "../src/sim/index.js";
 import { bank, blank, shipLoadout, shipName } from "../src/holdrules.js";
@@ -81,14 +81,35 @@ export function createOnline({ pool, engine, secret, publicWs, now = () => Date.
     }
   }
 
-  /** What every member is told about the lobby. */
+  /** What every member is told about the lobby. `mid` tells two rows apart even for one captain. */
   function lobbyView(lobby) {
     return {
-      t: "lobby", code: lobby.code, state: lobby.state, rivals: lobby.rivals, host: lobby.host,
-      captains: lobby.members.map((m) => ({ userId: m.userId, name: m.name, playerId: m.playerId || null })),
+      t: "lobby", code: lobby.code, state: lobby.state, rivals: lobby.rivals, host: lobby.host, public: lobby.public,
+      captains: lobby.members.map((m) => ({ mid: m.mid, userId: m.userId, name: m.name, ready: !!m.ready, playerId: m.playerId || null })),
     };
   }
-  const tellLobby = (lobby) => { const v = lobbyView(lobby); for (const m of lobby.members) send(m.ws, { ...v, you: m.userId }); };
+  const tellLobby = (lobby) => { const v = lobbyView(lobby); for (const m of lobby.members) send(m.ws, { ...v, you: m.userId }); tellLobbies(); };
+
+  /**
+   * The public lobbies a captain could join now: waiting for a round and not full. Sent to every
+   * socket not in a lobby whenever one opens, fills, starts or closes, so the list is always live.
+   */
+  const sockets = new Set(); // every connected member
+  function publicList() {
+    return [...lobbies.values()]
+      .filter((l) => l.public && l.state === "waiting" && l.members.length > 0 && l.members.length < MAX_CAPTAINS)
+      .map((l) => ({ code: l.code, host: (l.members.find((m) => m.userId === l.host) || l.members[0]).name, captains: l.members.length, max: MAX_CAPTAINS }));
+  }
+  let listQueued = false;
+  function tellLobbies() {
+    if (listQueued) return;
+    listQueued = true;
+    queueMicrotask(() => {
+      listQueued = false;
+      const msg = { t: "lobbies", list: publicList() };
+      for (const m of sockets) if (!m.lobby) send(m.ws, msg);
+    });
+  }
 
   async function nameOf(userId) {
     const { rows } = await pool.query("select data from holds where user_id = $1", [userId]);
@@ -99,23 +120,44 @@ export function createOnline({ pool, engine, secret, publicWs, now = () => Date.
     const lobby = member.lobby;
     if (!lobby) return;
     member.lobby = null;
+    member.ready = false;
     lobby.members = lobby.members.filter((m) => m !== member);
-    if (!lobby.members.length) { stopRound(lobby); lobbies.delete(lobby.code); return; }
-    if (lobby.host === member.userId) lobby.host = lobby.members[0].userId;
+    if (!lobby.members.length) { stopRound(lobby); lobbies.delete(lobby.code); tellLobbies(); return; }
+    if (lobby.host === member.userId && !lobby.members.some((m) => m.userId === member.userId)) lobby.host = lobby.members[0].userId;
     tellLobby(lobby);
   }
 
+  /**
+   * Put a captain in a lobby. Every check is made after the one wait (her ship's name), so a join
+   * sent twice, or from a second connection, cannot slip in twice: one captain is one row. If she is
+   * already there on another connection (a reload, a second tab), this connection takes her place.
+   */
   async function join(member, code) {
-    const lobby = lobbies.get(code);
-    if (!lobby) return send(member.ws, { t: "error", error: "no-lobby" });
-    if (lobby.members.some((m) => m.userId === member.userId)) return send(member.ws, { t: "error", error: "already-in" });
-    if (lobby.members.length >= MAX_CAPTAINS) return send(member.ws, { t: "error", error: "full" });
-    if (member.lobby) leave(member);
-    member.lobby = lobby;
-    member.name = await nameOf(member.userId);
-    lobby.members.push(member);
-    tellLobby(lobby);
-    if (lobby.state === "sailing") send(member.ws, { t: "sailing" }); // she waits for the next round
+    if (member.joining) return;
+    member.joining = true;
+    try {
+      const name = await nameOf(member.userId);
+      const lobby = lobbies.get(code);
+      if (!lobby) return send(member.ws, { t: "error", error: "no-lobby" });
+      if (member.lobby === lobby) return tellLobby(lobby);
+      const earlier = lobby.members.find((m) => m.userId === member.userId);
+      if (!earlier && lobby.members.length >= MAX_CAPTAINS) return send(member.ws, { t: "error", error: "full" });
+      if (member.lobby) leave(member);
+      member.lobby = lobby;
+      member.name = name;
+      if (earlier) {
+        // the same captain on a new connection: she keeps her place, and the old connection is let go
+        lobby.members[lobby.members.indexOf(earlier)] = member;
+        member.ready = earlier.ready;
+        member.playerId = earlier.playerId;
+        earlier.lobby = null;
+        send(earlier.ws, { t: "left", reason: "elsewhere" });
+      } else lobby.members.push(member);
+      tellLobby(lobby);
+      if (lobby.state === "sailing") send(member.ws, { t: "sailing" }); // she waits for the next round
+    } finally {
+      member.joining = false;
+    }
   }
 
   // ---- a round --------------------------------------------------------------------------------------
@@ -193,7 +235,7 @@ export function createOnline({ pool, engine, secret, publicWs, now = () => Date.
       stopRound(lobby);
       lobby.round = null;
       lobby.state = "waiting";
-      for (const m of lobby.members) m.playerId = null;
+      for (const m of lobby.members) { m.playerId = null; m.ready = false; }
       tellLobby(lobby);
     }
   }
@@ -220,20 +262,23 @@ export function createOnline({ pool, engine, secret, publicWs, now = () => Date.
   // ---- the socket -----------------------------------------------------------------------------------
 
   wss.on("connection", (ws, userId) => {
-    const member = { ws, userId, lobby: null, name: "", playerId: null };
+    const member = { ws, userId, mid: randomUUID(), lobby: null, name: "", playerId: null, ready: false, joining: false };
+    sockets.add(member);
     let alive = true;
     ws.on("pong", () => { alive = true; });
     const beat = setInterval(() => { if (!alive) return ws.terminate(); alive = false; ws.ping(); }, 15000);
     send(ws, { t: "hello", you: userId });
+    send(ws, { t: "lobbies", list: publicList() });
     ws.on("message", async (raw) => {
       let msg;
       try { msg = JSON.parse(raw); } catch { return; }
       if (!msg || typeof msg !== "object") return;
       const lobby = member.lobby;
       if (msg.t === "create") {
+        if (member.joining) return;
         if (member.lobby) leave(member);
         const code = newCode();
-        const created = { code, members: [], host: userId, rivals: MAX_SHIPS - 1, state: "waiting", round: null };
+        const created = { code, members: [], host: userId, rivals: MAX_SHIPS - 1, state: "waiting", round: null, public: msg.public === true };
         lobbies.set(code, created);
         await join(member, code);
       } else if (msg.t === "join" && typeof msg.code === "string") {
@@ -244,7 +289,13 @@ export function createOnline({ pool, engine, secret, publicWs, now = () => Date.
       } else if (msg.t === "rivals" && lobby && lobby.host === userId && lobby.state === "waiting" && Number.isInteger(msg.rivals)) {
         lobby.rivals = Math.max(0, Math.min(MAX_SHIPS - 1, msg.rivals));
         tellLobby(lobby);
+      } else if (msg.t === "ready" && lobby && lobby.state === "waiting" && typeof msg.ready === "boolean") {
+        member.ready = msg.ready;
+        tellLobby(lobby);
       } else if (msg.t === "start" && lobby && lobby.host === userId && lobby.state === "waiting") {
+        // everyone but the host has to be ready: nobody is dropped into a round they did not ask for
+        const waiting = lobby.members.filter((m) => m.userId !== lobby.host && !m.ready).length;
+        if (waiting) return send(ws, { t: "error", error: "not-ready", waiting });
         lobby.state = "starting";
         startRound(lobby).catch((e) => { console.error("could not start a round:", e.message); lobby.state = "waiting"; tellLobby(lobby); });
       } else if (msg.t === "input" && lobby && lobby.round && member.playerId && isInput(msg.input)) {
@@ -253,7 +304,7 @@ export function createOnline({ pool, engine, secret, publicWs, now = () => Date.
         lobby.round.next[member.playerId] = { ...msg.input, repair: asked };
       }
     });
-    ws.on("close", () => { clearInterval(beat); leave(member); });
+    ws.on("close", () => { clearInterval(beat); sockets.delete(member); leave(member); });
   });
 
   return {

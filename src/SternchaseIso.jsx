@@ -234,11 +234,16 @@ export default function App() {
     }
     if (st.error) setNetNote(ONLINE_FAILED[st.error] || "Something went wrong with the connection.");
   }, []);
+  const connecting = useRef(null);
   const openOnline = useCallback(async () => {
     setPhase("lobby");
     if (onlineRef.current && onlineRef.current.state.open) return;
+    // one connection at a time: a second tap while the first is still opening waits for it
+    if (connecting.current) return connecting.current;
     setNetNote("Connecting to the server.");
-    const c = await connectOnline({ onChange: onNet });
+    connecting.current = connectOnline({ onChange: onNet });
+    const c = await connecting.current;
+    connecting.current = null;
     if (c.error) { setNetNote(ONLINE_FAILED[c.error]); return; }
     onlineRef.current = c;
     setNetNote("");
@@ -793,7 +798,8 @@ export default function App() {
         <LobbyScreen
           net={net}
           note={netNote}
-          onMake={() => onlineRef.current && onlineRef.current.create()}
+          onMake={(isPublic) => onlineRef.current && onlineRef.current.create(isPublic)}
+          onReady={(r) => onlineRef.current && onlineRef.current.setReady(r)}
           onJoin={(code) => onlineRef.current && onlineRef.current.join(code)}
           onRivals={(n) => onlineRef.current && onlineRef.current.setRivals(n)}
           onStart={() => onlineRef.current && onlineRef.current.start()}
@@ -3432,22 +3438,31 @@ function FootLink({ label, onClick }) {
  * besides them, which the host sets. Only the host starts. A round already under way when she joins
  * is one she waits out, and the next starts with her in it.
  */
-function LobbyScreen({ net, note, onMake, onJoin, onRivals, onStart, onLeave, onBack, onRetry }) {
+function LobbyScreen({ net, note, onMake, onJoin, onRivals, onStart, onLeave, onReady, onBack, onRetry }) {
   const [code, setCode] = useState("");
   const [copied, setCopied] = useState(false);
+  // a make or join sent and not yet answered: the buttons wait for it, so a second tap sends nothing
+  const [pending, setPending] = useState(false);
   const lobby = net && net.lobby;
+  useEffect(() => { setPending(false); }, [lobby && lobby.code, net && net.error]);
   const me = net && net.you;
   const host = lobby && lobby.host === me;
   const link = lobby ? `${window.location.origin}/?join=${lobby.code}` : "";
   const copy = async () => {
     try { await navigator.clipboard.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch { /* the link is on screen to copy by hand */ }
   };
+  const make = (isPublic) => { if (pending) return; setPending(true); onMake(isPublic); };
+  const join = (c) => { if (pending || !c) return; setPending(true); onJoin(c); };
   const small = { fontSize: 12, color: "rgba(238,244,242,0.78)", lineHeight: 1.6, textAlign: "left" };
   const field = { flex: 1, minWidth: 0, fontFamily: UI, fontSize: 16, letterSpacing: 2, textTransform: "uppercase", color: C.ink, background: "rgba(8,38,37,0.9)", border: `1px solid ${C.hair}`, borderRadius: 10, padding: "10px 12px" };
+  const row = { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: "7px 0", borderTop: "1px solid rgba(160,224,210,0.14)", fontSize: 13, color: C.ink };
   // the sea takes 11 ships, so the AI the host can ask for shrinks as captains join; what is shown
   // and what Fewer and More count from is that, not the figure stored before they did
   const most = Math.max(0, 10 - (lobby ? lobby.captains.length - 1 : 0));
   const shown = lobby ? Math.min(lobby.rivals, most) : 0;
+  const mine = lobby && lobby.captains.find((c) => c.userId === me);
+  const unready = lobby ? lobby.captains.filter((c) => c.userId !== lobby.host && !c.ready).length : 0;
+  const open = (net && net.lobbies) || [];
   return (
     <Shell>
       <BackLink label="Back to the menu" onClick={onBack} />
@@ -3463,21 +3478,34 @@ function LobbyScreen({ net, note, onMake, onJoin, onRivals, onStart, onLeave, on
       {net && net.open && !lobby && (
         <>
           <Slab title="Make a lobby">
-            <div style={small}>You will get a code to send your friends. Up to 8 captains can sail together, with AI ships filling the rest of the sea.</div>
-            <div style={{ marginTop: 10 }}><StartButton onClick={onMake} label="Make a lobby" /></div>
+            <div style={small}>A public lobby is listed below for anyone to join. A private one is joined only with its code or invite link. Up to 8 captains, with AI ships filling the rest of the sea.</div>
+            <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 10, flexWrap: "wrap" }}>
+              <StartButton onClick={() => make(true)} label="Make a public lobby" disabled={pending} />
+              <StartButton onClick={() => make(false)} label="Make a private lobby" ghost disabled={pending} />
+            </div>
           </Slab>
-          <Slab title="Join a lobby">
+          <Slab title="Open lobbies">
+            {open.length ? open.map((l) => (
+              <div key={l.code} style={row}>
+                <span>{l.host}<span style={{ fontSize: 11, color: "rgba(238,244,242,0.55)" }}>{`, ${l.captains} of ${l.max} captains`}</span></span>
+                <StartButton ghost label="Join" onClick={() => join(l.code)} disabled={pending} />
+              </div>
+            )) : (
+              <div style={small}>No public lobbies are open right now. Make one, or join a friend's with its code.</div>
+            )}
+          </Slab>
+          <Slab title="Join with a code">
             <div style={small}>Type the code a friend sent you.</div>
-            <form onSubmit={(e) => { e.preventDefault(); if (code.trim()) onJoin(code.trim()); }} style={{ display: "flex", gap: 8, marginTop: 10 }}>
+            <form onSubmit={(e) => { e.preventDefault(); join(code.trim()); }} style={{ display: "flex", gap: 8, marginTop: 10 }}>
               <input aria-label="Lobby code" value={code} maxLength={5} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="Code" autoCapitalize="characters" autoComplete="off" style={field} />
-              <StartButton label="Join" onClick={() => { if (code.trim()) onJoin(code.trim()); }} />
+              <StartButton label="Join" onClick={() => join(code.trim())} disabled={pending} />
             </form>
           </Slab>
         </>
       )}
       {lobby && (
         <>
-          <Slab title="Lobby code">
+          <Slab title="Lobby code" sub={lobby.public ? "Public: listed for anyone" : "Private: code or link only"}>
             <div style={{ fontFamily: DISPLAY, fontSize: 34, color: C.gold, letterSpacing: 6, textAlign: "center", margin: "4px 0" }}>{lobby.code}</div>
             <div style={{ ...small, textAlign: "center", wordBreak: "break-all" }}>{link}</div>
             <div style={{ display: "flex", justifyContent: "center", marginTop: 8 }}>
@@ -3486,10 +3514,15 @@ function LobbyScreen({ net, note, onMake, onJoin, onRivals, onStart, onLeave, on
           </Slab>
           <Slab title={`Captains, ${lobby.captains.length} of 8`}>
             {lobby.captains.map((c) => (
-              <div key={c.userId} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderTop: "1px solid rgba(160,224,210,0.14)", fontSize: 13, color: C.ink }}>
-                <span>{c.name}</span>
-                <span style={{ fontSize: 11, color: "rgba(238,244,242,0.55)" }}>
-                  {[c.userId === lobby.host ? "Host" : "", c.userId === me ? "You" : ""].filter(Boolean).join(", ")}
+              <div key={c.mid} style={row}>
+                <span>
+                  {c.name}
+                  <span style={{ fontSize: 11, color: "rgba(238,244,242,0.55)" }}>
+                    {[c.userId === lobby.host ? "host" : "", c.userId === me ? "you" : ""].filter(Boolean).map((t) => `, ${t}`).join("")}
+                  </span>
+                </span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: c.userId === lobby.host || c.ready ? C.grass : "rgba(238,244,242,0.55)" }}>
+                  {c.userId === lobby.host ? "Starts the round" : c.ready ? "Ready" : "Not ready"}
                 </span>
               </div>
             ))}
@@ -3507,11 +3540,22 @@ function LobbyScreen({ net, note, onMake, onJoin, onRivals, onStart, onLeave, on
           {lobby.state === "sailing" ? (
             <div style={{ ...small, textAlign: "center", margin: "14px 0" }}>A round is under way. You will sail in the next one.</div>
           ) : host ? (
-            <div style={{ display: "flex", justifyContent: "center", margin: "14px 0" }}>
-              <StartButton onClick={onStart} label={lobby.state === "starting" ? "Starting" : "Start the round"} />
+            <div style={{ textAlign: "center", margin: "14px 0" }}>
+              <StartButton onClick={onStart} disabled={unready > 0 || lobby.state === "starting"}
+                label={lobby.state === "starting" ? "Starting" : "Start the round"} />
+              {unready > 0 && (
+                <div style={{ ...small, textAlign: "center", marginTop: 8 }}>
+                  {unready === 1 ? "Waiting for 1 captain to be ready." : `Waiting for ${unready} captains to be ready.`}
+                </div>
+              )}
             </div>
           ) : (
-            <div style={{ ...small, textAlign: "center", margin: "14px 0" }}>Waiting for the host to start the round.</div>
+            <div style={{ textAlign: "center", margin: "14px 0" }}>
+              <StartButton onClick={() => onReady(!(mine && mine.ready))} label={mine && mine.ready ? "I'm not ready" : "I'm ready"} ghost={!!(mine && mine.ready)} />
+              <div style={{ ...small, textAlign: "center", marginTop: 8 }}>
+                {mine && mine.ready ? "The host can start once everyone is ready." : "Tap when you are ready to sail."}
+              </div>
+            </div>
           )}
           <div style={{ display: "flex", justifyContent: "center" }}>
             <StartButton onClick={onLeave} label="Leave the lobby" ghost />
@@ -3741,9 +3785,9 @@ function EndOverlay({ title, titleColor, result, stats, mode, place, hold, banke
   );
 }
 
-function StartButton({ onClick, label, ghost }) {
+function StartButton({ onClick, label, ghost, disabled }) {
   return (
-    <button onClick={onClick} style={{ fontFamily: UI, fontSize: 14, fontWeight: 700, color: ghost ? C.gold : C.deep, background: ghost ? "transparent" : C.gold, border: ghost ? `1px solid ${C.gold}` : "none", borderRadius: 10, padding: "12px 22px", cursor: "pointer", WebkitTapHighlightColor: "transparent" }}>
+    <button onClick={onClick} disabled={disabled} style={{ opacity: disabled ? 0.45 : 1, fontFamily: UI, fontSize: 14, fontWeight: 700, color: ghost ? C.gold : C.deep, background: ghost ? "transparent" : C.gold, border: ghost ? `1px solid ${C.gold}` : "none", borderRadius: 10, padding: "12px 22px", cursor: "pointer", WebkitTapHighlightColor: "transparent" }}>
       {label}
     </button>
   );

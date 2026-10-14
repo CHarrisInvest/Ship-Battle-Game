@@ -25,6 +25,8 @@ export const ONLINE_FAILED = {
   "no-lobby": "There is no lobby with that code. Check it with the friend who sent it.",
   full: "That lobby is full: it takes 8 captains.",
   "already-in": "You are already in that lobby, in another tab.",
+  elsewhere: "You opened this lobby in another tab or window, so it moved there.",
+  "not-ready": "Not everyone is ready yet.",
 };
 
 const askTicket = () => call("POST", "/online/ticket", { engine: ENGINE });
@@ -36,6 +38,7 @@ export async function connectOnline({ onChange = () => {}, onEvents = () => {}, 
 
   const state = {
     open: false, you: null, lobby: null, error: "", sailing: false, banked: null,
+    lobbies: [], // the public lobbies open to join, kept live by the server
     round: null, // { world, you, names, cur, queue, desynced }
   };
   const ws = new Socket(`${t.data.ws}?ticket=${encodeURIComponent(t.data.ticket)}`);
@@ -53,7 +56,8 @@ export async function connectOnline({ onChange = () => {}, onEvents = () => {}, 
     try { msg = JSON.parse(typeof ev.data === "string" ? ev.data : ev.data.toString()); } catch { return; }
     if (msg.t === "hello") { state.you = msg.you; changed(); }
     else if (msg.t === "lobby") { state.lobby = msg; state.error = ""; changed(); }
-    else if (msg.t === "left") { state.lobby = null; changed(); }
+    else if (msg.t === "left") { state.lobby = null; if (msg.reason) state.error = msg.reason; changed(); }
+    else if (msg.t === "lobbies" && Array.isArray(msg.list)) { state.lobbies = msg.list; changed(); }
     else if (msg.t === "error") { state.error = msg.error; changed(); }
     else if (msg.t === "start") {
       const world = createWorld({ mode: "ffa", seed: msg.seed, players: msg.players.map((p) => ({ id: p.id, loadout: p.loadout })), rivals: msg.rivals });
@@ -77,7 +81,10 @@ export async function connectOnline({ onChange = () => {}, onEvents = () => {}, 
 
   return {
     get state() { return state; },
-    create: () => out({ t: "create" }),
+    /** Make a lobby: public ones are listed for anyone to join, private ones only by code or link. */
+    create: (isPublic) => out({ t: "create", public: !!isPublic }),
+    /** Say whether she is ready for the round to start. */
+    setReady: (ready) => out({ t: "ready", ready: !!ready }),
     join: (code) => out({ t: "join", code }),
     leave: () => { out({ t: "leave" }); state.round = null; },
     setRivals: (n) => out({ t: "rivals", rivals: n }),

@@ -82,17 +82,42 @@ try {
   B = await connectOnline({ Socket: WebSocket, getTicket: () => bob.ask("POST", "/online/ticket", { engine: engineHash() }), onChange: (s) => bState.push(s) });
   check(!A.error && !B.error && A.state.open && B.state.open, "both captains open the socket with a ticket");
 
-  A.create();
+  A.create(true);
   check(await until(() => A.state.lobby), "a lobby is made, with a code");
+  check(A.state.lobby.public === true, "and it is public when she asks for one");
   const code = A.state.lobby.code;
   check(/^[A-Z2-9]{5}$/.test(code), `the code is five letters and figures, none to misread (${code})`);
-  B.join(code.toLowerCase());
+  check(await until(() => B.state.lobbies.some((l) => l.code === code)), "a captain not in a lobby sees the public lobby listed");
+  // the friend's join sent three times over, as repeated taps send it: she is one captain, once
+  B.join(code.toLowerCase()); B.join(code); B.join(code);
   check(await until(() => A.state.lobby.captains.length === 2 && B.state.lobby && B.state.lobby.captains.length === 2), "a friend joins with the code, and both see each other");
+  await new Promise((r) => setTimeout(r, 300));
+  check(A.state.lobby.captains.length === 2 && new Set(A.state.lobby.captains.map((c) => c.mid)).size === 2, "a join sent three times lists her once");
+  {
+    // a private lobby is never listed
+    const carol = await captain("192.0.2.12");
+    const C = await connectOnline({ Socket: WebSocket, getTicket: () => carol.ask("POST", "/online/ticket", { engine: engineHash() }) });
+    C.create(false);
+    await until(() => C.state.lobby);
+    const watcher = await captain("192.0.2.13");
+    const W = await connectOnline({ Socket: WebSocket, getTicket: () => watcher.ask("POST", "/online/ticket", { engine: engineHash() }) });
+    await until(() => W.state.lobbies.length > 0);
+    check(W.state.lobbies.length === 1 && W.state.lobbies[0].code === code, "a private lobby is never listed");
+    // the same captain on a second connection takes her own place rather than a second one
+    const C2 = await connectOnline({ Socket: WebSocket, getTicket: () => carol.ask("POST", "/online/ticket", { engine: engineHash() }) });
+    C2.join(C.state.lobby.code);
+    check(await until(() => C2.state.lobby && C2.state.lobby.captains.length === 1 && C.state.error === "elsewhere"), "the same captain on a new connection keeps one place, and the old one is told");
+    C.close(); C2.close(); W.close();
+  }
   check(A.state.lobby.host === alice.id, "the captain who made it is the host");
 
   B.start();
   await new Promise((r) => setTimeout(r, 200));
   check(!A.state.round && !B.state.round, "only the host can start");
+  A.start();
+  check(await until(() => A.state.error === "not-ready") && !A.state.round, "the host cannot start until everyone is ready");
+  B.setReady(true);
+  check(await until(() => A.state.lobby.captains.find((c) => c.userId === bob.id).ready), "a captain says she is ready, and the host sees it");
   A.setRivals(4);
   check(await until(() => B.state.lobby.rivals === 4), "the host sets how many AI ships sail");
   A.start();
@@ -126,6 +151,7 @@ try {
   check(hold(alice.id).coins === A.state.banked.hold.coins && hold(bob.id).coins === B.state.banked.hold.coins,
     "what each was told is what her hold holds");
   check(await until(() => A.state.lobby.state === "waiting"), "the lobby is ready for another round");
+  check(A.state.lobby.captains.every((c) => !c.ready), "and everyone is asked to be ready again");
 } catch (e) {
   fail(`the test itself broke: ${e.stack || e.message}`);
 } finally {
