@@ -84,22 +84,46 @@ try {
   const host = await open("host");
   await page_wait(host);
   await host.locator("button", { hasText: "WITH FRIENDS" }).click();
-  if (await until(host, (t) => /Make a lobby/.test(t))) ok("host: the lobby screen opens"); else fail("host: no lobby screen");
-  await host.locator("button", { hasText: /^Make a lobby$/ }).click();
+  if (await until(host, (t) => /Make a lobby/i.test(t))) ok("host: the lobby screen opens"); else fail("host: no lobby screen");
+  await host.locator("button", { hasText: /^Make a public lobby$/ }).click();
   let code = null;
-  if (await until(host, (t) => { const m = t.match(/LOBBY CODE\n([A-Z2-9]{5})/i); code = m && m[1]; return !!code; })) ok(`host: a lobby is made (${code})`);
+  if (await until(host, (t) => { const m = t.match(/LOBBY CODE\n(?:(?:Public|Private)[^\n]*\n)?([A-Z2-9]{5})\n/); code = m && m[1]; return !!code; })) ok(`host: a lobby is made (${code})`);
   else fail("host: no lobby code");
   await snap(host, "01-lobby");
 
-  // a friend opens the invite link
-  const friend = await open("friend", `/?join=${code}`);
-  if (await until(friend, (t) => /Captains, 2 of 8/i.test(t) && /Waiting for the host/.test(t))) ok("friend: the invite link joins the lobby");
-  else fail("friend: did not join from the link");
+  // a friend finds the public lobby in the list and joins it
+  let friend = await open("friend");
+  await page_wait(friend);
+  await friend.locator("button", { hasText: "WITH FRIENDS" }).click();
+  if (await until(friend, (t) => /Open lobbies/i.test(t) && t.includes("1 of 8"))) ok("friend: the public lobby is listed");
+  else fail("friend: the public lobby is not listed");
+  await snap(friend, "00-list");
+  await friend.locator("button", { hasText: /^Join$/ }).first().click();
+  if (await until(friend, (t) => /Captains, 2 of 8/i.test(t) && /I'm ready/.test(t))) ok("friend: joins from the list");
+  else fail("friend: did not join from the list");
   if (await until(host, (t) => /Captains, 2 of 8/i.test(t))) ok("host: sees the friend join"); else fail("host: never saw the friend");
   await snap(friend, "01-lobby");
 
-  // fewer AI ships, so the round is quick, and start
+  // fewer AI ships, so the round is quick; the host waits for the friend to be ready, then starts
   for (let i = 0; i < 8; i++) await host.locator("button", { hasText: /^Fewer$/ }).click();
+  if (await until(host, (t) => /Waiting for 1 captain to be ready/.test(t))) ok("host: Start waits for the friend to be ready"); else fail("host: Start did not wait");
+  // the friend closes the app (the page goes, the cookie stays) and opens it again: she is shown
+  // away meanwhile, and the reopened app goes straight back to her place in the lobby
+  const ctx = friend.context();
+  await friend.close();
+  if (await until(host, (t) => /Away/.test(t), 20000)) ok("host: sees the friend away when her app closes"); else fail("host: never saw the friend away");
+  const reopened = await ctx.newPage();
+  reopened.tag = "friend";
+  reopened.errs = [];
+  reopened.on("pageerror", (e) => reopened.errs.push(e.message));
+  await reopened.goto(SITE + "/", { waitUntil: "networkidle" });
+  friend = reopened;
+  if (await until(friend, (t) => /Captains, 2 of 8/i.test(t) && /I'm ready/.test(t), 20000)) ok("friend: reopening the app goes straight back to the lobby");
+  else fail("friend: reopening the app did not go back to the lobby");
+  if (await until(host, (t) => !/Away/.test(t), 20000)) ok("host: sees the friend back"); else fail("host: the friend still shows away");
+  await friend.locator("button", { hasText: /^I'm ready$/ }).click();
+  if (await until(host, (t) => /Ready/.test(t) && !/Waiting for 1 captain/.test(t))) ok("host: sees the friend ready"); else fail("host: never saw the friend ready");
+  await snap(host, "01b-ready");
   await host.locator("button", { hasText: /^Start the round$/ }).click();
   const sailing = (t) => /SIDE|FRONT|MUSKET/.test(t);
   if (await until(host, sailing) && await until(friend, sailing)) ok("both: the round starts in both browsers"); else fail("the round did not start in both");

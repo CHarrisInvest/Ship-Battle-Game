@@ -1,12 +1,14 @@
 import React, { Fragment, useRef, useState, useEffect, useCallback, useMemo } from "react";
 import { drawGalleon } from "./galleon.js";
 import {
-  getHold, subscribeHold, modeRecord, shipLoadout, shortfall, connect, holdStatus, subscribeStatus, hadLocalSave, adoptHold, holdSettled,
+  getHold, subscribeHold, modeRecord, shipLoadout, shortfall, connect, holdStatus, subscribeStatus, hadLocalSave, adoptHold, holdSettled, hasProgress,
   buyShip, buyPart, fitMast, fitSail, fitStud, fitGun, unfitGun, setActiveShip, spareParts, ownedShips, partOf,
   shipName, nameShip, fitOwned, ownedFill, NAME_LIMIT, readiness, sellPart, refundOf,
 } from "./hold.js";
 import { startVoyage, recorderFor } from "./voyage.js";
+import { getAccount, sendCode, signInWithCode, signInWithGoogle, signOut, deleteAccount, returnedFromGoogle } from "./account.js";
 import { connectOnline, ONLINE_FAILED } from "./online.js";
+import { call } from "./net.js";
 import {
   kindOf, rate, rateOf, rigSpec, ladderHeight,
   HULLS, HULL_LIST, PARTS, statBand, maximumLoadout, outfitCost,
@@ -19,7 +21,7 @@ import { getAdRegion, onAdRegion, openGoogleChoices } from "./ads.js";
 import { analyticsLive, conversionsLive, measurementLive, track } from "./analytics.js";
 import { PrivacyPolicy } from "./privacy.jsx";
 import {
-  createWorld, step, TICK, voyageStats, repairQuote, shipOf, outInWeather, stormPhase, volleyWindow, reloadOf, canFire,
+  createWorld, step, TICK, voyageStats, repairQuote, shipOf, playOn, playsOn, outInWeather, stormPhase, volleyWindow, reloadOf, canFire,
   HULL_PATCH_CAP, MAST_JURY_CAP, barsOf, MODES as RULES, MODE_LIST, modeOf, clamp,
 } from "./sim/index.js";
 import { C, UI } from "./render/palette.js";
@@ -156,7 +158,13 @@ const LINK_NOTE = {
   offline: "The server cannot be reached. Your progress is safe, and the shop and voyages open again as soon as it answers.",
 };
 const MOVED_NOTE = "Your progress now saves to the server. Progress saved in this browser earlier could not be moved.";
+const GOOGLE_NOTE = {
+  google: "You are signed in with Google. Your progress is saved to your account.",
+  failed: "Signing in with Google did not work. Try again, or sign in with an email code.",
+};
 const SAVING_NOTE = "Saving your changes to the server first.";
+// a sentence opening on "the Frigate" opens on "The Frigate"
+const cap = (t) => t.charAt(0).toUpperCase() + t.slice(1);
 
 export default function App() {
   const canvasRef = useRef(null);
@@ -223,6 +231,13 @@ export default function App() {
   const [net, setNet] = useState(null);
   const [netNote, setNetNote] = useState("");
   const [onlineEnd, setOnlineEnd] = useState(false);
+  // Watching the rest of a round once she has sunk: whether there is a fight left to watch, the ship
+  // the camera is on (its id in `watchRef`, which the frame loop reads), and how it ended.
+  const [canWatch, setCanWatch] = useState(false);
+  const [watching, setWatching] = useState({ name: "" });
+  const [watchNote, setWatchNote] = useState("");
+  const watchRef = useRef(null);
+  const watchRefs = useRef({ start: () => {}, next: () => {}, stop: () => {} });
   const roundSeen = useRef(null);
   const pendingJoin = useRef(null);
   const onNet = useCallback((st) => {
@@ -234,11 +249,16 @@ export default function App() {
     }
     if (st.error) setNetNote(ONLINE_FAILED[st.error] || "Something went wrong with the connection.");
   }, []);
+  const connecting = useRef(null);
   const openOnline = useCallback(async () => {
     setPhase("lobby");
     if (onlineRef.current && onlineRef.current.state.open) return;
+    // one connection at a time: a second tap while the first is still opening waits for it
+    if (connecting.current) return connecting.current;
     setNetNote("Connecting to the server.");
-    const c = await connectOnline({ onChange: onNet });
+    connecting.current = connectOnline({ onChange: onNet });
+    const c = await connecting.current;
+    connecting.current = null;
     if (c.error) { setNetNote(ONLINE_FAILED[c.error]); return; }
     onlineRef.current = c;
     setNetNote("");
@@ -262,18 +282,44 @@ export default function App() {
     setBounty(net.banked.bounty);
   }, [net && net.banked]);
   // An invite link carries the lobby's code: open the lobby screen and join it once the hold is in.
+  // Without one, ask the server whether she still has a place in a lobby (the app was closed or the
+  // phone locked mid-lobby): if she does, go straight back, and the server seats her again.
   useEffect(() => {
     const code = new URLSearchParams(window.location.search).get("join");
-    if (!code) return;
-    window.history.replaceState(null, "", window.location.pathname);
-    pendingJoin.current = code.toUpperCase();
-    connect().then(() => openOnline());
+    if (code) {
+      window.history.replaceState(null, "", window.location.pathname);
+      pendingJoin.current = code.toUpperCase();
+      connect().then(() => openOnline());
+      return;
+    }
+    connect().then(async () => {
+      const r = await call("GET", "/online/where");
+      if (r.status === 200 && r.data && r.data.code) openOnline();
+    });
+  }, []);
+  // Back on screen after the phone locked or the app was switched away: the connection is made again
+  // at once rather than on its back-off, and the server puts her back where she was.
+  useEffect(() => {
+    const back = () => { if (document.visibilityState === "visible" && onlineRef.current) onlineRef.current.reconnectNow(); };
+    document.addEventListener("visibilitychange", back);
+    window.addEventListener("pageshow", back);
+    return () => { document.removeEventListener("visibilitychange", back); window.removeEventListener("pageshow", back); };
   }, []);
   useEffect(() => {
     const off = subscribeStatus(setLink);
-    connect().then(() => { if (hadLocalSave()) setNotice(MOVED_NOTE); });
+    const google = returnedFromGoogle();
+    connect().then(() => { if (hadLocalSave()) setNotice(MOVED_NOTE); else if (google) setNotice(GOOGLE_NOTE[google]); });
     return off;
   }, []);
+  // Who she is signed in as, asked again whenever the hold is loaded afresh, which is what signing in
+  // or out does. Null until the server says, and the menu shows no account row until it has.
+  const [account, setAccount] = useState(null);
+  useEffect(() => {
+    if (link !== "ready") return;
+    let live = true;
+    getAccount().then((a) => { if (live && a) setAccount(a); });
+    return () => { live = false; };
+  }, [link]);
 
   // What the browser paints around the page: the strip behind a phone's clock and the bars Safari
   // tints to match a site, and the ground shown when a scroll rubber-bands past the edge. It is
@@ -281,7 +327,7 @@ export default function App() {
   // screen but the fight is that ground over the sea, and a sea-coloured band over a dark menu
   // read as a browser that had not caught up. Safari follows a change to the meta as it happens.
   useEffect(() => {
-    const tint = phase === "playing" ? C.water : MENU_TINT;
+    const tint = phase === "playing" || phase === "watching" ? C.water : MENU_TINT;
     let meta = document.querySelector('meta[name="theme-color"]');
     if (!meta) {
       meta = document.createElement("meta");
@@ -382,8 +428,111 @@ export default function App() {
     function resize() {
       renderer.resize(hudRef.current?.getBoundingClientRect());
       const g = gameRef.current;
-      if (g) renderer.follow(shipOf(g, meRef.current));
+      if (g) renderer.follow(viewed(g));
     }
+
+    /**
+     * The ship the camera is on: hers, or the one she is watching once she has sunk. A watched ship
+     * that goes under is kept in view a moment, so her sinking is seen, and then the camera moves
+     * to the nearest ship still afloat.
+     */
+    let lostAt = 0;
+    function viewed(g) {
+      const id = watchRef.current;
+      if (id == null) return shipOf(g, meRef.current);
+      const s = g.ships.find((x) => x.id === id);
+      if (s.alive) { lostAt = 0; return s; }
+      if (!lostAt) lostAt = g.time;
+      if (g.time - lostAt < 1.5) return s;
+      const next = nearestAfloat(g, s);
+      if (next) watchShip(g, next);
+      return next || s;
+    }
+
+    function nearestAfloat(g, from) {
+      let best = null, bd = Infinity;
+      for (const s of g.ships) {
+        if (!s.alive || s === from) continue;
+        const d = (s.x - from.x) ** 2 + (s.y - from.y) ** 2;
+        if (d < bd) { bd = d; best = s; }
+      }
+      return best;
+    }
+
+    // what she reads at the head of the screen: a friend's ship by the name she gave her, any other
+    // by her class
+    function shipLabel(s) {
+      const friend = s.playerId && fx && fx.names && fx.names[s.playerId];
+      return friend || `the ${s.loadout.hull.name}`;
+    }
+
+    function watchShip(g, s) {
+      watchRef.current = s.id;
+      lostAt = 0;
+      setWatching({ name: shipLabel(s) });
+    }
+
+    // Her own round is over and banked; the fight goes on. Alone, she watches a copy of her round
+    // the engine sails on without her. With friends, the round never stopped for her.
+    function startWatch() {
+      let g = gameRef.current;
+      if (!g) return;
+      // With friends the round is the server's until the last of them is out, and it stops there even
+      // with AI ships still fighting. This browser holds the whole world, so from then on it sails
+      // the rest itself, the way a voyage alone does.
+      if (!isOnline(g) || g.result.over) {
+        // the first time, the copy to watch; after "Stop watching", the same copy picked up again
+        if (!g.watching) {
+          const w = playOn(g);
+          if (!w) return;
+          gameRef.current = g = w;
+        } else if (g.result.over) return;
+        liveRef.current = true;
+        last = 0;
+        bank = 0;
+      } else if (g.result.over) return;
+      const first = nearestAfloat(g, shipOf(g, meRef.current));
+      if (!first) return;
+      watchShip(g, first);
+      setPhase("watching");
+    }
+
+    // Each ship afloat in turn, in the order they were launched.
+    function nextWatch() {
+      const g = gameRef.current;
+      if (!g || watchRef.current == null) return;
+      const afloat = g.ships.filter((s) => s.alive && s.playerId !== meRef.current);
+      if (!afloat.length) return;
+      const after = afloat.find((s) => s.id > watchRef.current) || afloat[0];
+      watchShip(g, after);
+    }
+
+    // Back to her end screen. Alone, the copy she was watching stops where it is; with friends the
+    // round goes on, because the server is sailing it for everyone.
+    function stopWatch() {
+      const g = gameRef.current;
+      watchRef.current = null;
+      if (g && !isOnline(g)) {
+        liveRef.current = false;
+        setCanWatch(playsOn(g) || !!(g.watching && !g.result.over));
+      }
+      setPhase("dead");
+    }
+
+    // The fight she was watching is over: back to her end screen, which says who was left.
+    function watchOver(g) {
+      const last = g.ships.find((s) => s.alive);
+      setWatchNote(last ? `${cap(shipLabel(last))} was the last ship afloat.` : "No ship was left afloat.");
+      setCanWatch(false);
+      watchRef.current = null;
+      setPhase((ph) => (ph === "watching" ? "dead" : ph));
+    }
+
+    function isOnline(g) {
+      const net = onlineRef.current;
+      return !!(net && net.state.round && net.state.round.world === g);
+    }
+    watchRefs.current = { start: startWatch, next: nextWatch, stop: stopWatch };
 
     function updateButtons() {
       const p = shipOf(gameRef.current, meRef.current);
@@ -442,7 +591,8 @@ export default function App() {
           const behind = net.behind;
           let want = Math.floor(bank / TICK);
           if (behind > 9) want = Math.max(want, behind - 6);
-          want = Math.min(want, behind, 30);
+          // back in a round after the connection dropped: the round so far, sailed through quickly
+          want = Math.min(want, behind, behind > 300 ? 900 : 30);
           for (const e of net.advance(want)) events.push(e);
           // never expected (the engine steps to the same bits everywhere), but said if it happens
           if (net.state.round.desynced && !window.__sternchaseDesync) { window.__sternchaseDesync = true; console.warn("this round has parted company with the server's"); }
@@ -463,7 +613,7 @@ export default function App() {
         // what the steps did, drawn: the engine only said it happened
         fxEvents(fx, events);
         stepFx(fx, g, dt);
-        renderer.follow(shipOf(g, meRef.current), alpha);
+        renderer.follow(viewed(g), alpha);
         updateButtons();
         let hudNow = false;
         for (const e of events) {
@@ -472,10 +622,19 @@ export default function App() {
             if (e.type === "player_out" && e.playerId === meRef.current) onlineOut(g, e);
             if (e.type === "round_over") {
               const won = e.result.winners.find((w) => w.playerId === meRef.current);
-              if (won) onlineOut(g, { ...won, won: true });
               liveRef.current = false;
+              if (won) onlineOut(g, { ...won, won: true });
+              else if (watchRef.current != null && playsOn(g)) {
+                // the last of her friends is out and the AI fight on: she watches on, sailed here
+                gameRef.current = playOn(g);
+                liveRef.current = true;
+              } else if (playsOn(g)) setCanWatch(true);
+              else watchOver(g);
             }
-          } else if (e.type === "round_over") endRound(g, e.result);
+          } else if (e.type === "round_over") {
+            if (g.watching) { liveRef.current = false; watchOver(g); }
+            else endRound(g, e.result);
+          }
         }
         hudAcc += dt;
         if (hudNow || hudAcc > 0.09) {
@@ -483,7 +642,7 @@ export default function App() {
           if (hudNow || key !== hudLast) { syncRef.current(); hudLast = key; hudAcc = 0; }
         }
       }
-      renderer.render(g, fx, { live: liveRef.current, input: controls.input, alpha });
+      renderer.render(g, fx, { live: liveRef.current && watchRef.current == null, input: controls.input, alpha });
       fadeRail();
       raf = requestAnimationFrame(loop);
     }
@@ -524,7 +683,7 @@ export default function App() {
         const rec = recorder;
         recorder = null;
         pendingFinish = rec.finish(g.tick).then((out) => {
-          if (gameRef.current !== g) return; // she has sailed again since
+          if (voyage !== g) return; // she has sailed again since
           if (out.ok) {
             adoptHold(out.data);
             setBanked(out.data.banked);
@@ -535,6 +694,7 @@ export default function App() {
         track("voyage_end", { mode: g.mode, result: won ? "won" : "sunk", rank: mine.rank, kills: s.kills, seconds: Math.round(s.time) });
       }
       setResult(won ? (g.rules.ladder ? WON_LADDER : WON_LAST) : SUNK_LINE[mine.cause] || SUNK_LINE.crew);
+      setCanWatch(!won && playsOn(g));
       setPhase(won ? "won" : "dead");
       syncRef.current();
     }
@@ -548,6 +708,7 @@ export default function App() {
     // A voyage: the server's seed and the loadout off its copy of her hold, sent as the very JSON
     // its replay will build the world from, and a recorder for the controls she sails it with.
     let recorder = null;
+    let voyage = null; // the world her voyage is banked off, which a round she watches after it is not
     let starting = false;
     let pendingFinish = Promise.resolve(); // the last voyage's finish, which a new one waits for
     async function start(m) {
@@ -570,9 +731,10 @@ export default function App() {
         return;
       }
       const { round } = s;
-      gameRef.current = createWorld({ mode: round.mode, seed: round.seed, players: [{ id: meRef.current, loadout: round.loadout }] });
+      gameRef.current = voyage = createWorld({ mode: round.mode, seed: round.seed, players: [{ id: meRef.current, loadout: round.loadout }] });
       fx = createFx(shipOf(gameRef.current, meRef.current).id);
       recorder = recorderFor(round.roundId);
+      resetWatch();
       renderer.follow(shipOf(gameRef.current, meRef.current));
       liveRef.current = true;
       controls.reset();
@@ -601,6 +763,7 @@ export default function App() {
       fx = createFx(shipOf(round.world, round.you).id);
       fx.names = round.names; // her friends' ship names, drawn over their ships
       recorder = null;
+      resetWatch();
       renderer.follow(shipOf(round.world, round.you));
       liveRef.current = true;
       controls.reset();
@@ -619,12 +782,19 @@ export default function App() {
     }
     startOnlineRef.current = startOnline;
 
+    function resetWatch() {
+      watchRef.current = null;
+      setCanWatch(false);
+      setWatchNote("");
+    }
+
     /** She is out of the round with friends, sunk or the last afloat: the end screen, over the sea. */
     function onlineOut(g, out) {
       const s = voyageStats(g, meRef.current);
       setStats(s);
       setPlace({ rank: out.rank, total: g.ships.length });
       setResult(out.won ? WON_LAST : SUNK_LINE[out.cause] || SUNK_LINE.crew);
+      setCanWatch(!out.won && !g.result.over);
       setOnlineEnd(true);
       setPhase(out.won ? "won" : "dead");
       track("voyage_end", { mode: "online", result: out.won ? "won" : "sunk", rank: out.rank, kills: s.kills, seconds: Math.round(s.time) });
@@ -785,6 +955,8 @@ export default function App() {
           onRecords={() => setPhase("records")}
           onCookies={openCookies}
           onPrivacy={() => setPhase("privacy")}
+          account={account}
+          onAccount={() => setPhase("account")}
           onFriends={() => (link === "ready" ? openOnline() : setNotice(LINK_NOTE[link] || ""))}
           hold={hold}
         />
@@ -792,8 +964,9 @@ export default function App() {
       {phase === "lobby" && (
         <LobbyScreen
           net={net}
-          note={netNote}
-          onMake={() => onlineRef.current && onlineRef.current.create()}
+          note={net && net.reconnecting ? "Reconnecting to the server. Your place in the lobby is held for 2 minutes." : netNote}
+          onMake={(isPublic) => onlineRef.current && onlineRef.current.create(isPublic)}
+          onReady={(r) => onlineRef.current && onlineRef.current.setReady(r)}
           onJoin={(code) => onlineRef.current && onlineRef.current.join(code)}
           onRivals={(n) => onlineRef.current && onlineRef.current.setRivals(n)}
           onStart={() => onlineRef.current && onlineRef.current.start()}
@@ -823,11 +996,19 @@ export default function App() {
           there again on the way back to the menu. */}
       {phase === "start" && cookieAsk && <CookieConsent onClose={() => setCookieAsk(false)} onPrivacy={() => setPhase("privacy")} />}
       {phase === "privacy" && <PrivacyScreen onBack={() => setPhase("start")} />}
+      {phase === "account" && account && (
+        <AccountScreen account={account} onBack={() => setPhase("start")} onDone={(note) => { setNotice(note); setPhase("start"); }} />
+      )}
       {phase === "records" && <RecordsScreen hold={hold} onBack={() => setPhase("start")} onAchievements={() => setPhase("achievements")} />}
       {phase === "achievements" && <AchievementsScreen hold={hold} onBack={() => setPhase("records")} />}
       {phase === "won" && <EndOverlay title={rules.ladder && !onlineEnd ? "LADDER CLIMBED" : "LAST AFLOAT"} titleColor={C.gold} result={result} stats={stats} mode={mode} place={place} hold={hold} banked={banked} bounty={bounty} online={onlineEnd} onAgain={() => startRef.current(mode)} onMenu={() => (onlineEnd ? setPhase("lobby") : setPhase("start"))} />}
       {phase === "dead" && (
-        <EndOverlay title="SUNK" titleColor={C.crew} result={result} stats={stats} mode={mode} place={place} hold={hold} banked={banked} bounty={bounty} online={onlineEnd} onAgain={() => startRef.current(mode)} onMenu={() => (onlineEnd ? setPhase("lobby") : setPhase("start"))} />
+        <EndOverlay title="SUNK" titleColor={C.crew} result={result} note={watchNote} stats={stats} mode={mode} place={place} hold={hold} banked={banked} bounty={bounty} online={onlineEnd}
+          onWatch={canWatch ? () => watchRefs.current.start() : null}
+          onAgain={() => startRef.current(mode)} onMenu={() => { watchRef.current = null; if (gameRef.current && gameRef.current.watching) liveRef.current = false; setPhase(onlineEnd ? "lobby" : "start"); }} />
+      )}
+      {phase === "watching" && (
+        <WatchBar name={watching.name} afloat={left} onNext={() => watchRefs.current.next()} onStop={() => watchRefs.current.stop()} />
       )}
     </div>
   );
@@ -3275,7 +3456,7 @@ function ArrowButton({ back, label, onClick }) {
 // would let a captain think a gun fits when it does not.
 const fmtTons = (t) => t.toFixed(1);
 
-function StartOverlay({ onStart, onEdit, onOutfit, onRecords, onCookies, onPrivacy, onFriends, hold, note }) {
+function StartOverlay({ onStart, onEdit, onOutfit, onRecords, onCookies, onPrivacy, onFriends, onAccount, account, hold, note }) {
   return (
     <Shell>
       {/* The name is a lockup of two lines, and the first one carries it. STERNCHASE is the word a
@@ -3295,6 +3476,7 @@ function StartOverlay({ onStart, onEdit, onOutfit, onRecords, onCookies, onPriva
       )}
       <ShipPlate hold={hold} onEdit={onEdit} onOutfit={onOutfit} />
       <HoldPanel hold={hold} onRecords={onRecords} />
+      <AccountRow account={account} onClick={onAccount} />
       {/* A heading over the modes, in the display face like the screens' own titles, so the mode
           cards read as a section of the menu rather than as more panels after the hold. To its
           right, in small words, what the cards are for: the same coin as the purse above, so a
@@ -3432,22 +3614,31 @@ function FootLink({ label, onClick }) {
  * besides them, which the host sets. Only the host starts. A round already under way when she joins
  * is one she waits out, and the next starts with her in it.
  */
-function LobbyScreen({ net, note, onMake, onJoin, onRivals, onStart, onLeave, onBack, onRetry }) {
+function LobbyScreen({ net, note, onMake, onJoin, onRivals, onStart, onLeave, onReady, onBack, onRetry }) {
   const [code, setCode] = useState("");
   const [copied, setCopied] = useState(false);
+  // a make or join sent and not yet answered: the buttons wait for it, so a second tap sends nothing
+  const [pending, setPending] = useState(false);
   const lobby = net && net.lobby;
+  useEffect(() => { setPending(false); }, [lobby && lobby.code, net && net.error]);
   const me = net && net.you;
   const host = lobby && lobby.host === me;
   const link = lobby ? `${window.location.origin}/?join=${lobby.code}` : "";
   const copy = async () => {
     try { await navigator.clipboard.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch { /* the link is on screen to copy by hand */ }
   };
+  const make = (isPublic) => { if (pending) return; setPending(true); onMake(isPublic); };
+  const join = (c) => { if (pending || !c) return; setPending(true); onJoin(c); };
   const small = { fontSize: 12, color: "rgba(238,244,242,0.78)", lineHeight: 1.6, textAlign: "left" };
   const field = { flex: 1, minWidth: 0, fontFamily: UI, fontSize: 16, letterSpacing: 2, textTransform: "uppercase", color: C.ink, background: "rgba(8,38,37,0.9)", border: `1px solid ${C.hair}`, borderRadius: 10, padding: "10px 12px" };
+  const row = { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: "7px 0", borderTop: "1px solid rgba(160,224,210,0.14)", fontSize: 13, color: C.ink };
   // the sea takes 11 ships, so the AI the host can ask for shrinks as captains join; what is shown
   // and what Fewer and More count from is that, not the figure stored before they did
   const most = Math.max(0, 10 - (lobby ? lobby.captains.length - 1 : 0));
   const shown = lobby ? Math.min(lobby.rivals, most) : 0;
+  const mine = lobby && lobby.captains.find((c) => c.userId === me);
+  const unready = lobby ? lobby.captains.filter((c) => c.userId !== lobby.host && (!c.ready || c.away)).length : 0;
+  const open = (net && net.lobbies) || [];
   return (
     <Shell>
       <BackLink label="Back to the menu" onClick={onBack} />
@@ -3463,21 +3654,34 @@ function LobbyScreen({ net, note, onMake, onJoin, onRivals, onStart, onLeave, on
       {net && net.open && !lobby && (
         <>
           <Slab title="Make a lobby">
-            <div style={small}>You will get a code to send your friends. Up to 8 captains can sail together, with AI ships filling the rest of the sea.</div>
-            <div style={{ marginTop: 10 }}><StartButton onClick={onMake} label="Make a lobby" /></div>
+            <div style={small}>A public lobby is listed below for anyone to join. A private one is joined only with its code or invite link. Up to 8 captains, with AI ships filling the rest of the sea.</div>
+            <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 10, flexWrap: "wrap" }}>
+              <StartButton onClick={() => make(true)} label="Make a public lobby" disabled={pending} />
+              <StartButton onClick={() => make(false)} label="Make a private lobby" ghost disabled={pending} />
+            </div>
           </Slab>
-          <Slab title="Join a lobby">
+          <Slab title="Open lobbies">
+            {open.length ? open.map((l) => (
+              <div key={l.code} style={row}>
+                <span>{l.host}<span style={{ fontSize: 11, color: "rgba(238,244,242,0.55)" }}>{`, ${l.captains} of ${l.max} captains`}</span></span>
+                <StartButton ghost label="Join" onClick={() => join(l.code)} disabled={pending} />
+              </div>
+            )) : (
+              <div style={small}>No public lobbies are open right now. Make one, or join a friend's with its code.</div>
+            )}
+          </Slab>
+          <Slab title="Join with a code">
             <div style={small}>Type the code a friend sent you.</div>
-            <form onSubmit={(e) => { e.preventDefault(); if (code.trim()) onJoin(code.trim()); }} style={{ display: "flex", gap: 8, marginTop: 10 }}>
+            <form onSubmit={(e) => { e.preventDefault(); join(code.trim()); }} style={{ display: "flex", gap: 8, marginTop: 10 }}>
               <input aria-label="Lobby code" value={code} maxLength={5} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="Code" autoCapitalize="characters" autoComplete="off" style={field} />
-              <StartButton label="Join" onClick={() => { if (code.trim()) onJoin(code.trim()); }} />
+              <StartButton label="Join" onClick={() => join(code.trim())} disabled={pending} />
             </form>
           </Slab>
         </>
       )}
       {lobby && (
         <>
-          <Slab title="Lobby code">
+          <Slab title="Lobby code" sub={lobby.public ? "Public: listed for anyone" : "Private: code or link only"}>
             <div style={{ fontFamily: DISPLAY, fontSize: 34, color: C.gold, letterSpacing: 6, textAlign: "center", margin: "4px 0" }}>{lobby.code}</div>
             <div style={{ ...small, textAlign: "center", wordBreak: "break-all" }}>{link}</div>
             <div style={{ display: "flex", justifyContent: "center", marginTop: 8 }}>
@@ -3486,10 +3690,15 @@ function LobbyScreen({ net, note, onMake, onJoin, onRivals, onStart, onLeave, on
           </Slab>
           <Slab title={`Captains, ${lobby.captains.length} of 8`}>
             {lobby.captains.map((c) => (
-              <div key={c.userId} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderTop: "1px solid rgba(160,224,210,0.14)", fontSize: 13, color: C.ink }}>
-                <span>{c.name}</span>
-                <span style={{ fontSize: 11, color: "rgba(238,244,242,0.55)" }}>
-                  {[c.userId === lobby.host ? "Host" : "", c.userId === me ? "You" : ""].filter(Boolean).join(", ")}
+              <div key={c.mid} style={row}>
+                <span>
+                  {c.name}
+                  <span style={{ fontSize: 11, color: "rgba(238,244,242,0.55)" }}>
+                    {[c.userId === lobby.host ? "host" : "", c.userId === me ? "you" : ""].filter(Boolean).map((t) => `, ${t}`).join("")}
+                  </span>
+                </span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: c.away ? C.gold : c.userId === lobby.host || c.ready ? C.grass : "rgba(238,244,242,0.55)" }}>
+                  {c.away ? "Away" : c.userId === lobby.host ? "Starts the round" : c.ready ? "Ready" : "Not ready"}
                 </span>
               </div>
             ))}
@@ -3507,16 +3716,205 @@ function LobbyScreen({ net, note, onMake, onJoin, onRivals, onStart, onLeave, on
           {lobby.state === "sailing" ? (
             <div style={{ ...small, textAlign: "center", margin: "14px 0" }}>A round is under way. You will sail in the next one.</div>
           ) : host ? (
-            <div style={{ display: "flex", justifyContent: "center", margin: "14px 0" }}>
-              <StartButton onClick={onStart} label={lobby.state === "starting" ? "Starting" : "Start the round"} />
+            <div style={{ textAlign: "center", margin: "14px 0" }}>
+              <StartButton onClick={onStart} disabled={unready > 0 || lobby.state === "starting"}
+                label={lobby.state === "starting" ? "Starting" : "Start the round"} />
+              {unready > 0 && (
+                <div style={{ ...small, textAlign: "center", marginTop: 8 }}>
+                  {unready === 1 ? "Waiting for 1 captain to be ready or come back." : `Waiting for ${unready} captains to be ready or come back.`}
+                </div>
+              )}
             </div>
           ) : (
-            <div style={{ ...small, textAlign: "center", margin: "14px 0" }}>Waiting for the host to start the round.</div>
+            <div style={{ textAlign: "center", margin: "14px 0" }}>
+              <StartButton onClick={() => onReady(!(mine && mine.ready))} label={mine && mine.ready ? "I'm not ready" : "I'm ready"} ghost={!!(mine && mine.ready)} />
+              <div style={{ ...small, textAlign: "center", marginTop: 8 }}>
+                {mine && mine.ready ? "The host can start once everyone is ready." : "Tap when you are ready to sail."}
+              </div>
+            </div>
           )}
           <div style={{ display: "flex", justifyContent: "center" }}>
             <StartButton onClick={onLeave} label="Leave the lobby" ghost />
           </div>
         </>
+      )}
+    </Shell>
+  );
+}
+
+/**
+ * The menu's line about her account, under the hold it keeps. A guest is offered the way to keep her
+ * progress; a signed-in captain sees who she is signed in as. Both open the account screen. Nothing
+ * shows until the server has said who she is, or while it offers no way of signing in to a guest.
+ */
+function AccountRow({ account, onClick }) {
+  if (!account) return null;
+  const { guest, email, google, methods } = account;
+  if (guest && !methods.email && !methods.google) return null;
+  const label = guest ? "Save your progress" : google ? "Signed in with Google" : "Signed in";
+  const sub = guest ? "Sign in to keep your ships and coins, on any device" : email;
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8,
+        width: "100%", margin: "-8px 0 18px", padding: "9px 12px 10px", textAlign: "left",
+        background: "rgba(11,51,49,0.6)", border: `1px solid ${guest ? C.gold : C.hair}`, borderRadius: 10,
+        fontFamily: UI, color: "rgba(238,244,242,0.78)", cursor: "pointer", WebkitTapHighlightColor: "transparent",
+      }}
+    >
+      <span style={{ minWidth: 0 }}>
+        <span style={{ display: "block", fontSize: 11, color: guest ? C.gold : "rgba(238,244,242,0.78)" }}>{label}</span>
+        <span style={{ display: "block", fontSize: 10, color: "rgba(238,244,242,0.5)", lineHeight: 1.6, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sub}</span>
+      </span>
+      <ChevronIcon />
+    </button>
+  );
+}
+
+/**
+ * Her account. A guest signs in here, with a code sent to her email or with Google, whichever the
+ * server has turned on; a signed-in captain sees who she is signed in as, and can sign out or delete
+ * the account. Signing in to an account that already has progress replaces this browser's, so a guest
+ * with something to lose is told that before she starts, not after.
+ */
+function AccountScreen({ account, onBack, onDone }) {
+  const [email, setEmail] = useState("");
+  const [code, setCode] = useState("");
+  const [sentTo, setSentTo] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const small = { fontSize: 12, color: "rgba(238,244,242,0.78)", lineHeight: 1.6, textAlign: "left" };
+  const field = { flex: 1, minWidth: 0, fontFamily: UI, fontSize: 16, color: C.ink, background: "rgba(8,38,37,0.9)", border: `1px solid ${C.hair}`, borderRadius: 10, padding: "10px 12px" };
+  const title = { fontFamily: DISPLAY, fontSize: "clamp(19px, 6.2vw, 24px)", color: C.gold, letterSpacing: 0.5 };
+  // a ref as well as the state: the button inside each form submits it as well as clicking, in the
+  // same tick, and the second must find the first already under way
+  const going = useRef(false);
+  const run = async (fn) => {
+    if (going.current) return;
+    going.current = true;
+    setBusy(true);
+    setNote("");
+    try { await fn(); } finally { going.current = false; setBusy(false); }
+  };
+
+  const send = () => run(async () => {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) { setNote("That does not look like an email address."); return; }
+    const r = await sendCode(email);
+    if (r === "sent") { setSentTo(email.trim()); setCode(""); }
+    else setNote(r === "slow" ? "Too many codes asked for. Wait a minute and try again." : r === "offline" ? "The server cannot be reached. Try again in a moment." : "That email address was not accepted.");
+  });
+  const verify = () => run(async () => {
+    const r = await signInWithCode(sentTo, code);
+    if (r === "ok") onDone("You are signed in. Your progress is saved to your account.");
+    else setNote(r === "wrong" ? "That code is wrong or has run out. Check it, or send a new one." : r === "slow" ? "Too many tries. Wait a minute and try again." : "The server cannot be reached. Try again in a moment.");
+  });
+  const google = () => run(async () => {
+    await signInWithGoogle();
+    setNote("The server cannot be reached. Try again in a moment.");
+  });
+  const leave = () => run(async () => {
+    if (await signOut()) onDone("You are signed out. Sign in again to pick up your progress.");
+    else setNote("Signing out did not work. Try again in a moment.");
+  });
+  const remove = () => run(async () => {
+    if (await deleteAccount()) onDone("Your account and its progress are deleted.");
+    else setNote("Deleting your account did not work. Try again in a moment.");
+  });
+
+  const status = note && (
+    <div role="status" style={{ ...small, marginTop: 12, padding: "9px 12px", borderRadius: 10, border: `1px solid ${C.hair}`, background: "rgba(11,51,49,0.6)" }}>{note}</div>
+  );
+
+  if (!account.guest) {
+    return (
+      <Shell>
+        <BackLink label="Back to the menu" onClick={onBack} />
+        <div style={title}>YOUR ACCOUNT</div>
+        {status}
+        <Slab title="Signed in">
+          <div style={{ fontSize: 14, color: C.ink, overflowWrap: "anywhere" }}>{account.email}</div>
+          <div style={{ ...small, marginTop: 6 }}>
+            {account.google ? "With Google. " : ""}Your progress is saved to this account. Sign in with it on any device to pick it up there.
+          </div>
+        </Slab>
+        <Slab title="Sign out">
+          <div style={small}>This browser starts again as a guest. Your progress stays with your account.</div>
+          <div style={{ marginTop: 10 }}><StartButton ghost onClick={leave} label={busy ? "Signing out" : "Sign out"} /></div>
+        </Slab>
+        <Slab title="Delete my account">
+          {confirmDelete ? (
+            <>
+              <div style={small}>This deletes your account, your ships, your coins and your records for good. It cannot be undone.</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
+                <StartButton onClick={remove} label={busy ? "Deleting" : "Delete everything"} />
+                <StartButton ghost onClick={() => setConfirmDelete(false)} label="Keep my account" />
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={small}>Delete your account and everything saved with it.</div>
+              <div style={{ marginTop: 10 }}><StartButton ghost onClick={() => setConfirmDelete(true)} label="Delete my account" /></div>
+            </>
+          )}
+        </Slab>
+      </Shell>
+    );
+  }
+
+  const { methods } = account;
+  return (
+    <Shell>
+      <BackLink label="Back to the menu" onClick={onBack} />
+      <div style={title}>SAVE YOUR PROGRESS</div>
+      <div style={{ ...small, marginTop: 10 }}>
+        You are playing as a guest, so your progress is kept only in this browser, and only for 90 days
+        after your last visit. Sign in to keep it for good and to play on with it on another device.
+      </div>
+      {hasProgress() && (
+        <div style={{ ...small, marginTop: 10, padding: "9px 12px", borderRadius: 10, border: `1px solid ${C.gold}`, background: "rgba(11,51,49,0.6)" }}>
+          A new account keeps what you have now. If you sign in to an account that already has progress,
+          that account's progress replaces this browser's.
+        </div>
+      )}
+      {status}
+      {methods.email && (
+        <Slab title="Sign in with email">
+          {sentTo ? (
+            <>
+              <div style={small}>We sent a 6-digit code to <span style={{ color: C.ink, overflowWrap: "anywhere" }}>{sentTo}</span>. It works for 10 minutes.</div>
+              <form onSubmit={(e) => { e.preventDefault(); verify(); }} style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                <input
+                  aria-label="Sign-in code" value={code} inputMode="numeric" autoComplete="one-time-code" maxLength={6} placeholder="Code"
+                  onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))} style={{ ...field, letterSpacing: 4 }}
+                />
+                <StartButton onClick={verify} label={busy ? "Checking" : "Sign in"} />
+              </form>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
+                <StartButton ghost onClick={send} label="Send a new code" />
+                <StartButton ghost onClick={() => { setSentTo(null); setNote(""); }} label="Use another email" />
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={small}>We will email you a 6-digit code to type in here. No password.</div>
+              <form onSubmit={(e) => { e.preventDefault(); send(); }} style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                <input
+                  aria-label="Email address" type="email" value={email} autoComplete="email" autoCapitalize="none" placeholder="Email address"
+                  onChange={(e) => setEmail(e.target.value)} style={field}
+                />
+                <StartButton onClick={send} label={busy ? "Sending" : "Send code"} />
+              </form>
+            </>
+          )}
+        </Slab>
+      )}
+      {methods.google && (
+        <Slab title="Sign in with Google">
+          <div style={small}>Google asks which account to use, then brings you back here.</div>
+          <div style={{ marginTop: 10 }}><StartButton ghost onClick={google} label="Continue with Google" /></div>
+        </Slab>
       )}
     </Shell>
   );
@@ -3674,7 +4072,7 @@ function TallyRow({ label, value, rule, labelColor, valueColor, valueSize, value
   );
 }
 
-function EndOverlay({ title, titleColor, result, stats, mode, place, hold, banked, bounty, online, onAgain, onMenu }) {
+function EndOverlay({ title, titleColor, result, note, stats, mode, place, hold, banked, bounty, online, onWatch, onAgain, onMenu }) {
   const rules = modeOf(mode);
 
   // How she sailed.
@@ -3707,7 +4105,7 @@ function EndOverlay({ title, titleColor, result, stats, mode, place, hold, banke
   return (
     <Shell>
       <div style={{ fontFamily: DISPLAY, fontSize: 40, color: titleColor, letterSpacing: 1 }}>{title}</div>
-      <div style={{ fontSize: 13, color: "rgba(238,244,242,0.85)", margin: "10px 0 14px", lineHeight: 1.6 }}>{result}</div>
+      <div style={{ fontSize: 13, color: "rgba(238,244,242,0.85)", margin: "10px 0 14px", lineHeight: 1.6 }}>{result}{note ? <><br />{note}</> : null}</div>
       <div style={{ background: "rgba(11,51,49,0.6)", border: `1px solid ${C.hair}`, borderRadius: 10, padding: "6px 12px", marginBottom: 18, textAlign: "left" }}>
         {statRows.map(([l, v], i) => <TallyRow key={l} label={l} value={v} rule={i > 0 ? "hair" : ""} />)}
         {payRows.map(([l, v, col], i) => <TallyRow key={l} label={l} value={v} valueColor={col} rule={i === 0 ? "group" : "hair"} />)}
@@ -3727,6 +4125,11 @@ function EndOverlay({ title, titleColor, result, stats, mode, place, hold, banke
           The server could not confirm this voyage, so nothing from it was added to your hold.
         </div>
       )}
+      {onWatch && (
+        <div style={{ marginBottom: 10 }}>
+          <StartButton onClick={onWatch} label="Watch the rest of the round" ghost />
+        </div>
+      )}
       <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
         {online ? (
           <StartButton onClick={onMenu} label="Back to the lobby" />
@@ -3741,9 +4144,36 @@ function EndOverlay({ title, titleColor, result, stats, mode, place, hold, banke
   );
 }
 
-function StartButton({ onClick, label, ghost }) {
+/**
+ * What she sees while she watches the rest of a round: which ship the camera is on, how many are
+ * still afloat, a button to move to the next and one to go back to her end screen. It sits at the
+ * foot of the screen, where her stick and guns were, clear of the radar in the top corner.
+ */
+function WatchBar({ name, afloat, onNext, onStop }) {
   return (
-    <button onClick={onClick} style={{ fontFamily: UI, fontSize: 14, fontWeight: 700, color: ghost ? C.gold : C.deep, background: ghost ? "transparent" : C.gold, border: ghost ? `1px solid ${C.gold}` : "none", borderRadius: 10, padding: "12px 22px", cursor: "pointer", WebkitTapHighlightColor: "transparent" }}>
+    <div style={{ position: "absolute", bottom: "calc(env(safe-area-inset-bottom, 0px) + 16px)", left: 0, right: 0, display: "flex", justifyContent: "center", padding: "0 16px", pointerEvents: "none" }}>
+      <div style={{ pointerEvents: "auto", background: C.panel, border: `1px solid ${C.hair}`, borderRadius: 10, padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8, width: 340, maxWidth: "100%", boxSizing: "border-box" }}>
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10 }}>
+          <span style={{ fontSize: 14, fontWeight: 700, color: C.ink, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Watching {name}</span>
+          <span style={{ flex: "0 0 auto", fontSize: 12, color: "rgba(238,244,242,0.65)" }}>{afloat} {afloat === 1 ? "ship" : "ships"} afloat</span>
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={onNext} style={watchBtn(false)}>Next ship</button>
+          <button onClick={onStop} style={watchBtn(true)}>Stop watching</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const watchBtn = (ghost) => ({
+  flex: "1 1 0", fontFamily: UI, fontSize: 13, fontWeight: 700, borderRadius: 10, padding: "8px 10px", cursor: "pointer",
+  color: ghost ? C.gold : C.deep, background: ghost ? "transparent" : C.gold, border: ghost ? `1px solid ${C.gold}` : "none", WebkitTapHighlightColor: "transparent",
+});
+
+function StartButton({ onClick, label, ghost, disabled }) {
+  return (
+    <button onClick={onClick} disabled={disabled} style={{ opacity: disabled ? 0.45 : 1, fontFamily: UI, fontSize: 14, fontWeight: 700, color: ghost ? C.gold : C.deep, background: ghost ? "transparent" : C.gold, border: ghost ? `1px solid ${C.gold}` : "none", borderRadius: 10, padding: "12px 22px", cursor: "pointer", WebkitTapHighlightColor: "transparent" }}>
       {label}
     </button>
   );

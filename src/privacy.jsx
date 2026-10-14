@@ -6,7 +6,8 @@
  * own `Section` so the words are written once and dressed the way the place around them is.
  *
  * Everything here has to stay true of the code. The hold is kept by the game server (`server/`), under
- * a guest account whose session cookie is the one thing of it in the browser, with each voyage's seed,
+ * a guest account whose session cookie is the one thing of it in the browser, or an account she signs
+ * in to by an emailed code (`server/mail.js`, through Resend) or by Google (`server/auth.js`), with each voyage's seed,
  * controls and result kept for its replay and cleared as `purge` says; the consent answer lives in
  * localStorage (`consent.js`); ads load as `ads.js` says; analytics as `analytics.js`
  * says, and the analytics section follows `analyticsLive` so it changes the day a measurement ID goes
@@ -66,6 +67,16 @@ export function PrivacyPolicy({ Section, P, linkColor }) {
           could not find your progress.
         </P>
         <P>
+          You can sign in to keep your progress for good and to pick it up on another device. Signing in
+          with an email code stores your email address, and the code is sent to it through Resend, an
+          email service, which handles the address only to deliver the message. Signing in with Google
+          stores your email address, your name and picture as Google gives them, an identifier Google
+          gives the game for your Google account, and the sign-in tokens Google issues with it, which
+          the game does not use for anything; Google learns that you signed in to Sternchase. The game
+          asks Google for nothing beyond your basic profile and email address. Your email address is used to sign you in and for
+          nothing else: the game sends no other mail.
+        </P>
+        <P>
           So that the server can check what a voyage earned, it keeps, for each voyage you sail, the
           random number it started from, the ship you sailed as she was fitted, the controls you used
           (the stick, the fire buttons and the repairs, and nothing else from your device) and how it
@@ -78,7 +89,7 @@ export function PrivacyPolicy({ Section, P, linkColor }) {
         </P>
         <P>
           A guest account that goes unused for 90 days is deleted, with its progress and its voyages.
-          The controls kept for a voyage are deleted 30 days after it ends; the rest of a voyage is
+          An account you have signed in to is kept until you delete it. The controls kept for a voyage are deleted 30 days after it ends; the rest of a voyage is
           kept as long as the account.
         </P>
         <P>
@@ -90,14 +101,16 @@ export function PrivacyPolicy({ Section, P, linkColor }) {
           When you sail with friends, the captains in your lobby see the name of the ship you sail, and
           your browser connects to the game server directly rather than through Vercel, so the server
           sees your IP address on that connection too. Who is in a lobby is kept in the server's memory
-          only, and goes when the lobby empties.
+          only. If your connection drops, your place is held for 2 minutes so you can come back to it,
+          and it goes when you leave or the lobby empties.
         </P>
         <P>Your cookie choices are saved in your browser's local storage, apart from your progress, so you are not asked on every visit.</P>
         <P>
-          To have your account and everything kept with it deleted,
-          write to <L href={`mailto:${PRIVACY_CONTACT}`}>{PRIVACY_CONTACT}</L>. Clearing this site's data
-          in your browser removes the cookie, after which the game makes you a new account and the old
-          one is deleted 90 days later.
+          Once signed in, you can delete your account and everything kept with it yourself, from your
+          account on the menu; it is gone at once. To have a guest account deleted,
+          write to <L href={`mailto:${PRIVACY_CONTACT}`}>{PRIVACY_CONTACT}</L>. Signing out, or clearing this site's data
+          in your browser, removes the cookie, after which the game makes you a new guest account. An old
+          guest account is deleted 90 days later; one you signed in to waits for you to sign in again.
         </P>
       </Section>
 

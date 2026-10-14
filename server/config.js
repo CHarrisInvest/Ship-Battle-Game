@@ -18,8 +18,17 @@
  *   PUBLIC_WS_URL        the address browsers open the online socket on, e.g.
  *                        wss://server-production-08778.up.railway.app/ws. The socket goes straight
  *                        to the server (Vercel's proxy cannot carry one), authenticated by ticket.
+ *   RESEND_API_KEY       optional: turns on sign-in by email code, sent through Resend.
+ *   EMAIL_FROM           the address the codes come from, on a domain verified with Resend, e.g.
+ *                        `Sternchase <codes@sternchase.org>`. Needed with RESEND_API_KEY.
+ *   GOOGLE_CLIENT_ID     optional, with GOOGLE_CLIENT_SECRET: turns on sign-in with Google. The
+ *   GOOGLE_CLIENT_SECRET OAuth client's redirect URI is BETTER_AUTH_URL + API_PREFIX +
+ *                        `/auth/callback/google`, e.g. https://sternchase.org/api/auth/callback/google.
  *   PORT                 Railway sets it.
  */
+
+import { resendSender } from "./mail.js";
+
 export function configFromEnv(env = process.env) {
   const need = (k) => {
     if (!env[k]) throw new Error(`${k} is not set`);
@@ -35,6 +44,8 @@ export function configFromEnv(env = process.env) {
     proxySecret: env.PROXY_SECRET || null,
     guestsPerMinute: Number(env.GUESTS_PER_MINUTE) || 10,
     publicWs: env.PUBLIC_WS_URL || null,
+    sendCode: env.RESEND_API_KEY ? resendSender({ apiKey: env.RESEND_API_KEY, from: need("EMAIL_FROM") }) : null,
+    google: env.GOOGLE_CLIENT_ID ? { clientId: env.GOOGLE_CLIENT_ID, clientSecret: need("GOOGLE_CLIENT_SECRET") } : null,
     port: Number(env.PORT) || 8787,
   };
 }

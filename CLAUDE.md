@@ -11,13 +11,15 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   the frame loop that joins the engine, the renderer and the controls. It holds no rule of play.
 - **`src/sim/` is the engine, and only the engine decides what happens in a round.** The world, the
   step, ships, guns, rams, the AI, the weather, the round's rules and its end, the mode rules and the
-  dice live there. `createWorld({ mode, seed, players, rivals })`, `step(world, inputs)`, `voyageStats`,
-  `voyageRun`, `repairQuote` and `isInput` are the whole of its interface: controls go in as one input
-  record per player id (a repair included, so it travels the road the wheel does), `isInput` says
-  whether a record is one the controls could have made, `voyageRun` is what a finished voyage banks,
-  read off the world once for the browser and the server alike, and what happened comes back as events
-  carrying ids and numbers, never a reference into the world, with `world.result` once the round is
-  over. The world is plain data that `structuredClone` copies. `docs/ENGINE.md` is its design note.
+  dice live there. `createWorld({ mode, seed, players, rivals })`, `step(world, inputs)`,
+  `voyageStats`, `voyageRun`, `repairQuote`, `isInput` and `playOn` are the whole of its interface:
+  controls go in as one input record per player id (a repair included, so it travels the road the
+  wheel does), `isInput` says whether a record is one the controls could have made, `voyageRun` is
+  what a finished voyage banks, read off the world once for the browser and the server alike, `playOn`
+  is a copy of a round she has sunk out of that sails on without her so she can watch the rest (it
+  banks and places nobody), and what happened comes back as events carrying ids and numbers, never a
+  reference into the world, with `world.result` once the round is over. The world is plain data that
+  `structuredClone` copies. `docs/ENGINE.md` is its design note.
 - **The engine is pure, and `npm run purity` says so.** Nothing under `src/sim/` imports anything but
   itself, `shipyard.js`, `shipref.js`, `hullform.js` and `exact.js`, or mentions `window`, `document`,
   `localStorage`, a canvas, `Math.random`, `Date.now` or `performance`. Nor does it, or the catalogue
@@ -95,8 +97,14 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   Nothing else is saved; worlds and islands are generated fresh every match.
 - **`server/` is the game server, on Railway, and it believes nothing the browser computed.** Plain
   `node:http`, Better Auth at `/auth/*` (every visitor a guest through the anonymous plugin), and
-  Postgres for the holds and the voyages. A shop action is `applyAction` under a row lock with the
-  record's `version` as the check, so a stale tab is refused with the record as it stands. A voyage is
+  Postgres for the holds and the voyages. **A guest keeps her progress by signing in**, with a
+  6-digit code sent through Resend (`RESEND_API_KEY`) or with Google (`GOOGLE_CLIENT_ID`), each on
+  only when its keys are set, and `GET /account` tells the menu which. `guestLinker` in
+  `server/auth.js` is the one rule for what happens to her hold: an account signed in to for the
+  first time takes it, and an account that already has one keeps its own, because merging two holds
+  duplicates coins; the account screen (`src/account.js`) warns a guest with progress first.
+  Signing out and `POST /account/delete` leave the browser a fresh guest.
+  A shop action is `applyAction` under a row lock with the record's `version` as the check, so a stale tab is refused with the record as it stands. A voyage is
   started by the server (its seed, the loadout off its own copy of the hold, sent as the JSON the
   browser builds the world from), fed its input log in pieces no faster than real time, and banked
   only after the server replays it and finds it ends where the browser said. The replay runs in a
@@ -122,7 +130,12 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   fingerprint of the ships every two seconds says if it ever is not. Each captain is banked off the
   server's world as she goes out or the round ends, connected or not. The socket goes straight to
   Railway (`PUBLIC_WS_URL`), because Vercel's proxy cannot carry one, so it is opened with a short-lived
-  ticket from `/api/online/ticket`, where the cookie still travels. `npm run online-test` sails two
+  ticket from `/api/online/ticket`, where the cookie still travels. A dropped connection is not a
+  departure: phones drop sockets the moment an app is switched away from, so she is shown away and
+  her place is held for `AWAY_MS` (2 minutes). The socket reopens by itself, the server seats her by
+  her account (no code kept in the browser), a reopened app asks `/api/online/where` and goes back,
+  and mid-round she is sent the start and every tick so far, which her browser sails up to the
+  server's tick in a moment. `npm run online-test` sails two
   captains through a round over real sockets; `npm run online-smoke` does it in two real browsers.
 - `src/consent.js` is the cookie prompt's answer: essential, analytics and advertising, kept
   under its own key. **The hold is the essential category and is never gated on
@@ -483,6 +496,9 @@ Rules above that the code does not yet satisfy. Tracked cleanups, not exceptions
   a fluyt's extreme tumblehome or a carrack's built-up works are still the shared family of shapes
   with different numbers. Refining a class means refining her form, not adding a size multiplier to
   the catalogue, which stays deliberately size-free.
+- **Google sign-in has not been tried from the home-screen app on an iPhone.** A redirect out of a
+  standalone web app is where that flow tends to break, so leave `GOOGLE_CLIENT_ID` unset in
+  production until it has been, and email codes carry sign-in alone.
 - **The catalogue's blurbs have still never been read at 1x.** Names are checked, and so are the part
   figures the shops print, but the shelves say what a part *does* rather than quoting its blurb, and
   the 38 hull rows have no blurb at all. So no line of one has been seen at a real width. Check them
