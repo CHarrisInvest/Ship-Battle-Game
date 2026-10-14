@@ -87,7 +87,7 @@ try {
   if (await until(host, (t) => /Make a lobby/i.test(t))) ok("host: the lobby screen opens"); else fail("host: no lobby screen");
   await host.locator("button", { hasText: /^Make a public lobby$/ }).click();
   let code = null;
-  if (await until(host, (t) => { const m = t.match(/LOBBY CODE[^\n]*\n([A-Z2-9]{5})\b/); code = m && m[1]; return !!code; })) ok(`host: a lobby is made (${code})`);
+  if (await until(host, (t) => { const m = t.match(/LOBBY CODE\n(?:(?:Public|Private)[^\n]*\n)?([A-Z2-9]{5})\n/); code = m && m[1]; return !!code; })) ok(`host: a lobby is made (${code})`);
   else fail("host: no lobby code");
   await snap(host, "01-lobby");
 
