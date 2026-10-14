@@ -10,7 +10,9 @@
  *   when the rules say no or when the browser's copy is stale;
  *   junk is a 400 or a 422, never a 500;
  *   a voyage banks only what the server's own replay of it says, and a forged one banks nothing;
- *   old guests and old input logs are cleared, and a captain hammering the server is slowed.
+ *   old guests and old input logs are cleared, and a captain hammering the server is slowed;
+ *   a guest who signs in with an email code keeps her progress on a new account, takes the account's
+ *   on one that already has a hold, signs out to a fresh guest, and can delete it all.
  *
  * Time is the test's: the server reads a clock it is handed, so a round's pace can be checked without
  * the test taking as long as the round.
@@ -36,13 +38,18 @@ const ORIGIN = "http://localhost:5173";
 const db = await testDatabase();
 const pool = makePool(db.url);
 const clock = { t: Date.parse("2026-10-13T12:00:00Z") };
+const codes = new Map(); // the sign-in codes the server "sent", by address
 
 const server = createServer();
 await new Promise((r) => server.listen(0, "127.0.0.1", r));
 const base = `http://127.0.0.1:${server.address().port}`;
 const app = await createApp({
   pool,
-  config: { secret: "test-secret-that-is-long-enough-for-better-auth-0123456789", baseURL: base, origins: [ORIGIN], cookieDomain: null },
+  config: {
+    secret: "test-secret-that-is-long-enough-for-better-auth-0123456789", baseURL: base, origins: [ORIGIN], cookieDomain: null,
+    sendCode: async (email, code) => { codes.set(email, code); },
+    google: { clientId: "test-client.apps.googleusercontent.com", clientSecret: "test-secret" },
+  },
   now: () => clock.t,
 });
 server.on("request", app.handler);
@@ -438,6 +445,80 @@ try {
       proxied.close();
       await papp.close();
     }
+  }
+
+  // ---- signing in, signing out, deleting ----------------------------------------------------------------
+
+  {
+    const ip = (n) => ({ "x-real-ip": `10.9.0.${n}` });
+    const setCoins = async (ask, coins) => {
+      const me = (await ask("GET", "/auth/get-session")).data.user.id;
+      await pool.query("update holds set data = $2 where user_id = $1", [me, JSON.stringify({ ...R.blank(), coins })]);
+      await ask("GET", "/hold"); // reading it again is what the browser does
+      return me;
+    };
+    const signIn = async (ask, email, n) => {
+      const sent = await ask("POST", "/auth/email-otp/send-verification-otp", { email, type: "sign-in" }, ip(n));
+      if (sent.status !== 200) return sent;
+      return ask("POST", "/auth/sign-in/email-otp", { email, otp: codes.get(email.toLowerCase()) }, ip(n));
+    };
+    const userGone = async (id) => (await pool.query(`select 1 from "user" where id = $1`, [id])).rows.length === 0;
+
+    const g1 = await guest();
+    await g1("GET", "/hold");
+    const who = (await g1("GET", "/account")).data;
+    check(who.guest === true && who.email === null && who.methods.email === true && who.methods.google === true,
+      "a guest's account says she is a guest, and which ways of signing in are on");
+    const g1Id = await setCoins(g1, 500);
+
+    const wrong = await g1("POST", "/auth/email-otp/send-verification-otp", { email: "Captain@Example.com", type: "sign-in" }, ip(1));
+    const bad = await g1("POST", "/auth/sign-in/email-otp", { email: "captain@example.com", otp: codes.get("captain@example.com") === "000000" ? "111111" : "000000" }, ip(1));
+    check(wrong.status === 200 && bad.status !== 200 && (await g1("GET", "/account")).data.guest === true, "a wrong code signs nobody in");
+    const signed = await g1("POST", "/auth/sign-in/email-otp", { email: "captain@example.com", otp: codes.get("captain@example.com") }, ip(1));
+    const acct = (await g1("GET", "/account")).data;
+    const kept = (await g1("GET", "/hold")).data;
+    check(signed.status === 200 && acct.guest === false && acct.email === "captain@example.com" && acct.google === false,
+      "the right code signs her in, by her email");
+    check(kept.hold.coins === 500, "a new account takes the guest's progress with it");
+    check(await userGone(g1Id), "and the guest account it came from is gone");
+
+    const g2 = await guest();
+    await g2("GET", "/hold");
+    const g2Id = await setCoins(g2, 77);
+    const second = await signIn(g2, "captain@example.com", 2);
+    const there = (await g2("GET", "/hold")).data;
+    check(second.status === 200 && there.hold.coins === 500, "signing in on a second device takes the account's progress, not the guest's");
+    check(await userGone(g2Id), "and the second device's guest progress is dropped rather than merged");
+
+    const out = await g2("POST", "/auth/sign-out", {});
+    const after = await g2("GET", "/hold");
+    check(out.status === 200 && after.status === 401, "signing out ends the session");
+    await g2("POST", "/auth/sign-in/anonymous", {}, ip(3));
+    const fresh = (await g2("GET", "/hold")).data;
+    check(json(fresh.hold) === json(R.blank()) && (await g2("GET", "/account")).data.guest === true, "and the next visit is a fresh guest");
+    check((await g1("GET", "/hold")).data.hold.coins === 500, "while the account, signed in elsewhere, keeps its progress");
+
+    const g3 = await guest();
+    const google = await g3("POST", "/auth/sign-in/social", { provider: "google", callbackURL: "/", errorCallbackURL: "/?signin=failed" });
+    check(google.status === 200 && /^https:\/\/accounts\.google\.com\//.test(google.data.url || ""), "Google sign-in hands back Google's address to go to");
+
+    const g4 = captain();
+    let limited = false;
+    for (let i = 0; i < 5; i++) {
+      const r = await g4("POST", "/auth/email-otp/send-verification-otp", { email: `flood${i}@example.com`, type: "sign-in" }, ip(4));
+      if (r.status === 429) limited = true;
+    }
+    check(limited, "one address cannot send a stream of sign-in codes");
+
+    const accountId = (await g1("GET", "/auth/get-session")).data.user.id;
+    const del = await g1("POST", "/account/delete", {});
+    const leftover = (await pool.query(
+      `select (select count(*) from session where "userId" = $1) + (select count(*) from account where "userId" = $1)
+            + (select count(*) from holds where user_id = $1) + (select count(*) from rounds where user_id = $1) as n`, [accountId])).rows[0].n;
+    check(del.status === 200 && (await userGone(accountId)) && Number(leftover) === 0 && (await g1("GET", "/hold")).status === 401,
+      "deleting an account deletes her, her sessions, her sign-in and her hold at once");
+    const form = await g2("POST", "/account/delete", "x", { "content-type": "text/plain" });
+    check(form.status === 415 && (await g2("GET", "/hold")).status === 200, "a delete another site's form could send is refused");
   }
 
   // ---- retention and rate limits --------------------------------------------------------------------
