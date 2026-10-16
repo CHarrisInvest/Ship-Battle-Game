@@ -1,8 +1,11 @@
 name: CI
 
+# `staging` is what staging.sternchase.org runs and `main` is what sternchase.org runs; a change
+# lands on the first by pull request and is promoted to the second by another (promote.yml), so
+# both are checked on every push as well as on every pull request into them
 on:
   push:
-    branches: [main]
+    branches: [main, staging]
   pull_request:
   workflow_dispatch:
 
