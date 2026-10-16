@@ -69,7 +69,7 @@ export const WP = {
   // `draw` overrides SHOT_DRAW for one weapon. Round shot off the side is drawn at exactly the size
   // it bites now: there are fifty of them coming off a first rate and a ball that looked smaller
   // than its own reach would be reading the volley wrong at the moment it matters most.
-  broadside: { cd: 1.6, speed: 250, life: 0.88, r: 1.8, draw: 1, bar: "hull" },
-  bow: { cd: 1.1, speed: 270, life: 1.4, r: 2.6, bar: "mast" },
-  musket: { cd: 0.75, speed: 320, life: 0.4, r: 1.6, bar: "crew" },
+  broadside: { cd: 1.6, speed: 250, life: 0.88, r: 3.6, draw: 1, bar: "hull" },
+  bow: { cd: 1.1, speed: 270, life: 1.4, r: 5.2, bar: "mast" },
+  musket: { cd: 0.75, speed: 320, life: 0.4, r: 3.2, bar: "crew" },
 };

@@ -102,7 +102,9 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   galleon is the authored anchor: her hull, castles and mast geometry are the literal numbers the
   game always drew under the plain Oak palette, a few small fittings are re-derived as ratios that
   agree to within a few hundredths of a unit, and every other class is derived by the same rules from
-  her own row. Sizes are deliberately compressed around her, so she is the size she always was. A
+  her own row. Sizes are deliberately compressed around her, then every hull at sea is doubled
+  (`SEA_SIZE`), her collision ellipse with her, because the 3D sea showed a gundalow as a speck at
+  phone zoom; the balls in `tables.js` were doubled with them, since a ball's `r` is its reach. A
   class's size lives here, with her art, and still never in the catalogue.
   **Her battery is the one part of her that is solved rather than authored.** `GALLEON_REF` is her
   row and her ports come out of the same `portsOf` as everyone's, because an anchor the port rules do
