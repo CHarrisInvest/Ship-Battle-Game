@@ -3857,17 +3857,54 @@ function LobbyScreen({ net, note, onMake, onJoin, onRivals, onMode, onPerSide, o
               <StartButton onClick={copy} label={copied ? "Link copied" : "Copy the invite link"} ghost />
             </div>
           </Slab>
+          {/* The round, as three rows read top to bottom: what kind, how big, and between sides
+              which side she is on. The host turns the first two and every captain the third;
+              anyone else sees them as they stand. One sentence says what the kind means. */}
+          <Slab title="The round">
+            <Toggle
+              options={[{ key: "ffa", label: "FREE-FOR-ALL" }, { key: "teams", label: "TEAMS" }]}
+              value={lobby.mode}
+              onChange={host ? onMode : null}
+            />
+            <div style={{ ...small, textAlign: "center", marginTop: 8 }}>
+              {teams ? "Two fleets, one on each flank. Your guns cannot hurt your own side. The last side with a ship afloat wins." : "Every ship against every other. The last hull afloat wins."}
+            </div>
+            <Counter
+              label={teams ? "Ships a side" : "AI ships"}
+              sub={!host ? "set by the host" : teams ? "captains and AI together" : "besides the captains"}
+              value={teams ? perSide : shown}
+              onLess={host ? () => (teams ? onPerSide(Math.max(least, perSide - 1)) : onRivals(Math.max(0, shown - 1))) : null}
+              onMore={host ? () => (teams ? onPerSide(Math.min(SIDE_MAX, perSide + 1)) : onRivals(Math.min(most, shown + 1))) : null}
+              atLeast={teams ? perSide <= least : shown <= 0}
+              atMost={teams ? perSide >= SIDE_MAX : shown >= most}
+            />
+            {teams && (
+              <Toggle
+                style={{ marginTop: 10 }}
+                options={SIDES.map((s) => ({
+                  key: s, label: SIDE_COLORS[s].name, color: SIDE_COLORS[s].fill,
+                  sub: `${onSides[s].length} ${onSides[s].length === 1 ? "captain" : "captains"}`,
+                  disabled: onSides[s].length >= SIDE_MAX,
+                }))}
+                value={mine ? mine.side : null}
+                onChange={onSide}
+              />
+            )}
+          </Slab>
           <Slab title={`Captains, ${lobby.captains.length} of 8`}>
             {lobby.captains.map((c) => (
               <div key={c.mid} style={row}>
-                <span>
-                  {c.name}
-                  <span style={{ fontSize: 11, color: "rgba(238,244,242,0.55)" }}>
-                    {[c.userId === lobby.host ? "host" : "", c.userId === me ? "you" : ""].filter(Boolean).map((t) => `, ${t}`).join("")}
-                  </span>
+                <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                  {/* between sides, her side as a dot in its colour, which is how her ship reads at sea */}
                   {teams && c.side && SIDE_COLORS[c.side] && (
-                    <span style={{ fontSize: 11, fontWeight: 700, color: SIDE_COLORS[c.side].fill }}>{`, ${SIDE_COLORS[c.side].name}`}</span>
+                    <span aria-label={SIDE_COLORS[c.side].name} style={{ flex: "0 0 auto", width: 10, height: 10, borderRadius: 20, background: SIDE_COLORS[c.side].fill }} />
                   )}
+                  <span>
+                    {c.name}
+                    <span style={{ fontSize: 11, color: "rgba(238,244,242,0.55)" }}>
+                      {[c.userId === lobby.host ? "host" : "", c.userId === me ? "you" : ""].filter(Boolean).map((t) => `, ${t}`).join("")}
+                    </span>
+                  </span>
                 </span>
                 <span style={{ fontSize: 12, fontWeight: 700, color: c.away ? C.gold : c.userId === lobby.host || c.ready ? C.grass : "rgba(238,244,242,0.55)" }}>
                   {c.away ? "Away" : c.userId === lobby.host ? "Starts the round" : c.ready ? "Ready" : "Not ready"}
@@ -3875,65 +3912,6 @@ function LobbyScreen({ net, note, onMake, onJoin, onRivals, onMode, onPerSide, o
               </div>
             ))}
           </Slab>
-          <Slab title="How the round is sailed">
-            <div style={small}>
-              {teams
-                ? "Two sides. Each captain picks a side, and the two fleets start on opposite flanks of the sea. Your guns cannot hurt your own side, though a ram still can. The round goes to the side with a ship still afloat, and every captain on it wins."
-                : "Free-for-all. Every ship is against every other, and the last hull afloat wins."}
-            </div>
-            {host ? (
-              <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 10, flexWrap: "wrap" }}>
-                <StartButton label="Free-for-all" ghost={teams} onClick={() => !teams || onMode("ffa")} />
-                <StartButton label="Two sides" ghost={!teams} onClick={() => teams || onMode("teams")} />
-              </div>
-            ) : (
-              <div style={{ ...small, marginTop: 6 }}>The host picks.</div>
-            )}
-          </Slab>
-          {teams ? (
-            <>
-              <Slab title="Sides">
-                <div style={small}>AI ships fill the places on each side that captains do not take. Tap a side to sail with it.</div>
-                {SIDES.map((s, i) => {
-                  const col = SIDE_COLORS[s];
-                  const here = mine && mine.side === s;
-                  const names = onSides[s].map((c) => c.name);
-                  const ai = Math.max(0, perSide - names.length);
-                  return (
-                    <div key={s} style={{ ...row, borderTop: i === 0 ? "none" : row.borderTop, marginTop: i === 0 ? 8 : 0 }}>
-                      <span style={{ minWidth: 0, textAlign: "left" }}>
-                        <span style={{ fontWeight: 700, color: col.fill }}>{col.name}</span>
-                        <span style={{ fontSize: 11, color: "rgba(238,244,242,0.55)" }}>{`, starts on the ${s}`}</span>
-                        <div style={{ fontSize: 11, color: "rgba(238,244,242,0.78)", marginTop: 2 }}>
-                          {[...names, ai > 0 ? `${ai} AI ${ai === 1 ? "ship" : "ships"}` : ""].filter(Boolean).join(", ")}
-                        </div>
-                      </span>
-                      <StartButton ghost={!here} label={here ? "Your side" : "Sail with them"} disabled={here || onSides[s].length >= SIDE_MAX} onClick={() => onSide(s)} />
-                    </div>
-                  );
-                })}
-              </Slab>
-              <Slab title="Ships a side">
-                <div style={small}>{host ? `How many ships sail on each side, captains and AI together, from ${SIDE_MIN} to ${SIDE_MAX}.` : "The host chooses how many ships sail on each side."}</div>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 14, marginTop: 8 }}>
-                  {host && <StartButton ghost label="Fewer" disabled={perSide <= least} onClick={() => onPerSide(Math.max(least, perSide - 1))} />}
-                  <span style={{ fontSize: 18, fontWeight: 800, color: C.gold, minWidth: 24, textAlign: "center" }}>{perSide}</span>
-                  {host && <StartButton ghost label="More" disabled={perSide >= SIDE_MAX} onClick={() => onPerSide(Math.min(SIDE_MAX, perSide + 1))} />}
-                </div>
-              </Slab>
-            </>
-          ) : (
-            <Slab title="AI ships">
-              <div>
-                <div style={small}>{host ? "How many AI ships sail besides you and your friends." : "The host chooses how many AI ships sail."}</div>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 14, marginTop: 8 }}>
-                  {host && <StartButton ghost label="Fewer" onClick={() => onRivals(Math.max(0, shown - 1))} />}
-                  <span style={{ fontSize: 18, fontWeight: 800, color: C.gold, minWidth: 24, textAlign: "center" }}>{shown}</span>
-                  {host && <StartButton ghost label="More" onClick={() => onRivals(Math.min(most, shown + 1))} />}
-                </div>
-              </div>
-            </Slab>
-          )}
           {lobby.state === "sailing" ? (
             <div style={{ ...small, textAlign: "center", margin: "14px 0" }}>A round is under way. You will sail in the next one.</div>
           ) : host ? (
@@ -3960,6 +3938,48 @@ function LobbyScreen({ net, note, onMake, onJoin, onRivals, onMode, onPerSide, o
         </>
       )}
     </Shell>
+  );
+}
+
+/**
+ * A choice between a few things, as one bar split into equal halves: the one chosen is filled and
+ * the rest are outlined, so the bar reads as a switch and not as a row of buttons. Each option takes
+ * its own colour when it has one (a side's), the gold otherwise. With no `onChange` it only shows
+ * the choice, for a captain who does not get to make it.
+ */
+function Toggle({ options, value, onChange, style }) {
+  return (
+    <div role="radiogroup" style={{ display: "flex", border: `1px solid ${C.hair}`, borderRadius: 10, overflow: "hidden", background: "rgba(8,38,37,0.6)", ...style }}>
+      {options.map((o, i) => {
+        const on = o.key === value, col = o.color || C.gold;
+        const can = !!onChange && !on && !o.disabled;
+        return (
+          <button key={o.key} role="radio" aria-checked={on} disabled={!can} onClick={() => can && onChange(o.key)}
+            style={{ flex: "1 1 0", minWidth: 0, padding: "10px 6px", border: "none", borderLeft: i ? `1px solid ${C.hair}` : "none", background: on ? col : "transparent", color: on ? C.deep : col, fontFamily: UI, fontSize: 13, fontWeight: 800, lineHeight: 1.2, cursor: can ? "pointer" : "default", opacity: o.disabled && !on ? 0.4 : 1, WebkitTapHighlightColor: "transparent" }}>
+            <div>{o.label}</div>
+            {o.sub && <div style={{ fontSize: 10, fontWeight: 600, opacity: 0.8, marginTop: 2 }}>{o.sub}</div>}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** A figure with a step down and a step up beside it, on one row with its label. Without the steps it only shows the figure. */
+function Counter({ label, sub, value, onLess, onMore, atLeast, atMost }) {
+  const stepStyle = (off) => ({ width: 36, height: 36, borderRadius: 10, border: `1px solid ${C.gold}`, background: "transparent", color: C.gold, fontFamily: UI, fontSize: 18, fontWeight: 700, lineHeight: 1, cursor: off ? "default" : "pointer", opacity: off ? 0.35 : 1, WebkitTapHighlightColor: "transparent" });
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 10 }}>
+      <span style={{ textAlign: "left" }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: C.ink }}>{label}</div>
+        <div style={{ fontSize: 11, color: "rgba(238,244,242,0.55)" }}>{sub}</div>
+      </span>
+      <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        {onLess && <button aria-label="Fewer" disabled={atLeast} onClick={onLess} style={stepStyle(atLeast)}>&minus;</button>}
+        <span style={{ fontSize: 20, fontWeight: 800, color: C.gold, minWidth: 22, textAlign: "center" }}>{value}</span>
+        {onMore && <button aria-label="More" disabled={atMost} onClick={onMore} style={stepStyle(atMost)}>+</button>}
+      </span>
+    </div>
   );
 }
 
