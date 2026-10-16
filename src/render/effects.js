@@ -211,7 +211,9 @@ export function stepFx(fx, world, dt) {
       const h = s.heading;
       const bx = s.x - Math.cos(h) * s.hullA, by = s.y - Math.sin(h) * s.hullA;
       const px = Math.cos(h + Math.PI / 2), py = Math.sin(h + Math.PI / 2);
-      for (const sd of [-1, 1]) fx.wakes.push({ x: bx + px * sd * 4, y: by + py * sd * 4, life: wlife, max: wlife });
+      // each point says whose wake and which side of it, so the 3D sea can run a side's points
+      // together into one ribbon of foam
+      for (const sd of [-1, 1]) fx.wakes.push({ x: bx + px * sd * 4, y: by + py * sd * 4, life: wlife, max: wlife, id: s.id, sd });
     }
     if (s.spdCur > speedCap(s) * 0.82) {
       look.sprayT -= dt;

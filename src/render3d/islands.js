@@ -195,7 +195,7 @@ export function createIslandLayer(scene, ctx) {
     geo.setIndex(idx);
     geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), isl.r * 1.08 * band.scale + band.amp + 1);
     geos.push(geo);
-    const w = { geo, line, band };
+    const w = { geo, line, band, x: isl.x, y: isl.y, reach: geo.boundingSphere.radius };
     rollWaterline(w, 0);
     waterlines.push(w);
     return geo;
@@ -446,7 +446,13 @@ export function createIslandLayer(scene, ctx) {
     }
     const t = ctx.clock.t;
     uTime.value = t;
-    for (const w of waterlines) rollWaterline(w, t);
+    // only the rings on the screen roll: one off it is never seen, and comes back into view
+    // rolling from wherever the clock has got to
+    const g = ctx.ground(0);
+    for (const w of waterlines) {
+      if (w.x + w.reach < g.x0 || w.x - w.reach > g.x1 || w.y + w.reach < g.y0 || w.y - w.reach > g.y1) continue;
+      rollWaterline(w, t);
+    }
   }
 
   function dispose() {
@@ -457,5 +463,8 @@ export function createIslandLayer(scene, ctx) {
     root.removeFromParent();
   }
 
-  return { update, dispose };
+  /** Build them again on the next update: the renderer turned the shadows off under them. */
+  function replant() { builtFor = null; }
+
+  return { update, dispose, replant };
 }

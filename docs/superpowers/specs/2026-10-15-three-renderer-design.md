@@ -266,7 +266,8 @@ render the scene, then draw the overlay.
   `tools/promo.mjs` onto it, reading pixels from WebGL with `preserveDrawingBuffer` or `toDataURL`.
 - Built: every menu ship draws through one shared WebGLRenderer on a canvas nobody sees and copies
   the frame into the component's own 2D canvas, so the menu holds at most one context besides the
-  sea's, released 1.5 s after the last plate unmounts. Without WebGL 2, or with the context lost, the
+  sea's, kept for the life of the page (releasing it leaked each dead renderer through the
+  listeners three leaves on the shared materials, and recompiled every shader). Without WebGL 2, or with the context lost, the
   same canvas is painted by drawGalleon (`kind` says which). The icons and promo art go through it
   with `shadow: false`.
 

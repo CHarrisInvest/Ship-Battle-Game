@@ -32,8 +32,16 @@
  * changing one for one ship, and dispose the clone yourself.
  *
  * CACHE. Geometry is built once per spec, units and scale, and shared by every instance; a model's
- * `dispose()` only detaches the instance. The cache is bounded the way galleon.js's is, and
- * `clearShipModels()` releases it all, for the renderer's teardown.
+ * `dispose()` detaches the instance and lets go of its hold on the geometry. The cache keeps the
+ * `KEEP` most recently used specs and evicts only geometry no live model holds, so browsing the yard
+ * never pulls a hull out from under a ship at sea. `clearShipModels()` releases it all, for the
+ * renderer's teardown.
+ *
+ * LIVERY. Every face galleon.js marks `paint` carries its weight in the `paint` attribute and
+ * everything else 0: her topsides above the lowest strake, her bulwarks and her castles' walls at
+ * 1, and the inside of her rail, the ring of colour round her deck seen from above, a little less
+ * so it stays a shade darker. A layer can then lay a ship's colours over her planking without
+ * touching her ports, wales or deck.
  */
 
 import * as THREE from "three";
@@ -82,12 +90,13 @@ function buildGeometry(faces, k) {
       for (let i = 1; i < P.length - 1; i++) {
         // menu (x, y, z) to model (x, z, y); reversed once for the mirror and again for the back
         const tri = back ? [P[0], P[i], P[i + 1]] : [P[0], P[i + 1], P[i]];
-        buckets[g].push({ tri, n, c });
+        buckets[g].push({ tri, n, c, paint: f.paint || 0 });
       }
     }
   }
   const count = buckets.reduce((a, b) => a + b.length, 0) * 3;
   const pos = new Float32Array(count * 3), nor = new Float32Array(count * 3), cols = new Float32Array(count * 3);
+  const paint = new Float32Array(count);
   const geo = new THREE.BufferGeometry();
   // smoothing: every vertex keyed by where it stands, normals summed over the faces meeting there
   // within the crease angle
@@ -96,8 +105,9 @@ function buildGeometry(faces, k) {
   let v = 0, start = 0;
   const verts = [];
   buckets.forEach((list, g) => {
-    for (const { tri, n, c } of list) {
+    for (const { tri, n, c, paint: pf } of list) {
       for (const p of tri) {
+        paint[v] = pf;
         pos[v * 3] = p[0] * k; pos[v * 3 + 1] = p[2] * k; pos[v * 3 + 2] = p[1] * k;
         cols[v * 3] = c[0]; cols[v * 3 + 1] = c[1]; cols[v * 3 + 2] = c[2];
         const nn = [n[0], n[2], n[1]];
@@ -125,17 +135,62 @@ function buildGeometry(faces, k) {
   geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
   geo.setAttribute("normal", new THREE.BufferAttribute(nor, 3));
   geo.setAttribute("color", new THREE.BufferAttribute(cols, 3));
+  geo.setAttribute("paint", new THREE.BufferAttribute(paint, 1));
   geo.computeBoundingBox();
   geo.computeBoundingSphere();
   return geo;
 }
 
+/**
+ * The faces worth drawing with a depth buffer. galleon.js cuts every spar into short lengths so its
+ * painter's sort keys stay local, and each length is a closed prism: where two lengths meet, two caps
+ * lie face to face inside the spar, where nothing can ever see them. They were over a third of a
+ * first rate's spar triangles. A face whose twin (same corners, opposite way round) is in the list
+ * is one of those, and both go.
+ */
+function visibleFaces(faces) {
+  const key = (f) => {
+    let x = 0, y = 0, z = 0;
+    for (const p of f.pts) { x += p[0]; y += p[1]; z += p[2]; }
+    const n = f.pts.length;
+    return `${f.part || ""}|${n}|${Math.round((x / n) * 200)},${Math.round((y / n) * 200)},${Math.round((z / n) * 200)}`;
+  };
+  const at = new Map();
+  for (let i = 0; i < faces.length; i++) {
+    const f = faces[i];
+    if (f.double || f.pts.length < 3) continue;
+    const k = key(f);
+    let list = at.get(k);
+    if (!list) at.set(k, (list = []));
+    list.push(i);
+  }
+  const drop = new Set();
+  for (const list of at.values()) {
+    if (list.length < 2) continue;
+    for (let a = 0; a < list.length; a++) {
+      if (drop.has(list[a])) continue;
+      const fa = faces[list[a]];
+      for (let b = a + 1; b < list.length; b++) {
+        if (drop.has(list[b])) continue;
+        const fb = faces[list[b]];
+        if (fa.n[0] * fb.n[0] + fa.n[1] * fb.n[1] + fa.n[2] * fb.n[2] < -0.999) { drop.add(list[a]); drop.add(list[b]); break; }
+      }
+    }
+  }
+  return drop.size ? faces.filter((_, i) => !drop.has(i)) : faces;
+}
+
 function build(spec, units, seaLength) {
-  const { faces, rig, form } = shipFaces(spec);
+  const { faces: all, rig, form } = shipFaces(spec);
+  const faces = visibleFaces(all);
   const L = seaLength ?? (units === "sea" ? hullForm(spec?.hull).sea.L : 2 * form.menu.Lh);
   const k = units === "sea" ? L / (2 * form.menu.Lh) : 1;
   const byPart = new Map();
   for (const f of faces) {
+    // At sea the standing rigging is a twentieth of a unit thick, under a pixel at any zoom the sea
+    // is drawn at: it only shimmered, and it was a fifth of a first rate's triangles, drawn twice
+    // with the sun's shadow. The menu, where she is a hand's width long, keeps it.
+    if (units === "sea" && f.tag === "rig") continue;
     const p = f.part || "hull";
     let list = byPart.get(p);
     if (!list) byPart.set(p, (list = []));
@@ -171,11 +226,18 @@ const keyFor = (spec, units, seaLength) => `${units}|${seaLength ?? ""}|${spec ?
 export function shipModel(spec, { units = "sea", seaLength } = {}) {
   const key = keyFor(spec, units, seaLength);
   let built = CACHE.get(key);
-  if (!built) {
-    if (CACHE.size >= KEEP) clearShipModels();
+  if (built) {
+    // most recently used goes to the back of the line
+    CACHE.delete(key);
+    CACHE.set(key, built);
+  } else {
+    evict(KEEP - 1);
     built = build(spec, units, seaLength);
+    built.refs = 0;
     CACHE.set(key, built);
   }
+  built.refs++;
+  let held = true;
   const materials = shipMaterials();
   const group = new THREE.Group();
   group.name = "ship";
@@ -195,8 +257,26 @@ export function shipModel(spec, { units = "sea", seaLength } = {}) {
   return {
     group, parts, materials, key,
     scale: built.scale, height: built.height, length: built.length, beam: built.beam,
-    dispose() { group.removeFromParent(); },
+    dispose() {
+      group.removeFromParent();
+      if (held) { held = false; built.refs--; }
+    },
   };
+}
+
+/**
+ * Let go of the least recently used geometry no live model is drawing until at most `keep` specs
+ * are cached. A spec a ship at sea or a plate is still showing is never disposed, so the cache can
+ * run over `KEEP` for as long as more than that are on screen at once, and comes back down after.
+ */
+function evict(keep) {
+  if (CACHE.size <= keep) return;
+  for (const [key, b] of CACHE) {
+    if (CACHE.size <= keep) break;
+    if (b.refs > 0) continue;
+    for (const g of Object.values(b.geoms)) g.dispose();
+    CACHE.delete(key);
+  }
 }
 
 /** Release every cached ship geometry. For the renderer's teardown; live models re-upload if drawn. */

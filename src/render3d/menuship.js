@@ -19,8 +19,11 @@
  * every menu ship draws through one shared WebGLRenderer on a canvas nobody sees and copies the
  * frame into her own 2D canvas. The canvas a component holds is therefore always a 2D one, which is
  * also the whole of the fallback: when WebGL cannot be had, or the context is lost, the same canvas
- * is painted by `drawGalleon` exactly as it was before. The shared renderer is released a moment
- * after the last menu ship lets go of it, so a round at sea does not carry it.
+ * is painted by `drawGalleon` exactly as it was before. The shared renderer is kept for the life of
+ * the page. Releasing it after every plate (as each voyage did) leaked a whole dead renderer a time:
+ * three's `dispose()` leaves its listeners on the materials and geometry it drew, which are the
+ * app-long shared caches, so each one kept its lost context and program cache reachable, and every
+ * return to the menu compiled the shaders again. One idle context costs nothing while it waits.
  */
 
 import * as THREE from "three";
@@ -40,14 +43,13 @@ const FILL = { sky: "#eef0f2", ground: "#5a4c3c", intensity: 0.36 * Math.PI };
 
 /* ---- the one shared WebGL renderer ------------------------------------------------------------ */
 
-let shared = null; // { renderer, canvas, users, lost, release }
+let shared = null; // { renderer, canvas, users, lost }
 let failed = false; // WebGL was asked for and refused: every menu ship paints in 2D from then on
 
 function acquire() {
   if (failed) return null;
   if (shared) {
     shared.users++;
-    clearTimeout(shared.release);
     return shared;
   }
   try {
@@ -60,7 +62,7 @@ function acquire() {
     const renderer = new THREE.WebGLRenderer({ canvas, context, ...attrs });
     renderer.setClearColor(0x000000, 0);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
-    const s = { renderer, canvas, users: 1, lost: false, release: 0 };
+    const s = { renderer, canvas, users: 1, lost: false };
     canvas.addEventListener("webglcontextlost", (e) => { e.preventDefault(); s.lost = true; });
     canvas.addEventListener("webglcontextrestored", () => { s.lost = false; });
     shared = s;
@@ -73,15 +75,7 @@ function acquire() {
 
 function letGo(s) {
   if (!s || s !== shared) return;
-  if (--s.users > 0) return;
-  // a moment's grace, because React mounts an effect twice in development and a screen change
-  // unmounts one plate as it mounts the next
-  s.release = setTimeout(() => {
-    if (s.users > 0 || shared !== s) return;
-    shared = null;
-    s.renderer.dispose();
-    s.renderer.forceContextLoss();
-  }, 1500);
+  s.users = Math.max(0, s.users - 1);
 }
 
 /* ---- the contact shadow ---------------------------------------------------------------------- */

@@ -464,7 +464,7 @@ function buildShip(rig){
    for(const side of[1,-1]){
     for(let k=0;k<6;k++)
      addFace(F,[hullPtF(pa,side,fs[k]),hullPtF(pb,side,fs[k]),hullPtF(pb,side,fs[k+1]),hullPtF(pa,side,fs[k+1])],
-             bc[k],[0,side,0],{tag:"hull"});
+             bc[k],[0,side,0],k?{tag:"hull",paint:1}:{tag:"hull"});
    }
   }
  }
@@ -486,11 +486,11 @@ function buildShip(rig){
    const d0=dz(s0),d1=dz(s1),t0=tz(s0),t1=tz(s1);
    for(const side of[1,-1]){
     addFace(F,[[x0,side*s0.w,s0.sheer],[x1,side*s1.w,s1.sheer],
-               [x1,side*s1.w,t1],[x0,side*s0.w,t0]],P.top,[0,side,0],{tag:"hull"});
+               [x1,side*s1.w,t1],[x0,side*s0.w,t0]],P.top,[0,side,0],{tag:"hull",paint:1});
     addFace(F,[[x0,side*s0.w,t0],[x1,side*s1.w,t1],
-               [x1,side*(iw(s1)),t1],[x0,side*(iw(s0)),t0]],P.cap,[0,0,1],{tag:"hull"});
+               [x1,side*(iw(s1)),t1],[x0,side*(iw(s0)),t0]],P.cap,[0,0,1],{tag:"hull",paint:1});
     addFace(F,[[x0,side*(iw(s0)),d0],[x1,side*(iw(s1)),d1],
-               [x1,side*(iw(s1)),t1],[x0,side*(iw(s0)),t0]],P.dark,[0,-side,0],{tag:"hull"});
+               [x1,side*(iw(s1)),t1],[x0,side*(iw(s0)),t0]],P.dark,[0,-side,0],{tag:"hull",paint:0.8});
    }
    /* One plain plate per sample, unstroked and held clear of the bulwark. The
       plank banding added seam lines across the deck and its outline spilled onto
@@ -512,7 +512,7 @@ function buildShip(rig){
    const s=stationAt(xc);
    for(const side of[1,-1])
     addFace(F,[[xc,side*s.w,dz(s)],[xc,side*(iw(s)),dz(s)],
-               [xc,side*(iw(s)),tz(s)],[xc,side*s.w,tz(s)]],P.cap,[dir,0,0],{tag:"hull"});
+               [xc,side*(iw(s)),tz(s)],[xc,side*s.w,tz(s)]],P.cap,[dir,0,0],{tag:"hull",paint:1});
   }
  }
  /* The open deck's bulwark runs between the castles when she has them, and
@@ -726,9 +726,9 @@ function buildShip(rig){
    const u0=s/NR, u1=(s+1)/NR+(s<NR-1?0.004:0);
    const x0=lerp(ax,bx,u0), y0=lerp(ay,by,u0), x1=lerp(ax,bx,u1), y1=lerp(ay,by,u1);
    const i0x=x0+ix*RAIL_T, i0y=y0+iy*RAIL_T, i1x=x1+ix*RAIL_T, i1y=y1+iy*RAIL_T;
-   if(!noOuter)addFace(F,[[x0,y0,dz],[x1,y1,dz],[x1,y1,top],[x0,y0,top]],P.top,[-ix,-iy,0],{tag:"castle",bias:3});
-   addFace(F,[[i0x,i0y,dz],[i0x,i0y,top],[i1x,i1y,top],[i1x,i1y,dz]],P.dark,[ix,iy,0],{tag:"castle",bias:3});
-   addFace(F,[[x0,y0,top],[x1,y1,top],[i1x,i1y,top],[i0x,i0y,top]],P.cap,[0,0,1],{tag:"castle",bias:3});
+   if(!noOuter)addFace(F,[[x0,y0,dz],[x1,y1,dz],[x1,y1,top],[x0,y0,top]],P.top,[-ix,-iy,0],{tag:"castle",bias:3,paint:1});
+   addFace(F,[[i0x,i0y,dz],[i0x,i0y,top],[i1x,i1y,top],[i1x,i1y,dz]],P.dark,[ix,iy,0],{tag:"castle",bias:3,paint:0.8});
+   addFace(F,[[x0,y0,top],[x1,y1,top],[i1x,i1y,top],[i0x,i0y,top]],P.cap,[0,0,1],{tag:"castle",bias:3,paint:1});
   }
  }
  /* Stairs, and the gaps their heads open in the castle end rails. Both come from
@@ -772,7 +772,7 @@ function buildShip(rig){
   for(let i=0;i<xs.length-1;i++){
    const x0=xs[i],x1=xs[i+1],w0=hw(x0),w1=hw(x1),b0=bs(x0),b1=bs(x1);
    for(const side of[1,-1]){
-    addFace(F,[[x0,side*w0,b0],[x1,side*w1,b1],[x1,side*w1,dz],[x0,side*w0,dz]],P.top,[0,side,0],{tag:"castle",bias:3});
+    addFace(F,[[x0,side*w0,b0],[x1,side*w1,b1],[x1,side*w1,dz],[x0,side*w0,dz]],P.top,[0,side,0],{tag:"castle",bias:3,paint:1});
     railWall(x0,side*w0,x1,side*w1,dz,rh,0,-side);
    }
    /* same treatment as the waist deck: plain plates, unstroked, split
@@ -1137,7 +1137,7 @@ function buildShip(rig){
      for(let i=0;i<RS;i++){
       const a=R(i/RS), b=R(Math.min(1,(i+1)/RS+(i<RS-1?0.03:0)));
       if(a.z1-a.z0<0.05&&b.z1-b.z0<0.05)continue;
-      addFace(F,[[a.x,a.y,a.z0],[b.x,b.y,b.z0],[b.x,b.y,b.z1],[a.x,a.y,a.z1]],P.top,[0,side,0],{tag:"castle",bias:3.1,nostroke:true});
+      addFace(F,[[a.x,a.y,a.z0],[b.x,b.y,b.z0],[b.x,b.y,b.z1],[a.x,a.y,a.z1]],P.top,[0,side,0],{tag:"castle",bias:3.1,nostroke:true,paint:1});
       addFace(F,[[a.x,a.yi,a.z0],[b.x,b.yi,b.z0],[b.x,b.yi,b.z1],[a.x,a.yi,a.z1]],P.dark,[0,-side,0],{tag:"castle",bias:3.1,nostroke:true});
       addFace(F,[[a.x,a.y,a.z1],[b.x,b.y,b.z1],[b.x,b.yi,b.z1],[a.x,a.yi,a.z1]],P.cap,[0,0,1],{tag:"castle",bias:3.2,nostroke:true});
      }

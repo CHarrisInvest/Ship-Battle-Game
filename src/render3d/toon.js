@@ -43,6 +43,25 @@ export function toonRamp() {
   return ramp;
 }
 
+/**
+ * Shadows in the toon look are a band, not a grain. three's PCF turns its five taps by a noise per
+ * pixel, which on a sea drawn this flat comes out as a grey stipple: palm shadows on the sand read
+ * as dirt and a rig's shadow on the water as speckle. Here the taps hold still (with the hardware's
+ * own filtering that is twenty smooth taps) and the result is pressed into one soft-edged step, so
+ * a shadow is one clean shape with a narrow soft rim. Patched into three's shader chunk once, before
+ * anything compiles; if three ever changes the text, the patch simply does not apply.
+ */
+(function bandedShadows() {
+  const chunk = THREE.ShaderChunk.shadowmap_pars_fragment;
+  if (!chunk || chunk.includes("/* sternchase banded */")) return;
+  let out = chunk.replace("float phi = interleavedGradientNoise( gl_FragCoord.xy ) * PI2;", "float phi = 0.0; /* sternchase banded */");
+  out = out.replace(
+    /\) \* 0\.2;(\s*)\}(\s*)return mix\( 1\.0, shadow, shadowIntensity \);/,
+    (m, a, b) => `) * 0.2;${a}shadow = smoothstep( 0.2, 0.8, shadow );${a}}${b}return mix( 1.0, shadow, shadowIntensity );`,
+  );
+  THREE.ShaderChunk.shadowmap_pars_fragment = out;
+})();
+
 const MATS = new Map();
 
 /**

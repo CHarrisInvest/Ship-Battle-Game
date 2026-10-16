@@ -40,6 +40,14 @@ const MAX_PUFFS = 4096;
 const MAX_FLAT = 8192; // trails (two a ball), streaks, rings
 const MAX_FLASH = 2048; // flames and glows
 const MAX_SHARDS = 2048;
+// a ball's drawn radius against the 2D one: a lit sphere reads bigger than a flat disc the same size
+const BALL_DRAW = 0.8;
+// splashes that land this close together, this soon after one another, are one splash
+const SPLASH_JOIN = 9;
+const SPLASH_JOIN_T = 0.3;
+const SPLASH_MAX_H = 17;
+
+const POOL_KEYS = ["iPos", "iSize", "iDir", "iExt", "iCol", "iMisc"];
 
 // ---- shaders ----
 
@@ -197,6 +205,7 @@ export function createEffectsLayer(scene, ctx) {
     owned.push([mesh, pool.geo, mat]);
     pool.mesh = mesh;
     pool.n = 0;
+    pool.sent = -1;
     return pool;
   }
 
@@ -210,15 +219,20 @@ export function createEffectsLayer(scene, ctx) {
   const flames = addMesh(instanced(quad, MAX_FLASH, FLAT_ATTRS), shaderMat(FLAT_VERT, FLAT_FRAG), 20, "fx-flame");
   const glows = addMesh(instanced(quad, MAX_FLASH, BB_ATTRS), shaderMat(BB_VERT, BB_FRAG), 21, "fx-glow");
 
-  // the balls: cast iron, lit like everything else, so the light off the top of one is the sun's
+  // the balls: cast iron, lit like everything else, so the light off the top of one is the sun's.
+  // Lit in the toon bands the palette's iron came out nearly black, and a first rate's broadside
+  // read as a swarm of flies over the hull it was landing on; held a shade up off it, the top band
+  // comes out near `C.ballLit` and the ball reads as shot.
   const ballGeo = new THREE.SphereGeometry(1, 12, 8);
-  const balls = new THREE.InstancedMesh(ballGeo, ctx.toon.material({ color: C.ball }), MAX_BALLS);
+  const ballMat = ctx.toon.material({ color: "#56606a" }).clone();
+  ballMat.emissive = new THREE.Color(C.ball).multiplyScalar(0.35);
+  const balls = new THREE.InstancedMesh(ballGeo, ballMat, MAX_BALLS);
   balls.name = "fx-balls";
   balls.count = 0;
   balls.frustumCulled = false;
   balls.castShadow = !!quality.shadows;
   scene.add(balls);
-  owned.push([balls, ballGeo, null]);
+  owned.push([balls, ballGeo, ballMat]);
 
   // splinters and spray: little solids that tumble, coloured per instance
   function shardMesh(geo, name) {
@@ -281,9 +295,30 @@ export function createEffectsLayer(scene, ctx) {
     pool.iCol.setXYZW(i, col.r, col.g, col.b, a);
     pool.iMisc.setXY(i, shape, param);
   }
+  // Only what was written goes up, and nothing at all when the pool was empty last frame too: a
+  // pool sent whole every frame was over a megabyte a frame across the layer whatever was live.
+  function sendRange(attr, n) {
+    attr.clearUpdateRanges();
+    attr.addUpdateRange(0, n * attr.itemSize);
+    attr.needsUpdate = true;
+  }
   function flush(pool) {
     pool.geo.instanceCount = pool.n;
-    for (const k of ["iPos", "iSize", "iDir", "iExt", "iCol", "iMisc"]) if (pool[k]) pool[k].needsUpdate = true;
+    if (pool.n === 0 && pool.sent === 0) return;
+    pool.sent = pool.n;
+    if (pool.n === 0) return;
+    for (let i = 0; i < POOL_KEYS.length; i++) {
+      const a = pool[POOL_KEYS[i]];
+      if (a) sendRange(a, pool.n);
+    }
+  }
+  function flushMesh(mesh) {
+    const n = mesh.count;
+    if (n === 0 && mesh.userData.sent === 0) return;
+    mesh.userData.sent = n;
+    if (n === 0) return;
+    sendRange(mesh.instanceMatrix, n);
+    if (mesh.instanceColor) sendRange(mesh.instanceColor, n);
   }
 
   // ---- each particle's third dimension, kept off the particle itself ----
@@ -315,6 +350,21 @@ export function createEffectsLayer(scene, ctx) {
   let lastWorld = null;
 
   function splashAt(x, y, big = true) {
+    // A broadside that misses together lands in one patch of water: a dozen columns and rings
+    // stacked there read as a white tower. A ball coming down where another just did feeds that
+    // splash instead, a little taller and wider, and throws a little spray of its own.
+    for (let i = local.length - 1; i >= 0; i--) {
+      const l = local[i];
+      if (l.kind !== "column" || l.max - l.life > SPLASH_JOIN_T) continue;
+      if ((l.x - x) * (l.x - x) + (l.y - y) * (l.y - y) > SPLASH_JOIN * SPLASH_JOIN) continue;
+      l.h = Math.min(SPLASH_MAX_H, l.h * 1.08);
+      l.w = Math.min(5.5, l.w * 1.06);
+      if (Math.random() < 0.5 * share) {
+        const a = Math.random() * 6.283, sp = 6 + Math.random() * 14, life = 0.45 + Math.random() * 0.3;
+        local.push({ kind: "drop", x, y, z: 1, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, vz: 12 + Math.random() * 14, life, max: life, size: 0.55 + Math.random() * 0.35 });
+      }
+      return;
+    }
     const s = big ? 1 : 0.6;
     const life = 0.55 + Math.random() * 0.2;
     local.push({ kind: "column", x, y, life, max: life, h: (9 + Math.random() * 4) * s, w: (2.6 + Math.random()) * s, seed: Math.random() });
@@ -361,7 +411,8 @@ export function createEffectsLayer(scene, ctx) {
       }
     }
     lastWorld = world;
-    last = world.shots.slice();
+    last.length = 0;
+    for (let i = 0; i < world.shots.length; i++) last.push(world.shots[i]);
   }
 
   // ---- the frame ----
@@ -407,20 +458,21 @@ export function createEffectsLayer(scene, ctx) {
         continue;
       }
       const dr = b.r * (WP[b.kind]?.draw ?? SHOT_DRAW);
-      // her smoke first, a long faint wedge and a short brighter one, so the ball sits on its head
-      for (const [reach, wide, a] of [[1, 0.85, 0.3], [0.45, 0.62, 0.4]]) {
-        const len = sp * TAIL * reach;
-        decal(flat, MAX_FLAT, x - dx * len * 0.5, y - dy * len * 0.5, SHOT_Z, dx, dy, len * 0.5, dr * wide, SMOKE, a, 2);
-      }
+      // her smoke first, a long faint wedge and a short brighter one, so the ball sits on its head;
+      // the 2D wedges' figures
+      const len1 = sp * TAIL, len2 = sp * TAIL * 0.45;
+      decal(flat, MAX_FLAT, x - dx * len1 * 0.5, y - dy * len1 * 0.5, SHOT_Z, dx, dy, len1 * 0.5, dr * 0.85, SMOKE, 0.2, 2);
+      decal(flat, MAX_FLAT, x - dx * len2 * 0.5, y - dy * len2 * 0.5, SHOT_Z, dx, dy, len2 * 0.5, dr * 0.62, SMOKE, 0.28, 2);
       if (nb < MAX_BALLS) {
         ctx.toThree(x, y, SHOT_Z, p3);
-        sc.set(dr, dr, dr);
+        const br = dr * BALL_DRAW;
+        sc.set(br, br, br);
         q.identity();
         balls.setMatrixAt(nb++, m4.compose(p3, q, sc));
       }
     }
     balls.count = nb;
-    balls.instanceMatrix.needsUpdate = true;
+    flushMesh(balls);
 
     watchShots(world);
 
@@ -484,11 +536,8 @@ export function createEffectsLayer(scene, ctx) {
       }
     }
 
-    for (const pool of [flat, puffs, flames, glows]) flush(pool);
-    for (const m of [splinters, drops]) {
-      m.instanceMatrix.needsUpdate = true;
-      if (m.instanceColor) m.instanceColor.needsUpdate = true;
-    }
+    flush(flat); flush(puffs); flush(flames); flush(glows);
+    flushMesh(splinters); flushMesh(drops);
   }
 
   function dispose() {
@@ -500,7 +549,7 @@ export function createEffectsLayer(scene, ctx) {
     }
     quad.dispose();
     local.length = 0;
-    last = [];
+    last.length = 0;
     now.clear();
     lastWorld = null;
   }

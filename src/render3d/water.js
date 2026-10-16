@@ -6,10 +6,11 @@
  * shows each frame and everything on it is worked out per pixel from the world position, so the sea
  * is the same water wherever the camera goes and costs the same whatever the size of the map.
  *
- *   - The surface is the toon material every hull is lit with, with its colour and normal written
- *     by the shader. A few slow crossing swells tilt the normal, so where they pile up facing away
- *     from the sun the water drops a band of the ramp, and where they face it squarely (full tier)
- *     a glint comes off them. Flat water lands on `C.water` exactly: the base colour is divided by
+ *   - The surface is the toon material every hull is lit with, with its colour written by the
+ *     shader. A few slow crossing swells shade it a few percent lighter and darker (full tier)
+ *     and throw a glint where they face the sun squarely; they do not bend the normal the ramp
+ *     reads, because a whole band's step in ship-sized blotches competed with the small craft
+ *     and read as shadow. Flat water lands on `C.water` exactly: the base colour is divided by
  *     what the lights put on a level surface, so the palette is the sea's colour and not a starting
  *     point for it.
  *   - Outside the map the water runs `C.waterEdge`, with the rope and its buoys every 400 floating
@@ -20,7 +21,8 @@
  *     second, finer scatter of small caps.
  *   - The storm darkens the sea outside its ring and rains on it, on the water as the 2D sea did, so
  *     the ships stand clear of the weather and keep their colours.
- *   - The wakes are instanced foam discs off `fx.wakes`, breaking up as they age.
+ *   - The wakes are ribbons of foam run through `fx.wakes`, one off each of a ship's quarters,
+ *     spreading and breaking into lace as they age.
  *   - Each island has surf where the water meets her: a lapping wash on the beach rim and a broken
  *     line where the deep water comes up onto the shallows.
  *
@@ -40,6 +42,7 @@ const ROPE_Y = 0.7;
 
 // The storm's darkening and the rain, as the 2D sea had them: rgba(7,34,33,0.5) over the water and
 // streaks of rgb(190,215,225) at 0.175 falling 340 view units a second.
+const EMPTY = [];
 const STORM_DARK = [7 / 255, 34 / 255, 33 / 255];
 const RAIN = [190 / 255, 215 / 255, 225 / 255];
 
@@ -170,50 +173,49 @@ export function createWaterLayer(scene, ctx) {
   const bm = new THREE.Matrix4();
 
   // ---------------- the wakes ----------------
+  //
+  // A ship's wake is two ribbons of foam, one off each quarter, each run through the points
+  // `fx.wakes` drops behind that side of her (oldest first, as they were dropped). A ribbon is as
+  // wide as the 2D wake's disc was at that age, so it starts narrow at her stern and spreads and
+  // thins astern, and the noise in its alpha breaks it into lace as it ages. Stamped discs read as
+  // a dotted line, a chain of snowflakes behind every ship; a strip cannot.
 
-  let wakeCap = 0;
-  let wakeGeo = null;
-  let wakeData = null;
-  const quad = new THREE.PlaneGeometry(2, 2);
-  quad.rotateX(-Math.PI / 2);
-  owned.push(quad);
+  const WAKE_GAP = 26; // two points further apart than this are not one wake (she was gone between)
+  let wakeCap = 0; // points the buffers hold
+  let wakePos = null, wakeAttr = null, wakeIdx = null;
+  const wakeGeo = new THREE.BufferGeometry();
   const wakeMat = new THREE.ShaderMaterial({
-    uniforms: { uFoamLin: { value: new THREE.Color("#eefaf6") } },
+    uniforms: { ...uniforms, uFoamLin: { value: new THREE.Color("#eefaf6") } },
     vertexShader: /* glsl */ `
-      attribute vec4 aWake;   // x, y, radius, how much life is left (1 fresh, 0 gone)
-      varying vec2 vUv;
-      varying float vK;
-      varying float vSeed;
+      attribute vec2 aWake;   // across the ribbon (-1 to 1), how much life is left (1 fresh, 0 gone)
+      varying vec2 vWake;
+      varying vec2 vSea;
       void main() {
-        vUv = position.xz;
-        vK = aWake.w;
-        vSeed = fract(aWake.x * 0.137 + aWake.y * 0.311);
-        vec3 p = vec3(aWake.x + position.x * aWake.z, 0.12, aWake.y + position.z * aWake.z);
-        gl_Position = projectionMatrix * viewMatrix * vec4(p, 1.0);
+        vWake = aWake;
+        vSea = position.xz;
+        gl_Position = projectionMatrix * viewMatrix * vec4(position, 1.0);
       }`,
-    fragmentShader: /* glsl */ `
+    fragmentShader: GLSL_COMMON + /* glsl */ `
       uniform vec3 uFoamLin;
-      varying vec2 vUv;
-      varying float vK;
-      varying float vSeed;
-      float h1(float n) { return fract(sin(n) * 43758.5453); }
+      varying vec2 vWake;
       void main() {
-        float d = length(vUv);
-        float a = atan(vUv.y, vUv.x);
-        // a ragged edge, and as it ages the middle opens up so a trail breaks into lace
-        float rag = 0.12 * sin(a * 5.0 + vSeed * 40.0) + 0.08 * sin(a * 9.0 - vSeed * 17.0);
-        float body = smoothstep(1.0, 0.82, d + rag);
-        float hole = mix(1.0, smoothstep(0.15, 0.62, d - rag * 0.6), 1.0 - vK);
-        float alpha = body * hole * vK * 0.55;
+        float k = vWake.y;
+        // soft at both edges, fullest down the middle
+        float body = 1.0 - smoothstep(0.25, 1.0, abs(vWake.x));
+        // broken up by noise fixed to the water, more of it as the foam ages
+        float n = wNoise(vSea * 0.21) * 0.6 + wNoise(vSea * 0.57 + 7.0) * 0.4;
+        float lace = smoothstep(0.62 * (1.0 - k) + 0.05, 0.62 * (1.0 - k) + 0.32, n);
+        float alpha = body * lace * k * 0.5;
         if (alpha < 0.004) discard;
         gl_FragColor = vec4(uFoamLin, alpha);
         #include <colorspace_fragment>
       }`,
     transparent: true,
     depthWrite: false,
+    side: THREE.DoubleSide, // a ribbon's winding is whichever way she was sailing
   });
-  owned.push(wakeMat);
-  const wakes = new THREE.Mesh(new THREE.BufferGeometry(), wakeMat);
+  owned.push(wakeMat, wakeGeo);
+  const wakes = new THREE.Mesh(wakeGeo, wakeMat);
   wakes.name = "wakes";
   wakes.frustumCulled = false;
   wakes.renderOrder = 3; // over the shallows (1) and the beach rim and surf (2), under the ships' own foam
@@ -222,16 +224,81 @@ export function createWaterLayer(scene, ctx) {
   function sizeWakes(n) {
     if (n <= wakeCap) return;
     wakeCap = Math.max(256, 2 ** Math.ceil(Math.log2(n)));
-    wakes.geometry.dispose();
-    wakeGeo = new THREE.InstancedBufferGeometry();
-    wakeGeo.index = quad.index;
-    wakeGeo.setAttribute("position", quad.getAttribute("position"));
-    wakeData = new Float32Array(wakeCap * 4);
-    const attr = new THREE.InstancedBufferAttribute(wakeData, 4);
-    attr.setUsage(THREE.DynamicDrawUsage);
-    wakeGeo.setAttribute("aWake", attr);
-    wakeGeo.instanceCount = 0;
-    wakes.geometry = wakeGeo;
+    wakePos = new THREE.BufferAttribute(new Float32Array(wakeCap * 2 * 3), 3).setUsage(THREE.DynamicDrawUsage);
+    wakeAttr = new THREE.BufferAttribute(new Float32Array(wakeCap * 2 * 2), 2).setUsage(THREE.DynamicDrawUsage);
+    wakeIdx = new THREE.BufferAttribute(new Uint32Array(wakeCap * 6), 1).setUsage(THREE.DynamicDrawUsage);
+    // a fresh geometry's buffers: three keeps one GPU buffer per attribute object
+    wakeGeo.dispose();
+    wakeGeo.setAttribute("position", wakePos);
+    wakeGeo.setAttribute("aWake", wakeAttr);
+    wakeGeo.setIndex(wakeIdx);
+  }
+
+  // each ship's two sides, reused frame to frame: id -> [port points, starboard points]
+  const strands = new Map();
+  let wakeVerts = 0, wakeTris = 0;
+
+  /** One side's points laid out as a ribbon, appended to the buffers. */
+  function ribbon(pts) {
+    const n = pts.length;
+    if (n < 2) return;
+    const P = wakePos.array, A = wakeAttr.array, I = wakeIdx.array;
+    for (let j = 0; j < n; j++) {
+      const w = pts[j];
+      // along the ribbon here, from the point before to the point after
+      const a = pts[j > 0 ? j - 1 : j], b = pts[j < n - 1 ? j + 1 : j];
+      let dx = b.x - a.x, dy = b.y - a.y;
+      const l = Math.hypot(dx, dy) || 1;
+      dx /= l; dy /= l;
+      const k = Math.max(0, w.life / w.max);
+      const half = 1.6 + (1 - k) * 4.5;
+      const v = wakeVerts;
+      P[v * 3] = w.x - dy * half; P[v * 3 + 1] = 0.12; P[v * 3 + 2] = w.y + dx * half;
+      P[v * 3 + 3] = w.x + dy * half; P[v * 3 + 4] = 0.12; P[v * 3 + 5] = w.y - dx * half;
+      A[v * 2] = -1; A[v * 2 + 1] = k;
+      A[v * 2 + 2] = 1; A[v * 2 + 3] = k;
+      if (j > 0) {
+        const p = pts[j - 1];
+        if ((w.x - p.x) * (w.x - p.x) + (w.y - p.y) * (w.y - p.y) < WAKE_GAP * WAKE_GAP) {
+          const o = wakeTris * 3;
+          I[o] = v - 2; I[o + 1] = v - 1; I[o + 2] = v;
+          I[o + 3] = v - 1; I[o + 4] = v + 1; I[o + 5] = v;
+          wakeTris += 2;
+        }
+      }
+      wakeVerts += 2;
+    }
+  }
+
+  function updateWakes(list) {
+    for (const st of strands.values()) { st[0].length = 0; st[1].length = 0; }
+    for (let i = 0; i < list.length; i++) {
+      const w = list[i];
+      let st = strands.get(w.id);
+      if (!st) strands.set(w.id, (st = [[], []]));
+      st[w.sd > 0 ? 1 : 0].push(w);
+    }
+    sizeWakes(list.length);
+    wakeVerts = 0; wakeTris = 0;
+    for (const [id, st] of strands) {
+      if (!st[0].length && !st[1].length) { strands.delete(id); continue; }
+      ribbon(st[0]);
+      ribbon(st[1]);
+    }
+    if (!wakePos) return;
+    wakeGeo.setDrawRange(0, wakeTris * 3);
+    wakes.visible = wakeTris > 0;
+    if (!wakeTris) return;
+    upload(wakePos, wakeVerts * 3);
+    upload(wakeAttr, wakeVerts * 2);
+    upload(wakeIdx, wakeTris * 3);
+  }
+
+  // send only the part of a buffer this frame wrote
+  function upload(attr, n) {
+    attr.clearUpdateRanges();
+    attr.addUpdateRange(0, n);
+    attr.needsUpdate = true;
   }
 
   // ---------------- the surf round each island ----------------
@@ -349,32 +416,16 @@ export function createWaterLayer(scene, ctx) {
     uniforms.uStorm.value.set(WORLD / 2, WORLD / 2, storm ? world.stormR : 1e9, storm ? 1 : 0);
 
     // buoys ride the swell as the 2D ones bobbed
-    buoyAt.forEach(([wx, wy], i) => {
+    for (let i = 0; i < buoyAt.length; i++) {
+      const wx = buoyAt[i][0], wy = buoyAt[i][1];
       const bob = (Math.sin(t * 2 + wx * 0.01 + wy * 0.01) * 1.5) / ZUP;
       bm.makeTranslation(wx, BUOY_R * 0.45 + bob * 0.5, wy);
       buoys.setMatrixAt(i, bm);
-    });
+    }
     buoys.instanceMatrix.needsUpdate = true;
 
     // the wakes
-    const list = fx?.wakes ?? [];
-    sizeWakes(list.length);
-    if (wakeGeo) {
-      let n = 0;
-      for (const w of list) {
-        const k = Math.max(0, w.life / w.max);
-        wakeData[n * 4] = w.x;
-        wakeData[n * 4 + 1] = w.y;
-        wakeData[n * 4 + 2] = 1.6 + (1 - k) * 4.5;
-        wakeData[n * 4 + 3] = k;
-        n++;
-      }
-      wakeGeo.instanceCount = n;
-      const a = wakeGeo.getAttribute("aWake");
-      a.clearUpdateRanges();
-      a.addUpdateRange(0, n * 4);
-      a.needsUpdate = true;
-    }
+    updateWakes(fx?.wakes ?? EMPTY);
 
     if (world && world.islands !== surfFor) {
       surfFor = world.islands;
@@ -385,7 +436,7 @@ export function createWaterLayer(scene, ctx) {
   function dispose() {
     for (const g of surfGeos) g.dispose();
     surfGeos.length = 0;
-    wakes.geometry.dispose();
+    strands.clear();
     buoys.dispose();
     for (const o of owned) o.dispose();
     root.removeFromParent();
@@ -486,8 +537,8 @@ const SEA_COLOUR = /* glsl */ `
   #ifndef WATER_SIMPLE
     // a slow drift of deeper and paler water, so the sea is not one flat sheet
     float tint = wNoise(p * 0.0045 + vec2(uTime * 0.01, 0.0)) * 0.6 + wNoise(p * 0.011 - uTime * 0.008) * 0.4;
-    c = mix(c, uDeep, 0.07 * smoothstep(0.45, 0.85, tint) * inside);
-    c = mix(c, uShallow, 0.08 * smoothstep(0.55, 0.15, tint) * inside);
+    c = mix(c, uDeep, 0.035 * smoothstep(0.35, 0.95, tint) * inside);
+    c = mix(c, uShallow, 0.04 * smoothstep(0.65, 0.05, tint) * inside);
   #endif
   diffuseColor.rgb = c;
 }
@@ -509,7 +560,9 @@ const SEA_NORMAL = /* glsl */ `
   s += swell(p, normalize(vec2(-0.83, 0.56)), 6.283 / 330.0, 4.2, 0.23)
      + swell(p, normalize(vec2(0.21, -0.98)), 6.283 / 270.0, 3.0, 0.31);
   seaN = normalize(vec3(-s.x, 1.0, -s.y));
-  normal = normalize((viewMatrix * vec4(seaN, 0.0)).xyz);
+  // The swell no longer bends the normal the toon ramp reads: a face tipped over a band's edge
+  // dropped a whole band, a quarter of the light, in ship-sized blotches that read as shadows and
+  // competed with a cutter for the eye. It shades the water softly in the overlay instead.
 }
 #endif
 `;
@@ -523,13 +576,16 @@ const SEA_OVERLAY = /* glsl */ `
   vec3 col = sRGBTransferOETF(vec4(outgoingLight, 1.0)).rgb;
 
   #ifndef WATER_SIMPLE
+    // the swell's light and shade, a few percent either way and never a band's step
+    float shade = dot(seaN, uKey) - uKey.y;
+    col *= 1.0 + clamp(shade * 0.22, -0.045, 0.035);
     // a glint where the swell turns its face square between the sun and the eye
     float nh = dot(seaN, uHalf);
     col = mix(col, uFoam, 0.22 * smoothstep(0.9988, 0.9996, nh));
     // and a lighter band on the faces turned to the sun, the ramp's step the other way: the toon
     // ramp can only darken a level sea, so the bright side of the swell is drawn here
     float nl = dot(seaN, uKey);
-    col = mix(col, uFoam, 0.06 * smoothstep(0.905, 0.915, nl));
+    col = mix(col, uFoam, 0.035 * smoothstep(0.89, 0.95, nl));
   #endif
 
   // the grid every 80, as faint as the 2D one, inside the rope

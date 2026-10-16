@@ -1,5 +1,5 @@
 import React, { Fragment, useRef, useState, useEffect, useCallback, useMemo } from "react";
-import { createMenuShip } from "./render3d/menuship.js";
+import { drawGalleon } from "./galleon.js";
 import {
   getHold, subscribeHold, modeRecord, shipLoadout, shortfall, connect, holdStatus, subscribeStatus, hadLocalSave, adoptHold, holdSettled, hasProgress,
   buyShip, buyPart, fitMast, fitSail, fitStud, fitGun, unfitGun, setActiveShip, spareParts, ownedShips, partOf,
@@ -26,10 +26,47 @@ import {
 } from "./sim/index.js";
 import { C, UI } from "./render/palette.js";
 import { createRenderer } from "./render/renderer.js";
-import { createRenderer3d } from "./render3d/renderer3d.js";
 import { createFx, fxEvents, stepFx } from "./render/effects.js";
 import { HUD, radarRight } from "./render/hud.js";
 import { useControls } from "./input/controls.js";
+
+/**
+ * three.js, in a chunk of its own (`render3d/index.js`). It is asked for once the screen has
+ * mounted, so the first paint never waits on it: until it arrives the sea is the 2D one and the
+ * plate is `drawGalleon`, and both hand over to the 3D ones when it does. Every visitor asks for
+ * it and runs the same code. `three3d` is the module once it is here, and null until then (or for
+ * good, if the chunk could not be fetched, in which case the 2D picture simply stays).
+ */
+let three3d = null;
+let three3dLoad = null;
+function loadThree() {
+  if (!three3dLoad) {
+    three3dLoad = import("./render3d/index.js")
+      .then((m) => (three3d = m))
+      .catch(() => null);
+  }
+  return three3dLoad;
+}
+
+/** The plate's ship painted flat by drawGalleon: what shows until three.js arrives, or without it. */
+function flatMenuShip(canvas) {
+  const ctx = canvas.getContext("2d");
+  let w = canvas.width, h = canvas.height, dpr = 1;
+  return {
+    kind: "2d",
+    resize(cw, ch, r = 1) {
+      w = cw; h = ch; dpr = r;
+      canvas.width = Math.round(cw * r);
+      canvas.height = Math.round(ch * r);
+    },
+    draw(spec, deg) {
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, w, h);
+      drawGalleon(ctx, w, h, deg, spec || undefined);
+    },
+    dispose() {},
+  };
+}
 
 /**
  * STERNCHASE: HELM & HULL — pirate battles at sea, on a tilted (isometric-ish) sea with tall wooden
@@ -423,12 +460,22 @@ export default function App() {
     // The sea in three dimensions, on the WebGL canvas with its overlay stacked over it. Where the
     // browser cannot give a canvas WebGL, the 2D sea draws on the overlay canvas instead, which the
     // 3D renderer leaves untouched until its own canvas is standing. Same calls either way.
-    let renderer;
-    try {
-      renderer = createRenderer3d(canvasRef.current, overlayRef.current);
-    } catch {
-      renderer = createRenderer(overlayRef.current);
-    }
+    //
+    // three.js comes in its own chunk (see `loadThree`): the 2D sea paints from the first frame and
+    // the 3D one takes over the moment the chunk is here, or never, if this device cannot draw it.
+    let renderer = three3d ? null : createRenderer(overlayRef.current);
+    let gone = false;
+    const take3d = (m) => {
+      if (gone || !m) return false;
+      try {
+        renderer = m.createRenderer3d(canvasRef.current, overlayRef.current);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    if (!renderer && !take3d(three3d)) renderer = createRenderer(overlayRef.current);
+    if (renderer.kind !== "3d") loadThree().then((m) => { if (take3d(m)) resize(); });
     let raf = 0,
       last = 0,
       bank = 0, // real time not yet stepped, in seconds
@@ -819,6 +866,7 @@ export default function App() {
     window.addEventListener("resize", resize);
     raf = requestAnimationFrame(loop);
     return () => {
+      gone = true;
       window.removeEventListener("resize", resize);
       cancelAnimationFrame(raf);
       renderer.dispose?.();
@@ -1302,6 +1350,14 @@ function MenuGalleon({ rig }) {
   // Her bearing lives outside the effect, so a change of rig, or a change of ship under the plate's
   // arrows, carries on from where she was turning rather than snapping her back to bearing zero.
   const degRef = useRef(0);
+  // three.js, once its chunk is here; the plate is drawGalleon's until then
+  const [three, setThree] = useState(three3d);
+  useEffect(() => {
+    if (three) return;
+    let on = true;
+    loadThree().then((m) => { if (on && m) setThree(m); });
+    return () => { on = false; };
+  }, [three]);
 
   useEffect(() => {
     const c = cvs.current;
@@ -1309,7 +1365,7 @@ function MenuGalleon({ rig }) {
     // The one ship model, drawn through the menu's shared WebGL renderer into this 2D canvas, or
     // painted by drawGalleon where WebGL cannot be had (createMenuShip decides, and the box is the
     // same either way).
-    const ship = createMenuShip(c);
+    const ship = three ? three.createMenuShip(c) : flatMenuShip(c);
     const w = GALLEON_W;
     const h = Math.round(w * GALLEON_ASPECT);
     ship.resize(w, h, Math.min(window.devicePixelRatio || 1, 2));
@@ -1333,7 +1389,7 @@ function MenuGalleon({ rig }) {
     raf = requestAnimationFrame(frame);
     return () => { cancelAnimationFrame(raf); ship.dispose(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
+  }, [key, three]);
 
   return (
     <canvas

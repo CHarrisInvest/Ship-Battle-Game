@@ -6,13 +6,21 @@
  * is drawn `alpha` of the way through the last step and on her heading blended the short way round,
  * exactly as the 2D sea placed her. Around that model this layer hangs what is hers alone:
  *
- *   - her livery: her flags and a painted band along her rail in her colour (gold for the viewer's
- *     own ship, as the 2D trim was), on materials cloned for her;
+ *   - her livery: her topsides, bulwarks and castle walls painted in her colour (the look's `fill`,
+ *     which is `C.player` for the viewer's own ship, as the 2D hulls were filled), her flags and a
+ *     band along her rail in it too (gold for the viewer's own), on materials cloned for her. A
+ *     rail band alone was a pixel wide at phone zoom and every rival read as the same brown ship;
+ *     the painted side is what matches her to her dot on the radar;
+ *   - her rig, never under a readable size: a small craft's masts are scaled up about their feet
+ *     until her rig stands at least `RIG_FLOOR` of her length (and `RIG_MIN` units) over the
+ *     water, the way the 2D sea rig exaggerated it, or a gundalow at sea is a bean with no mast;
  *   - her heel: the look's roll into a turn with the idle heel on the swell, the 2D figure;
- *   - a hit: a brief warm light over her timber and canvas, off `look.flash`;
+ *   - a hit: a brief, faint warm light over her timber, off `look.flash`, held low and squared so
+ *     her colours and the toon bands survive a broadside landing hit after hit;
  *   - a dismasting: every mast and what is set on the bowsprit struck, a broken stump left standing;
  *   - her bow wave, a curl of foam at the stem that grows with her speed, by the 2D wave's figures;
- *   - her shadow: the sun's on the high tier, a soft blob on the water on the low.
+ *   - her shadow: a soft blob on the water under every hull, and the sun's as well where the tier
+ *     has shadows. The sun's alone left a dismasted hull or a small craft pasted on the water.
  *
  * A SINKING. The engine takes a ship off the sea the step she sinks, and the 2D sea let her vanish.
  * Here the model she was is kept a moment longer: she lists to the side she was heeled to, goes
@@ -44,6 +52,41 @@ const FLASH_MAX = 0.35; // look.flash as fxEvents sets it on a hit
 const BOW_N = 14; // segments along the bow wave's curl
 const CAP_N = 12; // segments round its cap
 const FOAM = "#eaf6f4";
+const FLASH_GAIN = 0.12; // how much warm light a fresh hit adds to her timber
+const RIG_FLOOR = 0.8; // her rig stands at least this share of her length over the water...
+const RIG_MIN = 14; // ...and at least this many units
+const RIG_MAX_SCALE = 2.2; // and is never blown up more than this
+const LIVERY_MIX = 0.92; // how far her painted planking goes from the timber to her colour
+
+/**
+ * Give a clone of the shared timber material her livery: every vertex the ship model marks
+ * `paint` (shipmodel.js) takes `color` in place of the timber, keeping a little of each strake's
+ * light and dark so she still reads as planked. One program serves every ship; the colour is a
+ * uniform of her own.
+ */
+function paintWith(mat, color) {
+  const uLivery = { value: color };
+  mat.userData.livery = uLivery;
+  mat.onBeforeCompile = (sh) => {
+    sh.uniforms.uLivery = uLivery;
+    sh.vertexShader = sh.vertexShader
+      .replace("#include <common>", "#include <common>\nattribute float paint;\nvarying float vPaint;")
+      .replace("#include <begin_vertex>", "#include <begin_vertex>\nvPaint = paint;");
+    sh.fragmentShader = sh.fragmentShader
+      .replace("#include <common>", "#include <common>\nuniform vec3 uLivery;\nvarying float vPaint;")
+      .replace(
+        "#include <color_fragment>",
+        `#include <color_fragment>
+        {
+          float lum = dot(vColor.rgb, vec3(0.2126, 0.7152, 0.0722));
+          vec3 coat = uLivery * clamp(0.72 + 1.5 * lum, 0.86, 1.1);
+          diffuseColor.rgb = mix(diffuseColor.rgb, coat, vPaint * ${LIVERY_MIX.toFixed(3)});
+        }`,
+      );
+  };
+  mat.customProgramCacheKey = () => "ship-livery";
+  return mat;
+}
 
 // a stable small hash of an id, for which way a ship goes down
 function hashId(id) {
@@ -74,8 +117,31 @@ export function createShipLayer(scene, ctx) {
 
   // ---- shared pieces --------------------------------------------------------------------------
 
-  const blobGeo = new THREE.CircleGeometry(1, 28).rotateX(-Math.PI / 2);
-  const blobMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.28, depthWrite: false });
+  // a soft disc: solid to 0.55 of the way out, then fading to nothing at the rim
+  const blobGeo = (() => {
+    const N = 28, pos = [0, 0, 0], col = [0, 0, 0, 1], idx = [];
+    for (const [r, a] of [[0.55, 1], [1, 0]]) {
+      for (let i = 0; i < N; i++) {
+        const t = (i / N) * Math.PI * 2;
+        pos.push(Math.cos(t) * r, 0, Math.sin(t) * r);
+        col.push(0, 0, 0, a);
+      }
+    }
+    for (let i = 0; i < N; i++) {
+      const a = 1 + i, b = 1 + ((i + 1) % N), c = 1 + N + i, d = 1 + N + ((i + 1) % N);
+      idx.push(0, b, a, a, b, d, a, d, c);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute("color", new THREE.Float32BufferAttribute(col, 4));
+    g.setIndex(idx);
+    return g;
+  })();
+  // under the sun's own shadow on the high tier it only has to ground her, so it is lighter there
+  const blobMat = new THREE.MeshBasicMaterial({
+    color: 0xffffff, vertexColors: true, transparent: true, depthWrite: false,
+    opacity: ctx.quality.shadows ? 0.34 : 0.42,
+  });
   // a broken mast: a short tapering post, base at the origin, a unit tall
   const stumpGeo = new THREE.CylinderGeometry(0.42, 0.55, 1, 7).translate(0, 0.5, 0);
   const stumpMats = new Map(); // spar colour -> material (shared toon material, cached by toon.js)
@@ -249,7 +315,7 @@ export function createShipLayer(scene, ctx) {
     const model = ctx.shipModel(rigSpec(s.loadout), { units: "sea" });
     const [timber0, canvas0, flag0] = model.materials;
     const livery = s.id === lastFx.me ? C.gold : look.fill;
-    const timber = timber0.clone();
+    const timber = paintWith(timber0.clone(), new THREE.Color(look.fill));
     const canvas = canvas0.clone();
     const flag = flag0.clone();
     flag.color.set(livery);
@@ -284,6 +350,20 @@ export function createShipLayer(scene, ctx) {
     bottom.name = "bottom";
     model.group.add(bottom);
 
+    // a small craft's rig, scaled up about each mast's foot until it reads
+    let rigTop = 0;
+    for (const m of model.parts.masts) rigTop = Math.max(rigTop, m.geometry.boundingBox.max.y);
+    const want = Math.max(RIG_FLOOR * model.length, RIG_MIN);
+    const rigScale = rigTop > 0 ? clamp(want / rigTop, 1, RIG_MAX_SCALE) : 1;
+    if (rigScale > 1) {
+      for (const m of model.parts.masts) {
+        const bb = m.geometry.boundingBox, fx0 = (bb.min.x + bb.max.x) / 2, fy0 = Math.max(0, bb.min.y);
+        m.scale.setScalar(rigScale);
+        m.position.set(fx0 * (1 - rigScale), fy0 * (1 - rigScale), 0);
+      }
+    }
+    const height = Math.max(model.height, rigTop * rigScale);
+
     // the stump, stood where her mainmast was: the tallest mast's foot
     let stump = null;
     if (model.parts.masts.length) {
@@ -313,19 +393,17 @@ export function createShipLayer(scene, ctx) {
     bow.frustumCulled = false;
     outer.add(bow);
 
-    // the low tier's shadow: a soft dark blob under her, offset down and right as the sun has it
-    let blob = null;
-    if (!ctx.quality.shadows) {
-      blob = new THREE.Mesh(blobGeo, blobMat);
-      blob.name = "blob";
-      blob.scale.set(s.hullA, 1, s.hullB + 2 / 0.6);
-      blob.renderOrder = 3; // over the shallows and the surf, so she is shadowed in from the shore as well
-      root.add(blob);
-    }
+    // her contact shadow: a soft dark blob under her, offset down and right as the sun has it
+    const blob = new THREE.Mesh(blobGeo, blobMat);
+    blob.name = "blob";
+    blob.scale.set(s.hullA * 1.1, 1, s.hullB * 1.2 + 2 / 0.6);
+    blob.renderOrder = 3; // over the shallows and the surf, so she is shadowed in from the shore as well
+    blob.frustumCulled = false;
+    root.add(blob);
 
     root.add(outer);
     return {
-      id: s.id, model, outer, mats, floor, trimMat, trim, bottom, freeboard: bits.freeboard,
+      id: s.id, model, outer, mats, floor, trimMat, trim, bottom, freeboard: bits.freeboard, height, rigScale,
       stump, bow, bowGeo, bowMat, blob,
       stamp: 0, x: 0, y: 0, h: 0, roll: 0, speed: 0, mastDown: false, flashK: -1,
       sink: null, // { t, pitch, list, vx, vy, depth }
@@ -337,6 +415,7 @@ export function createShipLayer(scene, ctx) {
     e.model.group.remove(e.trim);
     e.model.group.remove(e.bottom);
     if (e.stump) e.model.group.remove(e.stump);
+    for (const m of e.model.parts.masts) { m.scale.setScalar(1); m.position.set(0, 0, 0); }
     e.model.dispose();
     if (e.blob) e.blob.removeFromParent();
     for (const m of e.mats) m.dispose();
@@ -346,14 +425,14 @@ export function createShipLayer(scene, ctx) {
   }
 
   function setFlash(e, k) {
-    // k is 0..1: the hit's warm light over everything she is made of, gone in a third of a second
-    const t = e.mats[0], c = e.mats[1], f = e.mats[2];
+    // k is 0..1, falling over a third of a second: a faint warm light on her timber, squared so it
+    // is mostly gone by the middle of that. Her canvas and colours are left alone, so a ship under
+    // a broadside is still the colour she was and still lit in bands; the hit itself is the
+    // splinters and the smoke.
     if (k === e.flashK) return;
     e.flashK = k;
-    t.emissive.setRGB(WARM[0] * k * 0.42, WARM[1] * k * 0.42, WARM[2] * k * 0.42);
-    c.emissive.setRGB(e.floor.r + WARM[0] * k * 0.28, e.floor.g + WARM[1] * k * 0.28, e.floor.b + WARM[2] * k * 0.28);
-    f.emissive.setRGB(WARM[0] * k * 0.35, WARM[1] * k * 0.35, WARM[2] * k * 0.35);
-    e.trimMat.emissive.copy(f.emissive);
+    const g = k * k * FLASH_GAIN;
+    e.mats[0].emissive.setRGB(WARM[0] * g, WARM[1] * g, WARM[2] * g);
   }
 
   function setMastDown(e, down) {
@@ -376,7 +455,7 @@ export function createShipLayer(scene, ctx) {
       // she carries a little of her way, and loses it fast
       vx: Math.cos(e.h) * e.speed * 0.25, vy: Math.sin(e.h) * e.speed * 0.25,
       // enough to take her trucks under even with her high end raised by the trim
-      depth: e.model.height + 4 + (e.model.length / 2) * Math.sin(0.22),
+      depth: e.height + 4 + (e.model.length / 2) * Math.sin(0.22),
       roll0: e.roll,
     };
     setFlash(e, 0);
@@ -404,7 +483,7 @@ export function createShipLayer(scene, ctx) {
     e.model.group.position.set(0, y, 0);
     e.model.group.rotation.set(-list, 0, pitch, "XYZ");
     if (e.blob) {
-      e.blob.position.set(e.x + 1.5, 0.2, e.y + 2.5);
+      e.blob.position.set(e.x + 1.5, 0.2, e.y + 4);
       e.blob.rotation.y = -e.h;
       e.blob.visible = t < 0.6;
     }
@@ -457,7 +536,8 @@ export function createShipLayer(scene, ctx) {
         writeBow(e.bowGeo, s, sf);
         e.bowMat.opacity = 0.18 + 0.4 * sf;
       }
-      if (e.blob) { e.blob.position.set(pos.x + 1.5, 0.2, pos.y + 2.5); e.blob.rotation.y = -pos.h; }
+      e.blob.position.set(pos.x + 1.5, 0.2, pos.y + 4);
+      e.blob.rotation.y = -pos.h;
     }
     live.forEach(goneIfUnseen);
     for (let i = sinking.length - 1; i >= 0; i--) {
@@ -475,7 +555,7 @@ export function createShipLayer(scene, ctx) {
     const look = lastFx ? ctx.lookOf(lastFx, s) : null;
     // one answer reused: the overlay reads it at once and keeps nothing
     label.gx = SX(pos.x, ctx.view); label.gy = SY(pos.y, ctx.view); label.h = pos.h; label.roll = rollOf(look);
-    label.topZ = (e ? e.model.height : 24) + 6;
+    label.topZ = (e ? e.height : 24) + 6;
     return label;
   }
 

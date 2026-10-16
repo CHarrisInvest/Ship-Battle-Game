@@ -52,10 +52,13 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   Depth does the sorting the painter's algorithm used to; what is see-through goes by `renderOrder`,
   shallows under surf under wakes under a ship's own foam under the smoke. `camera.js` places the
   sea where the 2D view put it, to the pixel, and `npm run camera-check` says so, so the aim, the
-  follow and the edge clamp play the same. `pickQuality()` picks a high or a low tier off what the
-  device says it can do, and every layer reads it: the low one has no shadows, simpler water, half
-  the particles and a pixel ratio capped at 1.5. `src/render/` is the 2D canvas it falls back to:
-  `renderer.js`, with the palette, the view (`view.js`, the camera, the follow and the step blend both
+  follow and the edge clamp play the same. `pickQuality()` picks a tier off what the device is (a
+  mouse is high, a touch screen mid, under 4 GB or 4 cores low) and every layer reads it: the low
+  one has no shadows, simpler water, half the particles and a pixel ratio capped at 1.5. No figure
+  a browser reports measures its GPU, so the renderer also steps down at run time while frames stay
+  over 20 ms. three.js is its own chunk (`render3d/index.js`), fetched once the screen has mounted:
+  until it arrives the sea is the 2D one and the plate is `drawGalleon`, for every visitor alike.
+  `src/render/` is the 2D canvas it falls back to: `renderer.js`, with the palette, the view (`view.js`, the camera, the follow and the step blend both
   renderers share), the island planting, the sea rig and the HUD's placement beside it, and
   `effects.js`, which is one viewer's picture of the round for both. **The fallback is a test of the
   device and nothing else**: `createRenderer3d` throws when the browser has no WebGL 2 or a layer
