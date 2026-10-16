@@ -88,7 +88,12 @@ say("serving", SITE);
 /* ---- the browser ----------------------------------------------------------------------------- */
 
 const executablePath = process.env.SMOKE_CHROME || undefined;
-const browser = await chromium.launch({ executablePath, headless: true, args: ["--no-sandbox"] });
+// The sea is WebGL now, and headless Chromium draws WebGL in software unless it is given the GPU:
+// eight rounds at once in software run under twelve frames a second, where the round slows down
+// rather than skipping steps and a mode can miss its end by the deadline. On a Mac the GPU is there
+// to be had; elsewhere the flags change nothing and the software path is what runs.
+const GPU = process.platform === "darwin" ? ["--enable-gpu", "--use-angle=metal"] : [];
+const browser = await chromium.launch({ executablePath, headless: true, args: ["--no-sandbox", ...GPU] });
 
 async function open(tag, { asked = true } = {}) {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true });

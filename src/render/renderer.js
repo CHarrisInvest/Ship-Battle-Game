@@ -20,13 +20,13 @@
  * a step behind the round, which is a sixtieth of a second and the price of it being smooth.
  */
 
-import { WORLD, WP, TICK, clamp, norm, musketArc, seedFrom } from "../sim/index.js";
+import { WORLD, WP, TICK, clamp, seedFrom } from "../sim/index.js";
 import { C, UI } from "./palette.js";
-import { TILT, ZUP, VIEW, MAX_ZOOM, EDGE_PEEK, SIDE_PEEK, SHOT_DRAW, SHOT_LIT_MIN } from "./view.js";
+import { TILT, ZUP, SHOT_DRAW, SHOT_LIT_MIN, createView, sizeView, followView, blend, shipUnder } from "./view.js";
 import { genFoliage, drawShadows, drawPalm, drawBush } from "./foliage.js";
 import { SEA_FOREAFT } from "./searig.js";
 import { lookOf } from "./effects.js";
-import { HUD, radarRight } from "./hud.js";
+import { arcGuides, shipLabel, floatTexts, stormEllipse as stormRing, stormEdge, vignette, radar } from "../render3d/overlay.js";
 
 export function createRenderer(canvas) {
   const ctx = canvas.getContext("2d");
@@ -36,21 +36,17 @@ export function createRenderer(canvas) {
     zoom = 1, // screen pixels per unit of view space
     Vw = 0, // and the same canvas in view space, which is where the sea is drawn
     Vh = 0,
-    Vsq = 0, // the side of the square, in view space
-    clock = 0, // seconds of drawing, which sets the swell, the wind and the caps going
-    // the phone's notch, corners and home bar, as the distance in from each edge of the canvas
-    // that the HUD keeps clear; read off the HUD's wrapper, which is inset by the same amounts
-    safe = { l: 0, t: 0, r: 0, b: 0 };
-  const cam = { x: 0, y: 0 }; // the world point at the top left of the screen
+    clock = 0; // seconds of drawing, which sets the swell, the wind and the caps going
+  // The view's figures live in one object both renderers place the sea by (`view.js`); the names
+  // above are this file's own copies of them, refreshed on every resize. The phone's notch, corners
+  // and home bar are in it as `safe`, read off the HUD's wrapper, which is inset by the same amounts.
+  const vs = createView();
+  const cam = vs.cam; // the world point at the top left of the screen
   // what the frame being drawn is drawing: the world, this viewer's effects, and how she is looking
   let world = null, fx = null, view = { live: false, input: {}, alpha: 1 };
 
   // Where a ship is drawn, `alpha` of the way through the last step: her position and her heading.
-  const at = (s, alpha) => ({
-    x: s.px + (s.x - s.px) * alpha,
-    y: s.py + (s.y - s.py) * alpha,
-    h: s.pHeading + norm(s.heading - s.pHeading) * alpha,
-  });
+  const at = blend;
 
   // An island's planting, grown the first time she is drawn from dice seeded where she stands, so
   // the same island grows the same palms on every screen and drawing them never touches the round.
@@ -71,18 +67,11 @@ export function createRenderer(canvas) {
   // `hud` is the HUD's safe-area box on the page, whose insets from the canvas are the phone's notch,
   // corners and home bar; the radar is placed inside them, by the same edges the DOM controls use.
   function resize(hud) {
-    dpr = Math.min(window.devicePixelRatio || 1, 2);
     const rect = canvas.getBoundingClientRect();
-    Wd = rect.width;
-    Hd = rect.height;
+    sizeView(vs, rect, hud, Math.min(window.devicePixelRatio || 1, 2));
+    ({ Wd, Hd, dpr, zoom, Vw, Vh } = vs);
     canvas.width = Math.round(Wd * dpr);
     canvas.height = Math.round(Hd * dpr);
-    const hr = hud;
-    if (hr) safe = { l: Math.max(0, hr.left - rect.left), t: Math.max(0, hr.top - rect.top), r: Math.max(0, rect.right - hr.right), b: Math.max(0, rect.bottom - hr.bottom) };
-    zoom = Math.min(Math.min(Wd, Hd) / VIEW, MAX_ZOOM);
-    Vw = Wd / zoom;
-    Vh = Hd / zoom;
-    Vsq = Math.min(Vw, Vh);
     screenSpace();
   }
 
@@ -94,37 +83,10 @@ export function createRenderer(canvas) {
     return v - Math.floor(v);
   }
 
-  // The camera holds her in the middle and fills the rest of the view with sea, which puts the
-  // boundary off the edge of the screen until she is close to it. Coming in on a side, it is let
-  // `peek` inside the screen — a strip of open water, the rope, and its buoys, no more — and she
-  // comes off centre by exactly as much: the edge slides into view and she slides toward it, which
-  // is what tells a captain how much sea she has left on that hand.
-  //
-  // The peek is a strip of screen, so it comes to the same band whichever way the map is squashed:
-  // across it is that many pixels of world, and up and down it is that many pixels of a world
-  // foreshortened by TILT, which takes more world to cover.
-  //
-  // Where the screen runs longer than the square — up and down, held upright — the boundary is let
-  // in as far as the edge of the square instead, since that strip of screen is the one the buttons
-  // and the panels sit on and it is hers to spend. That is what keeps her out from under them at
-  // the top and bottom of the map, where she used to end up pinned against the glass.
-  function camHold(centred, span, peek) {
-    const lo = -peek; // the far side of the map, let this far into the view
-    return clamp(centred, lo, Math.max(lo, WORLD - span + peek));
-  }
-
   // the camera brought round onto `me`, the viewer's own ship, where she is drawn `alpha` of the
-  // way through the last step
+  // way through the last step; how it holds her off the boundary is `followView`'s, in view.js
   function follow(ship, alpha = 1) {
-    if (!ship) return;
-    const me = at(ship, alpha);
-    const spanX = Vw, spanY = Vh / TILT; // sea on the screen, in world units
-    // across, the give past the square is capped at SIDE_PEEK; up and down it is not, because
-    // that strip is the one the buttons and panels sit on and it is hers to spend
-    const peekX = Math.max(Math.min((spanX - Vsq) / 2, SIDE_PEEK / zoom), EDGE_PEEK / zoom);
-    const peekY = Math.max((spanY - Vsq / TILT) / 2, EDGE_PEEK / (zoom * TILT));
-    cam.x = camHold(me.x - spanX / 2, spanX, peekX);
-    cam.y = camHold(me.y - spanY / 2, spanY, peekY);
+    followView(vs, ship, alpha);
   }
 
   // ---------------- rendering ----------------
@@ -269,13 +231,13 @@ export function createRenderer(canvas) {
   // The weather is painted in two passes so it never costs readability: the sea outside the ring
   // darkens under the ships, and the edge itself is drawn over the top of everything, because the
   // one thing a captain must always be able to find is the line between fair water and foul.
-  function stormEllipse(cam) {
-    return { cx: SX(WORLD / 2, cam), cy: SY(WORLD / 2, cam), r: world.stormR };
+  function stormEllipse() {
+    return stormRing(vs, world);
   }
 
   function drawStormWater(cam) {
     if (!world.rules.storm) return;
-    const { cx, cy, r } = stormEllipse(cam);
+    const { cx, cy, r } = stormEllipse();
     const outside = () => {
       ctx.beginPath();
       ctx.rect(0, 0, Vw, Vh);
@@ -305,25 +267,6 @@ export function createRenderer(canvas) {
     ctx.stroke();
     ctx.globalAlpha = 1;
     ctx.restore();
-  }
-
-  function drawStormEdge(cam) {
-    if (!world.rules.storm) return;
-    const { cx, cy, r } = stormEllipse(cam);
-    const ring = (w, style, dash, off) => {
-      ctx.beginPath();
-      ctx.ellipse(cx, cy, r, r * TILT, 0, 0, Math.PI * 2);
-      ctx.lineWidth = w;
-      ctx.strokeStyle = style;
-      ctx.setLineDash(dash);
-      ctx.lineDashOffset = off;
-      ctx.stroke();
-      ctx.setLineDash([]);
-    };
-    ring(6, "rgba(0,0,0,0.35)", [], 0);
-    // it pulses harder once it is actually closing in
-    const closing = world.time > world.rules.storm.grace ? 1 : 0.45;
-    ring(2.4, `rgba(209,91,91,${0.45 + 0.35 * closing * (0.5 + 0.5 * Math.sin(clock * 3))})`, [16, 12], -clock * 26);
   }
 
   function drawWakes(cam) {
@@ -411,35 +354,6 @@ export function createRenderer(canvas) {
       for (const f of plants) (f.isPalm ? drawPalm : drawBush)(ctx, f, clock);
       ctx.restore();
     }
-  }
-
-  function drawArcGuides(p, cam) {
-    if (!p.alive) return;
-    const inp = view.input;
-    ctx.save();
-    const pos = at(p, view.alpha);
-    ctx.translate(SX(pos.x, cam), SY(pos.y, cam));
-    ctx.scale(1, TILT);
-    ctx.rotate(pos.h);
-    ctx.lineWidth = 1.4;
-    if (inp.broadside) {
-      ctx.strokeStyle = "rgba(217,154,60,0.28)";
-      const R = WP.broadside.speed * WP.broadside.life;
-      for (const s of [-1, 1]) { ctx.beginPath(); ctx.moveTo(0, s * 6); ctx.lineTo(0, s * R); ctx.stroke(); }
-    }
-    if (inp.bow) {
-      ctx.strokeStyle = "rgba(122,156,198,0.32)";
-      const R = WP.bow.speed * WP.bow.life;
-      ctx.beginPath(); ctx.moveTo(p.hullA, 0); ctx.lineTo(R, -R * 0.09); ctx.moveTo(p.hullA, 0); ctx.lineTo(R, R * 0.09); ctx.stroke();
-    }
-    if (inp.musket) {
-      ctx.strokeStyle = "rgba(223,239,255,0.28)";
-      const R = WP.musket.speed * WP.musket.life;
-      // the guide cone follows the volley's own scatter, so better swivels visibly narrow it
-      const arc = 0.875 * musketArc(p);
-      ctx.beginPath(); ctx.moveTo(p.hullA, 0); ctx.lineTo(Math.cos(arc) * R, Math.sin(arc) * R); ctx.moveTo(p.hullA, 0); ctx.lineTo(Math.cos(-arc) * R, Math.sin(-arc) * R); ctx.stroke();
-    }
-    ctx.restore();
   }
 
   function drawShip(s, cam) {
@@ -665,37 +579,7 @@ export function createRenderer(canvas) {
     if (s.mastDown) line(P3(-2, 0, deckH), P3(-2, 3, deckH + 8), look.cols.spar, 1.8);
 
     // health bars + rank, above the rig
-    if (s.id !== fx.me) {
-      const bw = 26, bxL = gx - bw / 2;
-      // above her own rig, so a boat's bars sit close over her and a tall ship's clear the royals
-      const byT = P3(1, 0, deckH + rig.top + 6)[1] - 14;
-      if (world.rules.ranked && s.rank) {
-        ctx.font = `700 10px ${UI}`;
-        ctx.textAlign = "right";
-        ctx.fillStyle = s.rank === 1 ? C.gold : "rgba(238,244,242,0.8)";
-        ctx.fillText("#" + s.rank, bxL - 4, byT + 8);
-        ctx.textAlign = "left";
-      }
-      // a friend's ship carries her name over her bars, so she is told apart from the AI at a glance
-      const name = s.playerId && fx.names && fx.names[s.playerId];
-      if (name) {
-        ctx.font = `700 11px ${UI}`;
-        ctx.textAlign = "center";
-        ctx.fillStyle = "rgba(0,0,0,0.55)";
-        ctx.fillText(name, gx + 1, byT - 5);
-        ctx.fillStyle = C.gold;
-        ctx.fillText(name, gx, byT - 6);
-        ctx.textAlign = "left";
-      }
-      const rows = [[s.hull / s.maxHull, C.hull], [s.mast / s.maxMast, C.mast], [s.crew / s.maxCrew, C.crew]];
-      rows.forEach((r, i) => {
-        const yy = byT + i * 4;
-        ctx.fillStyle = "rgba(0,0,0,0.5)";
-        ctx.fillRect(bxL, yy, bw, 2.6);
-        ctx.fillStyle = r[1];
-        ctx.fillRect(bxL, yy, bw * Math.max(0, r[0]), 2.6);
-      });
-    }
+    shipLabel(ctx, vs, s, { gx, gy, h: H, roll, topZ: deckH + rig.top + 6 }, world, fx);
   }
 
   function drawShots(cam) {
@@ -814,92 +698,7 @@ export function createRenderer(canvas) {
       ctx.restore();
     }
 
-    ctx.textAlign = "center";
-    // SUNK and MAST DOWN are white, outlined in a dark halo so they carry on open water — which is a
-    // mid tone, where plain white would sit too close to it. Halo first: the stroke is centred on the
-    // glyph edge and eats half its width into the letter, so the fill has to go down over it.
-    ctx.lineJoin = "round";
-    for (const t of fx.texts) {
-      ctx.globalAlpha = Math.min(1, t.life);
-      ctx.font = `600 10px ${UI}`;
-      const tx = SX(t.x, cam), ty = SY(t.y, cam);
-      ctx.lineWidth = 3.4;
-      ctx.strokeStyle = "rgba(6,32,31,0.7)";
-      ctx.strokeText(t.t, tx, ty);
-      ctx.fillStyle = C.ink;
-      ctx.fillText(t.t, tx, ty);
-      ctx.globalAlpha = 1;
-    }
-    ctx.textAlign = "left";
-  }
-
-  function roundRect(x, y, w, h, r) {
-    ctx.beginPath();
-    ctx.moveTo(x + r, y);
-    ctx.arcTo(x + w, y, x + w, y + h, r);
-    ctx.arcTo(x + w, y + h, x, y + h, r);
-    ctx.arcTo(x, y + h, x, y, r);
-    ctx.arcTo(x, y, x + w, y, r);
-    ctx.closePath();
-  }
-
-  function drawRadar() {
-    // Placed against the HUD's own figures, inside the safe area the DOM controls sit in, so
-    // sideways it lands to the left of the fire buttons rather than under them.
-    const size = HUD.radar, rx = Wd - safe.r - radarRight(Wd - safe.l - safe.r, Hd - safe.t - safe.b, world.rules.guns) - size, ry = safe.t + HUD.pad;
-    ctx.save();
-    ctx.fillStyle = "rgba(11,51,49,0.92)";
-    ctx.strokeStyle = C.hair;
-    ctx.lineWidth = 1;
-    roundRect(rx, ry, size, size, 8);
-    ctx.fill();
-    ctx.stroke();
-    ctx.beginPath();
-    roundRect(rx, ry, size, size, 8);
-    ctx.clip();
-    const sc = size / WORLD;
-    ctx.fillStyle = "rgba(111,174,92,0.85)";
-    for (const isl of world.islands) { ctx.beginPath(); ctx.arc(rx + isl.x * sc, ry + isl.y * sc, Math.max(1.5, isl.r * sc), 0, Math.PI * 2); ctx.fill(); }
-    const ang = clock * 1.4;
-    ctx.strokeStyle = "rgba(95,168,160,0.25)";
-    ctx.beginPath();
-    ctx.moveTo(rx + size / 2, ry + size / 2);
-    ctx.lineTo(rx + size / 2 + Math.cos(ang) * size, ry + size / 2 + Math.sin(ang) * size);
-    ctx.stroke();
-    ctx.strokeStyle = "rgba(236,226,204,0.3)";
-    ctx.strokeRect(rx + cam.x * sc, ry + cam.y * sc, Vw * sc, (Vh / TILT) * sc);
-    if (world.rules.storm) {
-      ctx.strokeStyle = "rgba(209,91,91,0.85)";
-      ctx.lineWidth = 1.2;
-      ctx.beginPath();
-      ctx.arc(rx + (WORLD / 2) * sc, ry + (WORLD / 2) * sc, world.stormR * sc, 0, Math.PI * 2);
-      ctx.stroke();
-    }
-    for (const s of world.ships) {
-      if (!s.alive || s.id === fx.me) continue;
-      ctx.fillStyle = world.rules.ranked && s.rank === 1 ? C.gold : lookOf(fx, s).fill;
-      ctx.beginPath();
-      ctx.arc(rx + s.x * sc, ry + s.y * sc, world.rules.ranked && s.rank === 1 ? 3 : 2.3, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    const me = world.ships.find((s) => s.id === fx.me);
-    if (me && me.alive) {
-      ctx.fillStyle = C.player;
-      ctx.beginPath();
-      ctx.arc(rx + me.x * sc, ry + me.y * sc, 3, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    ctx.restore();
-  }
-
-  function drawVignette() {
-    const v = fx.vign;
-    if (v <= 0) return;
-    const grd = ctx.createRadialGradient(Wd / 2, Hd / 2, Math.min(Wd, Hd) * 0.3, Wd / 2, Hd / 2, Math.max(Wd, Hd) * 0.7);
-    grd.addColorStop(0, "rgba(209,91,91,0)");
-    grd.addColorStop(1, `rgba(209,91,91,${0.38 * v})`);
-    ctx.fillStyle = grd;
-    ctx.fillRect(0, 0, Wd, Hd);
+    floatTexts(ctx, vs, fx);
   }
 
   function render(w, f, v) {
@@ -913,31 +712,19 @@ export function createRenderer(canvas) {
     drawWakes(cam);
     drawIslands(cam);
     const me = world.ships.find((s) => s.id === fx.me);
-    if (view.live && me) drawArcGuides(me, cam);
+    if (view.live && me) arcGuides(ctx, vs, me, view.alpha, view.input);
     drawShots(cam);
     const order = world.ships.filter((s) => s.alive).slice().sort((a, b) => a.y - b.y);
     for (const s of order) drawShip(s, cam);
     drawParts(cam);
-    drawStormEdge(cam);
+    stormEdge(ctx, vs, world, clock);
     screenSpace(); // the two that belong to the screen rather than to the sea
-    drawVignette();
-    drawRadar();
+    vignette(ctx, vs, fx);
+    radar(ctx, vs, world, fx, clock);
   }
 
-  /**
-   * Whether any ship afloat lies under a box on the page, `rect` as `getBoundingClientRect` gives
-   * it. Each ship counts as a circle of her own half length and a little of her rig, on the screen.
-   */
-  function under(rect, w) {
-    for (const s of w.ships) {
-      if (!s.alive) continue;
-      const sx = SX(s.x, cam) * zoom, sy = SY(s.y, cam) * zoom;
-      const rad = (s.hullA + 16) * zoom; // her half length, and a little of her rig
-      const nx = clamp(sx, rect.left, rect.right), ny = clamp(sy, rect.top, rect.bottom);
-      if ((nx - sx) ** 2 + (ny - sy) ** 2 < rad * rad) return true;
-    }
-    return false;
-  }
+  // whether any ship afloat lies under a box on the page; see `shipUnder` in view.js
+  const under = (rect, w) => shipUnder(vs, rect, w);
 
   return {
     resize,

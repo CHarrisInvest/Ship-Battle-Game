@@ -513,6 +513,11 @@ function menuForm(ref) {
 // used to share, which is also what keeps the middle of the fleet feeling as it always did.
 const SEA_POW = 0.62;
 
+// Every hull at sea is drawn and sailed at this multiple of the compressed size above: her length
+// and beam (and so her collision ellipse), her outline, her cabin, her masts and their spread. It
+// was 1 until the 3D sea showed a gundalow as a speck at phone zoom.
+const SEA_SIZE = 2;
+
 function seaForm(ref, menu) {
   const L = clamp(36 * exact.pow(ref.lod / G.lod, SEA_POW), 16, 52);
   const W = clamp(13 * exact.pow(ref.beam / G.beam, SEA_POW), 5.5, 20);
@@ -551,7 +556,14 @@ function seaForm(ref, menu) {
   for (const kName of Object.keys(wBase)) wBase[kName] = Math.max(4, wBase[kName] * exact.pow(W / 13, 0.9));
 
   const deckH = clamp(4 * exact.pow(W / 13, 0.5), 2.4, 5.2);
-  return { L, W, outline, castle, masts, tops, wBase, deckH };
+  const k = SEA_SIZE;
+  for (const kName of Object.keys(masts)) { masts[kName] *= k; tops[kName] *= k; wBase[kName] *= k; }
+  return {
+    L: L * k, W: W * k,
+    outline: outline.map(([u, v]) => [u * k, v * k]),
+    castle: castle && { fx: castle.fx * k, bx: castle.bx * k, hw: castle.hw * k, h: castle.h * k },
+    masts, tops, wBase, deckH: deckH * k,
+  };
 }
 
 // The galleon's own sea numbers: exactly the hull every ship used to draw.

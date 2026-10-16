@@ -31,6 +31,44 @@ import { HUD, radarRight } from "./render/hud.js";
 import { useControls } from "./input/controls.js";
 
 /**
+ * three.js, in a chunk of its own (`render3d/index.js`). It is asked for once the screen has
+ * mounted, so the first paint never waits on it: until it arrives the sea is the 2D one and the
+ * plate is `drawGalleon`, and both hand over to the 3D ones when it does. Every visitor asks for
+ * it and runs the same code. `three3d` is the module once it is here, and null until then (or for
+ * good, if the chunk could not be fetched, in which case the 2D picture simply stays).
+ */
+let three3d = null;
+let three3dLoad = null;
+function loadThree() {
+  if (!three3dLoad) {
+    three3dLoad = import("./render3d/index.js")
+      .then((m) => (three3d = m))
+      .catch(() => null);
+  }
+  return three3dLoad;
+}
+
+/** The plate's ship painted flat by drawGalleon: what shows until three.js arrives, or without it. */
+function flatMenuShip(canvas) {
+  const ctx = canvas.getContext("2d");
+  let w = canvas.width, h = canvas.height, dpr = 1;
+  return {
+    kind: "2d",
+    resize(cw, ch, r = 1) {
+      w = cw; h = ch; dpr = r;
+      canvas.width = Math.round(cw * r);
+      canvas.height = Math.round(ch * r);
+    },
+    draw(spec, deg) {
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, w, h);
+      drawGalleon(ctx, w, h, deg, spec || undefined);
+    },
+    dispose() {},
+  };
+}
+
+/**
  * STERNCHASE: HELM & HULL — pirate battles at sea, on a tilted (isometric-ish) sea with tall wooden
  * ships. "Broadside" survives in the engine as the name of the side guns, which is the job it was
  * always doing in the simulation; the game's own name is Sternchase.
@@ -168,6 +206,7 @@ const cap = (t) => t.charAt(0).toUpperCase() + t.slice(1);
 
 export default function App() {
   const canvasRef = useRef(null);
+  const overlayRef = useRef(null); // the bars, guides, words and radar, flat over the 3D sea
   const gameRef = useRef(null); // the world: the round being sailed, or the one lying behind the menu
   const startRef = useRef(() => {});
   const syncRef = useRef(() => {});
@@ -350,7 +389,9 @@ export default function App() {
     let lastTap = 0;
     const onTouchEnd = (e) => {
       const now = e.timeStamp;
-      if (now - lastTap < 350) e.preventDefault();
+      // a touchend the browser has already committed to (a scroll under way) cannot be cancelled,
+      // and asking anyway only leaves a complaint in the console
+      if (now - lastTap < 350 && e.cancelable) e.preventDefault();
       lastTap = now;
     };
     const onGesture = (e) => e.preventDefault();
@@ -416,7 +457,25 @@ export default function App() {
    * the round reads them.
    */
   useEffect(() => {
-    const renderer = createRenderer(canvasRef.current);
+    // The sea in three dimensions, on the WebGL canvas with its overlay stacked over it. Where the
+    // browser cannot give a canvas WebGL, the 2D sea draws on the overlay canvas instead, which the
+    // 3D renderer leaves untouched until its own canvas is standing. Same calls either way.
+    //
+    // three.js comes in its own chunk (see `loadThree`): the 2D sea paints from the first frame and
+    // the 3D one takes over the moment the chunk is here, or never, if this device cannot draw it.
+    let renderer = three3d ? null : createRenderer(overlayRef.current);
+    let gone = false;
+    const take3d = (m) => {
+      if (gone || !m) return false;
+      try {
+        renderer = m.createRenderer3d(canvasRef.current, overlayRef.current);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    if (!renderer && !take3d(three3d)) renderer = createRenderer(overlayRef.current);
+    if (renderer.kind !== "3d") loadThree().then((m) => { if (take3d(m)) resize(); });
     let raf = 0,
       last = 0,
       bank = 0, // real time not yet stepped, in seconds
@@ -807,8 +866,10 @@ export default function App() {
     window.addEventListener("resize", resize);
     raf = requestAnimationFrame(loop);
     return () => {
+      gone = true;
       window.removeEventListener("resize", resize);
       cancelAnimationFrame(raf);
+      renderer.dispose?.();
     };
   }, []);
 
@@ -883,6 +944,10 @@ export default function App() {
       {/* The play surface swallows the lot: no pan, no pinch, no double-tap zoom. A finger on the sea
           is steering or it is nothing, and a gesture landing here mid-fight is never what was meant. */}
       <canvas ref={canvasRef} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", display: "block", touchAction: "none" }} />
+      {/* The overlay over the 3D sea: the bars over each ship, the aiming guides, the words on the
+          water, the storm's edge, the vignette and the radar. It takes no touches of its own, so a
+          finger on it is a finger on the sea, and says `none` for the same reason the sea does. */}
+      <canvas ref={overlayRef} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", display: "block", touchAction: "none", pointerEvents: "none" }} />
 
       {/* Every control sits inside this box, which is the screen less the phone's notch, corners
           and home bar, so nothing lands under them when the game runs full screen from the home
@@ -1269,13 +1334,12 @@ const GALLEON_W = 268;
 const GALLEON_ASPECT = 0.62; // the projection is drawn into a 1 : 0.62 box
 const GALLEON_DEG_PER_MS = 0.012; // ~30s per revolution
 
-// The ship on the menu: a 3-D hull re-projected to isometric every frame, so it
-// turns rather than spinning a flat sprite.
+// The ship on the menu: the same 3-D model that sails at sea, turning under a fixed
+// light at drawGalleon's isometric angle, so it turns rather than spinning a flat sprite.
 //
 // She is the captain's own ship, not a stock galleon: `rig` is what is actually
 // stepped and bent on aboard whichever hull she is sailing, so buying a sail
-// shows up here. Hull shapes per class are still to be drawn, so for now every
-// class turns on this one hull and the rig on top of it is the part that is real.
+// shows up here, on her own class's hull.
 function MenuGalleon({ rig }) {
   const cvs = useRef(null);
   // The rig changes rarely and the object is rebuilt on every render, so the
@@ -1286,28 +1350,32 @@ function MenuGalleon({ rig }) {
   // Her bearing lives outside the effect, so a change of rig, or a change of ship under the plate's
   // arrows, carries on from where she was turning rather than snapping her back to bearing zero.
   const degRef = useRef(0);
+  // three.js, once its chunk is here; the plate is drawGalleon's until then
+  const [three, setThree] = useState(three3d);
+  useEffect(() => {
+    if (three) return;
+    let on = true;
+    loadThree().then((m) => { if (on && m) setThree(m); });
+    return () => { on = false; };
+  }, [three]);
 
   useEffect(() => {
     const c = cvs.current;
     if (!c) return;
-    const ctx = c.getContext("2d");
+    // The one ship model, drawn through the menu's shared WebGL renderer into this 2D canvas, or
+    // painted by drawGalleon where WebGL cannot be had (createMenuShip decides, and the box is the
+    // same either way).
+    const ship = three ? three.createMenuShip(c) : flatMenuShip(c);
     const w = GALLEON_W;
     const h = Math.round(w * GALLEON_ASPECT);
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    c.width = w * dpr;
-    c.height = h * dpr;
-
-    const paint = (deg) => {
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.clearRect(0, 0, w, h);
-      drawGalleon(ctx, w, h, deg, rig);
-    };
+    ship.resize(w, h, Math.min(window.devicePixelRatio || 1, 2));
+    const paint = (deg) => ship.draw(rig, deg);
 
     // A perpetually turning ship is exactly what reduced-motion asks us to drop,
     // so hold a three-quarter view instead.
     if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
       paint(24);
-      return;
+      return () => ship.dispose();
     }
 
     let raf = 0;
@@ -1319,9 +1387,9 @@ function MenuGalleon({ rig }) {
       raf = requestAnimationFrame(frame);
     };
     raf = requestAnimationFrame(frame);
-    return () => cancelAnimationFrame(raf);
+    return () => { cancelAnimationFrame(raf); ship.dispose(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
+  }, [key, three]);
 
   return (
     <canvas
