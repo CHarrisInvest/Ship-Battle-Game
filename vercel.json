@@ -12,6 +12,16 @@
   ],
   "headers": [
     {
+      "source": "/(.*)",
+      "has": [{ "type": "host", "value": "staging\\.sternchase\\.org" }],
+      "headers": [
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex, nofollow"
+        }
+      ]
+    },
+    {
       "source": "/assets/(.*)",
       "headers": [
         {
