@@ -3901,13 +3901,12 @@ function LobbyScreen({ net, note, onMake, onJoin, onRivals, onMode, onPerSide, o
                   )}
                   <span>
                     {c.name}
-                    <span style={{ fontSize: 11, color: "rgba(238,244,242,0.55)" }}>
-                      {[c.userId === lobby.host ? "host" : "", c.userId === me ? "you" : ""].filter(Boolean).map((t) => `, ${t}`).join("")}
-                    </span>
+                    {c.userId === me && <span style={{ fontSize: 11, color: "rgba(238,244,242,0.55)" }}>, you</span>}
                   </span>
                 </span>
+                {/* the host is named as such on the right, where the others say whether they are ready */}
                 <span style={{ fontSize: 12, fontWeight: 700, color: c.away ? C.gold : c.userId === lobby.host || c.ready ? C.grass : "rgba(238,244,242,0.55)" }}>
-                  {c.away ? "Away" : c.userId === lobby.host ? "Starts the round" : c.ready ? "Ready" : "Not ready"}
+                  {c.away ? "Away" : c.userId === lobby.host ? "Host" : c.ready ? "Ready" : "Not ready"}
                 </span>
               </div>
             ))}
