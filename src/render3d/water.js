@@ -216,7 +216,7 @@ export function createWaterLayer(scene, ctx) {
   const wakes = new THREE.Mesh(new THREE.BufferGeometry(), wakeMat);
   wakes.name = "wakes";
   wakes.frustumCulled = false;
-  wakes.renderOrder = 1;
+  wakes.renderOrder = 3; // over the shallows (1) and the beach rim and surf (2), under the ships' own foam
   root.add(wakes);
 
   function sizeWakes(n) {

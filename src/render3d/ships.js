@@ -309,7 +309,7 @@ export function createShipLayer(scene, ctx) {
     const bowMat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.5, depthWrite: false });
     const bow = new THREE.Mesh(bowGeo, bowMat);
     bow.name = "bowwave";
-    bow.renderOrder = 1;
+    bow.renderOrder = 4; // over the wakes (3), the shallows and the surf
     bow.frustumCulled = false;
     outer.add(bow);
 
@@ -319,7 +319,7 @@ export function createShipLayer(scene, ctx) {
       blob = new THREE.Mesh(blobGeo, blobMat);
       blob.name = "blob";
       blob.scale.set(s.hullA, 1, s.hullB + 2 / 0.6);
-      blob.renderOrder = 0;
+      blob.renderOrder = 3; // over the shallows and the surf, so she is shadowed in from the shore as well
       root.add(blob);
     }
 

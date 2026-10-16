@@ -193,7 +193,7 @@ render the scene, then draw the overlay.
   `floatTexts(ctx2d, view, fx)`, `stormEllipse(view, world)`, `stormEdge(ctx2d, view, world, clock)`,
   `vignette(ctx2d, view, fx)`, `radar(ctx2d, view, world, fx, clock)`.
 
-### src/render3d/ships.js — ships agent
+### src/render3d/ships.js — ships agent (done)
 
 - `createShipLayer(scene, ctx) -> { update(world, fx, alpha, dt), labelOf(s, alpha), dispose() }`
 - Reads: `world.ships` (`id, alive, x, y, px, py, heading, pHeading, loadout, mastDown, spdCur,
@@ -208,9 +208,12 @@ render the scene, then draw the overlay.
 - `labelOf(s, alpha)` returns `{ gx, gy, h, roll, topZ }`: her keel in view space (`SX`, `SY` of the
   blended position), heading, the heel as drawn, and `height + 6` of her model. The overlay hangs her
   bars from it.
-- Stub in place: each ship as her model with heel and mast-down.
+- Built: livery (flags and a rail band in her colour), the hit's warm light, the masts struck and a
+  stump when dismasted, a bow wave, the sun's shadow on high and a blob on low, an underwater body,
+  and a sinking of 2.5 s (list, settle by the head or the stern, under) when her id leaves the
+  afloat list. A new `fx` clears every sinking at once.
 
-### src/render3d/water.js — water agent
+### src/render3d/water.js — water agent (done)
 
 - `createWaterLayer(scene, ctx) -> { update(world, fx, alpha, dt, clock), dispose() }`
 - Reads: `ctx.view` / `ctx.ground()` for what is on screen, `ctx.quality.water`, `world.rules.storm`
@@ -220,9 +223,13 @@ render the scene, then draw the overlay.
   the boundary, the storm's darkening outside `stormR` and its rain, the wakes, and foam where the
   water meets each island. The sea's colours are `C.water`, `C.waterEdge`, `C.shallows`,
   `C.beachRim`, `C.foam`. The water stays at three Y = 0 on average so hulls sit in it.
-- Stub in place: flat open water over the arena and the deeper colour beyond.
+- Built: one sea plane fitted to the view each frame, a toon material whose flat water is `C.water`
+  exactly, slow swell normals on the full tier, the 2D whitecaps as a function of cell and clock,
+  the grid, the rope and buoys, the storm's darkening and rain, the wakes in one instanced draw, and
+  surf on each island's rim and reef. The simple tier keeps the flat colour, one layer of caps and
+  everything else.
 
-### src/render3d/effects3d.js — effects agent
+### src/render3d/effects3d.js — effects agent (done)
 
 - `createEffectsLayer(scene, ctx) -> { update(world, fx, alpha, dt), dispose() }`
 - Reads: `world.shots` (`{ x, y, vx, vy, r, kind }`, drawn `TICK * (1 - alpha)` back along the
@@ -232,9 +239,11 @@ render the scene, then draw the overlay.
 - Adds: balls with their light and smoke trail, musket streaks, smoke puffs as soft billboards that
   swell and thin, muzzle flashes drawn over the smoke, rings and splashes on the water, sparks and
   splinters. Instanced; no per-particle meshes.
-- Stub in place: shots as instanced dark spheres.
+- Built: seven pooled instanced draws (trails and rings, smoke and columns, flames, glows, balls,
+  splinters, drops), a splash where a ball goes out in open water, and `quality.particles` deciding
+  once per particle whether it is drawn, so nothing flickers.
 
-### src/render3d/islands.js — islands agent
+### src/render3d/islands.js — islands agent (done)
 
 - `createIslandLayer(scene, ctx) -> { update(world), dispose() }`
 - Reads: `world.islands` (`{ x, y, r, verts }`: `verts[k]` is the radius at bearing `k / n` of a
@@ -242,18 +251,32 @@ render the scene, then draw the overlay.
 - Adds: the shallows bank (1.30 r) and beach rim (1.08 r), the sand with relief, the grass inland
   (0.72 r), and the planting from `genFoliage(isl.r, isl.verts, { rng: seedFrom(isl.x, isl.y, isl.r) })`
   in `src/render/foliage.js` as meshes (palms and bushes, instanced), all toon-lit and in palette.
-- Stub in place: flat rings of shallows, rim, sand and grass.
+- Built: the 2D spline outline, rolling shallows and rim sheets, sand and a grass mound, the dark
+  sand edge, and `genFoliage`'s planting as one merged swaying mesh per island; contact patches stand
+  in for shadows on the low tier.
 
-### src/render3d/menuship.js — menu agent
+### src/render3d/menuship.js — menu agent (done)
 
-- `createMenuShip(canvas) -> { resize(w, h, dpr), draw(spec, deg), dispose() }`: one turning ship in
+- `createMenuShip(canvas, { shadow = true }?) -> { resize(w, h, dpr), draw(spec, deg), dispose(), kind }`: one turning ship in
   a box, framed as drawGalleon frames it (bearing 0 bow to the lower right, waterline amidships at
   0.71 of the height, the class's `menu.span` filling the width).
 - Built on `shipModel(spec, { units: "menu" })` under an orthographic camera at drawGalleon's iso
   angle (view from `(1, 1, 1)` in menu axes), toon-lit, transparent background.
 - Owns `MenuGalleon` in SternchaseIso.jsx (only that component), and moves `tools/icon.mjs` and
   `tools/promo.mjs` onto it, reading pixels from WebGL with `preserveDrawingBuffer` or `toDataURL`.
-- Stub in place: the same API, painting drawGalleon on a 2D context.
+- Built: every menu ship draws through one shared WebGLRenderer on a canvas nobody sees and copies
+  the frame into the component's own 2D canvas, so the menu holds at most one context besides the
+  sea's, released 1.5 s after the last plate unmounts. Without WebGL 2, or with the context lost, the
+  same canvas is painted by drawGalleon (`kind` says which). The icons and promo art go through it
+  with `shadow: false`.
+
+## Draw order
+
+Opaque things (the sea plane, the land and planting, the hulls, the balls, the splinters) are sorted
+by the depth buffer. What is see-through draws after them in `renderOrder`: the shallows (1), the
+beach rim and the surf (2), the wakes, a low-tier ship's blob and a low-tier plant's patch (3), a
+ship's bow wave (4), the trails and rings (5), the smoke and the water columns (10), and the flames
+and glows over all of it (20, 21). None of them writes depth. The overlay canvas is over the lot.
 
 ## What is deliberately not in this pass
 

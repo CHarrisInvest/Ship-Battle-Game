@@ -1,6 +1,7 @@
 # Sternchase: Helm & Hull
 
-An isometric age-of-sail combat game. Canvas 2D, React shell, no engine.
+An isometric age-of-sail combat game. three.js on WebGL, Canvas 2D where WebGL cannot be had, a
+React shell, and no game engine.
 
 The game is Sternchase; `Helm & Hull` is the second line of the title and never stands alone. The
 repository keeps its old name, `Ship-Battle-Game`, but the site is served from the root of
@@ -34,21 +35,47 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   once, in the component's `round_over` handler. Every random number a round uses comes off `world.rng`; only what decorates
   the sea keeps `Math.random`, in the renderer.
 - **The engine says what happened, and the screen decides how it looks.** Smoke, splinters, wakes, the
-  words over a sinking, the vignette, a ship's colours, her heel and her drawn rig are `src/render/`'s,
-  built from the step's events and the world and never read back by the engine. The end screen's
-  sentences are the component's, picked from `world.result`. A visual field on a ship or a line of
+  words over a sinking, the vignette, a ship's colours, her heel and her drawn rig are the
+  renderers' (`src/render/` and `src/render3d/`), built from the step's events and the world and
+  never read back by the engine. The end screen's sentences are the component's, picked from
+  `world.result`. A visual field on a ship or a line of
   copy in the engine is the old tangle coming back.
 - **The round steps at a fixed `TICK`, a sixtieth of a second, and the screen draws between steps.**
   The frame loop banks real time and takes a step for every whole tick, five a frame at most, and the
   renderer blends each ship and ball by what is left over. A figure tuned per frame is per step now,
   the same on a 60 Hz phone, a 120 Hz one and a server.
-- `src/render/` is the canvas: `renderer.js` draws a world and holds the camera, `effects.js` is one
-  viewer's picture of the round, and the palette, the view, the island planting, the sea rig and the
-  HUD's placement sit beside them. `src/input/controls.js` turns the joystick, the fire buttons and
-  the repair rail into the input record.
-- `src/galleon.js` draws the rotating ship on the menu. It draws a rig rather than *the* rig:
-  `drawGalleon(ctx, w, h, deg, spec)` builds whatever is stepped and bent on, and falls back to the
-  galleon it was written around when given no spec.
+- **The sea is one three.js scene, and the 2D sea is its fallback.** `src/render3d/renderer3d.js`
+  (`createRenderer3d`) draws a world on the WebGL canvas in a soft toon light: one key and one fill,
+  a four-step ramp (`toon.js`), the sun's shadows. Its layers each own a module and are updated in
+  one order every frame: `islands.js`, `water.js` (the sea, its caps, the boundary, the storm, the
+  wakes and the surf), `ships.js` and `effects3d.js` (shot, smoke, flashes, splinters, splashes).
+  Depth does the sorting the painter's algorithm used to; what is see-through goes by `renderOrder`,
+  shallows under surf under wakes under a ship's own foam under the smoke. `camera.js` places the
+  sea where the 2D view put it, to the pixel, and `npm run camera-check` says so, so the aim, the
+  follow and the edge clamp play the same. `pickQuality()` picks a high or a low tier off what the
+  device says it can do, and every layer reads it: the low one has no shadows, simpler water, half
+  the particles and a pixel ratio capped at 1.5. `src/render/` is the 2D canvas it falls back to:
+  `renderer.js`, with the palette, the view (`view.js`, the camera, the follow and the step blend both
+  renderers share), the island planting, the sea rig and the HUD's placement beside it, and
+  `effects.js`, which is one viewer's picture of the round for both. **The fallback is a test of the
+  device and nothing else**: `createRenderer3d` throws when the browser has no WebGL 2 or a layer
+  cannot stand, and the component takes the 2D renderer instead, so
+  every browser that can draw the 3D sea gets it. Do not switch it on anything about the visitor.
+  `src/input/controls.js` turns the joystick, the fire buttons and the repair rail into the input
+  record.
+- **What is read rather than seen is flat, over the scene.** The bars and rank over each ship, the
+  aiming guides, the words on the water, the storm's edge, the vignette and the radar are
+  `src/render3d/overlay.js`, drawn on a transparent 2D canvas stacked over the WebGL one, and the 2D
+  renderer draws them through the same module, so there is one copy of each. A ship layer tells the
+  overlay where to hang a ship's bars (`labelOf`); the overlay never reaches into the scene.
+- **One ship model, at sea and on the menu.** `src/galleon.js` builds a rig rather than *the* rig:
+  `shipFaces(spec)` is the face list of whatever is stepped and bent on, falling back to the galleon
+  it was written around when given no spec, and `src/render3d/shipmodel.js` turns it into the
+  geometry every view shares, scaled from menu units to her sea length and cached per spec. The sea's
+  ships, the plate on the menu and the yard (`menuship.js`, one shared WebGL context copied into each
+  plate's own 2D canvas) and the generated art all turn that model. `drawGalleon(ctx, w, h, deg,
+  spec)` still paints the same faces flat, and is what the menu falls back to without WebGL; the
+  bench reads its rig tables, so they stay exported.
 - `src/shipyard.js` is the catalogue and the maths for buying ships and parts. Hulls, masts, sails
   and guns as data, what fits what, and `rate()` turning a set of them into the figures a fight
   reads. It holds no state, touches no storage and imports nothing but `exact.js`, and it should
@@ -343,7 +370,7 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   class whose ports no longer add up to her guns are all faults, and all three were true of the
   fleet for as long as nothing counted them.
 - `tools/promo.mjs` (`npm run promo`) draws the ad and store art in `promo/` through the same
-  `drawGalleon` the icons use, and with `--play` plays a round for real frames to pick from. Its copy
+  `createMenuShip` the icons use, and with `--play` plays a round for real frames to pick from. Its copy
   is player-facing and follows the rules below; its counts are read off the catalogue.
 - `docs/SHIPYARD.md` is the design note for the shipyard: the model, what is deliberately not built
   yet, and the open questions. Read it before extending any of the above.
@@ -440,7 +467,7 @@ Buttons take size over tracking. Wide letterspacing makes every control read as 
   `env(safe-area-inset-*)`. The canvas reads the wrapper's insets on resize to place the radar by the
   same edges. The game is a home-screen app (`public/manifest.webmanifest` and the meta tags in
   `index.html`), which is the only way to a full screen on an iPhone; `npm run icon` draws the icons,
-  the favicon and the share card from a gaff-rigged cutter through the menu's own `drawGalleon`, so
+  the favicon and the share card from a gaff-rigged cutter through the menu's own `createMenuShip`, so
   they are generated and never edited by hand.
 - **Text is the size the source says, sideways as well as upright.** `index.css` sets
   `text-size-adjust: 100%`, because iOS Safari boosts the text in ordinary blocks when a phone turns

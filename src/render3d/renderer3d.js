@@ -37,11 +37,14 @@ import { createWaterLayer } from "./water.js";
 import { createShipLayer } from "./ships.js";
 import { createEffectsLayer } from "./effects3d.js";
 
-/** Whether this browser can give a canvas WebGL at all, asked of a throwaway canvas. */
+/**
+ * Whether this browser can give a canvas WebGL 2, asked of a throwaway canvas. three.js draws on
+ * nothing older, so a browser with only WebGL 1 is a browser without it here.
+ */
 export function webglAvailable() {
   try {
     const c = document.createElement("canvas");
-    const gl = c.getContext("webgl2") || c.getContext("webgl");
+    const gl = c.getContext("webgl2");
     if (!gl) return false;
     gl.getExtension("WEBGL_lose_context")?.loseContext();
     return true;
@@ -118,10 +121,20 @@ export function createRenderer3d(webglCanvas, overlayCanvas, { quality = pickQua
     ground: (pad = 0) => viewGround(view, pad),
   };
 
-  const islands = createIslandLayer(scene, ctx);
-  const water = createWaterLayer(scene, ctx);
-  const ships = createShipLayer(scene, ctx);
-  const effects = createEffectsLayer(scene, ctx);
+  // A layer that cannot stand is a sea that cannot be drawn: let go of what was built before saying
+  // so, and the 2D renderer takes the overlay canvas.
+  let islands, water, ships, effects;
+  try {
+    islands = createIslandLayer(scene, ctx);
+    water = createWaterLayer(scene, ctx);
+    ships = createShipLayer(scene, ctx);
+    effects = createEffectsLayer(scene, ctx);
+  } catch (err) {
+    for (const layer of [effects, ships, water, islands]) layer?.dispose();
+    webglCanvas.removeEventListener("webglcontextlost", onLost);
+    renderer.dispose();
+    throw err;
+  }
 
   // only now, with the WebGL side standing, is the overlay canvas taken
   const octx = overlayCanvas.getContext("2d");
@@ -185,6 +198,9 @@ export function createRenderer3d(webglCanvas, overlayCanvas, { quality = pickQua
     webglCanvas.removeEventListener("webglcontextlost", onLost);
     clearShipModels();
     disposeToon();
+    // Not forced lost: React's StrictMode mounts the effect twice in development and the second
+    // mount takes the same canvas, whose context is the one this let go of. The canvas holds one
+    // context for the life of the page either way, so nothing leaks round to round.
     renderer.dispose();
   }
 

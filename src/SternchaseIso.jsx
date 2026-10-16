@@ -352,7 +352,9 @@ export default function App() {
     let lastTap = 0;
     const onTouchEnd = (e) => {
       const now = e.timeStamp;
-      if (now - lastTap < 350) e.preventDefault();
+      // a touchend the browser has already committed to (a scroll under way) cannot be cancelled,
+      // and asking anyway only leaves a complaint in the console
+      if (now - lastTap < 350 && e.cancelable) e.preventDefault();
       lastTap = now;
     };
     const onGesture = (e) => e.preventDefault();

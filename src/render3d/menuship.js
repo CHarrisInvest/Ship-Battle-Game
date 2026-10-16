@@ -146,7 +146,11 @@ export function createMenuShip(canvas, { shadow = true } = {}) {
     drawGalleon(ctx, w, h, deg, spec || undefined);
   };
 
+  let lastSpec; // the spec placed last: a plate redraws the same object every frame
+  const size = new THREE.Vector2();
   const place = (spec) => {
+    if (spec === lastSpec && model) return;
+    lastSpec = spec;
     const key = spec ? JSON.stringify(spec) : "galleon";
     if (key === modelKey) return;
     if (model) model.dispose();
@@ -184,7 +188,7 @@ export function createMenuShip(canvas, { shadow = true } = {}) {
 
       const W = canvas.width, H = canvas.height;
       const r = gl.renderer;
-      const size = r.getSize(new THREE.Vector2());
+      r.getSize(size);
       if (size.x !== W || size.y !== H || r.getPixelRatio() !== 1) {
         r.setPixelRatio(1);
         r.setSize(W, H, false);
