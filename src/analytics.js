@@ -29,14 +29,19 @@
 import { isAnalyticsAllowed, isAdvertisingAllowed, hasConsentDecision, onConsentChange } from "./consent.js";
 import { onTcf, onAdRegion, getAdRegion } from "./ads.js";
 
+// A preview build (staging, or a feature branch's preview on Vercel; `vite.config.js`) measures
+// nothing, so a round played to try a change never counts in the real site's figures. Both readers
+// below say so, and the prompt's copy and the privacy policy follow them as they always have.
+const PREVIEW = typeof __PREVIEW__ === "boolean" && __PREVIEW__;
+
 export const GA_ID = "G-SKDXWK6TYX";
-export const analyticsLive = () => GA_ID !== "";
+export const analyticsLive = () => GA_ID !== "" && !PREVIEW;
 
 // The Google Ads tag, which measures which of the game's own ads on Google brought a player here.
 // It is the same gtag.js as Analytics and rides the same answer: a player who turns analytics off
 // is measured by neither. Empty, it loads nothing.
 export const ADS_ID = "AW-18492440060";
-export const conversionsLive = () => ADS_ID !== "";
+export const conversionsLive = () => ADS_ID !== "" && !PREVIEW;
 
 /** Whether anything at all measures the game: what the prompt's switch and the policy read. */
 export const measurementLive = () => analyticsLive() || conversionsLive();

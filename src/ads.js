@@ -27,6 +27,13 @@ const CLIENT = "ca-pub-1929910138338917";
 const SRC = `https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${CLIENT}`;
 // How long Google's consent tool has to answer before the game's prompt is shown instead.
 const TCF_WAIT_MS = 6000;
+// A preview build (staging, or a feature branch's preview on Vercel; `vite.config.js`) shows no ads
+// at all. That is a property of the build, the same for everyone who opens it, and the real site is
+// one build that loads them for everyone.
+const PREVIEW = typeof __PREVIEW__ === "boolean" && __PREVIEW__;
+
+/** Whether this build shows ads: false on a preview deployment, true on the real site. */
+export const adsLive = () => !PREVIEW;
 
 let region = "pending";
 let started = false;
@@ -95,6 +102,13 @@ function askGoogle(answer) {
 export function startAds() {
   if (started || typeof window === "undefined") return;
   started = true;
+
+  // No ads on a preview, and nothing of Google's to wait for: the game's own prompt asks, so the
+  // consent screens can still be tried there.
+  if (PREVIEW) {
+    setRegion("game");
+    return;
+  }
 
   // The game's prompt is in charge: ads run, personalized only once it says so.
   const gameRules = () => {

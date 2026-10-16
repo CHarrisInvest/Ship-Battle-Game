@@ -140,9 +140,13 @@ To serve it from a domain of your own, add it under the Vercel project's Domains
    too, so a feature branch's preview plays against the staging server and never production's. A
    preview plays, but cannot save: the server trusts only `CLIENT_ORIGINS`.
 
-`vercel.json` sends `X-Robots-Tag: noindex, nofollow` on the staging host, so a search engine that
-finds it does not list it against the real site, whose address the page's canonical link names
-anyway. `index.html`, the sitemap and `robots.txt` carry `sternchase.org` in the source and are
+A preview build, which is staging and every feature branch's preview, loads no ads and no
+analytics: Vercel sets `VERCEL_ENV` to `preview` for those builds, `vite.config.js` turns that into
+`__PREVIEW__`, and `ads.js` and `analytics.js` read it. The cookie prompt still shows, so the
+consent screens can be tried, and the privacy page says the game collects no analytics, which is
+true of that build. `vercel.json` sends `X-Robots-Tag: noindex, nofollow` on the staging host, so a
+search engine that finds it does not list it against the real site, whose address the page's
+canonical link names anyway. `index.html`, the sitemap and `robots.txt` carry `sternchase.org` in the source and are
 left as they are on staging: they are what the real site says, and the header outranks them.
 
 ### The road to production

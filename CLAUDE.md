@@ -157,7 +157,12 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   switch) lifts the non-personalized request. Non-personalized ads still set cookies, so the prompt
   says so in its body and never files them under essential: they are not strictly necessary, and in
   Europe calling them that is exactly what the law forbids. Ads load from `main.jsx` only, so the
-  privacy page carries none.
+  privacy page carries none. **A preview build loads no ads and no analytics.** `__PREVIEW__` in
+  `vite.config.js` is true when Vercel builds a preview deployment (staging and every feature
+  branch), and `ads.js` and `analytics.js` read it: `adsLive`, `analyticsLive` and `conversionsLive`
+  all say no there, and the game's own prompt asks so the consent screens still work. It is decided
+  once per build and is the same for everyone who opens that build, which is what keeps it clear of
+  the rule below; the real site is one build that loads everything for everyone.
 - **No cloaking, ever.** The game does not guess where a visitor is (no time zones, no user agent,
   no referrer) and shows nothing to one visitor that it hides from another; Google's consent answer
   is the only thing that varies the asking, and it varies only the asking. Do not add a second ad
