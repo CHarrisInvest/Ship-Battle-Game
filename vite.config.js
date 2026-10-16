@@ -23,6 +23,11 @@ export default defineConfig({
     // Which host the build is for, so the privacy policy names the one that actually receives a
     // visitor's IP address. Vercel sets VERCEL=1 in its build environment; anything else is Pages.
     __HOST__: JSON.stringify(process.env.VERCEL ? "vercel" : "pages"),
+    // Whether this build is a preview deployment on Vercel: staging.sternchase.org and every feature
+    // branch's preview. Vercel sets VERCEL_ENV to "preview" for those and "production" for the real
+    // site. A preview build loads no ads and no analytics (`ads.js`, `analytics.js`), so staging play
+    // never lands in the real site's figures. It is decided per build, never per visitor.
+    __PREVIEW__: JSON.stringify(process.env.VERCEL_ENV === "preview"),
   },
   server: { proxy: api },
   preview: { proxy: api },
