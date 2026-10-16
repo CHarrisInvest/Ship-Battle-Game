@@ -61,6 +61,12 @@ to the game's own address: `api/proxy.js`, a Vercel edge function, forwards `/ap
 so the login cookie is first-party. The one exception is the online socket, which Vercel cannot
 carry, so it goes straight to Railway with a short-lived ticket.
 
+There are two of everything. **Production** is branch `main`, served at `sternchase.org`, with the
+Railway environment `production`. **Staging** is branch `staging`, served at
+`staging.sternchase.org`, with the Railway environment `staging` and a Postgres of its own, so
+nothing tried there touches a captain's real hold. A change reaches players by way of both, in that
+order; see "The road to production" below.
+
 ### Railway: the server and its database
 
 1. Make a project, and add **PostgreSQL** to it (the template, as it comes).
@@ -75,7 +81,7 @@ carry, so it goes straight to Railway with a short-lived ticket.
    | `DATABASE_URL` | `${{Postgres.DATABASE_URL}}` (a reference to the Postgres service) |
    | `BETTER_AUTH_SECRET` | a long random secret, e.g. `openssl rand -hex 32` |
    | `PROXY_SECRET` | another long random secret, the **same value** given to Vercel below |
-   | `BETTER_AUTH_URL` | the game's address on Vercel, e.g. `https://your-project.vercel.app` |
+   | `BETTER_AUTH_URL` | the game's address on Vercel, e.g. `https://sternchase.org` |
    | `CLIENT_ORIGINS` | the same address (comma-separate several) |
    | `API_PREFIX` | `/api` |
    | `PUBLIC_WS_URL` | `wss://<the Railway domain>/ws` |
@@ -84,12 +90,31 @@ carry, so it goes straight to Railway with a short-lived ticket.
    The server makes its own tables on first boot. `https://<the Railway domain>/health` answers with
    the engine's fingerprint once it is up; any other route without the proxy's secret is refused.
 
+   Leave `COOKIE_DOMAIN` unset. The proxy already makes the cookie first-party, and a cookie set on
+   `sternchase.org` would be sent to `staging.sternchase.org` as well, where a server with another
+   secret cannot read it and would fight it with a cookie of its own.
+
+4. **The staging environment.** In the project's environment menu, add an environment named
+   `staging`, duplicated from `production`, so it comes with a copy of the server service, a Postgres
+   of its own (empty: volumes are not copied) and every variable. Then, with `staging` selected:
+   - in the server service's settings, change its source branch to `staging` and generate a domain
+     for it, e.g. `server-staging-xxxx.up.railway.app`;
+   - set `BETTER_AUTH_URL` and `CLIENT_ORIGINS` to `https://staging.sternchase.org`,
+     `PUBLIC_WS_URL` to `wss://<the staging Railway domain>/ws`, and give `BETTER_AUTH_SECRET` and
+     `PROXY_SECRET` values of their own (never production's);
+   - keep `RESEND_API_KEY` and `EMAIL_FROM` if codes should send from staging, and leave
+     `GOOGLE_CLIENT_ID` unset unless the OAuth client is given
+     `https://staging.sternchase.org/api/auth/callback/google` as a second redirect URI.
+
+   Railway deploys each environment from its own branch on every push, so `staging` deploys when
+   `staging` moves and `production` when `main` does.
+
 ### Vercel: the game
 
 Import the repository and leave the project settings at their defaults: `vercel.json` names the
 framework (Vite), the install and build commands, the `dist` output, the `/api` rewrite to the proxy
-and the caching. Production is `main`; every other branch gets a preview (which plays, but cannot
-save: the server trusts only `CLIENT_ORIGINS`). Two environment variables, for Production and Preview:
+and the caching. Production is `main`; every other branch gets a preview. Two environment variables,
+for the Production environment:
 
 | Variable | Value |
 | --- | --- |
@@ -102,6 +127,50 @@ is asked to reload rather than sail a round the server would replay under other 
 
 To serve it from a domain of your own, add it under the Vercel project's Domains and set
 `BETTER_AUTH_URL` and `CLIENT_ORIGINS` on Railway to it.
+
+**The staging site** is the `staging` branch's preview deployment under a domain of its own:
+
+1. Under the project's Domains, add `staging.sternchase.org` and assign it to the Git branch
+   `staging` (the domain's branch field); at the DNS host, a `CNAME` for `staging` to
+   `cname.vercel-dns.com`, the same as the apex was pointed. Vercel then serves every deployment of
+   `staging` at that address and nowhere else.
+2. Add the same two variables for the Preview environment with the branch selector set to
+   `staging`: `API_UPSTREAM` as the staging Railway domain, `PROXY_SECRET` as the staging secret.
+3. Add them a third time for the Preview environment with no branch, pointed at staging's server
+   too, so a feature branch's preview plays against the staging server and never production's. A
+   preview plays, but cannot save: the server trusts only `CLIENT_ORIGINS`.
+
+`vercel.json` sends `X-Robots-Tag: noindex, nofollow` on the staging host, so a search engine that
+finds it does not list it against the real site, whose address the page's canonical link names
+anyway. `index.html`, the sitemap and `robots.txt` carry `sternchase.org` in the source and are
+left as they are on staging: they are what the real site says, and the header outranks them.
+
+### The road to production
+
+```
+feature branch  --pull request-->  staging  --promotion pull request-->  main
+                                   staging.sternchase.org                sternchase.org
+```
+
+1. A change is a pull request into `staging`. CI (`.github/workflows/ci.yml`) runs on the pull
+   request and again on the push once it is merged; Railway and Vercel deploy `staging` from it.
+2. Play it on `staging.sternchase.org`. The staging server replays voyages and banks holds exactly
+   as production does, into its own database.
+3. Every push to `staging` opens one pull request from `staging` into `main`, titled "Promote
+   staging to production" (`.github/workflows/promote.yml`), or leaves the one already open to carry
+   the new commits. Merging it is the release; Railway and Vercel deploy `main` from the merge.
+
+The promotion pull request is opened with the workflow's own token, which GitHub does not let start
+the CI workflow on it; its commits were checked on `staging` and the merge is checked as a push to
+`main`. For CI on the promotion pull request as well, add a fine-grained personal access token with
+contents and pull-request write access as the repository secret `PROMOTE_TOKEN`. Either way the
+repository setting "Allow GitHub Actions to create and approve pull requests" (Settings, Actions,
+General) has to be on, and both branches are best protected so that only a pull request with CI
+green can move them.
+
+A fix that cannot wait goes to `main` by pull request and is merged back into `staging` right
+after, so the two never drift. The staging Postgres is disposable: it can be reset from Railway
+whenever a migration needs trying from a clean slate.
 
 ### Running it locally
 
@@ -118,8 +187,9 @@ DATABASE_URL=postgres://postgres:dev@localhost:5432/postgres BETTER_AUTH_SECRET=
 The server's tests (`npm run server-test`, `client-test`, `online-test`) start a throwaway Postgres
 in Docker themselves.
 
-`.github/workflows/ci.yml` runs the engine's checks on every push and pull request, and the server's
-tests against a Postgres service, and publishes nothing: Vercel and Railway deploy `main` themselves.
+`.github/workflows/ci.yml` runs the engine's checks on every push to `main` and `staging` and on
+every pull request, and the server's tests against a Postgres service, and publishes nothing:
+Vercel and Railway deploy `main` and `staging` themselves.
 
 The site is served from the domain root, so `vite.config.js` builds with `base: "/"`. Deploying
 somewhere that serves it from a subpath needs that path set at build time, for example

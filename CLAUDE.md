@@ -7,6 +7,12 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
 `sternchase.org`, so the Vite base path is `/` and nothing in the build carries the repo's name.
 `broadside` in the code is the side guns, not the old title, and stays.
 
+- **A change reaches players by way of `staging`.** Branch `staging` is `staging.sternchase.org`,
+  with its own Railway environment and Postgres; branch `main` is `sternchase.org`. A pull request
+  goes into `staging`, and every push there opens or carries the one pull request from `staging` into
+  `main` (`.github/workflows/promote.yml`), whose merge is the release. Only a fix that cannot wait
+  goes to `main` first, and it is merged back into `staging` the same day. The README's "Deploying"
+  section is the whole of the setup.
 - `src/SternchaseIso.jsx` is the screen: the menus, the shipyard screens, the HUD, the end screen, and
   the frame loop that joins the engine, the renderer and the controls. It holds no rule of play.
 - **`src/sim/` is the engine, and only the engine decides what happens in a round.** The world, the

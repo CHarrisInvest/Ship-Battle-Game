@@ -1,0 +1,53 @@
+name: Promote staging to production
+
+# The road to production runs through staging. Every push to `staging` (which is what
+# staging.sternchase.org runs) opens one pull request from `staging` into `main` (which is what
+# sternchase.org runs), or leaves the one already open to pick the push up, since a pull request
+# follows its branch. Merging that pull request is the release. Run it by hand to open the pull
+# request again after closing one.
+#
+# A pull request opened with the workflow's own token does not start the CI workflow on itself:
+# GitHub keeps one workflow from setting off another that way. The commits it carries were checked
+# when they reached `staging`, and the merge is checked again as a push to `main`. To have CI run on
+# the promotion pull request as well, add a fine-grained token with contents and pull-request write
+# access to the repository's secrets as PROMOTE_TOKEN.
+
+on:
+  push:
+    branches: [staging]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: promote
+  cancel-in-progress: false
+
+jobs:
+  open:
+    runs-on: ubuntu-latest
+    steps:
+      # no checkout: the comparison and the pull request are made through GitHub's API
+      - name: Open the promotion pull request if none is open and staging is ahead
+        env:
+          GH_TOKEN: ${{ secrets.PROMOTE_TOKEN || github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          ahead=$(gh api "repos/$REPO/compare/main...staging" --jq .ahead_by)
+          if [ "$ahead" = "0" ]; then
+            echo "staging has nothing main does not; no pull request to open"
+            exit 0
+          fi
+          open=$(gh pr list --repo "$REPO" --base main --head staging --state open --json number --jq 'length')
+          if [ "$open" != "0" ]; then
+            echo "a promotion pull request is already open and follows staging"
+            exit 0
+          fi
+          body="Everything on \`staging\` that is not yet on \`main\`. It has been running on staging.sternchase.org; merging this puts it on sternchase.org."
+          body="$body"$'\n\n'"Check the staging site plays and saves before merging. A fix that must reach production first goes on \`main\` directly and is merged back into \`staging\` afterwards, so the two do not drift."
+          gh pr create --repo "$REPO" --base main --head staging \
+            --title "Promote staging to production" \
+            --body "$body"
