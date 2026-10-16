@@ -175,6 +175,20 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   and mid-round she is sent the start and every tick so far, which her browser sails up to the
   server's tick in a moment. `npm run online-test` sails two
   captains through a round over real sockets; `npm run online-smoke` does it in two real browsers.
+  **A lobby sails a melee or two sides, and the host picks which.** Two sides is the `teams` row in
+  `MODES`, a row and not a flag on the free-for-all, because every check reads the row: each captain
+  picks the left or the right of the sea in the lobby (`SIDES`), the host sets how many ships each
+  side has (`SIDE_MIN` to `SIDE_MAX`, captains counted, the AI filling the rest, so a side may be all
+  AI for friends who want to sail together), and the two lines are drawn up on opposite flanks facing
+  each other. `hostile()` in `round.js` is the one statement of who may hurt whom: a side's guns
+  cannot touch her own ships and her balls pass through them, her bow can and is paid and counted
+  nothing for it. The round ends when a side has no ship afloat, AI included, never with the last
+  captain, so the server sails it on after her, four times faster, and banks everyone at the end:
+  every captain of the winning side wins, one still afloat paid `winBonus` and one who went under
+  `sunkWinBonus`, and nobody is placed, so there is no rank, no leader and no best finish. The side
+  is a fact of the round and lives on the ship; what colour it flies and what it is called are the
+  renderer's (`SIDE_COLORS` in `palette.js`), and the HUD's badge in the rank's place shows the two
+  fleets' ships afloat and the hull they have left.
 - `src/consent.js` is the cookie prompt's answer: essential, analytics and advertising, kept
   under its own key. **The hold is the essential category and is never gated on
   it**: "Reject all" must not touch a captain's progress.

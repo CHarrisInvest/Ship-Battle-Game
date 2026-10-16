@@ -212,6 +212,10 @@ export function radar(ctx, v, world, fx, clock) {
     ctx.beginPath();
     ctx.arc(rx + me.x * sc, ry + me.y * sc, 3, 0, Math.PI * 2);
     ctx.fill();
+    // ringed dark, so her own dot is told from a side's yellow ones beside it
+    ctx.strokeStyle = "rgba(6,32,31,0.9)";
+    ctx.lineWidth = 1;
+    ctx.stroke();
   }
   ctx.restore();
 }

@@ -11,7 +11,7 @@
 
 import { hullForm, tintTimber } from "../hullform.js";
 import { clamp, speedCap, outInWeather, STORM_RAMP } from "../sim/index.js";
-import { C, AI_COLORS } from "./palette.js";
+import { C, AI_COLORS, SIDE_COLORS } from "./palette.js";
 import { buildSeaRig } from "./searig.js";
 
 /**
@@ -32,7 +32,9 @@ export function createFx(me) {
 export function lookOf(fx, s) {
   let look = fx.ships.get(s.id);
   if (!look) {
-    const pal = AI_COLORS[(s.livery || 0) % AI_COLORS.length];
+    // between sides every ship flies her side's colour, captain or AI, so friend and enemy are
+    // told apart at a glance; in any other round the AI cycle through their own liveries
+    const pal = (s.side && SIDE_COLORS[s.side]) || AI_COLORS[(s.livery || 0) % AI_COLORS.length];
     // her hull's own size and shape, from the class's form, and her timber with it, so a pine
     // boat sits pale on the water beside an oak brig
     const form = hullForm(s.loadout.hull.id);

@@ -76,6 +76,8 @@ export function makeShip(world, x, y, heading, opts) {
     x, y, heading, spdCur: 0, alive: true,
     // a person or the engine, and which person: the input record she answers to
     controller: opts.playerId ? "human" : "ai", playerId: opts.playerId || null,
+    // which of the two fleets she sails with, in a mode fought between sides, or nothing
+    side: opts.side || null,
     loadout, rating, strength,
     hullA: sea.L / 2, hullB: sea.W / 2,
     coins: 0, earned: 0, repaired: 0, patches: 0, rank: 0, placed: false, sankAt: 0, kills: 0, dmgDealt: 0, rams: 0, exposure: 0,

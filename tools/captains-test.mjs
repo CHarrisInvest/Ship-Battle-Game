@@ -13,7 +13,7 @@
  *   a round with several captains does not end, or a voyage does not add up.
  */
 
-import { createWorld, step, voyageStats, shipOf, isHuman, applyHit, playOn, HUMAN_SPAWN_GAP } from "../src/sim/index.js";
+import { createWorld, step, voyageStats, shipOf, isHuman, applyHit, playOn, HUMAN_SPAWN_GAP, SIDES, SIDE_MAX, WORLD, BROADSIDE_REACH, stepRam, hostile, canHit } from "../src/sim/index.js";
 import { STARTER, resolve, ladder } from "../src/shipyard.js";
 
 const LIMIT = 3600;
@@ -255,6 +255,145 @@ function watching() {
   else ok("watching: offered only once she is out of a round others are still fighting");
 }
 
+/**
+ * TWO SIDES: the lobby's captains each on a side, the AI filling each side to the host's figure,
+ * the two lines drawn up on opposite flanks out of each other's reach, a side's guns unable to
+ * touch her own ships while her bow still can (for nothing), the round going to the side with a
+ * ship afloat once the other has none, every captain of it a winner, those afloat paid more than
+ * those sunk, and the round sailed on by the AI past the last captain rather than ending with her.
+ */
+function sides() {
+  const teams = (n) => captains(n).map((p, i) => ({ ...p, side: SIDES[i % 2] }));
+  // the field: four a side asked for, two captains on the left and one on the right
+  {
+    const world = createWorld({ mode: "teams", seed: 51, players: [{ ...captains(3)[0], side: "left" }, { ...captains(3)[1], side: "left" }, { ...captains(3)[2], side: "right" }], rivals: 4 });
+    const on = (side) => world.ships.filter((s) => s.side === side);
+    if (on("left").length !== 4 || on("right").length !== 4) fail(`sides: asked for 4 a side, got ${on("left").length} and ${on("right").length}`);
+    else if (on("left").filter(isHuman).length !== 2 || on("right").filter(isHuman).length !== 1) fail("sides: a captain is on the wrong side");
+    else ok("sides: 4 a side, the captains on the sides they picked and the AI filling the rest");
+    if (world.ships.some((s) => !SIDES.includes(s.side))) fail("sides: a ship with no side");
+    // the lines: every ship of the left well left of the middle, every ship of the right well right,
+    // and the nearest pair across the sea out of broadside reach
+    const left = on("left"), right = on("right");
+    if (left.some((s) => s.x > WORLD / 3) || right.some((s) => s.x < (2 * WORLD) / 3)) fail("sides: a ship is drawn up on the wrong flank");
+    let gap = Infinity;
+    for (const a of left) for (const b of right) gap = Math.min(gap, Math.hypot(a.x - b.x, a.y - b.y));
+    if (gap < BROADSIDE_REACH * 3) fail(`sides: the lines open ${gap.toFixed(0)} apart, inside gun range`);
+    else ok(`sides: the lines open ${gap.toFixed(0)} apart, bows to the enemy`);
+    if (left.some((s) => Math.abs(s.heading) > 0.01) || right.some((s) => Math.abs(s.heading - Math.PI) > 0.01)) fail("sides: a ship does not face the enemy");
+    const aground = world.ships.find((s) => world.islands.some((isl) => Math.hypot(s.x - isl.x, s.y - isl.y) < isl.r + 55));
+    if (aground) fail("sides: a ship is drawn up on an island");
+    // more captains on a side than the figure: they all sail, and the other side is filled to match
+    const crowd = createWorld({ mode: "teams", seed: 52, players: Array.from({ length: 5 }, (_, i) => ({ ...captains(5)[i], side: "right" })), rivals: 3 });
+    const cr = crowd.ships.filter((s) => s.side === "right"), cl = crowd.ships.filter((s) => s.side === "left");
+    if (cr.length !== 5 || cr.filter(isHuman).length !== 5 || cl.length !== 5 || cl.some(isHuman)) fail(`sides: 5 captains on one side asking for 3 gave ${cr.length} and ${cl.length}`);
+    else ok("sides: 5 captains on one side all sail, and the other side is 5 AI");
+    // the sides' ceiling is the sea's: a full lobby at the most a side takes still fits
+    const full = createWorld({ mode: "teams", seed: 53, players: teams(8), rivals: SIDE_MAX });
+    if (full.ships.length !== 2 * SIDE_MAX) fail(`sides: ${SIDE_MAX} a side gave ${full.ships.length} ships`);
+    else ok(`sides: ${SIDE_MAX} a side is ${full.ships.length} ships, 8 of them captains`);
+    // a captain who names no side sails on the left
+    const none = createWorld({ mode: "teams", seed: 54, players: captains(1), rivals: 3 });
+    if (shipOf(none, "p1").side !== SIDES[0]) fail("sides: a captain with no side was not put on the left");
+  }
+  // who may hurt whom: an enemy's ball bites and a consort's passes through; a consort's bow lands
+  // and pays nothing
+  {
+    const world = createWorld({ mode: "teams", seed: 55, players: teams(2), rivals: 3 });
+    const p1 = shipOf(world, "p1"), p2 = shipOf(world, "p2");
+    const friend = world.ships.find((s) => !isHuman(s) && s.side === p1.side);
+    const foe = world.ships.find((s) => s.side !== p1.side);
+    if (hostile(world, p1, friend) || !hostile(world, p1, foe) || !hostile(world, p1, p2)) fail("sides: hostile reads the sides wrong");
+    if (canHit(world, p1, friend) || !canHit(world, p1, foe)) fail("sides: a captain's guns can touch her own side, or not the other");
+    else ok("sides: her guns bear on the other side alone");
+    // a ball laid straight through a consort at an enemy behind her: the consort is untouched
+    world.shots.length = 0;
+    friend.x = p1.x + 60; friend.y = p1.y; friend.heading = Math.PI / 2;
+    foe.x = p1.x + 160; foe.y = p1.y; foe.heading = Math.PI / 2;
+    world.shots.push({ x: p1.x + 20, y: p1.y, vx: 250, vy: 0, life: 0.88, r: 3.6, bar: "hull", dmg: 10, owner: p1, kind: "broadside" });
+    const fh = friend.hull, eh = foe.hull;
+    let hits = [];
+    for (let i = 0; i < 60 && world.shots.length; i++) for (const e of step(world, {})) if (e.type === "hit") hits.push(e);
+    if (friend.hull !== fh) fail("sides: a captain's ball struck her own consort");
+    else if (!(foe.hull < eh)) fail("sides: the ball through her consort did not find the enemy behind");
+    else ok("sides: a ball passes through a consort and finds the enemy behind her");
+    // two consorts meeting bow to beam at speed: the blow lands, and nobody is paid or counted
+    const w2 = createWorld({ mode: "teams", seed: 56, players: teams(2), rivals: 3 });
+    const a = shipOf(w2, "p1"), b = w2.ships.find((s) => !isHuman(s) && s.side === a.side);
+    b.x = a.x + 70; b.y = a.y; b.heading = Math.PI / 2;
+    // her bow right on the consort's keel, driving in at a fresh ship's top speed
+    a.heading = 0; a.spdCur = 90; a.way = 90; a.vx = 90; a.vy = 0; a.x = b.x - a.hullA + 2;
+    const bh = b.hull, coins = a.coins, rams = a.rams;
+    stepRam(w2, 1 / 60);
+    if (!(b.hull < bh)) fail("sides: a ram on a consort did no damage");
+    else if (a.coins !== coins || a.earned !== 0 || a.rams !== rams || a.dmgDealt) fail(`sides: a ram on a consort paid (${a.coins - coins} coins, ${a.rams - rams} rams, ${a.dmgDealt} dealt)`);
+    else ok(`sides: a ram on a consort takes ${(bh - b.hull).toFixed(0)} of her hull and pays nothing`);
+  }
+  // the end: a side wiped ends it for the other, sunk captains of the winning side win too, the
+  // afloat are paid more, and nothing ends while both sides have a ship
+  {
+    const world = createWorld({ mode: "teams", seed: 57, players: [...teams(2), { ...captains(3)[2], side: "left" }], rivals: 3 });
+    // p1 (left) sinks: the round goes on, and she is not placed
+    sink(world, "p1");
+    let events = step(world, {});
+    const out = events.find((e) => e.type === "player_out");
+    if (world.result.over) fail("sides: one captain sinking ended the round");
+    else if (!out || out.playerId !== "p1" || out.rank !== 0) fail(`sides: wanted p1 out unplaced, got ${JSON.stringify(out)}`);
+    else ok("sides: a captain out of a side is told, unplaced, and the round goes on");
+    // every captain under, both sides still with AI afloat: the round goes on without them
+    sink(world, "p2"); sink(world, "p3");
+    step(world, {});
+    if (world.result.over) fail("sides: the round ended with the last captain while both sides still had ships");
+    else ok("sides: the round sails on past the last captain while both sides have ships");
+    // the right side wiped: the left wins, p1 and p3 both, p3 sunk later than p1, nobody afloat
+    for (const s of world.ships.filter((x) => x.side === "right" && x.alive)) applyHit(world, s, "hull", s.hull + 1, null, "broadside");
+    events = step(world, {});
+    const r = world.result;
+    const ids = (xs) => xs.map((x) => x.playerId).sort().join(",");
+    if (!r.over || r.side !== "left") fail(`sides: wanted the left to win, got ${JSON.stringify(r)}`);
+    else if (ids(r.winners) !== "p1,p3" || ids(r.losers) !== "p2") fail(`sides: wanted p1 and p3 winning and p2 losing, got ${JSON.stringify(r)}`);
+    else if (r.winners.some((w) => !w.cause)) fail("sides: a sunk winner does not carry how she went down");
+    else ok("sides: the side with a ship afloat wins, and every captain of it with her, sunk or not");
+    if (events.filter((e) => e.type === "round_over").length !== 1) fail("sides: the end was not said once");
+    const v1 = voyageStats(world, "p1"), v2 = voyageStats(world, "p2");
+    if (!(v1.winPay > 0) || v2.winPay !== 0) fail(`sides: a sunk winner paid ${v1.winPay}, a loser ${v2.winPay}`);
+    // ...and a winner still afloat is paid more than one who went under
+    const w2 = createWorld({ mode: "teams", seed: 58, players: teams(2), rivals: 3 });
+    for (const s of w2.ships.filter((x) => x.side === "right")) applyHit(w2, s, "hull", s.hull + 1, null, "broadside");
+    step(w2, {});
+    const afloat = voyageStats(w2, "p1");
+    if (!w2.result.over || w2.result.side !== "left") fail("sides: wiping the right did not give the left the round");
+    else if (!(afloat.winPay > v1.winPay)) fail(`sides: a winner afloat is paid ${afloat.winPay}, one sunk ${v1.winPay}`);
+    else ok(`sides: a winner afloat is paid ${afloat.winPay}, one who went under ${v1.winPay}`);
+    // both sides wiped on one step: nobody wins
+    const w3 = createWorld({ mode: "teams", seed: 59, players: teams(2), rivals: 3 });
+    for (const s of [...w3.ships]) applyHit(w3, s, "hull", s.hull + 1, null, "broadside");
+    step(w3, {});
+    if (!w3.result.over || w3.result.side !== null || w3.result.winners.length) fail(`sides: both sides under together should win nobody the round, got ${JSON.stringify(w3.result)}`);
+    else ok("sides: both sides under together is a round nobody won");
+  }
+  // whole rounds: they end, the same seed gives the same round, and nobody is placed
+  for (const n of [2, 5]) {
+    const players = teams(n);
+    const sail = () => {
+      const world = createWorld({ mode: "teams", seed: 400 + n, players, rivals: 4 });
+      const events = [];
+      while (!world.result.over && world.time < LIMIT) for (const e of step(world, drive(world, players.map((p) => p.id)))) events.push(e);
+      return { world, events };
+    };
+    const a = sail(), b = sail();
+    const tag = `${n} captains on sides`;
+    if (!a.world.result.over) { fail(`${tag}: no end after ${LIMIT} s`); continue; }
+    const standing = SIDES.map((s) => a.world.ships.filter((x) => x.alive && x.side === s).length);
+    if (standing.every((k) => k > 0)) fail(`${tag}: ended with ships afloat on both sides`);
+    if ([...a.world.result.winners, ...a.world.result.losers].some((x) => x.rank !== 0)) fail(`${tag}: somebody was placed`);
+    if ([...a.world.result.winners, ...a.world.result.losers].length !== n) fail(`${tag}: ${n} captains, ${a.world.result.winners.length + a.world.result.losers.length} in the result`);
+    try { structuredClone(a.world); } catch (e) { fail(`${tag}: the world is not plain data (${e.message})`); }
+    if (JSON.stringify(b.world.result) !== JSON.stringify(a.world.result) || b.world.tick !== a.world.tick) fail(`${tag}: the same seed ended differently`);
+    else ok(`${tag}: over at ${a.world.time.toFixed(1)} s, the ${a.world.result.side || "no"} side winning, the same both sailings`);
+  }
+}
+
 const t0 = Date.now();
 spawns();
 aiCount();
@@ -263,6 +402,7 @@ credit();
 rivalSpawns();
 timePay();
 watching();
+sides();
 rounds();
 console.log(`\n${((Date.now() - t0) / 1000).toFixed(1)} s`);
 if (failures.length) {

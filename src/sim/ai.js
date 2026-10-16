@@ -108,7 +108,8 @@ export function pickTarget(world, s) {
   const shop = 1 - 0.75 * opening; // ...and reputation barely at all
   let best = null, bestScore = -1e9, nearest = null, nd = 1e9;
   for (const c of world.ships) {
-    if (c === s || !c.alive) continue;
+    // an enemy afloat: in a melee that is everyone else, between sides the other fleet
+    if (!canHit(world, s, c)) continue;
     const dist = exact.hypot(c.x - s.x, c.y - s.y);
     if (dist < nd) { nd = dist; nearest = c; }
     if (dist > 1500) continue;
