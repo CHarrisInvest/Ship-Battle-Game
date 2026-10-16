@@ -26,6 +26,7 @@ import {
 } from "./sim/index.js";
 import { C, UI } from "./render/palette.js";
 import { createRenderer } from "./render/renderer.js";
+import { createRenderer3d } from "./render3d/renderer3d.js";
 import { createFx, fxEvents, stepFx } from "./render/effects.js";
 import { HUD, radarRight } from "./render/hud.js";
 import { useControls } from "./input/controls.js";
@@ -168,6 +169,7 @@ const cap = (t) => t.charAt(0).toUpperCase() + t.slice(1);
 
 export default function App() {
   const canvasRef = useRef(null);
+  const overlayRef = useRef(null); // the bars, guides, words and radar, flat over the 3D sea
   const gameRef = useRef(null); // the world: the round being sailed, or the one lying behind the menu
   const startRef = useRef(() => {});
   const syncRef = useRef(() => {});
@@ -416,7 +418,15 @@ export default function App() {
    * the round reads them.
    */
   useEffect(() => {
-    const renderer = createRenderer(canvasRef.current);
+    // The sea in three dimensions, on the WebGL canvas with its overlay stacked over it. Where the
+    // browser cannot give a canvas WebGL, the 2D sea draws on the overlay canvas instead, which the
+    // 3D renderer leaves untouched until its own canvas is standing. Same calls either way.
+    let renderer;
+    try {
+      renderer = createRenderer3d(canvasRef.current, overlayRef.current);
+    } catch {
+      renderer = createRenderer(overlayRef.current);
+    }
     let raf = 0,
       last = 0,
       bank = 0, // real time not yet stepped, in seconds
@@ -809,6 +819,7 @@ export default function App() {
     return () => {
       window.removeEventListener("resize", resize);
       cancelAnimationFrame(raf);
+      renderer.dispose?.();
     };
   }, []);
 
@@ -883,6 +894,10 @@ export default function App() {
       {/* The play surface swallows the lot: no pan, no pinch, no double-tap zoom. A finger on the sea
           is steering or it is nothing, and a gesture landing here mid-fight is never what was meant. */}
       <canvas ref={canvasRef} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", display: "block", touchAction: "none" }} />
+      {/* The overlay over the 3D sea: the bars over each ship, the aiming guides, the words on the
+          water, the storm's edge, the vignette and the radar. It takes no touches of its own, so a
+          finger on it is a finger on the sea, and says `none` for the same reason the sea does. */}
+      <canvas ref={overlayRef} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", display: "block", touchAction: "none", pointerEvents: "none" }} />
 
       {/* Every control sits inside this box, which is the screen less the phone's notch, corners
           and home bar, so nothing lands under them when the game runs full screen from the home
