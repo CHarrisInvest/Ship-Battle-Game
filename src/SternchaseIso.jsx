@@ -4195,7 +4195,7 @@ function EndOverlay({ title, titleColor, result, note, stats, mode, place, hold,
       )}
       {onWatch && (
         <div style={{ marginBottom: 10 }}>
-          <StartButton onClick={onWatch} label="Watch the rest of the round" ghost />
+          <StartButton onClick={onWatch} label="Spectate" ghost />
         </div>
       )}
       <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
@@ -4222,12 +4222,12 @@ function WatchBar({ name, afloat, onNext, onStop }) {
     <div style={{ position: "absolute", bottom: "calc(env(safe-area-inset-bottom, 0px) + 16px)", left: 0, right: 0, display: "flex", justifyContent: "center", padding: "0 16px", pointerEvents: "none" }}>
       <div style={{ pointerEvents: "auto", background: C.panel, border: `1px solid ${C.hair}`, borderRadius: 10, padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8, width: 340, maxWidth: "100%", boxSizing: "border-box" }}>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10 }}>
-          <span style={{ fontSize: 14, fontWeight: 700, color: C.ink, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Watching {name}</span>
+          <span style={{ fontSize: 14, fontWeight: 700, color: C.ink, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Spectating {name}</span>
           <span style={{ flex: "0 0 auto", fontSize: 12, color: "rgba(238,244,242,0.65)" }}>{afloat} {afloat === 1 ? "ship" : "ships"} afloat</span>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <button onClick={onNext} style={watchBtn(false)}>Next ship</button>
-          <button onClick={onStop} style={watchBtn(true)}>Stop watching</button>
+          <button onClick={onStop} style={watchBtn(true)}>Stop spectating</button>
         </div>
       </div>
     </div>
