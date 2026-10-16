@@ -3,7 +3,7 @@
  *
  * Draws the art an advertisement or a store listing needs and writes it into `promo/`: a video
  * thumbnail, a share card, square and story posts for social feeds, and the standard display-ad
- * sizes. Like `npm run icon` it is the real `drawGalleon` run in a headless
+ * sizes. Like `npm run icon` it is the menu's own three.js ship (`createMenuShip`) run in a headless
  * Chromium against the dev server, so the art follows the ship's when it changes and no ship here is
  * a picture of something the game does not draw. The hero is the game's mark from `mark.mjs`, the
  * cutter the home-screen icon is drawn from, so an advertisement and the icon a player then taps are
@@ -62,7 +62,10 @@ const up = async () => { try { return (await fetch(SITE)).ok; } catch { return f
 for (let i = 0; i < 60 && !(await up()); i++) await new Promise((r) => setTimeout(r, 500));
 if (!(await up())) { try { process.kill(-server.pid); } catch { server.kill(); } throw new Error(`nothing answered at ${SITE}`); }
 
-const browser = await chromium.launch({ executablePath: process.env.SMOKE_CHROME || undefined, headless: true, args: ["--no-sandbox"] });
+// WebGL draws the ship. On a Mac, Chromium's GPU through Metal; elsewhere it falls back to
+// SwiftShader, which is slow but draws the same picture.
+const GPU = process.platform === "darwin" ? ["--enable-gpu", "--use-angle=metal"] : ["--enable-unsafe-swiftshader"];
+const browser = await chromium.launch({ executablePath: process.env.SMOKE_CHROME || undefined, headless: true, args: ["--no-sandbox", ...GPU] });
 try {
   mkdirSync(out, { recursive: true });
   const page = await browser.newPage();
@@ -84,7 +87,7 @@ try {
 /* ---- the art, drawn in the page ---------------------------------------------------------------- */
 
 async function compose({ W, H, layout, mark, deg, type, GUN_SCALE }) {
-  const { drawGalleon } = await import("/src/galleon.js");
+  const { createMenuShip } = await import("/src/render3d/menuship.js");
   const Y = await import("/src/shipyard.js");
   const DISPLAY = 'Georgia, "Iowan Old Style", "Times New Roman", serif';
   const UI = '-apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
@@ -110,7 +113,11 @@ async function compose({ W, H, layout, mark, deg, type, GUN_SCALE }) {
   const drawn = (bearing, span = 2400) => {
     const c = document.createElement("canvas");
     c.width = span; c.height = Math.round(span * 0.7);
-    drawGalleon(c.getContext("2d"), c.width, c.height, bearing, markSpec);
+    const model = createMenuShip(c, { shadow: false });
+    if (model.kind !== "3d") throw new Error("no WebGL in this browser: the art is drawn from the 3D model");
+    model.resize(c.width, c.height, 1);
+    model.draw(markSpec, bearing);
+    model.dispose();
     const px = c.getContext("2d").getImageData(0, 0, c.width, c.height).data;
     let x0 = c.width, y0 = c.height, x1 = 0, y1 = 0;
     for (let y = 0; y < c.height; y++) for (let x = 0; x < c.width; x++) {
