@@ -311,6 +311,10 @@ export function createShipLayer(scene, ctx) {
 
   // ---- one ship ------------------------------------------------------------------------------
 
+  // How much larger than her collision ellipse she is drawn, so a small craft reads at phone zoom.
+  // Drawing only: the engine's hull is unchanged, so a ball can pass through the outer half of her.
+  const DRAW_SCALE = 2;
+
   function makeEntry(s, look) {
     const model = ctx.shipModel(rigSpec(s.loadout), { units: "sea" });
     const [timber0, canvas0, flag0] = model.materials;
@@ -328,6 +332,7 @@ export function createShipLayer(scene, ctx) {
     const outer = new THREE.Group();
     outer.name = "ship:" + s.id;
     outer.add(model.group);
+    outer.scale.setScalar(DRAW_SCALE);
 
     // her livery along the rail
     const trimMat = flag.clone();
@@ -396,7 +401,7 @@ export function createShipLayer(scene, ctx) {
     // her contact shadow: a soft dark blob under her, offset down and right as the sun has it
     const blob = new THREE.Mesh(blobGeo, blobMat);
     blob.name = "blob";
-    blob.scale.set(s.hullA * 1.1, 1, s.hullB * 1.2 + 2 / 0.6);
+    blob.scale.set(s.hullA * 1.1 * DRAW_SCALE, 1, (s.hullB * 1.2 + 2 / 0.6) * DRAW_SCALE);
     blob.renderOrder = 3; // over the shallows and the surf, so she is shadowed in from the shore as well
     blob.frustumCulled = false;
     root.add(blob);
@@ -555,7 +560,7 @@ export function createShipLayer(scene, ctx) {
     const look = lastFx ? ctx.lookOf(lastFx, s) : null;
     // one answer reused: the overlay reads it at once and keeps nothing
     label.gx = SX(pos.x, ctx.view); label.gy = SY(pos.y, ctx.view); label.h = pos.h; label.roll = rollOf(look);
-    label.topZ = (e ? e.height : 24) + 6;
+    label.topZ = (e ? e.height * DRAW_SCALE : 24) + 6;
     return label;
   }
 
