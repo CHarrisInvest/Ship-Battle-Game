@@ -1,5 +1,5 @@
 import React, { Fragment, useRef, useState, useEffect, useCallback, useMemo } from "react";
-import { drawGalleon } from "./galleon.js";
+import { createMenuShip } from "./render3d/menuship.js";
 import {
   getHold, subscribeHold, modeRecord, shipLoadout, shortfall, connect, holdStatus, subscribeStatus, hadLocalSave, adoptHold, holdSettled, hasProgress,
   buyShip, buyPart, fitMast, fitSail, fitStud, fitGun, unfitGun, setActiveShip, spareParts, ownedShips, partOf,
@@ -1284,13 +1284,12 @@ const GALLEON_W = 268;
 const GALLEON_ASPECT = 0.62; // the projection is drawn into a 1 : 0.62 box
 const GALLEON_DEG_PER_MS = 0.012; // ~30s per revolution
 
-// The ship on the menu: a 3-D hull re-projected to isometric every frame, so it
-// turns rather than spinning a flat sprite.
+// The ship on the menu: the same 3-D model that sails at sea, turning under a fixed
+// light at drawGalleon's isometric angle, so it turns rather than spinning a flat sprite.
 //
 // She is the captain's own ship, not a stock galleon: `rig` is what is actually
 // stepped and bent on aboard whichever hull she is sailing, so buying a sail
-// shows up here. Hull shapes per class are still to be drawn, so for now every
-// class turns on this one hull and the rig on top of it is the part that is real.
+// shows up here, on her own class's hull.
 function MenuGalleon({ rig }) {
   const cvs = useRef(null);
   // The rig changes rarely and the object is rebuilt on every render, so the
@@ -1305,24 +1304,20 @@ function MenuGalleon({ rig }) {
   useEffect(() => {
     const c = cvs.current;
     if (!c) return;
-    const ctx = c.getContext("2d");
+    // The one ship model, drawn through the menu's shared WebGL renderer into this 2D canvas, or
+    // painted by drawGalleon where WebGL cannot be had (createMenuShip decides, and the box is the
+    // same either way).
+    const ship = createMenuShip(c);
     const w = GALLEON_W;
     const h = Math.round(w * GALLEON_ASPECT);
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    c.width = w * dpr;
-    c.height = h * dpr;
-
-    const paint = (deg) => {
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.clearRect(0, 0, w, h);
-      drawGalleon(ctx, w, h, deg, rig);
-    };
+    ship.resize(w, h, Math.min(window.devicePixelRatio || 1, 2));
+    const paint = (deg) => ship.draw(rig, deg);
 
     // A perpetually turning ship is exactly what reduced-motion asks us to drop,
     // so hold a three-quarter view instead.
     if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
       paint(24);
-      return;
+      return () => ship.dispose();
     }
 
     let raf = 0;
@@ -1334,7 +1329,7 @@ function MenuGalleon({ rig }) {
       raf = requestAnimationFrame(frame);
     };
     raf = requestAnimationFrame(frame);
-    return () => cancelAnimationFrame(raf);
+    return () => { cancelAnimationFrame(raf); ship.dispose(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 
