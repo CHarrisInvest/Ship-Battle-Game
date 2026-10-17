@@ -43,6 +43,13 @@ export const analyticsLive = () => GA_ID !== "" && !PREVIEW;
 export const ADS_ID = "AW-18492440060";
 export const conversionsLive = () => ADS_ID !== "" && !PREVIEW;
 
+// The Google tag gtag.js is fetched under, which is not always either of the IDs above. The two were
+// combined in Google's tag settings, so the stream's tag (GA, Admin, Data streams, "Configure tag
+// settings") is the Ads one and carries the GA ID as a destination; `gtag/js?id=G-SKDXWK6TYX` answers
+// 404, which Chrome reports as ERR_BLOCKED_BY_ORB, and nothing was measured while it was the loader.
+// The config calls still name each destination, so the consent rules below are unchanged.
+const TAG_ID = "AW-18492440060";
+
 /** Whether anything at all measures the game: what the prompt's switch and the policy read. */
 export const measurementLive = () => analyticsLive() || conversionsLive();
 
@@ -101,7 +108,7 @@ function load(which) {
   configure(which);
   const s = document.createElement("script");
   s.async = true;
-  s.src = `https://www.googletagmanager.com/gtag/js?id=${which.ga ? GA_ID : ADS_ID}`;
+  s.src = `https://www.googletagmanager.com/gtag/js?id=${TAG_ID}`;
   document.head.appendChild(s);
 }
 
