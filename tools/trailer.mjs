@@ -212,14 +212,19 @@ function sail(seed, loadout, secs, len) {
   const score = new Float64Array(ticks + 1);
   const alive = new Uint8Array(ticks + 1);
   const where = [];
-  const EDGE = 360; // within this of the sea's edge the camera stops following her and the rope is in shot
+  // Held upright the rope comes into shot when she is within the view's reach of the sea's edge, and
+  // the camera stops following her, leaving her off centre against it, inside `PINNED` of it.
+  const PINNED = 370;
+  const W = S.WORLD;
   for (let t = 0; t < ticks; t++) {
     const events = S.step(world, { [ME]: helm(world) });
     const me = S.shipOf(world, ME);
     alive[t] = me.alive && !world.result.over ? 1 : 0;
     where.push({ x: me.x, y: me.y });
     if (!alive[t]) break;
-    const edge = Math.min(me.x, me.y, S.WORLD - me.x, S.WORLD - me.y) < EDGE;
+    const toEdge = Math.min(me.x, W - me.x), toEnd = Math.min(me.y, W - me.y);
+    const rope = toEdge < VIEW_X || toEnd < VIEW_Y;
+    const pinned = toEdge < PINNED || toEnd < PINNED;
     const inView = (x, y) => Math.abs(x - me.x) < VIEW_X && Math.abs(y - me.y) < VIEW_Y;
     const firing = new Set();
     let v = 0;
@@ -230,8 +235,9 @@ function sail(seed, loadout, secs, len) {
       else if (e.type === "dismasted") v += 10;
     }
     for (const id of firing) v += id === me.id ? 2 : 1;
-    // a fight on the rope is worth half: open water all round her reads better
-    score[t] = edge ? v * 0.5 : v;
+    // open water all round her reads best: the rope in shot costs a third, and a fight she is
+    // pinned against it for costs three quarters
+    score[t] = pinned ? v * 0.25 : rope ? v * 0.66 : v;
   }
   // the best window: every tick of it, and the second after, with her afloat
   let best = null;
