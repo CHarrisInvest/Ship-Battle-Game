@@ -95,6 +95,37 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   scaled down by her speed. The engine knows nothing of it. If wind ever comes to matter to the
   sailing it moves into the engine and the flags read it off the world. The menu's wind is fixed
   to the viewer, so on a turning plate the flags hold their line and she swings under them.
+- **A captain's ships are built of live oak, and a rival keeps her class's timber.**
+  `CAPTAIN_TIMBER` in `palette.js` is the species every ship a captain owns or sails is drawn in,
+  whatever her class: on the menu's plate and in the yard (`ownRig` in the screen), and at sea for
+  any ship with a `playerId` (`ships.js`, and `lookOf` for the 2D sea). A rig spec carries it as
+  `timber`, which `galleon.js` casts through `timberCast` in `hullform.js`; `rigSpec` never sets it,
+  because it is a look and the catalogue has no say in it. At sea her topsides still wear her
+  livery over it, so the timber shows on her deck, rails and lower strakes.
+- **Over her rail, the hull closes and follows her stern.** A waist with no castle at an end runs
+  its bulwark the whole length to that end: to her stem, where the two sides' inner faces meet on
+  the centreline, and to her transom, where a taffrail cut to meet the side rails closes it. Both
+  used to stop 1.2 short, which left the bow open and both quarters notched on every class without
+  a forecastle. Everything standing over the rail (bulwarks, castles, taffrail, rail guns, the
+  ensign staff) is drawn at `rx(x)`, her stern's full rake at that station, because the hull's top
+  edge carries the rake and anything that does not stands forward of it with a sliver of transom
+  astern. **A raised deck stands on her side.** A castle is level at its own height (`z`, off her
+  castle score) from where it breaks off the waist, and where her sheer sweeps up past that toward
+  the taffrail or the stem the deck rises with it, a plank over the top of her side (`castleZ` in
+  `galleon.js`, which `deckZAt`, the castle, its rails, its stairs and its guns all read). Her castle
+  and sheer scores are separate figures, and on seven classes the sheer won: a level quarterdeck sat
+  under the top of her own side with her transom standing over its rail. A castle that clears her
+  sheer the whole way, the galleon's and the big rates', is the level deck it always was.
+  **A ladder is not set up through a sail.** A lateen or a lug hangs from a yard on her starboard
+  side of the pole, and a lateen's head is laced along its yard (`laced` in `triCloth`), so the
+  cloth fills out below the spar instead of standing off it with a pocket a rope could run into. A
+  mast whose starboard ladder would still cut a lateen or lug (tested against the cloth's own
+  surface, the one the sail is drawn from, a rope's thickness either side) is rigged as such a boat
+  was: one rope a side, square abreast of her, to the very top of a pole carried up 6 to 30% of its
+  length until the rope clears, or failing that until it only lies against the cloth. Ropes are
+  never led fore or aft to dodge a sail. That leaves the xebecs' mains and the light xebec's fore
+  single-roped; every other mast keeps its ladder and her pole, gaff masts included, whose ladders
+  only brush the luff by the pole.
 - **The Ship Lab is how a ship's look is changed.** `shiplab/` is a dev page that draws every class
   through `createMenuShip` with her fit, bearing, speed, the wind and the hull figures she is drawn
   from under the reader's hand; the figures are reshaped live under a lab id of their own, so
@@ -580,6 +611,10 @@ Rules above that the code does not yet satisfy. Tracked cleanups, not exceptions
   a fluyt's extreme tumblehome or a carrack's built-up works are still the shared family of shapes
   with different numbers. Refining a class means refining her form, not adding a size multiplier to
   the catalogue, which stays deliberately size-free.
+- **There is no poop deck.** A castle score raises a quarterdeck and then a forecastle, and nothing
+  stacks a third deck aft, so the 3rd rate, a seventy-four, and the big rates draw without the poop
+  they carried over the quarterdeck. It wants a deck of its own in `hullform.js` and `galleon.js`
+  rather than a higher castle score, which only lifts the quarterdeck.
 - **Google sign-in has not been tried from the home-screen app on an iPhone.** A redirect out of a
   standalone web app is where that flow tends to break, so leave `GOOGLE_CLIENT_ID` unset in
   production until it has been, and email codes carry sign-in alone.

@@ -158,12 +158,19 @@ const SPECIES = {
   Oak: { bright: 1, r: 1, g: 1, b: 1 },
 };
 
-function timberOf(ref) {
-  const s = SPECIES[ref.species] || SPECIES.Oak;
+/**
+ * The cast one species of timber lays over the palette, at a density (the reference's `timber`
+ * score). A class is drawn in her own; a captain's ships are drawn in another (`CAPTAIN_TIMBER` in
+ * the palette), which is why this is a reader of its own rather than folded into her row.
+ */
+export function timberCast(species, density = 1) {
+  const s = SPECIES[species] || SPECIES.Oak;
   // denser timber reads a little darker; oak at 1 stays the identity
-  const bright = s.bright * exact.pow(1 / (ref.timber || 1), 0.35);
+  const bright = s.bright * exact.pow(1 / (density || 1), 0.35);
   return { bright, r: s.r, g: s.g, b: s.b };
 }
+
+const timberOf = (ref) => timberCast(ref.species, ref.timber);
 
 /** One hex colour under a timber cast. The identity cast returns the colour unchanged. */
 export function tintTimber(hex, t) {

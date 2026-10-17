@@ -95,4 +95,13 @@ export const SIDE_COLORS = {
   right: { name: "Yellow", fill: "#f0c419", stroke: "#8f7410" },
 };
 
+/**
+ * WHAT A CAPTAIN'S SHIPS ARE BUILT OF, as drawn. Every ship a captain owns or sails is drawn in this
+ * timber whatever her class, on the menu's plate, in the yard and at sea, while a rival keeps her
+ * class's own: the starting gundalow is a pine boat by her reference, and pine against the sand of
+ * the plate read as a pale toy. It is a species `hullform.js` casts (`timberCast`), and a look:
+ * nothing in the catalogue or the round reads it.
+ */
+export const CAPTAIN_TIMBER = "Live oak";
+
 export const UI = 'ui-monospace, "SF Mono", Menlo, Consolas, monospace';

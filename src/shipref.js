@@ -302,7 +302,7 @@ export const HULL_REF = {
     tumblehome: 3,
     deadrise: 3,
     sheer: 3,
-    castle: 2,
+    castle: 3,
     stern: "Round",
     mastHeight: 1.2,
     decks: 1,

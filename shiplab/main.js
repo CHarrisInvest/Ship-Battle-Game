@@ -18,6 +18,7 @@ import { WIND } from "../src/render3d/flags.js";
 import { HULL_LIST, HULLS, STANDARDS, fitOut, emptyLoadout, rigSpec, rate, rateOf } from "../src/shipyard.js";
 import { HULL_REF } from "../src/shipref.js";
 import { BASE_SPEED } from "../src/sim/ships.js";
+import { CAPTAIN_TIMBER } from "../src/render/palette.js";
 
 /* ---- what can be changed ---------------------------------------------------------------------- */
 
@@ -42,7 +43,7 @@ const SHAPE = [
 const valuesOf = (key) => [...new Set(Object.values(HULL_REF).map((r) => r[key]).filter((v) => typeof v === "string"))].sort();
 const PICKS = [
   { key: "stern", label: "Stern", options: valuesOf("stern") },
-  { key: "species", label: "Timber", options: valuesOf("species") },
+  { key: "species", label: "Her class's timber, which a rival wears", options: valuesOf("species") },
 ];
 const FIELDS = [...SHAPE.map((f) => f.key), ...PICKS.map((p) => p.key)];
 
@@ -52,7 +53,7 @@ const STORE = "sternchase.shiplab";
 const deg = (r) => (((r * 180) / Math.PI) % 360 + 360) % 360;
 const state = {
   view: "one", id: HULL_LIST[0].id, fit: "full", deg: 300, turn: true, speed: 0,
-  wind: Math.round(deg(WIND.menu)), edits: {},
+  wind: Math.round(deg(WIND.menu)), edits: {}, captain: true,
 };
 try {
   const saved = JSON.parse(localStorage.getItem(STORE) || "null");
@@ -105,10 +106,11 @@ const loadoutFor = (id) => {
 const specs = new Map();
 function specFor(id) {
   const hull = hullIdFor(id);
-  const key = `${id}|${state.fit}|${hull}`;
+  const key = `${id}|${state.fit}|${hull}|${state.captain}`;
   let s = specs.get(key);
   if (!s) {
-    s = { ...rigSpec(loadoutFor(id)), hull };
+    // a captain's ship is drawn in the captain's timber, a rival in her class's own
+    s = { ...rigSpec(loadoutFor(id)), hull, ...(state.captain ? { timber: CAPTAIN_TIMBER } : {}) };
     specs.set(key, s);
   }
   return s;
@@ -234,6 +236,10 @@ const classPanel = el("section", { class: "panel", "aria-label": "Class" },
 // her fit
 const fitButtons = FITS.map((f) => el("button", { type: "button", "aria-pressed": "false", text: f.label, on: { click: () => { state.fit = f.key; refresh(); } } }));
 
+// whose she is, which decides her timber
+const WHOSE = [{ captain: true, label: "Yours" }, { captain: false, label: "A rival's" }];
+const whoseButtons = WHOSE.map((w) => el("button", { type: "button", "aria-pressed": "false", text: w.label, on: { click: () => { state.captain = w.captain; refresh(); } } }));
+
 // bearing
 const bearing = el("input", { id: "bearing", type: "range", min: 0, max: 359, step: 1, on: { input: (e) => { state.deg = Number(e.target.value); state.turn = false; syncBearing(); fleetDirty = true; save(); } } });
 const bearingVal = el("span", { class: "val" });
@@ -257,6 +263,8 @@ const sailPanel = el("section", { class: "panel", "aria-label": "Fit and sailing
   el("h2", { text: "Fit and sailing" }),
   el("div", { class: "row" }, el("span", { class: "label" }, "Fit", el("span", { class: "note", text: "What she carries, as the stock ships are fitted" })),
     el("div", { class: "seg", role: "group", "aria-label": "Fit" }, fitButtons)),
+  el("div", { class: "row" }, el("span", { class: "label" }, "Whose", el("span", { class: "note", text: `Yours are built of ${CAPTAIN_TIMBER.toLowerCase()}; a rival keeps her class's timber` })),
+    el("div", { class: "seg", role: "group", "aria-label": "Whose" }, whoseButtons)),
   el("div", { class: "row" }, el("label", { for: "bearing" }, "Bearing", bearingVal), el("div", { class: "inline" }, bearing, turnToggle)),
   el("div", { class: "row" }, el("label", { for: "speed" }, "Speed", speedVal),
     speed, el("div", { class: "actions" }, stopButton, topButton)),
@@ -394,6 +402,7 @@ function syncShape() {
 function refresh() {
   classPick.value = state.id;
   for (const [i, f] of FITS.entries()) fitButtons[i].setAttribute("aria-pressed", String(f.key === state.fit));
+  for (const [i, w] of WHOSE.entries()) whoseButtons[i].setAttribute("aria-pressed", String(w.captain === state.captain));
   describe(state.id);
   syncBearing();
   syncSailing();
