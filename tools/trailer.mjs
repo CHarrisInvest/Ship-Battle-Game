@@ -76,7 +76,9 @@ const XFADE = 0.4;
 const SHOTS = [
   { key: "open", kind: "play", hull: "thirdRate", secs: 4.4, clean: true, seeds: 40 },
   { key: "title", kind: "card", secs: 2.8 },
-  { key: "fast", kind: "play", hull: "baltimoreClipper", secs: 7.4, seeds: 40, caption: "Outfit the ship." },
+  // `mark` sails the icon's own cutter, rigged as `mark.mjs` rigs her, rather than the catalogue's
+  // fullest fit of the class, so the ship fought here is the ship on the menu and the home screen
+  { key: "fast", kind: "play", hull: "cutter", mark: true, secs: 7.4, seeds: 40, caption: "Outfit the ship." },
   { key: "menu", kind: "menu", secs: 4.4 },
   { key: "big", kind: "play", hull: "firstRate", secs: 9.4, seeds: 40, caption: "Start as an unrated ship, upgrade to a 1st rate." },
   { key: "end", kind: "card", secs: 3.6 },
@@ -209,6 +211,9 @@ function markLoadout() {
   return Y.resolve({ hull: hull.id, rig, guns: { broadside: Array(hull.guns.broadside).fill(MARK.gun), bow: [], swivel: [] } });
 }
 
+/** The ship a shot sails: the icon's cutter as the mark rigs her, or the class's fullest fit. */
+const shipFor = (shot) => (shot.mark ? markLoadout() : Y.maximumLoadout(shot.hull));
+
 /* ---- the shot, chosen in Node ------------------------------------------------------------------ */
 
 /**
@@ -234,13 +239,17 @@ function sail(seed, loadout, secs, len) {
     alive[t] = me.alive && !world.result.over ? 1 : 0;
     where.push({ x: me.x, y: me.y });
     if (!alive[t]) break;
+    const inView = (x, y) => Math.abs(x - me.x) < VIEW_X && Math.abs(y - me.y) < VIEW_Y;
     const toEdge = Math.min(me.x, W - me.x), toEnd = Math.min(me.y, W - me.y);
     const rope = toEdge < VIEW_X || toEnd < VIEW_Y;
     const pinned = toEdge < PINNED || toEnd < PINNED;
     // ...and a beach: `moveShip` grounds her at `r + 0.76 hullA`, and a shot of her on one is no shot
     const beach = world.islands.reduce((d, isl) => Math.min(d, Math.hypot(isl.x - me.x, isl.y - me.y) - isl.r - me.hullA * 0.76), 1e9);
     const aground = beach < 8, shaving = beach < 50;
-    const inView = (x, y) => Math.abs(x - me.x) < VIEW_X && Math.abs(y - me.y) < VIEW_Y;
+    // ...and a crowd: ten rivals drop onto the sea, and a shot with most of them in it is hulls
+    // and masts drawn over one another. Four or fewer in view with her is the picture wanted.
+    const crowd = world.ships.filter((o) => o !== me && o.alive && inView(o.x, o.y)).length;
+    const crowded = crowd <= 4 ? 1 : crowd === 5 ? 0.7 : crowd === 6 ? 0.4 : 0.2;
     const firing = new Set();
     let v = 0;
     for (const e of events) {
@@ -252,7 +261,7 @@ function sail(seed, loadout, secs, len) {
     for (const id of firing) v += id === me.id ? 2 : 1;
     // open water all round her reads best: the rope in shot costs a third, a fight she is pinned
     // against it for three quarters, her bow in the sand nearly all of it
-    score[t] = (pinned ? 0.25 : rope ? 0.66 : 1) * (aground ? 0.1 : shaving ? 0.5 : 1) * v;
+    score[t] = (pinned ? 0.25 : rope ? 0.66 : 1) * (aground ? 0.1 : shaving ? 0.5 : 1) * crowded * v;
   }
   // the best window: every tick of it, and the second after, with her afloat
   let best = null;
@@ -320,7 +329,7 @@ if (DRY) {
   for (const shot of SHOTS) {
     if (shot.kind !== "play") continue;
     const t0 = Date.now();
-    const chosen = chooseShot(sent(holdWith(Y.maximumLoadout(shot.hull))), shot.secs, shot.seeds, 1000 + SHOTS.indexOf(shot) * 101);
+    const chosen = chooseShot(sent(holdWith(shipFor(shot))), shot.secs, shot.seeds, 1000 + SHOTS.indexOf(shot) * 101);
     console.log(`${shot.key}: ${shot.hull} on seed ${chosen.seed} from ${(chosen.start / FPS).toFixed(1)} s, scoring ${chosen.score.toFixed(0)}, chosen in ${((Date.now() - t0) / 1000).toFixed(1)} s`);
   }
   process.exit(0);
@@ -535,7 +544,7 @@ try {
     if (shot.kind !== "play") continue;
     dirs[shot.key] = join(work, shot.key);
     if (FROM) continue;
-    const hold = holdWith(Y.maximumLoadout(shot.hull));
+    const hold = holdWith(shipFor(shot));
     say(`choosing the ${shot.hull} shot over ${shot.seeds} seeds`);
     // each shot its own seeds, so no two are fought on the same sea
     const chosen = chooseShot(sent(hold), shot.secs, shot.seeds, 1000 + SHOTS.indexOf(shot) * 101);
