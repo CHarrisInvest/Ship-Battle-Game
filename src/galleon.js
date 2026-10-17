@@ -917,61 +917,56 @@ function buildShip(rig){
            {tag:"trim",flat:0.94,nearW:0,nostroke:true,bias:2.2});
   }
  }
- /* Where each fore-and-aft sail's corners stand, worked out here and read twice:
-    by the sail, which is drawn between them, and by the shrouds, which have to
-    know where the cloth is to keep out of it. All of it stands on her starboard
-    side of the pole, 1.1 out, and the belly carries the cloth further out from
-    there. `outline` is the corners in order round the sail. */
- const lateenCut=(mx,zb,zt)=>{const h=zt-zb;
-  const B=[mx+0.621*h,1.1,zb+0.310*h],A=[mx-0.690*h,1.1,zt],C=[mx-0.552*h,1.1,zb];
-  return{B,A,C,belly:3.6,outline:[B,A,C]};};
- const gaffCut=(mx,zb,zt,run)=>{const h=zt-zb,y=1.1;
-  const reach=Math.min(1.05*h,run||1.05*h);
-  const tack=[mx-0.6,y,zb+0.03*h], clew=[mx-reach,y,zb+0.10*h];
-  const throat=[mx-0.6,y,zt-0.22*h], peak=[mx-0.74*reach,y,zt];
-  return{tack,clew,throat,peak,belly:2.8,outline:[tack,throat,peak,clew]};};
- const lugCut=(mx,zb,zt,run)=>{const h=zt-zb,y=1.1;
-  const aft=Math.min(1,(run||0.64*h)/(0.64*h));
-  const tack=[mx+0.36*h,y,zb], clew=[mx-0.62*h*aft,y,zb+0.05*h];
-  const fore=[mx+0.46*h,y,zt-0.28*h], peak=[mx-0.64*h*aft,y,zt];
-  return{tack,clew,fore,peak,belly:2.6,outline:[tack,fore,peak,clew]};};
  /* The cloth itself, as a surface over two parameters: three corners fanned from
     B across the edge between A and C, or four lofted between luff and leech,
     bellied out in y either way. The sail is drawn off it cell by cell, and the
     shrouds test their runs against the same cells, so a rope is kept out of the
-    canvas that is actually there rather than out of a box drawn round it. */
+    canvas that is actually there rather than out of a box drawn round it.
+    Fanned, both edges off B carry the belly unless the one to A is `laced`: a
+    lateen's head is bent to its yard the whole length of it, so it lies along
+    the spar and the cloth fills out below it, fullest at the loose foot. */
  const mix3=(p,q,s)=>[lerp(p[0],q[0],s),lerp(p[1],q[1],s),lerp(p[2],q[2],s)];
- const triCloth=(B,A,C,belly)=>{
-  const on=(p,q,t)=>[lerp(p[0],q[0],t),lerp(p[1],q[1],t)+belly*Math.sin(Math.PI*t),lerp(p[2],q[2],t)];
-  return{na:12,nb:3,at:(t,s)=>mix3(on(B,A,t),on(B,C,t),s)};};
+ const triCloth=(B,A,C,belly,laced)=>{
+  const on=(p,q,t,b)=>[lerp(p[0],q[0],t),lerp(p[1],q[1],t)+b*Math.sin(Math.PI*t),lerp(p[2],q[2],t)];
+  return{na:12,nb:3,at:(t,s)=>mix3(on(B,A,t,laced?0:belly),on(B,C,t,belly),s)};};
  const quadCloth=(tack,head,clew,peak,belly)=>({na:3,nb:12,at:(u,v)=>{
   const a=mix3(tack,head,v),b=mix3(clew,peak,v),p=mix3(a,b,u);
   return[p[0],p[1]+belly*Math.sin(Math.PI*u)*Math.sin(Math.PI*(0.12+0.76*v)),p[2]];}});
+ /* Where each fore-and-aft sail's corners stand and the cloth between them,
+    worked out here and read twice: by the sail, which is drawn off it, and by
+    the shrouds, which have to know where the cloth is to keep out of it. All of
+    it stands on her starboard side of the pole, 1.1 out, and the belly carries
+    the cloth further out from there. */
+ const lateenCut=(mx,zb,zt)=>{const h=zt-zb;
+  const B=[mx+0.621*h,1.1,zb+0.310*h],A=[mx-0.690*h,1.1,zt],C=[mx-0.552*h,1.1,zb];
+  return{B,A,C,cloth:triCloth(B,A,C,3.6,true)};};
+ const gaffCut=(mx,zb,zt,run)=>{const h=zt-zb,y=1.1;
+  const reach=Math.min(1.05*h,run||1.05*h);
+  const tack=[mx-0.6,y,zb+0.03*h], clew=[mx-reach,y,zb+0.10*h];
+  const throat=[mx-0.6,y,zt-0.22*h], peak=[mx-0.74*reach,y,zt];
+  return{tack,clew,throat,peak,cloth:quadCloth(tack,throat,clew,peak,2.8)};};
+ const lugCut=(mx,zb,zt,run)=>{const h=zt-zb,y=1.1;
+  const aft=Math.min(1,(run||0.64*h)/(0.64*h));
+  const tack=[mx+0.36*h,y,zb], clew=[mx-0.62*h*aft,y,zb+0.05*h];
+  const fore=[mx+0.46*h,y,zt-0.28*h], peak=[mx-0.64*h*aft,y,zt];
+  return{tack,clew,fore,peak,cloth:quadCloth(tack,fore,clew,peak,2.6)};};
  const masts=rig.masts;
  /* HER STANDING RIGGING, PLANNED BEFORE HER POLES ARE DRAWN, because what a
     mast is stayed with decides how tall her pole stands.
 
-    Fore-and-aft canvas, a lateen, a gaff, a lug or a headsail, stands on her
-    starboard side of the pole, so a starboard shroud can run straight through the
-    cloth, and with its ratlines it read as a ladder stood through her sail. A mast
-    whose ladder would do that is rigged the way such a boat was: one shroud a
-    side, run to the very top of her pole, with no ratlines, and the pole carried
-    up above her canvas until that shroud clears the cloth. A gaff clears with
-    the pole a little over her old top; a lateen's cloth bellies a long way out
-    from its yard, so its pole goes higher and its shroud may take a lead. A
-    single lateen on a narrow hull (the gundalow's, the Bermuda sloop's) clears
-    with neither inside what a pole could plausibly be, so her pole goes to its
-    highest and the rope lies against her sail the way a lateen's lee shroud
-    did. A mast whose ladders clear every sail, square canvas hanging athwart
-    her forward of its shrouds and the galleon's mizzen among them, keeps them,
-    and her pole stops where it always did. */
+    A sail slung from a yard across the pole, a lateen or a lug, stands on her
+    starboard side of it, so a starboard shroud can run straight through the
+    cloth, and with its ratlines it read as a ladder stood through her sail. A
+    mast whose ladder would do that is rigged the way such a boat was: one rope a
+    side, square abreast of her and run to the very top of her pole, with no
+    ratlines, and the pole carried up above her canvas until that rope clears
+    the cloth. A mast whose ladder clears keeps it, and her pole stops where it
+    always did: every square-rigged mast, and a gaff's, whose ladder only
+    brushes the luff close by the pole and reads as standing beside her sail. */
  const cloths=[];
  for(const m of masts) for(const s of m.sails){
-  if(s.cut==="triangle"){const{B,A,C}=lateenCut(m.x,s.zb,s.zt);cloths.push(triCloth(B,A,C,3.6));}
-  else if(s.cut==="gaff"){const c=gaffCut(m.x,s.zb,s.zt,s.run);cloths.push(quadCloth(c.tack,c.throat,c.clew,c.peak,2.8));}
-  else if(s.cut==="lug"){const c=lugCut(m.x,s.zb,s.zt,s.run);cloths.push(quadCloth(c.tack,c.fore,c.clew,c.peak,2.6));}}
- for(const sp of rig.spars||[]) for(const s of sp.sails)if(s.cut==="headsail"){
-  const at=p=>[p[0],p[1]+1.1,p[2]];cloths.push(triCloth(at(s.tack),at(s.head),at(s.clew),2.6));}
+  if(s.cut==="triangle")cloths.push(lateenCut(m.x,s.zb,s.zt).cloth);
+  else if(s.cut==="lug")cloths.push(lugCut(m.x,s.zb,s.zt,s.run).cloth);}
  // whether the segment p..q passes through the triangle a,b,c (Moller and Trumbore)
  const pierces=(p,q,a,b,c)=>{
   const d=[q[0]-p[0],q[1]-p[1],q[2]-p[2]],e1=[b[0]-a[0],b[1]-a[1],b[2]-a[2]],e2=[c[0]-a[0],c[1]-a[1],c[2]-a[2]];
@@ -980,11 +975,12 @@ function buildShip(rig){
   const s=[p[0]-a[0],p[1]-a[1],p[2]-a[2]],u=dot(s,h)/det;if(u<0||u>1)return false;
   const g=cross(s,e1),v=dot(d,g)/det;if(v<0||u+v>1)return false;
   const t=dot(e2,g)/det;return t>=0&&t<=1;};
- /* A rope is a rope's thickness and more: it is tested along its axis and a
-    hand's breadth either side of it in y, so one that only grazes the cloth
-    still counts as through it. */
- const throughCloth=(p,q)=>{
-  for(const off of[0,-0.45,0.45]){const P0=[p[0],p[1]+off,p[2]],Q0=[q[0],q[1]+off,q[2]];
+ /* A rope is as thick as it is drawn: it is tested along its axis and a little
+    over its radius either side of it in y, so one whose side would sink into
+    the cloth counts as through it. `edge` 0 tests the axis alone. */
+ const ROPE=0.35;
+ const throughCloth=(p,q,edge=ROPE)=>{
+  for(const off of edge?[0,-edge,edge]:[0]){const P0=[p[0],p[1]+off,p[2]],Q0=[q[0],q[1]+off,q[2]];
    for(const{na,nb,at}of cloths)for(let i=0;i<na;i++)for(let j=0;j<nb;j++){
     const a=at(i/na,j/nb),b=at((i+1)/na,j/nb),c=at((i+1)/na,(j+1)/nb),d=at(i/na,(j+1)/nb);
     if(pierces(P0,Q0,a,b,c)||pierces(P0,Q0,a,c,d))return true;}}
@@ -997,26 +993,33 @@ function buildShip(rig){
     runs up and inboard from the start, never crossing the cap's plane, so the
     cap occludes it only where it genuinely should. */
  const footAt=(x,side)=>[x,side*(stationAt(x).w-1.7),deckZAt(x)+BULWARK];
- // her ladder's feet on one side, at the station's own offsets about the mast
- const ladderFeet=(m,side)=>m.shrouds.map(d=>footAt(m.x+d,side));
- /* How far a single shroud may go to keep out of the cloth, as shares of her
-    pole's length: the pole carried up by between POLE_LIFT[0] and [1] of it,
-    and the rope set up as much as LEAD forward or abaft of her rather than
-    square abeam, the way a shroud was set up a little aft. Of everything that
-    clears, she takes what moves her least, aft before forward. */
- const POLE_LIFT=[0.06,0.30], LEAD=0.15;
+ /* Her ladder on one side, as the ropes it is drawn from: the after mast
+    carries one shroud a side, square-rigged masts two, each from its foot at
+    the station's own offset about the mast to the head of them. The one is set
+    abaft its mast: level with it, it projected straight down the pole and read
+    as the mast carrying on through the quarterdeck. Ratlines run across a pair
+    and stop well short of the head, as they do aboard. */
+ const ladderOf=(m,side,sz)=>{const head=[m.x,0,sz],foot=m.shrouds.map(d=>footAt(m.x+d,side));
+  const ropes=foot.map(p=>({a:head,b:p,r:0.3}));
+  if(m.ratlines&&foot.length>=2)for(let k=1;k<=7;k++){const t=(k/8)*0.62;
+   ropes.push({a:foot[0].map((c,i)=>lerp(c,head[i],t)),b:foot[1].map((c,i)=>lerp(c,head[i],t)),r:0.17,sides:4});}
+  return ropes;};
+ /* How far a single-roped pole may be carried over her own top, as shares of
+    its length. She takes the least lift that clears; failing that, the least
+    at which the rope lies against her cloth without passing through it (the
+    light xebec's fore, whose rope runs down along the full of her foot, and
+    gains nothing from a taller pole but height); failing that, the most. */
+ const POLE_LIFT=[0.06,0.30];
  const stays=masts.map(m=>{
   const sz=m.top*m.hoist;
-  if(!OPT.rig||!ladderFeet(m,1).some(p=>throughCloth([m.x,0,sz],p)))return{single:false,head:m.top,sz,lead:0};
-  const len=m.top-deckZAt(m.x), tries=[];
-  for(let a=0;a<=12;a++)for(let b=-6;b<=6;b++)
-   tries.push({lift:lerp(POLE_LIFT[0],POLE_LIFT[1],a/12),lead:b/6*LEAD*len,cost:a/12+Math.abs(b)/6});
-  tries.sort((p,q)=>p.cost-q.cost||p.lead-q.lead);
-  const clears=({lift,lead})=>{const x=m.x+lead;
-   return x>sternX+2&&x<Lh-2&&stationAt(x).w-1.7>=1.2&&!throughCloth([m.x,0,m.top+lift*len],footAt(x,1));};
-  const how=tries.find(clears)||{lift:POLE_LIFT[1],lead:0};
-  const head=m.top+how.lift*len;
-  return{single:true,head,sz:head,lead:how.lead};
+  if(!OPT.rig||!ladderOf(m,1,sz).some(({a,b})=>throughCloth(a,b)))return{single:false,head:m.top,sz};
+  const len=m.top-deckZAt(m.x), foot=footAt(m.x,1);
+  let clear=null, touch=null;
+  for(let k=0;k<=24&&clear===null;k++){const z=m.top+lerp(POLE_LIFT[0],POLE_LIFT[1],k/24)*len;
+   if(!throughCloth([m.x,0,z],foot))clear=z;
+   else if(touch===null&&!throughCloth([m.x,0,z],foot,0))touch=z;}
+  const head=clear??touch??m.top+POLE_LIFT[1]*len;
+  return{single:true,head,sz:head};
  });
  for(const [mi,m] of masts.entries()){PART="mast"+mi;
   const dz=deckZAt(m.x);
@@ -1095,32 +1098,31 @@ function buildShip(rig){
     serves a lateen on a big ship's after mast and the single standing sail of a
     boat that has nothing else. */
  /* The cloth of a three-cornered sail: a panel fanned from corner B across the
-    edge between A and C, bellied out in y so it stands full rather than flat.
-    Both edges off B carry the belly and the far edge inherits it, so all three
-    corners come to a point and everything between them is under strain. */
- const triPanel=(B,A,C,belly)=>{const {na,nb,at}=triCloth(B,A,C,belly);
+    edge between A and C (`triCloth`), bellied out in y so it stands full rather
+    than flat, and all three corners come to a point so everything between them
+    is under strain. */
+ const triPanel=({na,nb,at})=>{
   for(let i=0;i<na;i++)for(let j=0;j<nb;j++){const t0=i/na,t1=(i+1)/na,s0=j/nb,s1=(j+1)/nb;
    addFace(F,[at(t0,s0),at(t1,s0),at(t1,s1),at(t0,s1)],P.sail,[0,1,0],{tag:"sail",double:true,back:P.back,amb:0.66,gain:0.46});}
  };
  function lateen(mx,zb,zt){if(!OPT.sails)return;
   const h=zt-zb;
-  const {B,A,C}=lateenCut(mx,zb,zt);
+  const {B,A,C,cloth}=lateenCut(mx,zb,zt);
   const mix=(p,q,s)=>[lerp(p[0],q[0],s),lerp(p[1],q[1],s),lerp(p[2],q[2],s)];
-  // straight lateen yard: a plain chord from tack to peak, so the bellied head
-  // of the cloth stands off it rather than the spar bending with the canvas
+  // straight lateen yard: a plain chord from tack to peak, with the head of the
+  // cloth laced along it and the belly filling out below
   const yq=t=>{const p=mix(B,A,t);return[p[0],p[1]-0.75,p[2]];};
   const YS=16;
   for(let i=0;i<YS;i++){const t0=i/YS,t1=(i+1)/YS;
    addPrism(F,yq(t0),yq(t1),lerp(0.55,0.42,t0),lerp(0.55,0.42,t1),P.dark,"mast");}
   addSpar(F,yq(1),[mx-0.828*h,1.1-0.75,zt+0.069*h],0.42,0.36,P.dark,"mast",0);
-  triPanel(B,A,C,3.6);
+  triPanel(cloth);
  }
  /* The cloth of a four-cornered fore-and-aft sail: two rails, luff and leech,
     with the panel lofted between them and bellied out in y. Both rails keep
     their corners, so the head and foot stay straight enough to read as spars
     and everything between them stands full. */
- const quadPanel=(tack,head,clew,peak,belly)=>{
-  const {at}=quadCloth(tack,head,clew,peak,belly);
+ const quadPanel=({at})=>{
   const NV=12,NU=3;
   for(let i=0;i<NV;i++){const v0=i/NV,v1=(i+1)/NV;
    for(let j=0;j<NU;j++){const u0=j/NU,u1=(j+1)/NU;
@@ -1131,26 +1133,26 @@ function buildShip(rig){
     the throat with the peak the highest corner of the sail. Proportions are
     cut from the band it stands in, the same way the lateen's are. */
  function gaffSail(mx,zb,zt,run){if(!OPT.sails)return;
-  const {tack,clew,throat,peak}=gaffCut(mx,zb,zt,run);
+  const {tack,clew,throat,peak,cloth}=gaffCut(mx,zb,zt,run);
   const off=(p)=>[p[0],p[1]-0.75,p[2]];
   const past=(a,b,t)=>[lerp(a[0],b[0],t),lerp(a[1],b[1],t),lerp(a[2],b[2],t)];
   // the boom, jaw at the mast and run a little past the clew
   addSpar(F,off(past(tack,clew,-0.04)),off(past(tack,clew,1.06)),0.5,0.4,P.dark,"mast",0);
   // the gaff, jaw at the throat and run a little past the peak
   addSpar(F,off(past(throat,peak,-0.04)),off(past(throat,peak,1.08)),0.45,0.35,P.dark,"mast",0);
-  quadPanel(tack,throat,clew,peak,2.8);
+  quadPanel(cloth);
  }
  /* A lugsail: four sided on a yard slung across the pole and raking the way a
     lateen's does, the forward end low and the peak high and aft. More of the
     cloth stands abaft the mast than forward of it, which is what makes it a
     lug rather than a square sail askew. */
  function lugSail(mx,zb,zt,run){if(!OPT.sails)return;
-  const {tack,clew,fore,peak}=lugCut(mx,zb,zt,run);
+  const {tack,clew,fore,peak,cloth}=lugCut(mx,zb,zt,run);
   const off=(p)=>[p[0],p[1]-0.75,p[2]];
   const past=(a,b,t)=>[lerp(a[0],b[0],t),lerp(a[1],b[1],t),lerp(a[2],b[2],t)];
   // the slung yard, run past both ends of the head
   addSpar(F,off(past(fore,peak,-0.06)),off(past(fore,peak,1.06)),0.5,0.38,P.dark,"mast",0);
-  quadPanel(tack,fore,clew,peak,2.6);
+  quadPanel(cloth);
  }
  /* A headsail has no spar at all: it is tacked down to the bowsprit, hoisted up
     the stay to the masthead, and sheeted home to the deck aft of both. So it is
@@ -1159,7 +1161,7 @@ function buildShip(rig){
     forward of. */
  function headsail(tack,head,clew){if(!OPT.sails)return;
   const y=1.1, at=p=>[p[0],p[1]+y,p[2]];
-  triPanel(at(tack),at(head),at(clew),2.6);
+  triPanel(triCloth(at(tack),at(head),at(clew),2.6));
  }
  for(const [mi,m] of masts.entries()) for(const s of m.sails){PART="mast"+mi;
   if(s.cut==="triangle") lateen(m.x,s.zb,s.zt);
@@ -1176,27 +1178,14 @@ function buildShip(rig){
  if(OPT.rig){const rope=P.dark,r=0.3;
   // shrouds land on the rail cap abreast of the mast, not out on the open deck
   for(const [mi,m] of masts.entries()){const st=stays[mi],sz=st.sz;PART="mast"+mi;
-   // a single-shrouded mast: one rope a side from abreast of her to the top of her pole
+   // a single-roped mast: one rope a side from square abreast of her to the top of her pole
    if(st.single){
-    for(const side of[1,-1]) addSpar(F,[m.x,0,st.head],footAt(m.x+st.lead,side),r,r,rope,"rig",0);
+    for(const side of[1,-1]) addSpar(F,[m.x,0,st.head],footAt(m.x,side),r,r,rope,"rig",0);
     continue;
    }
-   for(const side of[1,-1]){
-    // the after mast carries one shroud a side, square-rigged masts two. The one
-    // is set abaft its mast: level with it, it projected straight down the pole
-    // and read as the mast carrying on through the quarterdeck.
-    const foot=ladderFeet(m,side);
-    for(const p of foot) addSpar(F,[m.x,0,sz],p,r,r,rope,"rig",0);
-    // ratlines: the rungs stop well short of the head, as they do aboard, and
-    // they need two shrouds to run between
-    if(!m.ratlines||foot.length<2)continue;
-    const RN=7, top=0.62;
-    for(let k=1;k<=RN;k++){
-     const t=(k/(RN+1))*top,
-      a=foot[0].map((c,i)=>lerp(c,[m.x,0,sz][i],t)),
-      b=foot[1].map((c,i)=>lerp(c,[m.x,0,sz][i],t));
-     addSpar(F,a,b,0.17,0.17,rope,"rig",0,4);
-    }}}
+   for(const side of[1,-1]) for(const{a,b,r,sides}of ladderOf(m,side,sz))
+    addSpar(F,a,b,r,r,rope,"rig",0,sides);
+  }
   /* Stays run forward down the line of masts: each one from a point near its own
      head to a point near the head of the mast ahead of it, and the foremost mast
      to the end of the bowsprit. Chaining them off the masts that are actually

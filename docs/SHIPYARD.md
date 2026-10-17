@@ -307,14 +307,14 @@ Three things fall out of it that were hard-coded before and had to stop being:
   until her sheer sweeps up past it, and from there to the taffrail (or the stem) it rises with the
   sheer, the way a quarterdeck was laid on the same sweep as the deck below. Seven classes had a
   level quarterdeck sunk under the top of their own side at the stern before this.
-- Shrouds keep out of the canvas. Fore-and-aft sails stand on the starboard side of the pole, and
-  on a gundalow her ladder read as one stood through her lateen. A mast whose ladder would cut the
-  cloth carries one rope a side to the very top of her pole instead, with no ratlines, and the pole
-  rises (up to 30% of its length) and the rope is led a little fore or aft (up to 15%) until it
-  clears. Gaff masts clear just over their old top and the xebecs' lateens clear with a lead; the
-  gundalow's and the Bermuda sloop's single lateens do not clear inside those limits, so the pole
-  goes to its highest and the rope lies against the sail, as a lateen's lee shroud did. Square
-  masts keep their ladders.
+- Shrouds keep out of the canvas. Lateens and lugs hang on the starboard side of the pole, and on a
+  gundalow her ladder read as one stood through her lateen, because the lateen's head bellied a
+  long way off its yard and left a pocket for the shrouds to run into. Its head is now laced along
+  the yard and the cloth fills out below, which by itself clears the gundalow's and the Bermuda
+  sloop's ladders. A mast whose ladder still cuts the cloth carries one rope a side, square abreast,
+  to the very top of a pole carried up (6 to 30% of its length) until the rope clears or at least
+  only lies against the sail: the xebecs' mains and the light xebec's fore. Square and gaff masts
+  keep their ladders.
 
 The station numbers are the galleon's own, so handing her rig back reproduces the ship this file has
 always drawn. Verified against the pre-change code through the same renderer: 6 pixels of 177,952

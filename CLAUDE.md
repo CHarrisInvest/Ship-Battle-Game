@@ -116,15 +116,16 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   and sheer scores are separate figures, and on seven classes the sheer won: a level quarterdeck sat
   under the top of her own side with her transom standing over its rail. A castle that clears her
   sheer the whole way, the galleon's and the big rates', is the level deck it always was.
-  **A ladder is not set up through a sail**: fore-and-aft canvas stands on her starboard side of
-  the pole, so a mast whose starboard shrouds would cut a lateen, gaff, lug or headsail (tested
-  against the cloth's own surface, `triCloth` and `quadCloth`, which the sails are drawn from) is
-  rigged as such a boat was: one rope a side to the very top of her pole, no ratlines, and the pole
-  carried up (6 to 30% of its length) with the rope led up to 15% fore or aft until it clears. A
-  gaff clears at the least lift; a lone lateen on a narrow hull (the gundalow's, the Bermuda
-  sloop's) clears inside neither limit, so her pole goes to its highest and the rope lies against
-  her sail like a lateen's lee shroud. A mast whose ladders clear keeps them and her pole, which is
-  every square-rigged mast and the galleon's mizzen.
+  **A ladder is not set up through a sail.** A lateen or a lug hangs from a yard on her starboard
+  side of the pole, and a lateen's head is laced along its yard (`laced` in `triCloth`), so the
+  cloth fills out below the spar instead of standing off it with a pocket a rope could run into. A
+  mast whose starboard ladder would still cut a lateen or lug (tested against the cloth's own
+  surface, the one the sail is drawn from, a rope's thickness either side) is rigged as such a boat
+  was: one rope a side, square abreast of her, to the very top of a pole carried up 6 to 30% of its
+  length until the rope clears, or failing that until it only lies against the cloth. Ropes are
+  never led fore or aft to dodge a sail. That leaves the xebecs' mains and the light xebec's fore
+  single-roped; every other mast keeps its ladder and her pole, gaff masts included, whose ladders
+  only brush the luff by the pole.
 - **The Ship Lab is how a ship's look is changed.** `shiplab/` is a dev page that draws every class
   through `createMenuShip` with her fit, bearing, speed, the wind and the hull figures she is drawn
   from under the reader's hand; the figures are reshaped live under a lab id of their own, so
