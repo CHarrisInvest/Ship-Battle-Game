@@ -146,7 +146,13 @@ try {
       clock.t = t0 + Math.ceil((world.tick / 60) * 1000) + 100;
       if (world.tick % 300 === 0) await new Promise((r) => setTimeout(r, 0)); // let a piece go up
     }
-    const pieces = (await pool.query("select count(*)::int as n from round_inputs where round_id = $1", [round.roundId])).rows[0].n;
+    // The pieces flushed as she sailed go up one after another, each a round trip to the server and
+    // the database, and a turn of the loop every 300 ticks is not always time enough for one: on a
+    // slow runner only the first had landed when this counted. So wait for them to land, but count
+    // them before the finish is sent, which is what says they went up as she sailed.
+    const count = async () => (await pool.query("select count(*)::int as n from round_inputs where round_id = $1", [round.roundId])).rows[0].n;
+    let pieces = await count();
+    for (const end = Date.now() + 10000; pieces < 2 && Date.now() < end; pieces = await count()) await new Promise((r) => setTimeout(r, 50));
     const out = await rec.finish(world.tick);
     const want = R.bank(before.data, voyageRun(world, "p1"));
     check(pieces > 1, `the log went up in pieces as she sailed (${pieces} before the end)`);
