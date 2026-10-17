@@ -73,8 +73,8 @@ const SHOTS = [
   { key: "title", kind: "card", secs: 2.8 },
   // the menu's caption sits low, over the mode cards, so the plate and her ship stay clear
   { key: "menu", kind: "menu", secs: 4.4, caption: "Outfit the ship.", captionAt: 0.905 },
-  { key: "big", kind: "play", hull: "firstRate", secs: 9.4, seeds: 10, caption: "Start as an unrated ship, upgrade to a 1st rate." },
-  { key: "fast", kind: "play", hull: "baltimoreClipper", secs: 7.4, seeds: 10, caption: "Battle rival captains." },
+  { key: "big", kind: "play", hull: "firstRate", secs: 9.4, seeds: 40, caption: "Start as an unrated ship, upgrade to a 1st rate." },
+  { key: "fast", kind: "play", hull: "baltimoreClipper", secs: 7.4, seeds: 40, caption: "Battle rival captains." },
   { key: "end", kind: "card", secs: 3.6 },
 ];
 if (QUICK) for (const shot of SHOTS) { shot.secs = Math.max(0.8, shot.secs * 0.12); shot.seeds = 2; }
