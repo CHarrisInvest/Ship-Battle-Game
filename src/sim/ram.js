@@ -3,7 +3,7 @@
  */
 
 import { clamp } from "./math.js";
-import { applyHit } from "./round.js";
+import { applyHit, hostile } from "./round.js";
 import * as exact from "../exact.js";
 
 export const HULL_PAD = 3; // rigging and oars, so hulls never touch pixels
@@ -96,8 +96,12 @@ export function stepRam(world, dt) {
     for (let j = i + 1; j < ships.length; j++) {
       const a = ships[i], b = ships[j];
       if (!a.alive || !b.alive) continue;
-      // consorts cannot ram each other, but no two hulls may ever share the same water
-      const hostile = world.rules.melee || a.controller !== b.controller;
+      // Consorts cannot ram each other, but no two hulls may ever share the same water. Between
+      // sides the blow lands on a consort as it would on anyone, because two hulls meeting at
+      // speed is a fact of the sea rather than a choice of target, and nobody is paid or counted
+      // for it: `credit` is what `applyHit` is told about the attacker.
+      const foes = hostile(world, a, b);
+      const hurts = foes || !!world.rules.sides;
       const heldSince = a.locked.get(b);
       if (heldSince !== undefined && world.time - heldSince > RAM_LOCK_MAX) { a.locked.delete(b); b.locked.delete(a); }
       const touch = hullTouch(a, b);
@@ -136,7 +140,7 @@ export function stepRam(world, dt) {
       const weigh = (aspect) => RAM_FINE + (RAM_BEAM - RAM_FINE) * aspect;
 
       let hurtB = 0, hurtA = 0;
-      if (hostile && force > 0 && !a.locked.has(b)) {
+      if (hurts && force > 0 && !a.locked.has(b)) {
         if (driveA > 0 && a.ramCd <= 0) hurtB = ramDmg(a) * force * bowA * bowA * weigh(Math.abs(exact.sin(b.heading - toB)));
         if (driveB > 0 && b.ramCd <= 0) hurtA = ramDmg(b) * force * bowB * bowB * weigh(Math.abs(exact.sin(a.heading - toB)));
       }
@@ -156,10 +160,10 @@ export function stepRam(world, dt) {
       // survival for the lower-numbered hull, and the player is always hull number one. Two bows
       // meeting at speed can now put both ships under, and each is credited for her blow even
       // when the other's has just sunk her, because she was afloat when she struck.
-      const aStanding = a.alive, bStanding = b.alive;
+      const aStanding = a.alive && foes, bStanding = b.alive && foes;
       const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2; // where the blow lands, for the screen
-      if (hurtB > 0) { applyHit(world, b, "hull", hurtB, a, "ram", aStanding, mx, my); a.ramCd = RAM_CD; a.baffled = 0; if (hurtB >= RAM_GRAZE) a.rams++; rammed = true; }
-      if (hurtA > 0) { applyHit(world, a, "hull", hurtA, b, "ram", bStanding, mx, my); b.ramCd = RAM_CD; b.baffled = 0; if (hurtA >= RAM_GRAZE) b.rams++; rammed = true; }
+      if (hurtB > 0) { applyHit(world, b, "hull", hurtB, a, "ram", aStanding, mx, my); a.ramCd = RAM_CD; a.baffled = 0; if (foes && hurtB >= RAM_GRAZE) a.rams++; rammed = true; }
+      if (hurtA > 0) { applyHit(world, a, "hull", hurtA, b, "ram", bStanding, mx, my); b.ramCd = RAM_CD; b.baffled = 0; if (foes && hurtA >= RAM_GRAZE) b.rams++; rammed = true; }
       if (rammed) {
         a.locked.set(b, world.time); b.locked.set(a, world.time);
         // each ship spends the part of her way that went into the impact, so one driving

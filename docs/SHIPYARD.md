@@ -298,7 +298,9 @@ Three things fall out of it that were hard-coded before and had to stop being:
   that has lost its sails rather than a boat that never had them.
 - The masthead pennant flies from the truck of the tallest mast stepped, and from nothing if there is
   none. It used to be pinned to the height the galleon's main mast happened to reach, which left it
-  hanging in the sky above a cutter.
+  hanging in the sky above a cutter. In the 3D model it and the ensign are live cloth
+  (`render3d/flags.js`): down a fixed wind when she lies stopped, swinging round to stream astern
+  as she gathers way. The 2D fallback keeps the fixed flag.
 - Stays chain off the masts that are actually there, rather than running between fixed points where a
   mast used to be.
 
@@ -318,6 +320,12 @@ colours; the same cast tints her hull and spars at sea. The galleon's form is th
 under the plain Oak identity cast, so she still builds the exact hull this file always drew, checked
 by pixel diff, and a cutter is finally a small hull under a small rig. Her battery is the exception,
 and deliberately: see **The anchor is pierced too** below.
+
+**Refining a class's look happens in the Ship Lab** (`shiplab/`, see the README). Her reference
+figures are sliders there, drawn by the real model as they move, and what comes out is a list of
+figures for `data/hulls.tsv` rather than an edit to anything the game reads. A shape the reference
+figures cannot reach is a change to the rules in `hullform.js` or `galleon.js`, which every class
+shares; `npm run shiplab -- --diff staging` is how to see which classes such a change moved.
 
 ### The volley
 

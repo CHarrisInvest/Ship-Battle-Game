@@ -11,6 +11,7 @@
     "smoke": "node tools/smoke.mjs",
     "online-smoke": "node tools/online-smoke.mjs",
     "purity": "node tools/purity.mjs",
+    "camera-check": "node tools/three-camera-check.mjs",
     "sim-test": "node tools/sim-test.mjs && node tools/captains-test.mjs",
     "exact-test": "node tools/exact-test.mjs",
     "hold-test": "node tools/hold-test.mjs",
@@ -22,6 +23,7 @@
     "inputlog": "node tools/inputlog.mjs",
     "icon": "node tools/icon.mjs",
     "promo": "node tools/promo.mjs",
+    "shiplab": "node tools/shiplab.mjs",
     "import": "node tools/import.mjs",
     "workbook": "node tools/workbook.mjs",
     "workbook:read": "node tools/workbook.mjs --read"
@@ -31,6 +33,7 @@
     "pg": "^8.23.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "three": "0.186.1",
     "ws": "^8.22.0"
   },
   "devDependencies": {

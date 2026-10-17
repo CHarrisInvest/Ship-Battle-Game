@@ -1,0 +1,142 @@
+<!doctype html>
+<!-- THE SHIP LAB. A dev page, never part of the game: every class that sails, through the game's own
+     ship model, with her fit, her bearing, her speed, the wind and the figures her hull is drawn from
+     all under the reader's hand. `npx vite` serves it at /shiplab/, a branch's preview deployment
+     builds it, and `npm run shiplab -- --artifact` folds it into one file to publish as an Artifact.
+     The tool strips the document tags below for that, so keep the title, the metas, the one style
+     block and the body in this shape. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sternchase Ship Lab</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="robots" content="noindex">
+<style>
+/* Layout: the ship on her plate is the page; on a phone she stays pinned at the top while the
+   controls scroll under her, and on a wide screen she sits beside them. One dark look, the game's
+   own menu: deep water, a panel a shade lighter, ink, and the gold the game titles in. */
+:root {
+  --deep: #0b3331;
+  --plate: #0f4542;
+  --panel: #113f3c;
+  --rule: rgba(238, 244, 242, 0.13);
+  --ink: #eef4f2;
+  --muted: rgba(238, 244, 242, 0.64);
+  --gold: #e8c877;
+  --gold-ink: #0b3331;
+  --display: Georgia, "Iowan Old Style", "Times New Roman", serif;
+  --ui: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; touch-action: manipulation; }
+[hidden] { display: none !important; }
+html { background: var(--deep); }
+body {
+  margin: 0; background: var(--deep); color: var(--ink); font: 14px/1.45 var(--ui);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 12px 40px;
+}
+.wrap { max-width: 1180px; margin: 0 auto; display: grid; gap: 14px; }
+header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+h1 { margin: 0; font: 26px/1.1 var(--display); color: var(--gold); letter-spacing: 0.04em; text-transform: uppercase; }
+h1 small { display: block; font: 13px/1.3 var(--ui); color: var(--muted); letter-spacing: 0; text-transform: none; margin-top: 4px; }
+h2 { margin: 0 0 8px; font: 15px/1.2 var(--display); color: var(--gold); letter-spacing: 0.06em; text-transform: uppercase; }
+
+.seg { display: inline-flex; background: var(--panel); border: 1px solid var(--rule); border-radius: 20px; padding: 3px; gap: 2px; flex-wrap: wrap; }
+.seg button { font: 600 13px var(--ui); color: var(--muted); background: transparent; border: 0; border-radius: 20px; padding: 7px 13px; cursor: pointer; min-height: 34px; }
+.seg button[aria-pressed="true"] { background: var(--gold); color: var(--gold-ink); }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+
+.main { display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 900px) {
+  .main { grid-template-columns: minmax(0, 1.35fr) minmax(320px, 1fr); align-items: start; }
+  .stage.one { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 12px); }
+}
+@media (max-width: 899px) {
+  /* only the plate rides along at the top; her facts move into the class panel below */
+  .stage.one { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--deep); padding-block: 4px 8px; }
+  .stage.one .facts { display: none; }
+  body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--deep); }
+}
+@media (min-width: 900px) { .panel .facts { display: none; } }
+
+.plate { position: relative; background: radial-gradient(ellipse at 50% 62%, #165753 0%, var(--plate) 45%, var(--deep) 100%); border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; }
+.plate canvas { display: block; width: 100%; height: auto; aspect-ratio: 1 / 0.62; max-width: 100%; cursor: grab; touch-action: pan-y; }
+.plate canvas:active { cursor: grabbing; }
+.plate .tag { position: absolute; left: 12px; top: 10px; right: 12px; display: flex; justify-content: space-between; gap: 8px; pointer-events: none; }
+.plate .name { font: 19px/1.15 var(--display); color: var(--gold); }
+.plate .hint { font: 12px var(--mono); color: var(--muted); white-space: nowrap; }
+.stage.one .plate { box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35); }
+
+.facts { font-size: 13px; color: var(--muted); margin: 8px 2px 0; }
+.panel .facts { margin: 0; }
+
+.panel { background: var(--panel); border: 1px solid var(--rule); border-radius: 10px; padding: 14px; display: grid; gap: 12px; min-width: 0; }
+.controls { display: grid; gap: 12px; min-width: 0; }
+.row { display: grid; gap: 6px; }
+.row > label, .row > .label { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-weight: 600; font-size: 13px; }
+.row .val { font: 13px var(--mono); color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.row .val.changed { color: var(--gold); }
+.row .note { font-size: 12px; color: var(--muted); font-weight: 400; }
+.pick { display: flex; gap: 6px; }
+.pick select { flex: 1 1 auto; min-width: 0; }
+select { font: 15px var(--ui); color: var(--ink); background: var(--deep); border: 1px solid var(--rule); border-radius: 10px; padding: 8px 10px; min-height: 40px; }
+.step { font: 18px var(--ui); color: var(--ink); background: var(--deep); border: 1px solid var(--rule); border-radius: 10px; width: 44px; min-height: 40px; cursor: pointer; }
+input[type="range"] { width: 100%; accent-color: var(--gold); height: 28px; margin: 0; }
+.inline { display: flex; align-items: center; gap: 10px; }
+.inline input[type="range"] { flex: 1 1 auto; min-width: 0; }
+.toggle { font: 600 13px var(--ui); color: var(--ink); background: var(--deep); border: 1px solid var(--rule); border-radius: 20px; padding: 6px 12px; min-height: 34px; cursor: pointer; white-space: nowrap; }
+.toggle[aria-pressed="true"] { border-color: var(--gold); color: var(--gold); }
+.arrow { width: 28px; height: 28px; flex: 0 0 auto; color: var(--gold); }
+
+.shape-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.ghost { font: 600 13px var(--ui); color: var(--gold); background: transparent; border: 1px solid var(--rule); border-radius: 20px; padding: 6px 12px; min-height: 34px; cursor: pointer; }
+.ghost:disabled { opacity: 0.4; cursor: default; }
+.lede { margin: 0; font-size: 13px; color: var(--muted); max-width: 62ch; }
+.changes { width: 100%; min-height: 84px; resize: vertical; font: 12px/1.5 var(--mono); color: var(--ink); background: var(--deep); border: 1px solid var(--rule); border-radius: 10px; padding: 10px; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.primary { font: 700 14px var(--ui); color: var(--gold-ink); background: var(--gold); border: 0; border-radius: 10px; padding: 10px 16px; min-height: 42px; cursor: pointer; }
+.primary:disabled { opacity: 0.45; cursor: default; }
+.said { font-size: 13px; color: var(--muted); }
+
+.fleet { display: grid; gap: 10px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (min-width: 640px) { .fleet { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (min-width: 1100px) { .fleet { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.card { display: grid; gap: 0; padding: 0; text-align: left; background: none; border: 0; cursor: pointer; color: inherit; min-width: 0; }
+.card .plate canvas { cursor: pointer; touch-action: manipulation; }
+.card .card-name { font: 15px/1.2 var(--display); color: var(--gold); padding: 6px 2px 0; }
+.card .edited { position: absolute; top: 8px; right: 8px; font: 11px var(--ui); color: var(--gold-ink); background: var(--gold); border-radius: 20px; padding: 1px 7px; }
+
+footer { font-size: 12px; color: var(--muted); }
+footer p { margin: 0; max-width: 72ch; }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Ship Lab<small>Every class at sea in Sternchase, drawn by the game's own model</small></h1>
+    <div class="seg" role="group" aria-label="View">
+      <button type="button" id="view-one" aria-pressed="true">One ship</button>
+      <button type="button" id="view-fleet" aria-pressed="false">Whole fleet</button>
+    </div>
+  </header>
+  <div class="main">
+    <section class="stage one" id="stage-one" aria-label="The ship">
+      <div class="plate">
+        <canvas id="ship" aria-label="The ship, drag to turn her"></canvas>
+        <div class="tag"><span class="name" id="ship-name"></span><span class="hint" id="ship-hint"></span></div>
+      </div>
+      <p class="facts" id="facts"></p>
+    </section>
+    <section class="stage fleet" id="stage-fleet" aria-label="The fleet" hidden></section>
+    <div class="controls" id="controls"></div>
+  </div>
+  <footer><p id="stamp"></p></footer>
+</div>
+<script type="module" src="./main.js"></script>
+</body>
+</html>

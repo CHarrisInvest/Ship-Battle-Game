@@ -22,13 +22,51 @@ import { analyticsLive, conversionsLive, measurementLive, track } from "./analyt
 import { PrivacyPolicy } from "./privacy.jsx";
 import {
   createWorld, step, TICK, voyageStats, repairQuote, shipOf, playOn, playsOn, outInWeather, stormPhase, volleyWindow, reloadOf, canFire,
-  HULL_PATCH_CAP, MAST_JURY_CAP, barsOf, MODES as RULES, MODE_LIST, modeOf, clamp,
+  HULL_PATCH_CAP, MAST_JURY_CAP, barsOf, MODES as RULES, MODE_LIST, modeOf, clamp, SIDES, SIDE_MIN, SIDE_MAX,
 } from "./sim/index.js";
-import { C, UI } from "./render/palette.js";
+import { C, UI, SIDE_COLORS } from "./render/palette.js";
 import { createRenderer } from "./render/renderer.js";
 import { createFx, fxEvents, stepFx } from "./render/effects.js";
 import { HUD, radarRight } from "./render/hud.js";
 import { useControls } from "./input/controls.js";
+
+/**
+ * three.js, in a chunk of its own (`render3d/index.js`). It is asked for once the screen has
+ * mounted, so the first paint never waits on it: until it arrives the sea is the 2D one and the
+ * plate is `drawGalleon`, and both hand over to the 3D ones when it does. Every visitor asks for
+ * it and runs the same code. `three3d` is the module once it is here, and null until then (or for
+ * good, if the chunk could not be fetched, in which case the 2D picture simply stays).
+ */
+let three3d = null;
+let three3dLoad = null;
+function loadThree() {
+  if (!three3dLoad) {
+    three3dLoad = import("./render3d/index.js")
+      .then((m) => (three3d = m))
+      .catch(() => null);
+  }
+  return three3dLoad;
+}
+
+/** The plate's ship painted flat by drawGalleon: what shows until three.js arrives, or without it. */
+function flatMenuShip(canvas) {
+  const ctx = canvas.getContext("2d");
+  let w = canvas.width, h = canvas.height, dpr = 1;
+  return {
+    kind: "2d",
+    resize(cw, ch, r = 1) {
+      w = cw; h = ch; dpr = r;
+      canvas.width = Math.round(cw * r);
+      canvas.height = Math.round(ch * r);
+    },
+    draw(spec, deg) {
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, w, h);
+      drawGalleon(ctx, w, h, deg, spec || undefined);
+    },
+    dispose() {},
+  };
+}
 
 /**
  * STERNCHASE: HELM & HULL — pirate battles at sea, on a tilted (isometric-ish) sea with tall wooden
@@ -136,6 +174,16 @@ const SUNK_LINE = {
   hull: "Your hull is breached. She goes under.",
   crew: "Crew routed. You strike your colors.",
 };
+// How a round between sides ended for her. Won afloat, won from the bottom, lost, and the round
+// both sides went under in together, which nobody won. The note is what the SUNK screen says while
+// her side is still fighting: the round is not over for her purse until it is over for her side.
+const SIDE_LINE = {
+  wonAfloat: "The other side has no ship left afloat, and yours is still standing. The whole purse is yours.",
+  wonSunk: "You went under before the end, but your side carried the day. A share of the purse is yours.",
+  lost: "The other side still has ships afloat, and yours has none.",
+  together: "Both sides went under in the same moment. Nobody won.",
+};
+const SIDE_FIGHTS_ON = "Your side fights on. The round ends when one side has no ship left, and what you banked is counted then.";
 
 // A seed for the sea behind the menu, a round laid out and never sailed. A voyage's seed is the
 // server's: the engine is handed it and never reaches for `Math.random`, so the server's replay of
@@ -168,6 +216,7 @@ const cap = (t) => t.charAt(0).toUpperCase() + t.slice(1);
 
 export default function App() {
   const canvasRef = useRef(null);
+  const overlayRef = useRef(null); // the bars, guides, words and radar, flat over the 3D sea
   const gameRef = useRef(null); // the world: the round being sailed, or the one lying behind the menu
   const startRef = useRef(() => {});
   const syncRef = useRef(() => {});
@@ -206,6 +255,9 @@ export default function App() {
   const [sunk, setSunk] = useState(0);
   const [left, setLeft] = useState(0);
   const [rank, setRank] = useState({ rank: 1, total: 1 });
+  // Between sides, where the two fleets stand: her side's ships afloat and the other's, and how much
+  // hull each has left, which is what the badge in the rank's place shows.
+  const [sides, setSides] = useState(null);
   // What each repair would cost and put back, recomputed with the rest of the HUD so the rail prices
   // the patch she would get right now rather than the one she could have afforded a second ago.
   const [mend, setMend] = useState({});
@@ -231,6 +283,9 @@ export default function App() {
   const [net, setNet] = useState(null);
   const [netNote, setNetNote] = useState("");
   const [onlineEnd, setOnlineEnd] = useState(false);
+  // ...and how a round between sides ended for her, "won", "lost" or "draw", which picks the end
+  // screen's headline; null while her side is still at it or in any other round
+  const [sideEnd, setSideEnd] = useState(null);
   // Watching the rest of a round once she has sunk: whether there is a fight left to watch, the ship
   // the camera is on (its id in `watchRef`, which the frame loop reads), and how it ended.
   const [canWatch, setCanWatch] = useState(false);
@@ -350,7 +405,9 @@ export default function App() {
     let lastTap = 0;
     const onTouchEnd = (e) => {
       const now = e.timeStamp;
-      if (now - lastTap < 350) e.preventDefault();
+      // a touchend the browser has already committed to (a scroll under way) cannot be cancelled,
+      // and asking anyway only leaves a complaint in the console
+      if (now - lastTap < 350 && e.cancelable) e.preventDefault();
       lastTap = now;
     };
     const onGesture = (e) => e.preventDefault();
@@ -371,9 +428,17 @@ export default function App() {
     setCoins(Math.floor(p.coins));
     setSunk(g.sunk);
     const aliveCount = g.ships.filter((s) => s.alive).length;
-    // her rivals, not every hull afloat: the pill that counts them used to count her as well, so a
-    // fresh free-for-all read "11 left" under a card promising ten other captains
-    setLeft(Math.max(0, aliveCount - (p.alive ? 1 : 0)));
+    if (g.rules.sides) {
+      // the enemy afloat, and where the two fleets stand: ships and hull left on each side
+      const tally = (mine) => g.ships.filter((s) => (s.side === p.side) === mine).reduce((t, s) => ({ ships: t.ships + (s.alive ? 1 : 0), hull: t.hull + (s.alive ? s.hull : 0), max: t.max + s.maxHull }), { ships: 0, hull: 0, max: 0 });
+      const ours = tally(true), theirs = tally(false);
+      setLeft(theirs.ships);
+      setSides({ side: p.side, ours, theirs });
+    } else {
+      // her rivals, not every hull afloat: the pill that counts them used to count her as well, so a
+      // fresh free-for-all read "11 left" under a card promising ten other captains
+      setLeft(Math.max(0, aliveCount - (p.alive ? 1 : 0)));
+    }
     setRank({ rank: p.rank || 1, total: g.aliveCount || aliveCount });
     if (g.rules.repairs) {
       const q = {};
@@ -416,7 +481,25 @@ export default function App() {
    * the round reads them.
    */
   useEffect(() => {
-    const renderer = createRenderer(canvasRef.current);
+    // The sea in three dimensions, on the WebGL canvas with its overlay stacked over it. Where the
+    // browser cannot give a canvas WebGL, the 2D sea draws on the overlay canvas instead, which the
+    // 3D renderer leaves untouched until its own canvas is standing. Same calls either way.
+    //
+    // three.js comes in its own chunk (see `loadThree`): the 2D sea paints from the first frame and
+    // the 3D one takes over the moment the chunk is here, or never, if this device cannot draw it.
+    let renderer = three3d ? null : createRenderer(overlayRef.current);
+    let gone = false;
+    const take3d = (m) => {
+      if (gone || !m) return false;
+      try {
+        renderer = m.createRenderer3d(canvasRef.current, overlayRef.current);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    if (!renderer && !take3d(three3d)) renderer = createRenderer(overlayRef.current);
+    if (renderer.kind !== "3d") loadThree().then((m) => { if (take3d(m)) resize(); });
     let raf = 0,
       last = 0,
       bank = 0, // real time not yet stepped, in seconds
@@ -449,11 +532,12 @@ export default function App() {
       return next || s;
     }
 
+    // ...preferring a ship of her own side, between sides: the fight she wants to follow is hers
     function nearestAfloat(g, from) {
       let best = null, bd = Infinity;
       for (const s of g.ships) {
         if (!s.alive || s === from) continue;
-        const d = (s.x - from.x) ** 2 + (s.y - from.y) ** 2;
+        const d = ((s.x - from.x) ** 2 + (s.y - from.y) ** 2) * (from.side && s.side !== from.side ? 1e6 : 1);
         if (d < bd) { bd = d; best = s; }
       }
       return best;
@@ -623,7 +707,13 @@ export default function App() {
             if (e.type === "round_over") {
               const won = e.result.winners.find((w) => w.playerId === meRef.current);
               liveRef.current = false;
-              if (won) onlineOut(g, { ...won, won: true });
+              if (g.rules.sides) {
+                // the round went to a side, hers or the other: her end screen says which, whether
+                // she is still afloat or has been watching from the bottom
+                const mine = won || e.result.losers.find((l) => l.playerId === meRef.current) || {};
+                watchRef.current = null;
+                onlineOut(g, { ...mine, won: !!won });
+              } else if (won) onlineOut(g, { ...won, won: true });
               else if (watchRef.current != null && playsOn(g)) {
                 // the last of her friends is out and the AI fight on: she watches on, sailed here
                 gameRef.current = playOn(g);
@@ -656,6 +746,8 @@ export default function App() {
       return [
         Math.floor(p.coins), g.sunk, g.ships.filter((s) => s.alive).length, p.alive, p.rank, g.aliveCount,
         p.hull, p.mast, p.crew,
+        // between sides, the hull the two fleets have left, to the point
+        g.rules.sides ? g.ships.reduce((t, s) => t + (s.alive ? (s.side === p.side ? 1 : 1000) * Math.round(s.hull) : 0), 0) : 0,
         w ? Math.max(0, Math.ceil(w.grace - g.time)) : 0, w ? outInWeather(g, p) : false, w ? stormPhase(g.time, w) : "",
       ].join(",");
     }
@@ -747,6 +839,7 @@ export default function App() {
       setBanked(0);
       setBounty(0);
       setMode(m);
+      setSideEnd(null);
       setPhase("playing");
       // And which modes are entered.
       track("voyage_start", { mode: m });
@@ -775,10 +868,12 @@ export default function App() {
       setResult("");
       setBanked(null);
       setBounty(0);
-      setMode("ffa");
+      setMode(round.mode);
       setOnlineEnd(false);
+      setSideEnd(null);
+      setWatchNote("");
       setPhase("playing");
-      track("voyage_start", { mode: "online" });
+      track("voyage_start", { mode: "online", field: round.mode });
     }
     startOnlineRef.current = startOnline;
 
@@ -788,10 +883,31 @@ export default function App() {
       setWatchNote("");
     }
 
-    /** She is out of the round with friends, sunk or the last afloat: the end screen, over the sea. */
+    /**
+     * She is out of the round with friends, sunk or the last afloat: the end screen, over the sea.
+     * Between sides it is shown twice over if she sinks first: once for her sinking, with her side
+     * still fighting and her purse still open, and again when the round goes to a side.
+     */
     function onlineOut(g, out) {
       const s = voyageStats(g, meRef.current);
       setStats(s);
+      if (g.rules.sides) {
+        const me = shipOf(g, meRef.current), r = g.result;
+        if (!r.over) { setResult(SUNK_LINE[out.cause] || SUNK_LINE.crew); setWatchNote(SIDE_FIGHTS_ON); setSideEnd(null); }
+        else {
+          setWatchNote("");
+          if (r.side === null) { setResult(SIDE_LINE.together); setSideEnd("draw"); }
+          else if (out.won) { setResult(me.alive ? SIDE_LINE.wonAfloat : SIDE_LINE.wonSunk); setSideEnd("won"); }
+          else { setResult(SIDE_LINE.lost); setSideEnd("lost"); }
+        }
+        setPlace({ rank: 0, total: 0 });
+        setCanWatch(!me.alive && !r.over);
+        setOnlineEnd(true);
+        setPhase(out.won ? "won" : "dead");
+        if (r.over) track("voyage_end", { mode: "online", field: "teams", result: out.won ? "won" : r.side === null ? "draw" : "lost", kills: s.kills, seconds: Math.round(s.time) });
+        syncRef.current();
+        return;
+      }
       setPlace({ rank: out.rank, total: g.ships.length });
       setResult(out.won ? WON_LAST : SUNK_LINE[out.cause] || SUNK_LINE.crew);
       setCanWatch(!out.won && !g.result.over);
@@ -807,8 +923,10 @@ export default function App() {
     window.addEventListener("resize", resize);
     raf = requestAnimationFrame(loop);
     return () => {
+      gone = true;
       window.removeEventListener("resize", resize);
       cancelAnimationFrame(raf);
+      renderer.dispose?.();
     };
   }, []);
 
@@ -831,6 +949,8 @@ export default function App() {
           <Pill label={`${sunk} sunk`}><SunkIcon /><span>{sunk}</span></Pill>
           <Pill label={`${left} hunting you`}><ShipIcon /><span>{left} hunting</span></Pill>
         </>
+      ) : rules.sides ? (
+        <Pill label={`${left} enemy ships left`}><ShipIcon /><span>{left} enemy</span></Pill>
       ) : (
         <Pill label={`${left} rivals left`}><ShipIcon /><span>{left} left</span></Pill>
       )}
@@ -883,6 +1003,10 @@ export default function App() {
       {/* The play surface swallows the lot: no pan, no pinch, no double-tap zoom. A finger on the sea
           is steering or it is nothing, and a gesture landing here mid-fight is never what was meant. */}
       <canvas ref={canvasRef} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", display: "block", touchAction: "none" }} />
+      {/* The overlay over the 3D sea: the bars over each ship, the aiming guides, the words on the
+          water, the storm's edge, the vignette and the radar. It takes no touches of its own, so a
+          finger on it is a finger on the sea, and says `none` for the same reason the sea does. */}
+      <canvas ref={overlayRef} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", display: "block", touchAction: "none", pointerEvents: "none" }} />
 
       {/* Every control sits inside this box, which is the screen less the phone's notch, corners
           and home bar, so nothing lands under them when the game runs full screen from the home
@@ -904,6 +1028,7 @@ export default function App() {
             <div style={{ position: "absolute", top: 8, left: HUD.pad, right: radarRight(box.w, box.h, rules.guns) + HUD.radar + HUD.pad, display: "flex", gap: 6, alignItems: "flex-start" }}>
               <div style={{ flex: "0 0 auto", display: "flex", gap: 6, alignItems: "stretch", pointerEvents: "auto" }}>
                 {rules.ranked && <RankBadge rank={rank.rank} total={rank.total} />}
+                {rules.sides && sides && <SideBadge sides={sides} />}
                 <div style={{ width: 180 }}>
                   <HealthPanel ph={ph} phMax={phMax} />
                 </div>
@@ -919,6 +1044,7 @@ export default function App() {
 
               <div style={{ position: "absolute", top: 36, left: HUD.pad, display: "flex", gap: 6, alignItems: "stretch", width: "min(236px, 72%)", pointerEvents: "auto" }}>
                 {rules.ranked && <RankBadge rank={rank.rank} total={rank.total} />}
+                {rules.sides && sides && <SideBadge sides={sides} />}
                 <div style={{ flex: 1 }}>
                   <HealthPanel ph={ph} phMax={phMax} />
                 </div>
@@ -969,6 +1095,9 @@ export default function App() {
           onReady={(r) => onlineRef.current && onlineRef.current.setReady(r)}
           onJoin={(code) => onlineRef.current && onlineRef.current.join(code)}
           onRivals={(n) => onlineRef.current && onlineRef.current.setRivals(n)}
+          onMode={(m) => onlineRef.current && onlineRef.current.setMode(m)}
+          onPerSide={(n) => onlineRef.current && onlineRef.current.setPerSide(n)}
+          onSide={(s) => onlineRef.current && onlineRef.current.setSide(s)}
           onStart={() => onlineRef.current && onlineRef.current.start()}
           onLeave={() => onlineRef.current && onlineRef.current.leave()}
           onBack={closeOnline}
@@ -1001,9 +1130,11 @@ export default function App() {
       )}
       {phase === "records" && <RecordsScreen hold={hold} onBack={() => setPhase("start")} onAchievements={() => setPhase("achievements")} />}
       {phase === "achievements" && <AchievementsScreen hold={hold} onBack={() => setPhase("records")} />}
-      {phase === "won" && <EndOverlay title={rules.ladder && !onlineEnd ? "LADDER CLIMBED" : "LAST AFLOAT"} titleColor={C.gold} result={result} stats={stats} mode={mode} place={place} hold={hold} banked={banked} bounty={bounty} online={onlineEnd} onAgain={() => startRef.current(mode)} onMenu={() => (onlineEnd ? setPhase("lobby") : setPhase("start"))} />}
+      {/* The headline names the moment: the last afloat, the ladder climbed, or between sides the
+          side's day, won or lost, over whatever became of her own ship. */}
+      {phase === "won" && <EndOverlay title={sideEnd === "won" ? "YOUR SIDE WON" : rules.ladder && !onlineEnd ? "LADDER CLIMBED" : "LAST AFLOAT"} titleColor={C.gold} result={result} stats={stats} mode={mode} place={place} hold={hold} banked={banked} bounty={bounty} online={onlineEnd} onAgain={() => startRef.current(mode)} onMenu={() => (onlineEnd ? setPhase("lobby") : setPhase("start"))} />}
       {phase === "dead" && (
-        <EndOverlay title="SUNK" titleColor={C.crew} result={result} note={watchNote} stats={stats} mode={mode} place={place} hold={hold} banked={banked} bounty={bounty} online={onlineEnd}
+        <EndOverlay title={sideEnd === "lost" ? "YOUR SIDE LOST" : "SUNK"} titleColor={C.crew} result={result} note={watchNote} stats={stats} mode={mode} place={place} hold={hold} banked={banked} bounty={bounty} online={onlineEnd}
           onWatch={canWatch ? () => watchRefs.current.start() : null}
           onAgain={() => startRef.current(mode)} onMenu={() => { watchRef.current = null; if (gameRef.current && gameRef.current.watching) liveRef.current = false; setPhase(onlineEnd ? "lobby" : "start"); }} />
       )}
@@ -1135,6 +1266,33 @@ function StormPill({ storm }) {
   // the word is the weather's phase off the clock: closing, holding at the ring, closing again
   // through the squeeze, and closed once the eye has shut
   return <Pill label={`Storm ${storm.phase}`}><SquallIcon /><span>{storm.phase}</span></Pill>;
+}
+
+/**
+ * Where the two fleets stand, in the rank badge's place, because between sides there is no rank:
+ * her side's ships afloat against the other's, each in its side's colour and hers first, and under
+ * them one bar split by the hull the two fleets have left, so a side that is winning on numbers but
+ * losing on timber reads as such. The bar's two halves are the fleets' hull in the proportion they
+ * stand, and it goes all hers when the other side has no hull left.
+ */
+function SideBadge({ sides }) {
+  const ours = SIDE_COLORS[sides.side], theirs = SIDE_COLORS[SIDES.find((s) => s !== sides.side)];
+  const hull = sides.ours.hull + sides.theirs.hull;
+  const share = hull > 0 ? sides.ours.hull / hull : 0.5;
+  const ahead = sides.ours.ships > sides.theirs.ships;
+  return (
+    <div style={{ background: C.panel, border: `1px solid ${ahead ? ours.fill : C.hair}`, borderRadius: 10, padding: "4px 8px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minWidth: 52 }} aria-label={`${sides.ours.ships} ships on your side afloat, ${sides.theirs.ships} on the other`}>
+      <span style={{ fontSize: 8, letterSpacing: 1, color: "rgba(238,244,242,0.5)" }}>Ships</span>
+      <span style={{ fontSize: 18, fontWeight: 800, lineHeight: 1, display: "flex", alignItems: "baseline", gap: 3 }}>
+        <span style={{ color: ours.fill }}>{sides.ours.ships}</span>
+        <span style={{ fontSize: 10, color: "rgba(238,244,242,0.5)" }}>v</span>
+        <span style={{ color: theirs.fill }}>{sides.theirs.ships}</span>
+      </span>
+      <span style={{ display: "block", width: 40, height: 4, borderRadius: 3, marginTop: 3, background: theirs.fill, overflow: "hidden" }}>
+        <span style={{ display: "block", width: `${Math.round(share * 100)}%`, height: "100%", background: ours.fill }} />
+      </span>
+    </div>
+  );
 }
 
 function RankBadge({ rank, total }) {
@@ -1269,13 +1427,12 @@ const GALLEON_W = 268;
 const GALLEON_ASPECT = 0.62; // the projection is drawn into a 1 : 0.62 box
 const GALLEON_DEG_PER_MS = 0.012; // ~30s per revolution
 
-// The ship on the menu: a 3-D hull re-projected to isometric every frame, so it
-// turns rather than spinning a flat sprite.
+// The ship on the menu: the same 3-D model that sails at sea, turning under a fixed
+// light at drawGalleon's isometric angle, so it turns rather than spinning a flat sprite.
 //
 // She is the captain's own ship, not a stock galleon: `rig` is what is actually
 // stepped and bent on aboard whichever hull she is sailing, so buying a sail
-// shows up here. Hull shapes per class are still to be drawn, so for now every
-// class turns on this one hull and the rig on top of it is the part that is real.
+// shows up here, on her own class's hull.
 function MenuGalleon({ rig }) {
   const cvs = useRef(null);
   // The rig changes rarely and the object is rebuilt on every render, so the
@@ -1286,28 +1443,32 @@ function MenuGalleon({ rig }) {
   // Her bearing lives outside the effect, so a change of rig, or a change of ship under the plate's
   // arrows, carries on from where she was turning rather than snapping her back to bearing zero.
   const degRef = useRef(0);
+  // three.js, once its chunk is here; the plate is drawGalleon's until then
+  const [three, setThree] = useState(three3d);
+  useEffect(() => {
+    if (three) return;
+    let on = true;
+    loadThree().then((m) => { if (on && m) setThree(m); });
+    return () => { on = false; };
+  }, [three]);
 
   useEffect(() => {
     const c = cvs.current;
     if (!c) return;
-    const ctx = c.getContext("2d");
+    // The one ship model, drawn through the menu's shared WebGL renderer into this 2D canvas, or
+    // painted by drawGalleon where WebGL cannot be had (createMenuShip decides, and the box is the
+    // same either way).
+    const ship = three ? three.createMenuShip(c) : flatMenuShip(c);
     const w = GALLEON_W;
     const h = Math.round(w * GALLEON_ASPECT);
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    c.width = w * dpr;
-    c.height = h * dpr;
-
-    const paint = (deg) => {
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.clearRect(0, 0, w, h);
-      drawGalleon(ctx, w, h, deg, rig);
-    };
+    ship.resize(w, h, Math.min(window.devicePixelRatio || 1, 2));
+    const paint = (deg) => ship.draw(rig, deg);
 
     // A perpetually turning ship is exactly what reduced-motion asks us to drop,
     // so hold a three-quarter view instead.
     if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
       paint(24);
-      return;
+      return () => ship.dispose();
     }
 
     let raf = 0;
@@ -1319,9 +1480,9 @@ function MenuGalleon({ rig }) {
       raf = requestAnimationFrame(frame);
     };
     raf = requestAnimationFrame(frame);
-    return () => cancelAnimationFrame(raf);
+    return () => { cancelAnimationFrame(raf); ship.dispose(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
+  }, [key, three]);
 
   return (
     <canvas
@@ -3497,7 +3658,7 @@ function StartOverlay({ onStart, onEdit, onOutfit, onRecords, onCookies, onPriva
       })}
       {/* The one mode sailed with other people: a free-for-all in a lobby a captain makes and her
           friends join with its code. Last in the list, because it is the one that needs friends. */}
-      <ModeCard color={C.gold} title="WITH FRIENDS" desc="A free-for-all with up to 8 captains. Make a lobby and send your friends its code, or join theirs." onClick={onFriends} />
+      <ModeCard color={C.gold} title="WITH FRIENDS" desc="Up to 8 captains, in a free-for-all or on two sides. Make a lobby and send your friends its code, or join theirs." onClick={onFriends} />
       <div style={{ marginTop: 16, fontSize: 11, color: "rgba(238,244,242,0.5)", lineHeight: 1.6 }}>
         Stick to sail. Your side guns hit the hull, the bow gun brings down the mast, muskets clear
         the crew. Rams can pack a punch.
@@ -3610,11 +3771,13 @@ function FootLink({ label, onClick }) {
  */
 /**
  * SAIL WITH FRIENDS: the lobby. Before a lobby, a captain makes one or types a friend's code; in one,
- * she sees its code and the link that carries it, who has joined, and how many AI ships will sail
- * besides them, which the host sets. Only the host starts. A round already under way when she joins
- * is one she waits out, and the next starts with her in it.
+ * she sees its code and the link that carries it, who has joined, how the round is sailed (a melee,
+ * or two sides, which the host picks) and how many AI ships will sail, besides them in a melee and
+ * filling each side between sides, which the host sets too. Between sides every captain picks her
+ * own side. Only the host starts. A round already under way when she joins is one she waits out,
+ * and the next starts with her in it.
  */
-function LobbyScreen({ net, note, onMake, onJoin, onRivals, onStart, onLeave, onReady, onBack, onRetry }) {
+function LobbyScreen({ net, note, onMake, onJoin, onRivals, onMode, onPerSide, onSide, onStart, onLeave, onReady, onBack, onRetry }) {
   const [code, setCode] = useState("");
   const [copied, setCopied] = useState(false);
   // a make or join sent and not yet answered: the buttons wait for it, so a second tap sends nothing
@@ -3637,6 +3800,12 @@ function LobbyScreen({ net, note, onMake, onJoin, onRivals, onStart, onLeave, on
   const most = Math.max(0, 10 - (lobby ? lobby.captains.length - 1 : 0));
   const shown = lobby ? Math.min(lobby.rivals, most) : 0;
   const mine = lobby && lobby.captains.find((c) => c.userId === me);
+  // between sides: who is on each, and the ships a side, which is the host's figure or the larger
+  // side's captains if there are more of them, since every captain sails
+  const teams = !!lobby && lobby.mode === "teams";
+  const onSides = Object.fromEntries(SIDES.map((s) => [s, lobby ? lobby.captains.filter((c) => c.side === s) : []]));
+  const least = Math.max(SIDE_MIN, ...SIDES.map((s) => onSides[s].length));
+  const perSide = lobby ? Math.max(least, Math.min(SIDE_MAX, lobby.perSide || SIDE_MIN)) : SIDE_MIN;
   const unready = lobby ? lobby.captains.filter((c) => c.userId !== lobby.host && (!c.ready || c.away)).length : 0;
   const open = (net && net.lobbies) || [];
   return (
@@ -3663,7 +3832,7 @@ function LobbyScreen({ net, note, onMake, onJoin, onRivals, onStart, onLeave, on
           <Slab title="Open lobbies">
             {open.length ? open.map((l) => (
               <div key={l.code} style={row}>
-                <span>{l.host}<span style={{ fontSize: 11, color: "rgba(238,244,242,0.55)" }}>{`, ${l.captains} of ${l.max} captains`}</span></span>
+                <span>{l.host}<span style={{ fontSize: 11, color: "rgba(238,244,242,0.55)" }}>{`, ${l.captains} of ${l.max} captains${l.mode === "teams" ? ", two sides" : ""}`}</span></span>
                 <StartButton ghost label="Join" onClick={() => join(l.code)} disabled={pending} />
               </div>
             )) : (
@@ -3688,30 +3857,60 @@ function LobbyScreen({ net, note, onMake, onJoin, onRivals, onStart, onLeave, on
               <StartButton onClick={copy} label={copied ? "Link copied" : "Copy the invite link"} ghost />
             </div>
           </Slab>
+          {/* The round, as three rows read top to bottom: what kind, how big, and between sides
+              which side she is on. The host turns the first two and every captain the third;
+              anyone else sees them as they stand. One sentence says what the kind means. */}
+          <Slab title="The round">
+            <Toggle
+              options={[{ key: "ffa", label: "FREE-FOR-ALL" }, { key: "teams", label: "TEAMS" }]}
+              value={lobby.mode}
+              onChange={host ? onMode : null}
+            />
+            <div style={{ ...small, textAlign: "center", marginTop: 8 }}>
+              {teams ? "Two fleets, one on each flank. Your guns cannot hurt your own side. The last side with a ship afloat wins." : "Every ship against every other. The last hull afloat wins."}
+            </div>
+            <Counter
+              label={teams ? "Ships a side" : "AI ships"}
+              sub={!host ? "set by the host" : teams ? "captains and AI together" : "besides the captains"}
+              value={teams ? perSide : shown}
+              onLess={host ? () => (teams ? onPerSide(Math.max(least, perSide - 1)) : onRivals(Math.max(0, shown - 1))) : null}
+              onMore={host ? () => (teams ? onPerSide(Math.min(SIDE_MAX, perSide + 1)) : onRivals(Math.min(most, shown + 1))) : null}
+              atLeast={teams ? perSide <= least : shown <= 0}
+              atMost={teams ? perSide >= SIDE_MAX : shown >= most}
+            />
+            {teams && (
+              <Toggle
+                style={{ marginTop: 10 }}
+                options={SIDES.map((s) => ({
+                  key: s, label: SIDE_COLORS[s].name, color: SIDE_COLORS[s].fill,
+                  sub: `${onSides[s].length} ${onSides[s].length === 1 ? "captain" : "captains"}`,
+                  disabled: onSides[s].length >= SIDE_MAX,
+                }))}
+                value={mine ? mine.side : null}
+                onChange={onSide}
+              />
+            )}
+          </Slab>
           <Slab title={`Captains, ${lobby.captains.length} of 8`}>
             {lobby.captains.map((c) => (
               <div key={c.mid} style={row}>
-                <span>
-                  {c.name}
-                  <span style={{ fontSize: 11, color: "rgba(238,244,242,0.55)" }}>
-                    {[c.userId === lobby.host ? "host" : "", c.userId === me ? "you" : ""].filter(Boolean).map((t) => `, ${t}`).join("")}
+                <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                  {/* between sides, her side as a dot in its colour, which is how her ship reads at sea */}
+                  {teams && c.side && SIDE_COLORS[c.side] && (
+                    <span aria-label={SIDE_COLORS[c.side].name} style={{ flex: "0 0 auto", width: 10, height: 10, borderRadius: 20, background: SIDE_COLORS[c.side].fill }} />
+                  )}
+                  <span>
+                    {c.name}
+                    {c.userId === me && <span style={{ fontSize: 11, color: "rgba(238,244,242,0.55)" }}>, you</span>}
                   </span>
                 </span>
-                <span style={{ fontSize: 12, fontWeight: 700, color: c.away ? C.gold : c.userId === lobby.host || c.ready ? C.grass : "rgba(238,244,242,0.55)" }}>
-                  {c.away ? "Away" : c.userId === lobby.host ? "Starts the round" : c.ready ? "Ready" : "Not ready"}
+                {/* the host is named as such on the right, where the others say whether they are
+                    ready; in plain ink, since green is the word for ready and the host never is */}
+                <span style={{ fontSize: 12, fontWeight: 700, color: c.away ? C.gold : c.userId === lobby.host ? C.ink : c.ready ? C.grass : "rgba(238,244,242,0.55)" }}>
+                  {c.away ? "Away" : c.userId === lobby.host ? "Host" : c.ready ? "Ready" : "Not ready"}
                 </span>
               </div>
             ))}
-          </Slab>
-          <Slab title="AI ships">
-            <div>
-              <div style={small}>{host ? "How many AI ships sail besides you and your friends." : "The host chooses how many AI ships sail."}</div>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 14, marginTop: 8 }}>
-                {host && <StartButton ghost label="Fewer" onClick={() => onRivals(Math.max(0, shown - 1))} />}
-                <span style={{ fontSize: 18, fontWeight: 800, color: C.gold, minWidth: 24, textAlign: "center" }}>{shown}</span>
-                {host && <StartButton ghost label="More" onClick={() => onRivals(Math.min(most, shown + 1))} />}
-              </div>
-            </div>
           </Slab>
           {lobby.state === "sailing" ? (
             <div style={{ ...small, textAlign: "center", margin: "14px 0" }}>A round is under way. You will sail in the next one.</div>
@@ -3739,6 +3938,48 @@ function LobbyScreen({ net, note, onMake, onJoin, onRivals, onStart, onLeave, on
         </>
       )}
     </Shell>
+  );
+}
+
+/**
+ * A choice between a few things, as one bar split into equal halves: the one chosen is filled and
+ * the rest are outlined, so the bar reads as a switch and not as a row of buttons. Each option takes
+ * its own colour when it has one (a side's), the gold otherwise. With no `onChange` it only shows
+ * the choice, for a captain who does not get to make it.
+ */
+function Toggle({ options, value, onChange, style }) {
+  return (
+    <div role="radiogroup" style={{ display: "flex", border: `1px solid ${C.hair}`, borderRadius: 10, overflow: "hidden", background: "rgba(8,38,37,0.6)", ...style }}>
+      {options.map((o, i) => {
+        const on = o.key === value, col = o.color || C.gold;
+        const can = !!onChange && !on && !o.disabled;
+        return (
+          <button key={o.key} role="radio" aria-checked={on} disabled={!can} onClick={() => can && onChange(o.key)}
+            style={{ flex: "1 1 0", minWidth: 0, padding: "10px 6px", border: "none", borderLeft: i ? `1px solid ${C.hair}` : "none", background: on ? col : "transparent", color: on ? C.deep : col, fontFamily: UI, fontSize: 13, fontWeight: 800, lineHeight: 1.2, cursor: can ? "pointer" : "default", opacity: o.disabled && !on ? 0.4 : 1, WebkitTapHighlightColor: "transparent" }}>
+            <div>{o.label}</div>
+            {o.sub && <div style={{ fontSize: 10, fontWeight: 600, opacity: 0.8, marginTop: 2 }}>{o.sub}</div>}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** A figure with a step down and a step up beside it, on one row with its label. Without the steps it only shows the figure. */
+function Counter({ label, sub, value, onLess, onMore, atLeast, atMost }) {
+  const stepStyle = (off) => ({ width: 36, height: 36, borderRadius: 10, border: `1px solid ${C.gold}`, background: "transparent", color: C.gold, fontFamily: UI, fontSize: 18, fontWeight: 700, lineHeight: 1, cursor: off ? "default" : "pointer", opacity: off ? 0.35 : 1, WebkitTapHighlightColor: "transparent" });
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 10 }}>
+      <span style={{ textAlign: "left" }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: C.ink }}>{label}</div>
+        <div style={{ fontSize: 11, color: "rgba(238,244,242,0.55)" }}>{sub}</div>
+      </span>
+      <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        {onLess && <button aria-label="Fewer" disabled={atLeast} onClick={onLess} style={stepStyle(atLeast)}>&minus;</button>}
+        <span style={{ fontSize: 20, fontWeight: 800, color: C.gold, minWidth: 22, textAlign: "center" }}>{value}</span>
+        {onMore && <button aria-label="More" disabled={atMost} onClick={onMore} style={stepStyle(atMost)}>+</button>}
+      </span>
+    </div>
   );
 }
 
@@ -4127,7 +4368,7 @@ function EndOverlay({ title, titleColor, result, note, stats, mode, place, hold,
       )}
       {onWatch && (
         <div style={{ marginBottom: 10 }}>
-          <StartButton onClick={onWatch} label="Watch the rest of the round" ghost />
+          <StartButton onClick={onWatch} label="Spectate" ghost />
         </div>
       )}
       <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
@@ -4154,12 +4395,12 @@ function WatchBar({ name, afloat, onNext, onStop }) {
     <div style={{ position: "absolute", bottom: "calc(env(safe-area-inset-bottom, 0px) + 16px)", left: 0, right: 0, display: "flex", justifyContent: "center", padding: "0 16px", pointerEvents: "none" }}>
       <div style={{ pointerEvents: "auto", background: C.panel, border: `1px solid ${C.hair}`, borderRadius: 10, padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8, width: 340, maxWidth: "100%", boxSizing: "border-box" }}>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10 }}>
-          <span style={{ fontSize: 14, fontWeight: 700, color: C.ink, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Watching {name}</span>
+          <span style={{ fontSize: 14, fontWeight: 700, color: C.ink, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Spectating {name}</span>
           <span style={{ flex: "0 0 auto", fontSize: 12, color: "rgba(238,244,242,0.65)" }}>{afloat} {afloat === 1 ? "ship" : "ships"} afloat</span>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <button onClick={onNext} style={watchBtn(false)}>Next ship</button>
-          <button onClick={onStop} style={watchBtn(true)}>Stop watching</button>
+          <button onClick={onStop} style={watchBtn(true)}>Stop spectating</button>
         </div>
       </div>
     </div>

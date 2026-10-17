@@ -5,8 +5,9 @@
  * and the card a search result or a shared link shows, and writes them all into `public/`: the
  * touch icon iOS reads, the two sizes the web manifest lists for Android and desktop Chrome, a
  * maskable one with the ship held inside the circle Android may cut the icon to, a favicon, and a
- * 1200 x 630 share card. It is the real `drawGalleon`, run in a headless Chromium against the dev
- * server, so the mark follows the ship's art when it changes.
+ * 1200 x 630 share card. It is the menu's own ship (`createMenuShip`, the one three.js model that
+ * also sails at sea), run in a headless Chromium with WebGL against the dev server, so the mark
+ * follows the ship's art when it changes.
  *
  * The mark is a Cutter light, fully found: two cut gaff mainsails on a gaff mast and two cut jibs
  * on a jibboom, seen off her port bow. A single mast and its canvas read at 32 pixels where a
@@ -38,7 +39,10 @@ const up = async () => { try { return (await fetch(SITE)).ok; } catch { return f
 for (let i = 0; i < 60 && !(await up()); i++) await new Promise((r) => setTimeout(r, 500));
 if (!(await up())) { server.kill(); throw new Error(`nothing answered at ${SITE}`); }
 
-const browser = await chromium.launch({ executablePath: process.env.SMOKE_CHROME || undefined, headless: true, args: ["--no-sandbox"] });
+// WebGL draws the ship. On a Mac, Chromium's GPU through Metal; elsewhere it falls back to
+// SwiftShader, which is slow but draws the same picture.
+const GPU = process.platform === "darwin" ? ["--enable-gpu", "--use-angle=metal"] : ["--enable-unsafe-swiftshader"];
+const browser = await chromium.launch({ executablePath: process.env.SMOKE_CHROME || undefined, headless: true, args: ["--no-sandbox", ...GPU] });
 try {
   const page = await browser.newPage();
   await page.goto(SITE, { waitUntil: "networkidle" });
@@ -56,7 +60,7 @@ try {
   ];
   for (const [name, W, H, fill] of images) {
     const url = await page.evaluate(async ({ W, H, fill, deg, mark }) => {
-      const { drawGalleon } = await import("/src/galleon.js");
+      const { createMenuShip } = await import("/src/render3d/menuship.js");
       const Y = await import("/src/shipyard.js");
       const hull = Y.HULLS[mark.hull];
       if (!hull) throw new Error(`no hull ${mark.hull}`);
@@ -69,7 +73,11 @@ try {
       // her, large and alone, then the box she covers
       const S = 1600, ship = document.createElement("canvas");
       ship.width = S; ship.height = Math.round(S * 0.62);
-      drawGalleon(ship.getContext("2d"), ship.width, ship.height, deg, spec);
+      const model = createMenuShip(ship, { shadow: false });
+      if (model.kind !== "3d") throw new Error("no WebGL in this browser: the mark is drawn from the 3D model");
+      model.resize(ship.width, ship.height, 1);
+      model.draw(spec, deg);
+      model.dispose();
       const px = ship.getContext("2d").getImageData(0, 0, ship.width, ship.height).data;
       let x0 = ship.width, y0 = ship.height, x1 = 0, y1 = 0;
       for (let y = 0; y < ship.height; y++) for (let x = 0; x < ship.width; x++) {

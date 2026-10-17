@@ -107,9 +107,15 @@ function hullKit(menu){
 function newell(p){let x=0,y=0,z=0;for(let i=0;i<p.length;i++){const a=p[i],b=p[(i+1)%p.length];
  x+=(a[1]-b[1])*(a[2]+b[2]);y+=(a[2]-b[2])*(a[0]+b[0]);z+=(a[0]-b[0])*(a[1]+b[1]);}
  const l=Math.hypot(x,y,z);return l<1e-9?null:[x/l,y/l,z/l];}
+/* Which piece of the ship a face belongs to, for a renderer that keeps the pieces apart: "mast0",
+   "mast1" and on for each mast standing (foremost first) with everything she carries, "bowsprit"
+   for the spar, "sprit" for what is set on it, and nothing for the hull. drawGalleon never reads it; the
+   three.js model (src/render3d/shipmodel.js) does, so a mast can come down on its own. */
+let PART=null;
 function addFace(F,pts,color,hint,opts){let n=newell(pts);if(!n)return;
  if(hint&&n[0]*hint[0]+n[1]*hint[1]+n[2]*hint[2]<0){pts=pts.slice().reverse();n=n.map(v=>-v);}
- F.push(Object.assign({pts,n,color},opts||{}));}
+ const f=Object.assign({pts,n,color},opts||{});if(PART!==null)f.part=PART;
+ F.push(f);}
 function addPrism(F,a,b,r0,r1,color,tag,sides,bias){
  const n=sides||4;
  let d=[b[0]-a[0],b[1]-a[1],b[2]-a[2]];const L=Math.hypot(...d);if(L<1e-6)return;d=d.map(c=>c/L);
@@ -430,7 +436,7 @@ const GALLEON_RIG = rigFromSpec({
 }, DEFAULT_FORM);
 
 function buildShip(rig){
- const F=[];
+ const F=[];PART=null;
  /* Everything about the hull under this rig comes off the form: her stations,
     castles, bow, bulwark, fittings and timber. The galleon's form is the
     authored numbers under the plain Oak palette, so her ship is built exactly
@@ -458,7 +464,7 @@ function buildShip(rig){
    for(const side of[1,-1]){
     for(let k=0;k<6;k++)
      addFace(F,[hullPtF(pa,side,fs[k]),hullPtF(pb,side,fs[k]),hullPtF(pb,side,fs[k+1]),hullPtF(pa,side,fs[k+1])],
-             bc[k],[0,side,0],{tag:"hull"});
+             bc[k],[0,side,0],k?{tag:"hull",paint:1}:{tag:"hull"});
    }
   }
  }
@@ -480,11 +486,11 @@ function buildShip(rig){
    const d0=dz(s0),d1=dz(s1),t0=tz(s0),t1=tz(s1);
    for(const side of[1,-1]){
     addFace(F,[[x0,side*s0.w,s0.sheer],[x1,side*s1.w,s1.sheer],
-               [x1,side*s1.w,t1],[x0,side*s0.w,t0]],P.top,[0,side,0],{tag:"hull"});
+               [x1,side*s1.w,t1],[x0,side*s0.w,t0]],P.top,[0,side,0],{tag:"hull",paint:1});
     addFace(F,[[x0,side*s0.w,t0],[x1,side*s1.w,t1],
-               [x1,side*(iw(s1)),t1],[x0,side*(iw(s0)),t0]],P.cap,[0,0,1],{tag:"hull"});
+               [x1,side*(iw(s1)),t1],[x0,side*(iw(s0)),t0]],P.cap,[0,0,1],{tag:"hull",paint:1});
     addFace(F,[[x0,side*(iw(s0)),d0],[x1,side*(iw(s1)),d1],
-               [x1,side*(iw(s1)),t1],[x0,side*(iw(s0)),t0]],P.dark,[0,-side,0],{tag:"hull"});
+               [x1,side*(iw(s1)),t1],[x0,side*(iw(s0)),t0]],P.dark,[0,-side,0],{tag:"hull",paint:0.8});
    }
    /* One plain plate per sample, unstroked and held clear of the bulwark. The
       plank banding added seam lines across the deck and its outline spilled onto
@@ -506,7 +512,7 @@ function buildShip(rig){
    const s=stationAt(xc);
    for(const side of[1,-1])
     addFace(F,[[xc,side*s.w,dz(s)],[xc,side*(iw(s)),dz(s)],
-               [xc,side*(iw(s)),tz(s)],[xc,side*s.w,tz(s)]],P.cap,[dir,0,0],{tag:"hull"});
+               [xc,side*(iw(s)),tz(s)],[xc,side*s.w,tz(s)]],P.cap,[dir,0,0],{tag:"hull",paint:1});
   }
  }
  /* The open deck's bulwark runs between the castles when she has them, and
@@ -720,9 +726,9 @@ function buildShip(rig){
    const u0=s/NR, u1=(s+1)/NR+(s<NR-1?0.004:0);
    const x0=lerp(ax,bx,u0), y0=lerp(ay,by,u0), x1=lerp(ax,bx,u1), y1=lerp(ay,by,u1);
    const i0x=x0+ix*RAIL_T, i0y=y0+iy*RAIL_T, i1x=x1+ix*RAIL_T, i1y=y1+iy*RAIL_T;
-   if(!noOuter)addFace(F,[[x0,y0,dz],[x1,y1,dz],[x1,y1,top],[x0,y0,top]],P.top,[-ix,-iy,0],{tag:"castle",bias:3});
-   addFace(F,[[i0x,i0y,dz],[i0x,i0y,top],[i1x,i1y,top],[i1x,i1y,dz]],P.dark,[ix,iy,0],{tag:"castle",bias:3});
-   addFace(F,[[x0,y0,top],[x1,y1,top],[i1x,i1y,top],[i0x,i0y,top]],P.cap,[0,0,1],{tag:"castle",bias:3});
+   if(!noOuter)addFace(F,[[x0,y0,dz],[x1,y1,dz],[x1,y1,top],[x0,y0,top]],P.top,[-ix,-iy,0],{tag:"castle",bias:3,paint:1});
+   addFace(F,[[i0x,i0y,dz],[i0x,i0y,top],[i1x,i1y,top],[i1x,i1y,dz]],P.dark,[ix,iy,0],{tag:"castle",bias:3,paint:0.8});
+   addFace(F,[[x0,y0,top],[x1,y1,top],[i1x,i1y,top],[i0x,i0y,top]],P.cap,[0,0,1],{tag:"castle",bias:3,paint:1});
   }
  }
  /* Stairs, and the gaps their heads open in the castle end rails. Both come from
@@ -766,7 +772,7 @@ function buildShip(rig){
   for(let i=0;i<xs.length-1;i++){
    const x0=xs[i],x1=xs[i+1],w0=hw(x0),w1=hw(x1),b0=bs(x0),b1=bs(x1);
    for(const side of[1,-1]){
-    addFace(F,[[x0,side*w0,b0],[x1,side*w1,b1],[x1,side*w1,dz],[x0,side*w0,dz]],P.top,[0,side,0],{tag:"castle",bias:3});
+    addFace(F,[[x0,side*w0,b0],[x1,side*w1,b1],[x1,side*w1,dz],[x0,side*w0,dz]],P.top,[0,side,0],{tag:"castle",bias:3,paint:1});
     railWall(x0,side*w0,x1,side*w1,dz,rh,0,-side);
    }
    /* same treatment as the waist deck: plain plates, unstroked, split
@@ -864,7 +870,7 @@ function buildShip(rig){
   }
  }
  const masts=rig.masts;
- for(const m of masts){
+ for(const [mi,m] of masts.entries()){PART="mast"+mi;
   const dz=deckZAt(m.x);
   m.deck=dz;
   addSpar(F,[m.x,0,dz],[m.x,0,m.top],m.r0,m.r1,P.wood,"mast",0,10);
@@ -891,7 +897,9 @@ function buildShip(rig){
     addFace(F,[pt(rp,ct,t0),pt(ro,ct,t0),pt(ro,ct,t1),pt(rp,ct,t1)],P.dark,[0,0,1],{tag:"mast",bias:2.2});}
   }
  }
+ PART="bowsprit";
  if(rig.bowsprit) addSpar(F,form.bowsprit.heel,form.bowsprit.tip,form.bowsprit.r0,form.bowsprit.r1,P.wood,"mast",0);
+ PART=null;
  function sail(mx,span,zt,zb,bulge,seg,stud){if(!OPT.sails)return;
   /* The cloth stands clear of the pole in x (CLEAR), and the yard sits between
      the two — so no part of the mast can be closer to the eye than the canvas
@@ -1016,7 +1024,7 @@ function buildShip(rig){
   const y=1.1, at=p=>[p[0],p[1]+y,p[2]];
   triPanel(at(tack),at(head),at(clew),2.6);
  }
- for(const m of masts) for(const s of m.sails){
+ for(const [mi,m] of masts.entries()) for(const s of m.sails){PART="mast"+mi;
   if(s.cut==="triangle") lateen(m.x,s.zb,s.zt);
   else if(s.cut==="gaff") gaffSail(m.x,s.zb,s.zt,s.run);
   else if(s.cut==="lug") lugSail(m.x,s.zb,s.zt,s.run);
@@ -1024,13 +1032,13 @@ function buildShip(rig){
  }
  // and whatever is set on the bowsprit: headsails out on the stay, a spritsail
  // slung under the spar
- for(const sp of rig.spars||[]) for(const s of sp.sails){
+ for(const sp of rig.spars||[]) for(const s of sp.sails){PART="sprit";
   if(s.cut==="headsail") headsail(s.tack,s.head,s.clew);
   else sail(s.mx,s.span,s.zt,s.zb,s.bulge,s.seg);
  }
  if(OPT.rig){const rope=P.dark,r=0.3;
   // shrouds land on the rail cap abreast of the mast, not out on the open deck
-  for(const m of masts){const sz=m.top*m.hoist;
+  for(const [mi,m] of masts.entries()){const sz=m.top*m.hoist;PART="mast"+mi;
    for(const side of[1,-1]){
     // the after mast carries one shroud a side, square-rigged masts two. The one
     // is set abaft its mast: level with it, it projected straight down the pole
@@ -1061,12 +1069,13 @@ function buildShip(rig){
      to the end of the bowsprit. Chaining them off the masts that are actually
      stepped is what lets a ship with one mast, or none, rig correctly instead of
      leaving ropes hanging in the air where a mast used to be. */
-  masts.forEach((m,i)=>{
+  masts.forEach((m,i)=>{PART="mast"+i;
    const fwd=masts[i-1];
    if(fwd) addSpar(F,[m.x,0,m.top*m.stay.from],[fwd.x,0,fwd.top*m.stay.to],r,r,rope,"rig",0);
    else if(rig.bowsprit) addSpar(F,[m.x,0,m.top*m.stay.from],[form.bowsprit.tip[0],0,form.bowsprit.tip[2]-0.4],r,r,rope,"rig",0);
   });
  }
+ PART=null;
  /* ---- timbers and deck fittings ---- */
  {
   const waist=x=>stationAt(x).sheer;
@@ -1128,7 +1137,7 @@ function buildShip(rig){
      for(let i=0;i<RS;i++){
       const a=R(i/RS), b=R(Math.min(1,(i+1)/RS+(i<RS-1?0.03:0)));
       if(a.z1-a.z0<0.05&&b.z1-b.z0<0.05)continue;
-      addFace(F,[[a.x,a.y,a.z0],[b.x,b.y,b.z0],[b.x,b.y,b.z1],[a.x,a.y,a.z1]],P.top,[0,side,0],{tag:"castle",bias:3.1,nostroke:true});
+      addFace(F,[[a.x,a.y,a.z0],[b.x,b.y,b.z0],[b.x,b.y,b.z1],[a.x,a.y,a.z1]],P.top,[0,side,0],{tag:"castle",bias:3.1,nostroke:true,paint:1});
       addFace(F,[[a.x,a.yi,a.z0],[b.x,b.yi,b.z0],[b.x,b.yi,b.z1],[a.x,a.yi,a.z1]],P.dark,[0,-side,0],{tag:"castle",bias:3.1,nostroke:true});
       addFace(F,[[a.x,a.y,a.z1],[b.x,b.y,b.z1],[b.x,b.yi,b.z1],[a.x,a.yi,a.z1]],P.cap,[0,0,1],{tag:"castle",bias:3.2,nostroke:true});
      }
@@ -1193,19 +1202,31 @@ function buildShip(rig){
  /* The pennant flies from the truck of the tallest mast she has stepped, and
     from nothing if she has none. It used to be pinned to the height the galleon's
     main mast happened to reach, which left it hanging in the sky above a boat
-    whose one mast stopped thirty feet below it. */
+    whose one mast stopped thirty feet below it.
+
+    Each flag is also written down as a mount on `F.flags`: the top of its hoist,
+    its length and depth and how far its wave reaches. drawGalleon paints the
+    fixed flag below and never reads the mounts; the three.js model leaves that
+    flag out and hangs cloth of its own there, which the wind and her speed blow
+    (src/render3d/flags.js). */
+ const flags=[];
  {const truck=masts.reduce((a,m)=>(!a||m.top>a.top?m:a),null);
-  if(truck){const top=truck.top+0.5,mx=truck.x,len=Math.min(22,(top-truck.deck)*0.33),pts=[];
+  if(truck){PART="mast"+masts.indexOf(truck);const top=truck.top+0.5,mx=truck.x,len=Math.min(22,(top-truck.deck)*0.33),pts=[];
    for(let i=0;i<=6;i++){const t=i/6;pts.push([mx-t*len,Math.sin(t*4.2)*1.6,top-0.4-t*1.2]);}
    for(let i=6;i>=0;i--){const t=i/6;pts.push([mx-t*len,Math.sin(t*4.2)*1.6,top-3.4+t*1.9]);}
-   addFace(F,pts,P.flag,null,{tag:"flag",double:true,back:P.flag});}
+   addFace(F,pts,P.flag,null,{tag:"flag",double:true,back:P.flag});
+   flags.push({part:PART,x:mx,z:top-0.4,len,hoist:3,fly:0.2,wave:1.6});}
+  PART=null;
   // ensign staff stepped on the taffrail itself, raking aft
   {const ex=sternX+2, ez=deckZAt(ex)+BULWARK-0.7, et=ez+11.4*fk;
    addPrism(F,[ex,0,ez],[ex,0,et],0.5*fk,0.4*fk,P.wood,"mast");
    const fl=[];for(let i=0;i<=5;i++){const t=i/5;fl.push([ex-t*13*fk,Math.sin(t*3.6)*1.4,et-0.6]);}
    for(let i=5;i>=0;i--){const t=i/5;fl.push([ex-t*13*fk,Math.sin(t*3.6)*1.4,et-0.6-6.2*fk]);}
-   addFace(F,fl,P.flag,null,{tag:"flag",double:true,back:P.flag});}
+   addFace(F,fl,P.flag,null,{tag:"flag",double:true,back:P.flag});
+   flags.push({part:null,x:ex,z:et-0.6,len:13*fk,hoist:6.2*fk,fly:6.2*fk,wave:1.4*fk});}
  }
+ PART=null;
+ F.flags=flags;
  return F;
 }
 /* The model is bearing-independent, so it is built once and re-projected per
@@ -1341,4 +1362,13 @@ function rigBands(station, n) {
   return { square: squares, tri: tris };
 }
 
-export { drawGalleon, RIG_STATIONS, RIG_KINDS, RIG_BERTHS, rigBands };
+/* The ship as a face list, for a renderer that brings its own projection: `faces` is the same cached
+   list drawGalleon paints, in menu units (x toward the bow, y abeam, z up from the waterline, the
+   hull running from x = -form.menu.Lh at the stern), and `rig` is what it was built from, whose
+   `masts` (foremost first) are the "mast0", "mast1" ... named on each face's `part`. `flags` is
+   where each flag is bent on, as buildShip records it, for a renderer that blows its own. Treat all
+   of it as read only: it is shared with every other caller. */
+function shipFaces(spec){const rig=rigFor(spec),faces=facesFor(rig);
+ return{faces,flags:faces.flags||[],rig,form:rig.form||DEFAULT_FORM};}
+
+export { drawGalleon, shipFaces, RIG_STATIONS, RIG_KINDS, RIG_BERTHS, rigBands };

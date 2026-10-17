@@ -3,7 +3,7 @@
  * and how a ball is drawn against the bite it takes.
  */
 
-import { WP } from "../sim/index.js";
+import { WP, WORLD, clamp, norm } from "../sim/index.js";
 
 export const TILT = 0.6; // vertical squash -> high-angle / isometric feel
 export const ZUP = Math.sqrt(1 - TILT * TILT); // how world-height maps to screen-up
@@ -46,3 +46,101 @@ export const EDGE_PEEK = 40; // screen pixels
 // across the sea with the ship pinned beside it. This caps it at the joystick's own strip, so a ship
 // on the map's edge still sits clear of the stick and the rope still reads, and no more than that.
 export const SIDE_PEEK = 150; // screen pixels
+
+// ---- the camera, as figures ----
+//
+// Both renderers place the sea by these, the Canvas 2D one and the three.js one, so where a ship
+// lands on the glass is one piece of arithmetic and not two that have to be kept in step. A `view`
+// is the screen's own state and nothing of the round's: the canvas in CSS pixels (`Wd` by `Hd`),
+// the device pixel ratio the 2D canvas is drawn at, `zoom` (CSS pixels per world unit across),
+// the same canvas in view space (`Vw` by `Vh`, world units across and foreshortened world units
+// down), the side of the square (`Vsq`), the phone's notch and home bar as insets (`safe`), and
+// `cam`, the world point at the top left of the screen.
+//
+// View space is world space seen from the camera: across is one to one, and down is squashed by
+// TILT, while a height rises by ZUP of itself. So a point at world (x, y) standing z high lands at
+// ((x - cam.x) * zoom, ((y - cam.y) * TILT - z * ZUP) * zoom) in CSS pixels from the top left.
+
+
+export function createView() {
+  return { Wd: 0, Hd: 0, dpr: 1, zoom: 1, Vw: 0, Vh: 0, Vsq: 0, safe: { l: 0, t: 0, r: 0, b: 0 }, cam: { x: 0, y: 0 } };
+}
+
+/**
+ * The view sized to a canvas `Wd` by `Hd` CSS pixels. `rect` is the canvas's own page box and `hud`
+ * the HUD's safe-area box, whose insets from it are the notch, corners and home bar; leave `hud` out
+ * and the insets stay as they were.
+ */
+export function sizeView(v, rect, hud, dpr) {
+  v.dpr = dpr;
+  v.Wd = rect.width;
+  v.Hd = rect.height;
+  if (hud) v.safe = { l: Math.max(0, hud.left - rect.left), t: Math.max(0, hud.top - rect.top), r: Math.max(0, rect.right - hud.right), b: Math.max(0, rect.bottom - hud.bottom) };
+  v.zoom = Math.min(Math.min(v.Wd, v.Hd) / VIEW, MAX_ZOOM);
+  v.Vw = v.Wd / v.zoom;
+  v.Vh = v.Hd / v.zoom;
+  v.Vsq = Math.min(v.Vw, v.Vh);
+  return v;
+}
+
+// Where a ship is drawn, `alpha` of the way through the last step: her position and her heading,
+// the heading blended the short way round.
+export const blend = (s, alpha) => ({
+  x: s.px + (s.x - s.px) * alpha,
+  y: s.py + (s.y - s.py) * alpha,
+  h: s.pHeading + norm(s.heading - s.pHeading) * alpha,
+});
+
+// View space from world space, for a point on the water.
+export const SX = (x, v) => x - v.cam.x;
+export const SY = (y, v) => (y - v.cam.y) * TILT;
+
+/** Where world (x, y), standing `z` high, lands on the canvas, in CSS pixels from its top left. */
+export const toScreen = (v, x, y, z = 0) => [SX(x, v) * v.zoom, (SY(y, v) - z * ZUP) * v.zoom];
+
+// The camera holds her in the middle and fills the rest of the view with sea, which puts the
+// boundary off the edge of the screen until she is close to it. Coming in on a side, it is let
+// `peek` inside the screen — a strip of open water, the rope, and its buoys, no more — and she
+// comes off centre by exactly as much: the edge slides into view and she slides toward it, which
+// is what tells a captain how much sea she has left on that hand.
+//
+// The peek is a strip of screen, so it comes to the same band whichever way the map is squashed:
+// across it is that many pixels of world, and up and down it is that many pixels of a world
+// foreshortened by TILT, which takes more world to cover.
+//
+// Where the screen runs longer than the square — up and down, held upright — the boundary is let
+// in as far as the edge of the square instead, since that strip of screen is the one the buttons
+// and the panels sit on and it is hers to spend. That is what keeps her out from under them at
+// the top and bottom of the map, where she used to end up pinned against the glass.
+export function camHold(centred, span, peek) {
+  const lo = -peek; // the far side of the map, let this far into the view
+  return clamp(centred, lo, Math.max(lo, WORLD - span + peek));
+}
+
+/** The camera brought round onto `ship`, where she is drawn `alpha` of the way through the last step. */
+export function followView(v, ship, alpha = 1) {
+  if (!ship) return;
+  const me = blend(ship, alpha);
+  const spanX = v.Vw, spanY = v.Vh / TILT; // sea on the screen, in world units
+  // across, the give past the square is capped at SIDE_PEEK; up and down it is not, because
+  // that strip is the one the buttons and panels sit on and it is hers to spend
+  const peekX = Math.max(Math.min((spanX - v.Vsq) / 2, SIDE_PEEK / v.zoom), EDGE_PEEK / v.zoom);
+  const peekY = Math.max((spanY - v.Vsq / TILT) / 2, EDGE_PEEK / (v.zoom * TILT));
+  v.cam.x = camHold(me.x - spanX / 2, spanX, peekX);
+  v.cam.y = camHold(me.y - spanY / 2, spanY, peekY);
+}
+
+/**
+ * Whether any ship afloat lies under a box on the page, `rect` as `getBoundingClientRect` gives
+ * it. Each ship counts as a circle of her own half length and a little of her rig, on the screen.
+ */
+export function shipUnder(v, rect, w) {
+  for (const s of w.ships) {
+    if (!s.alive) continue;
+    const sx = SX(s.x, v) * v.zoom, sy = SY(s.y, v) * v.zoom;
+    const rad = (s.hullA + 16) * v.zoom; // her half length, and a little of her rig
+    const nx = clamp(sx, rect.left, rect.right), ny = clamp(sy, rect.top, rect.bottom);
+    if ((nx - sx) ** 2 + (ny - sy) ** 2 < rad * rad) return true;
+  }
+  return false;
+}

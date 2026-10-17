@@ -15,6 +15,21 @@ export const WORLD = 2000;
 export const HUMAN_SPAWN_GAP = 450;
 export const FFA_AI = 10;
 
+// TWO SIDES: a round with friends fought as two fleets rather than as a melee. The sides are named
+// for where they open, the left flank of the sea and the right, and every ship carries one. A side
+// holds `SIDE_MIN` to `SIDE_MAX` ships, captains and AI together, and the host picks the figure; the
+// AI fill whatever places the captains leave, so a side can be captains alone or AI alone. Twelve
+// ships at most, which is a shade over the melee's eleven and well under what the wave arena draws.
+export const SIDES = ["left", "right"];
+export const SIDE_MIN = 3;
+export const SIDE_MAX = 6;
+export const TEAMS_SIDE = 4; // ships a side when the host has not said
+// How far in from the sea's edge a side is drawn up, and how far apart along it her ships lie. A
+// broadside carries 220, so two lines 1480 apart open well out of each other's reach, and a line of
+// six at this spacing spans 1100 of the sea's 2000, inside the water the islands are planted in.
+export const FLANK = 260;
+export const LINE_GAP = 220;
+
 // THE ARENAS: two modes that replace what she sinks from the horizon, and differ in what they send.
 // The wave arena grows the swarm rather than the ships: reinforcements sail in from the map edge,
 // and the hunters climb the stock ladder only until they have caught her up. The ladder arena sends
@@ -69,7 +84,7 @@ export const WP = {
   // `draw` overrides SHOT_DRAW for one weapon. Round shot off the side is drawn at exactly the size
   // it bites now: there are fifty of them coming off a first rate and a ball that looked smaller
   // than its own reach would be reading the volley wrong at the moment it matters most.
-  broadside: { cd: 1.6, speed: 250, life: 0.88, r: 1.8, draw: 1, bar: "hull" },
-  bow: { cd: 1.1, speed: 270, life: 1.4, r: 2.6, bar: "mast" },
-  musket: { cd: 0.75, speed: 320, life: 0.4, r: 1.6, bar: "crew" },
+  broadside: { cd: 1.6, speed: 250, life: 0.88, r: 3.6, draw: 1, bar: "hull" },
+  bow: { cd: 1.1, speed: 270, life: 1.4, r: 5.2, bar: "mast" },
+  musket: { cd: 0.75, speed: 320, life: 0.4, r: 3.2, bar: "crew" },
 };
