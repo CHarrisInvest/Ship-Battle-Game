@@ -402,7 +402,11 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   the ones authored in `STATION_GEOM`, so the galleon is unchanged; a taller stack is that profile
   resampled and squeezed into the same air, because three sails already reach the masthead and there
   is nothing above them to extend into. Five is the ceiling and the bench holds the catalogue to it.
-  Adding a row to `STATION_GEOM` is not how a sixth would be added.
+  Adding a row to `STATION_GEOM` is not how a sixth would be added. **Square canvas over a gaff
+  comes down to it**: the bands leave room for a course and its yard under the lowest, and a gaff
+  in that berth has neither, so the stack is brought down to just over her throat, grows a little
+  into the air it gave up, and the pole is cut shorter with it. Raise the square sails' foot, never
+  the gaff, to change that gap.
 - **A broadside is one ball a gun, spread over a moment, and laid as it bears.** Fifty balls leaving
   in the same instant cannot be told apart at any size they could be drawn, so every gun takes her
   own moment inside `volleyWindow`: several ports go off together, then a few more elsewhere, and

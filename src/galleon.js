@@ -390,7 +390,6 @@ function rigFromSpec(spec, form) {
         const og = geom[other.station];
         if (og && !og.spar && og.x < g.x) boomRun = Math.min(boomRun, g.x - og.x - 5);
       }
-      const square = (s) => s && !TRIANGULAR.has(s.kind) && s.kind !== "GAF" && s.kind !== "LUG";
       const sails = (m.sails || []).map((s, i) => {
         if (TRIANGULAR.has(s.kind)) {
           const band = tris[Math.min(i, tris.length - 1)];
@@ -400,22 +399,7 @@ function rigFromSpec(spec, form) {
         if (s.kind === "GAF" || s.kind === "LUG") {
           const zt = slot.zt * k * stretch;
           const foot = i === 0 ? boomFoot : slot.zb * k * stretch;
-          const sail = { cut: s.kind === "GAF" ? "gaff" : "lug", zb: Math.min(foot, zt - 4), zt, run: boomRun };
-          /* A gaff with square canvas over it has its jaws up under the top, and
-             the square sail is sheeted home just above them. Cut in the course's
-             band, as if a course yard stood there, its head came out a long way
-             under the sail above: half the height of a topsail on a cutter and
-             more on a rated ship's mizzen. So the throat goes up to just under
-             that sail's foot, and the peak rakes up from it as the gaff always
-             has, but no higher than half way up the sail over it, which stands
-             forward of the pole and clear of a peak that is well aft. */
-          if (s.kind === "GAF" && square(m.sails[i + 1])) {
-            const over = squares[Math.min(i + 1, squares.length - 1)];
-            sail.throat = over.zb * k - 1.2;
-            const rake = (0.22 / 0.78) * (sail.throat - sail.zb);
-            sail.zt = Math.max(zt, Math.min(sail.throat + rake, ((over.zb + over.zt) / 2) * k));
-          }
-          return sail;
+          return { cut: s.kind === "GAF" ? "gaff" : "lug", zb: Math.min(foot, zt - 4), zt, run: boomRun };
         }
         return {
           cut: "square",
@@ -423,6 +407,33 @@ function rigFromSpec(spec, form) {
           bulge: slot.bulge * k, seg: slot.seg, stud: !!s.stud,
         };
       });
+      /* Square canvas over a gaff comes down to it. The square bands leave room
+         under the lowest of them for a course and its yard, and a gaff in the
+         course's berth has neither: her throat stands 0.22 of her height under
+         her peak, and her peak where a course's head would be. So the sails above
+         her stood a long way up a bare pole, 10 to 26 units over the throat. The
+         stack is brought down until its foot is just over her throat, where a
+         real spanker's jaws sat under the top with the topsail sheeted home over
+         them, and it takes back part of the air it gave up, its sails and the
+         gaps between them scaled up together, span and all, so they come out a
+         little larger as well as lower. The pole is cut to the canvas below, so
+         she stands a shorter mast for it: a seventy-four's mizzen comes down
+         from 0.95 of her main to 0.90, near what one really stood. */
+      if (sails.length > 1 && sails[0].cut === "gaff" && sails.slice(1).every((s) => s.cut === "square")) {
+        const gaff = sails[0], over = sails.slice(1);
+        const foot = gaff.zt - 0.22 * (gaff.zt - gaff.zb) + 1.2;
+        const bottom = over[0].zb, height = over[over.length - 1].zt - bottom;
+        const drop = bottom - foot;
+        if (drop > 0) {
+          // a quarter of the air given up goes back into canvas, and no sail grows past 1.15 of herself
+          const f = Math.min(1.15, 1 + (0.25 * drop) / height);
+          for (const s of over) {
+            s.zb = foot + (s.zb - bottom) * f;
+            s.zt = foot + (s.zt - bottom) * f;
+            s.span *= f; s.bulge *= f;
+          }
+        }
+      }
       /* The pole is then cut down to the canvas actually bent on it. A mast is as
          tall as it needs to be for its highest sail plus the room a masthead
          takes: leave it at its full nominal height and a boat carrying one small
@@ -956,11 +967,10 @@ function buildShip(rig){
  const lateenCut=(mx,zb,zt)=>{const h=zt-zb;
   const B=[mx+0.621*h,1.1,zb+0.310*h],A=[mx-0.690*h,1.1,zt],C=[mx-0.552*h,1.1,zb];
   return{B,A,C,cloth:triCloth(B,A,C,3.6,true)};};
- // the throat stands 0.22 of her height under the peak unless the rig has put it somewhere
- const gaffCut=(mx,zb,zt,run,tz)=>{const h=zt-zb,y=1.1;
+ const gaffCut=(mx,zb,zt,run)=>{const h=zt-zb,y=1.1;
   const reach=Math.min(1.05*h,run||1.05*h);
   const tack=[mx-0.6,y,zb+0.03*h], clew=[mx-reach,y,zb+0.10*h];
-  const throat=[mx-0.6,y,tz??zt-0.22*h], peak=[mx-0.74*reach,y,zt];
+  const throat=[mx-0.6,y,zt-0.22*h], peak=[mx-0.74*reach,y,zt];
   return{tack,clew,throat,peak,cloth:quadCloth(tack,throat,clew,peak,2.8)};};
  const lugCut=(mx,zb,zt,run)=>{const h=zt-zb,y=1.1;
   const aft=Math.min(1,(run||0.64*h)/(0.64*h));
@@ -1149,8 +1159,8 @@ function buildShip(rig){
     the pole, the boom runs aft at the foot, and the gaff runs up and aft from
     the throat with the peak the highest corner of the sail. Proportions are
     cut from the band it stands in, the same way the lateen's are. */
- function gaffSail(mx,zb,zt,run,tz){if(!OPT.sails)return;
-  const {tack,clew,throat,peak,cloth}=gaffCut(mx,zb,zt,run,tz);
+ function gaffSail(mx,zb,zt,run){if(!OPT.sails)return;
+  const {tack,clew,throat,peak,cloth}=gaffCut(mx,zb,zt,run);
   const off=(p)=>[p[0],p[1]-0.75,p[2]];
   const past=(a,b,t)=>[lerp(a[0],b[0],t),lerp(a[1],b[1],t),lerp(a[2],b[2],t)];
   // the boom, jaw at the mast and run a little past the clew
@@ -1182,7 +1192,7 @@ function buildShip(rig){
  }
  for(const [mi,m] of masts.entries()) for(const s of m.sails){PART="mast"+mi;
   if(s.cut==="triangle") lateen(m.x,s.zb,s.zt);
-  else if(s.cut==="gaff") gaffSail(m.x,s.zb,s.zt,s.run,s.throat);
+  else if(s.cut==="gaff") gaffSail(m.x,s.zb,s.zt,s.run);
   else if(s.cut==="lug") lugSail(m.x,s.zb,s.zt,s.run);
   else sail(m.x,s.span,s.zt,s.zb,s.bulge,s.seg,s.stud);
  }
