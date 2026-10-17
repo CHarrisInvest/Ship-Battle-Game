@@ -685,6 +685,10 @@ export default function App() {
           let steps = 0;
           // her controls are read once a step, so a repair she tapped is spent by the first of them
           while (bank >= TICK && steps < MAX_STEPS && !g.result.over) {
+            // The trailer's helm (`tools/trailer.mjs`), when the page carries one: a hand laid on
+            // her controls before they are read, so a recorded round sails by the engine's own
+            // judgement rather than by a script's guesses. Nothing in play defines it.
+            if (window.__sternchaseHelm) window.__sternchaseHelm(g, controls);
             const input = controls.read();
             if (recorder) recorder.record(g.tick, input[meRef.current]);
             for (const e of step(g, input)) events.push(e);

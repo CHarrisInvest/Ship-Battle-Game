@@ -23,6 +23,7 @@
     "inputlog": "node tools/inputlog.mjs",
     "icon": "node tools/icon.mjs",
     "promo": "node tools/promo.mjs",
+    "trailer": "node tools/trailer.mjs",
     "import": "node tools/import.mjs",
     "workbook": "node tools/workbook.mjs",
     "workbook:read": "node tools/workbook.mjs --read"
