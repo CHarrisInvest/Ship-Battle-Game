@@ -185,6 +185,9 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   switch**, which the prompt names "Ad measurement" while GA is empty; under Google's message it needs
   purpose 7 where Analytics needs 8. It credits a visit to the game's own campaign and is never used
   to pick ads, so ad personalization stays denied on it, and `track` sends play events to GA alone.
+  gtag.js is fetched under `TAG_ID`, the Google tag the two were combined into in Google's settings,
+  which is the Ads one: the GA ID is only a destination of it, and fetched under that ID gtag.js
+  answers 404, which is how nothing was measured for its first two weeks.
 - `src/privacy.jsx` is the privacy policy, read by the in-game screen (off the menu and the cookie
   prompt) and by the page at `/privacy/`, a second Vite entry, because AdSense and Google's message
   need it at an address. **It must stay true of the code**: anything new stored or loaded changes it
