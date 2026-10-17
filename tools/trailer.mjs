@@ -244,7 +244,8 @@ function sail(seed, loadout, secs, len) {
     if (t + spare >= ticks || !alive[t + spare]) continue;
     if (!best || sum > best.score) best = { score: sum, start };
   }
-  return best ? { seed, start: best.start, score: best.score, at: where[best.start] } : null;
+  // `at` is where she is when the browser's tick reads `start`: after the step that made it
+  return best ? { seed, start: best.start, score: best.score, at: where[best.start - 1], where } : null;
 }
 
 /** The seed and the window that make the best shot of this ship, out of `tries` seeds. */
@@ -385,6 +386,7 @@ async function filmRound(shot, state, dir, secs, clean) {
       }
       const s = S.shipOf(g, me);
       window.__probe = { calls: window.__probe.calls + 1, tick: g.tick, x: s.x, y: s.y, alive: s.alive, over: g.result.over };
+      (window.__trace = window.__trace || []).push([g.tick, s.x, s.y]);
     };
   }, ME);
   await page.locator("button", { hasText: "FREE-FOR-ALL" }).first().click();
@@ -398,8 +400,12 @@ async function filmRound(shot, state, dir, secs, clean) {
   while ((await tick()) < shot.start) await frame();
   const probe = await page.evaluate(() => window.__probe);
   const off = Math.hypot(probe.x - shot.at.x, probe.y - shot.at.y);
-  if (probe.tick !== shot.start || off > 1e-6) say(`  WARNING: the browser's round parted from Node's at tick ${probe.tick} (${off.toFixed(3)} off)`);
-  else say(`  the browser's round agrees with Node's at tick ${probe.tick}`);
+  if (probe.tick !== shot.start || off > 1e-6) {
+    // where she was at every tick here against where Node had her: the first tick they differ at
+    const trace = await page.evaluate(() => window.__trace);
+    const first = trace.find(([t, x, y]) => t > 0 && shot.where[t - 1] && (x !== shot.where[t - 1].x || y !== shot.where[t - 1].y));
+    say(`  WARNING: the browser's round parted from Node's (${off.toFixed(3)} off at tick ${probe.tick}, first at tick ${first ? first[0] : "?"})`);
+  } else say(`  the browser's round agrees with Node's at tick ${probe.tick}`);
   await film(game, dir, Math.round(secs * FPS));
   await game.ctx.close();
 }
