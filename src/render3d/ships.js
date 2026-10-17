@@ -49,6 +49,7 @@ import { norm, clamp } from "../sim/index.js";
 import { rigSpec } from "../shipyard.js";
 import { hullForm } from "../hullform.js";
 import { WIND } from "./flags.js";
+import { CAPTAIN_TIMBER } from "../render/palette.js";
 
 const SINK_TIME = 2.5; // seconds from the last step she was afloat to under the water
 const WARM = [1.0, 0.92, 0.78]; // the hit's light, a warm white, as linear-ish multipliers
@@ -316,7 +317,9 @@ export function createShipLayer(scene, ctx) {
   // ---- one ship ------------------------------------------------------------------------------
 
   function makeEntry(s, look) {
-    const model = ctx.shipModel(rigSpec(s.loadout), { units: "sea", phase: (hashId(s.id) % 628) / 100 });
+    // a captain's ship is built of the captain's timber, a rival of her class's own
+    const spec = s.playerId ? { ...rigSpec(s.loadout), timber: CAPTAIN_TIMBER } : rigSpec(s.loadout);
+    const model = ctx.shipModel(spec, { units: "sea", phase: (hashId(s.id) % 628) / 100 });
     const [timber0, canvas0, flag0] = model.materials;
     const livery = s.id === lastFx.me ? C.gold : look.fill;
     const timber = paintWith(timber0.clone(), new THREE.Color(look.fill));

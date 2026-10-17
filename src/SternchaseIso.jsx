@@ -24,7 +24,7 @@ import {
   createWorld, step, TICK, voyageStats, repairQuote, shipOf, playOn, playsOn, outInWeather, stormPhase, volleyWindow, reloadOf, canFire,
   HULL_PATCH_CAP, MAST_JURY_CAP, barsOf, MODES as RULES, MODE_LIST, modeOf, clamp, SIDES, SIDE_MIN, SIDE_MAX,
 } from "./sim/index.js";
-import { C, UI, SIDE_COLORS } from "./render/palette.js";
+import { C, UI, SIDE_COLORS, CAPTAIN_TIMBER } from "./render/palette.js";
 import { createRenderer } from "./render/renderer.js";
 import { createFx, fxEvents, stepFx } from "./render/effects.js";
 import { HUD, radarRight } from "./render/hud.js";
@@ -1427,6 +1427,10 @@ const GALLEON_W = 268;
 const GALLEON_ASPECT = 0.62; // the projection is drawn into a 1 : 0.62 box
 const GALLEON_DEG_PER_MS = 0.012; // ~30s per revolution
 
+// What one of her own ships is drawn from: her rig, built of the captain's timber rather than her
+// class's, the way she sails (`CAPTAIN_TIMBER`).
+const ownRig = (loadout) => ({ ...rigSpec(loadout), timber: CAPTAIN_TIMBER });
+
 // The ship on the menu: the same 3-D model that sails at sea, turning under a fixed
 // light at drawGalleon's isometric angle, so it turns rather than spinning a flat sprite.
 //
@@ -1971,7 +1975,7 @@ function YardScreen({ hold, shipId, onView, onBack, onCommission, onOutfit }) {
   // gone. Everything below reads off her, and the outfitter opens on her too.
   const id = hold.yard.ships[shipId] ? shipId : hold.yard.active;
   const loadout = useMemo(() => shipLoadout(hold, id), [hold, id]);
-  const rig = useMemo(() => rigSpec(loadout), [loadout]);
+  const rig = useMemo(() => ownRig(loadout), [loadout]);
   const stats = useMemo(() => rate(loadout), [loadout]);
   const want = useMemo(() => shortfall(hold, id), [hold, id]);
   const rated = rateOf(loadout.hull);
@@ -3455,7 +3459,7 @@ function ShipPlate({ hold, onEdit, onOutfit }) {
   const [viewing, setViewing] = useState(hold.yard.active);
   const id = hold.yard.ships[viewing] ? viewing : hold.yard.active;
   const loadout = useMemo(() => shipLoadout(hold, id), [hold, id]);
-  const rig = useMemo(() => rigSpec(loadout), [loadout]);
+  const rig = useMemo(() => ownRig(loadout), [loadout]);
   const stats = useMemo(() => rate(loadout), [loadout]);
   const sailing = id === hold.yard.active;
   const at = fleet.findIndex((s) => s.id === id);

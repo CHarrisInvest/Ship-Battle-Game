@@ -303,6 +303,9 @@ Three things fall out of it that were hard-coded before and had to stop being:
   as she gathers way. The 2D fallback keeps the fixed flag.
 - Stays chain off the masts that are actually there, rather than running between fixed points where a
   mast used to be.
+- Shrouds keep out of the canvas. Fore-and-aft sails stand on the starboard side of the pole, so a
+  starboard shroud whose run would pass through one is not set up, and its ratlines go with it: on
+  a gundalow they read as a ladder stood through her lateen.
 
 The station numbers are the galleon's own, so handing her rig back reproduces the ship this file has
 always drawn. Verified against the pre-change code through the same renderer: 6 pixels of 177,952

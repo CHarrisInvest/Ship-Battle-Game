@@ -9,9 +9,9 @@
  * starts afresh each round.
  */
 
-import { hullForm, tintTimber } from "../hullform.js";
+import { hullForm, tintTimber, timberCast } from "../hullform.js";
 import { clamp, speedCap, outInWeather, STORM_RAMP } from "../sim/index.js";
-import { C, AI_COLORS, SIDE_COLORS } from "./palette.js";
+import { C, AI_COLORS, SIDE_COLORS, CAPTAIN_TIMBER } from "./palette.js";
 import { buildSeaRig } from "./searig.js";
 
 /**
@@ -36,18 +36,19 @@ export function lookOf(fx, s) {
     // told apart at a glance; in any other round the AI cycle through their own liveries
     const pal = (s.side && SIDE_COLORS[s.side]) || AI_COLORS[(s.livery || 0) % AI_COLORS.length];
     // her hull's own size and shape, from the class's form, and her timber with it, so a pine
-    // boat sits pale on the water beside an oak brig
+    // boat sits pale on the water beside an oak brig; a captain's ship is built of hers
     const form = hullForm(s.loadout.hull.id);
+    const timber = s.playerId ? timberCast(CAPTAIN_TIMBER) : form.timber;
     look = {
       fill: s.id === fx.me ? C.player : pal.fill,
       stroke: s.id === fx.me ? C.playerStroke : pal.stroke,
       sea: form.sea,
       rig: buildSeaRig(s.loadout, form.sea),
       cols: {
-        dark: tintTimber(C.hullDark, form.timber),
-        deck: tintTimber(C.hullDeck, form.timber),
-        wood: tintTimber(C.hullWood, form.timber),
-        spar: tintTimber(C.wood, form.timber),
+        dark: tintTimber(C.hullDark, timber),
+        deck: tintTimber(C.hullDeck, timber),
+        wood: tintTimber(C.hullWood, timber),
+        spar: tintTimber(C.wood, timber),
       },
       flash: 0, roll: 0, rollPhase: Math.random() * Math.PI * 2, wakeT: 0, sprayT: 0,
     };

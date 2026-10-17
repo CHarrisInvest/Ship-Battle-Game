@@ -95,6 +95,24 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   scaled down by her speed. The engine knows nothing of it. If wind ever comes to matter to the
   sailing it moves into the engine and the flags read it off the world. The menu's wind is fixed
   to the viewer, so on a turning plate the flags hold their line and she swings under them.
+- **A captain's ships are built of live oak, and a rival keeps her class's timber.**
+  `CAPTAIN_TIMBER` in `palette.js` is the species every ship a captain owns or sails is drawn in,
+  whatever her class: on the menu's plate and in the yard (`ownRig` in the screen), and at sea for
+  any ship with a `playerId` (`ships.js`, and `lookOf` for the 2D sea). A rig spec carries it as
+  `timber`, which `galleon.js` casts through `timberCast` in `hullform.js`; `rigSpec` never sets it,
+  because it is a look and the catalogue has no say in it. At sea her topsides still wear her
+  livery over it, so the timber shows on her deck, rails and lower strakes.
+- **Over her rail, the hull closes and follows her stern.** A waist with no castle at an end runs
+  its bulwark the whole length to that end: to her stem, where the two sides' inner faces meet on
+  the centreline, and to her transom, where a taffrail cut to meet the side rails closes it. Both
+  used to stop 1.2 short, which left the bow open and both quarters notched on every class without
+  a forecastle. Everything standing over the rail (bulwarks, castles, taffrail, rail guns, the
+  ensign staff) is drawn at `rx(x)`, her stern's full rake at that station, because the hull's top
+  edge carries the rake and anything that does not stands forward of it with a sliver of transom
+  astern. **A shroud is not set up through a sail**: fore-and-aft canvas stands on her starboard
+  side of the pole, so a starboard shroud whose run passes through a lateen, gaff, lug or headsail
+  outline is left off, ratlines with it, the way such a rig set its shrouds up to windward. One
+  that clears the cloth stays, which is why the galleon's mizzen keeps both.
 - **The Ship Lab is how a ship's look is changed.** `shiplab/` is a dev page that draws every class
   through `createMenuShip` with her fit, bearing, speed, the wind and the hull figures she is drawn
   from under the reader's hand; the figures are reshaped live under a lab id of their own, so
@@ -580,6 +598,12 @@ Rules above that the code does not yet satisfy. Tracked cleanups, not exceptions
   a fluyt's extreme tumblehome or a carrack's built-up works are still the shared family of shapes
   with different numbers. Refining a class means refining her form, not adding a size multiplier to
   the catalogue, which stays deliberately size-free.
+- **A quarterdeck can stand below her own stern.** `menuForm` sets a castle's deck off her castle
+  score and her stern's sheer off her sheer score, and on seven classes (the brigantine, both
+  xebecs, the corvette and the 6th, 4th and 3rd rates) the sheer wins: her deck is sunk under the
+  top of her side at the stern, and her transom stands two or three units above the quarterdeck
+  rail at its corners. Raising the quarterdeck to at least her stern's sheer is the fix; it changes
+  those seven silhouettes, so it waits on a look in the Ship Lab.
 - **Google sign-in has not been tried from the home-screen app on an iPhone.** A redirect out of a
   standalone web app is where that flow tends to break, so leave `GOOGLE_CLIENT_ID` unset in
   production until it has been, and email codes carry sign-in alone.
