@@ -123,9 +123,9 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   surface, the one the sail is drawn from, a rope's thickness either side) is rigged as such a boat
   was: one rope a side, square abreast of her, to the very top of a pole carried up 6 to 30% of its
   length until the rope clears, or failing that until it only lies against the cloth. Ropes are
-  never led fore or aft to dodge a sail. That leaves the xebecs' mains and the light xebec's fore
-  single-roped; every other mast keeps its ladder and her pole, gaff masts included, whose ladders
-  only brush the luff by the pole.
+  never led fore or aft to dodge a sail. That leaves both of the light xebec's masts and the heavy
+  xebec's main single-roped; every other mast keeps its ladder and her pole, gaff masts included,
+  whose ladders only brush the luff by the pole.
 - **The Ship Lab is how a ship's look is changed.** `shiplab/` is a dev page that draws every class
   through `createMenuShip` with her fit, bearing, speed, the wind and the hull figures she is drawn
   from under the reader's hand; the figures are reshaped live under a lab id of their own, so
@@ -406,7 +406,12 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   comes down to it**: the bands leave room for a course and its yard under the lowest, and a gaff
   in that berth has neither, so the stack is brought down to just over her throat, grows a little
   into the air it gave up, and the pole is cut shorter with it. Raise the square sails' foot, never
-  the gaff, to change that gap.
+  the gaff, to change that gap. **Square canvas over a lateen stands clear above every lateen's
+  yard** at its station (`lateenHeadAt`), her own and the next mast's, because a xebec's lateens
+  reach aft past the mast behind them: the stack is lifted as it is and her pole carried up to
+  hold it. The light xebec sets no square canvas at all: her fore and main are small lateen
+  sockets, which only the Lateen yard fits, and her `speed` carries the top speed the topsails
+  used to.
 - **A broadside is one ball a gun, spread over a moment, and laid as it bears.** Fifty balls leaving
   in the same instant cannot be told apart at any size they could be drawn, so every gun takes her
   own moment inside `volleyWindow`: several ports go off together, then a few more elsewhere, and

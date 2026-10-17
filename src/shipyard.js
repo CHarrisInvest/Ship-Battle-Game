@@ -225,8 +225,8 @@ const FLEET = [
   {
     id: "xebecLight", name: "Xebec light", price: 6200,
     blurb: "Long, low and lateen rigged, with a crew that would rather board you than shoot.",
-    hull: 277, crew: 180, speed: 0.97, hand: 1.07, canvas: 0.8, tons: 20,
-    guns: [9, 1, 1], masts: ["bowsprit/small/headsails", "fore/medium/lateen", "main/medium/lateen"],
+    hull: 277, crew: 180, speed: 1.015, hand: 1.07, canvas: 0.8, tons: 20,
+    guns: [9, 1, 1], masts: ["bowsprit/small/headsails", "fore/small/lateen", "main/small/lateen"],
   },
   {
     id: "corvette", name: "Corvette", price: 9000,
