@@ -3904,8 +3904,9 @@ function LobbyScreen({ net, note, onMake, onJoin, onRivals, onMode, onPerSide, o
                     {c.userId === me && <span style={{ fontSize: 11, color: "rgba(238,244,242,0.55)" }}>, you</span>}
                   </span>
                 </span>
-                {/* the host is named as such on the right, where the others say whether they are ready */}
-                <span style={{ fontSize: 12, fontWeight: 700, color: c.away ? C.gold : c.userId === lobby.host || c.ready ? C.grass : "rgba(238,244,242,0.55)" }}>
+                {/* the host is named as such on the right, where the others say whether they are
+                    ready; in plain ink, since green is the word for ready and the host never is */}
+                <span style={{ fontSize: 12, fontWeight: 700, color: c.away ? C.gold : c.userId === lobby.host ? C.ink : c.ready ? C.grass : "rgba(238,244,242,0.55)" }}>
                   {c.away ? "Away" : c.userId === lobby.host ? "Host" : c.ready ? "Ready" : "Not ready"}
                 </span>
               </div>
