@@ -31,6 +31,14 @@
  * clone of `materials[2]`. Materials are shared across every ship (see toon.js): clone before
  * changing one for one ship, and dispose the clone yourself.
  *
+ * FLAGS. galleon.js paints a fixed pennant and ensign for the 2D view; this model leaves both out
+ * and hangs live cloth on the same staffs instead (flags.js), one strip per flag, made per instance
+ * because each ship's flags blow on her own heading and speed. The pennant is a child of the mast it
+ * flies from, so it comes down with a dismasting and is scaled with a small craft's rig; the ensign
+ * is a child of the hull. Each is its own mesh under `materials[2]`, listed in `flags.meshes`, and
+ * `flags.blow(rel, speed, dt)` moves them (see flags.js for what `rel` is). Until a caller blows
+ * them they stand where the wind puts a ship lying stopped.
+ *
  * CACHE. Geometry is built once per spec, units and scale, and shared by every instance; a model's
  * `dispose()` detaches the instance and lets go of its hold on the geometry. The cache keeps the
  * `KEEP` most recently used specs and evicts only geometry no live model holds, so browsing the yard
@@ -48,6 +56,7 @@ import * as THREE from "three";
 import { shipFaces } from "../galleon.js";
 import { hullForm } from "../hullform.js";
 import { toonMaterial } from "./toon.js";
+import { flagCloth, flagSet, WIND } from "./flags.js";
 
 const FLAG = "#c8452f"; // galleon.js's flag, which no timber changes
 const CLOTH_FLOOR = "#24211b"; // canvas is lit through from both sides: a floor under its bands
@@ -181,7 +190,7 @@ function visibleFaces(faces) {
 }
 
 function build(spec, units, seaLength) {
-  const { faces: all, rig, form } = shipFaces(spec);
+  const { faces: all, flags, rig, form } = shipFaces(spec);
   const faces = visibleFaces(all);
   const L = seaLength ?? (units === "sea" ? hullForm(spec?.hull).sea.L : 2 * form.menu.Lh);
   const k = units === "sea" ? L / (2 * form.menu.Lh) : 1;
@@ -191,6 +200,8 @@ function build(spec, units, seaLength) {
     // is drawn at: it only shimmered, and it was a fifth of a first rate's triangles, drawn twice
     // with the sun's shadow. The menu, where she is a hand's width long, keeps it.
     if (units === "sea" && f.tag === "rig") continue;
+    // the fixed flags are the 2D view's; this model flies cloth of its own on the same staffs
+    if (f.tag === "flag") continue;
     const p = f.part || "hull";
     let list = byPart.get(p);
     if (!list) byPart.set(p, (list = []));
@@ -200,7 +211,7 @@ function build(spec, units, seaLength) {
   for (const [p, list] of byPart) geoms[p] = buildGeometry(list, k);
   const box = new THREE.Box3();
   for (const g of Object.values(geoms)) box.union(g.boundingBox);
-  return { geoms, masts: rig.masts.length, scale: k, height: box.max.y, length: 2 * form.menu.Lh * k, beam: 2 * box.max.z, box };
+  return { geoms, flags, masts: rig.masts.length, scale: k, height: box.max.y, length: 2 * form.menu.Lh * k, beam: 2 * box.max.z, box };
 }
 
 const keyFor = (spec, units, seaLength) => `${units}|${seaLength ?? ""}|${spec ? JSON.stringify(spec) : "galleon"}`;
@@ -212,18 +223,20 @@ const keyFor = (spec, units, seaLength) => `${units}|${seaLength ?? ""}|${spec ?
  *          thing drawGalleon takes
  *   units  "sea" (default) for her length at sea, "menu" for galleon.js's own units
  *   seaLength  overrides her length in "sea" units
+ *   phase  where her flags' wave starts, in radians, so a fleet's flags do not flap in step
  *
  * Returns
- *   { group, parts: { hull, bowsprit, sprit, masts: [mesh, ...] }, materials, scale, height,
- *     length, beam, key, dispose() }
+ *   { group, parts: { hull, bowsprit, sprit, masts: [mesh, ...] }, flags: { meshes, blow, pose },
+ *     materials, scale, height, length, beam, key, dispose() }
  *
  * `group` is in the model frame described at the top of this file. `parts` are its child meshes
- * (`bowsprit` and `sprit` are null when she has none); `masts` runs foremost first. `height` is the
- * top of her rig over the waterline, `length` and `beam` her extent, all in the units asked for.
- * Every mesh casts and receives shadows; the renderer's shadow map decides whether that costs
- * anything. `dispose()` takes the group out of its parent; the shared geometry stays cached.
+ * (`bowsprit` and `sprit` are null when she has none); `masts` runs foremost first. `flags` is her
+ * live cloth (see FLAGS above). `height` is the top of her rig over the waterline, `length` and
+ * `beam` her extent, all in the units asked for. Every mesh casts and receives shadows; the
+ * renderer's shadow map decides whether that costs anything. `dispose()` takes the group out of its
+ * parent and lets go of her flags; the shared geometry stays cached.
  */
-export function shipModel(spec, { units = "sea", seaLength } = {}) {
+export function shipModel(spec, { units = "sea", seaLength, phase = 0 } = {}) {
   const key = keyFor(spec, units, seaLength);
   let built = CACHE.get(key);
   if (built) {
@@ -254,11 +267,30 @@ export function shipModel(spec, { units = "sea", seaLength } = {}) {
   const parts = { hull: mesh("hull"), bowsprit: mesh("bowsprit"), sprit: mesh("sprit"), masts: [] };
   for (let i = 0; i < built.masts; i++) parts.masts.push(mesh("mast" + i));
   parts.masts = parts.masts.filter(Boolean);
+
+  // her flags, each on the piece of her it flies from
+  const cloths = [], flagMeshes = [];
+  for (const mount of built.flags) {
+    const host = (mount.part && group.getObjectByName(mount.part)) || parts.hull || group;
+    const cloth = flagCloth(mount, built.scale, phase);
+    const m = new THREE.Mesh(cloth.geometry, materials[2]);
+    m.name = mount.part ? "pennant" : "ensign";
+    m.castShadow = true;
+    m.receiveShadow = true;
+    host.add(m);
+    cloths.push(cloth);
+    flagMeshes.push(m);
+  }
+  const flags = Object.assign(flagSet(cloths), { meshes: flagMeshes });
+  flags.pose(WIND.menu, 0);
+
   return {
-    group, parts, materials, key,
+    group, parts, flags, materials, key,
     scale: built.scale, height: built.height, length: built.length, beam: built.beam,
     dispose() {
       group.removeFromParent();
+      for (const m of flagMeshes) { m.removeFromParent(); m.geometry.dispose(); }
+      flagMeshes.length = 0;
       if (held) { held = false; built.refs--; }
     },
   };

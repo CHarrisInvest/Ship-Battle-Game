@@ -30,6 +30,7 @@ import * as THREE from "three";
 import { drawGalleon } from "../galleon.js";
 import { hullForm } from "../hullform.js";
 import { shipModel } from "./shipmodel.js";
+import { WIND } from "./flags.js";
 
 const ISO = Math.sqrt(1.5); // drawGalleon's projection is isometric magnified by this
 const PIVOT_Y = 0.71; // where the waterline amidships sits, as a share of the box's height
@@ -101,11 +102,18 @@ function blobTexture() {
  * A turning ship drawn into `canvas`, which is a 2D canvas the caller owns.
  *
  *   resize(w, h, dpr)   the box in CSS pixels and the device pixel ratio to draw it at
- *   draw(spec, deg)     one frame of `spec` (a rigSpec, or null for the galleon) at bearing `deg`,
+ *   draw(spec, deg, how)  one frame of `spec` (a rigSpec, or null for the galleon) at bearing `deg`,
  *                       framed the way drawGalleon frames it: bearing 0 has the bow to the lower
  *                       right, and the waterline amidships sits at 0.71 of the height
  *   dispose()           release what it holds
  *   kind                "3d" while drawn through WebGL, "2d" when painted by drawGalleon
+ *
+ * Her flags fly from the menu's wind (`WIND.menu` in flags.js), which is fixed to the viewer, so as
+ * the plate turns her they hold their line on screen and she swings under them. `how` is optional:
+ * `speed` sails her at that speed in the engine's units, so her flags stream astern as they would at
+ * sea; `wind` turns the wind to that many radians in the menu's frame; and `time` holds the flags
+ * still at that moment of their wave, for a picture that must come out the same every time (the
+ * icons, the Ship Lab's sheet). Without `time` they wave on the page's own clock.
  *
  * `opts.shadow` (default true) lays a soft contact shadow under her keel; the generated art turns it
  * off, because it trims to what the ship covers.
@@ -141,6 +149,7 @@ export function createMenuShip(canvas, { shadow = true } = {}) {
   };
 
   let lastSpec; // the spec placed last: a plate redraws the same object every frame
+  let lastT = 0; // the page's clock at the last frame, for her flags
   const size = new THREE.Vector2();
   const place = (spec) => {
     if (spec === lastSpec && model) return;
@@ -168,9 +177,18 @@ export function createMenuShip(canvas, { shadow = true } = {}) {
       canvas.width = Math.round(cw * r);
       canvas.height = Math.round(ch * r);
     },
-    draw(spec, deg) {
+    draw(spec, deg, how = {}) {
       if (!gl || gl.lost || shared !== gl) return paint2d(spec, deg);
       place(spec);
+      // the wind, turned into her own frame: the plate turns her by `deg`, the wind stays put
+      const rel = (how.wind ?? WIND.menu) - (deg * Math.PI) / 180;
+      const speed = how.speed || 0;
+      if (how.time != null) model.flags.pose(rel, speed, how.time);
+      else {
+        const now = performance.now() / 1000;
+        model.flags.blow(rel, speed, lastT ? Math.min(0.1, now - lastT) : 0);
+        lastT = now;
+      }
       // her size in the box is drawGalleon's: the class's span fills the width
       const span = spanOf(spec);
       const px = (w / span) * ISO; // CSS pixels to a model unit

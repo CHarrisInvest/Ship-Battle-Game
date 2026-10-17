@@ -1202,21 +1202,31 @@ function buildShip(rig){
  /* The pennant flies from the truck of the tallest mast she has stepped, and
     from nothing if she has none. It used to be pinned to the height the galleon's
     main mast happened to reach, which left it hanging in the sky above a boat
-    whose one mast stopped thirty feet below it. */
+    whose one mast stopped thirty feet below it.
+
+    Each flag is also written down as a mount on `F.flags`: the top of its hoist,
+    its length and depth and how far its wave reaches. drawGalleon paints the
+    fixed flag below and never reads the mounts; the three.js model leaves that
+    flag out and hangs cloth of its own there, which the wind and her speed blow
+    (src/render3d/flags.js). */
+ const flags=[];
  {const truck=masts.reduce((a,m)=>(!a||m.top>a.top?m:a),null);
   if(truck){PART="mast"+masts.indexOf(truck);const top=truck.top+0.5,mx=truck.x,len=Math.min(22,(top-truck.deck)*0.33),pts=[];
    for(let i=0;i<=6;i++){const t=i/6;pts.push([mx-t*len,Math.sin(t*4.2)*1.6,top-0.4-t*1.2]);}
    for(let i=6;i>=0;i--){const t=i/6;pts.push([mx-t*len,Math.sin(t*4.2)*1.6,top-3.4+t*1.9]);}
-   addFace(F,pts,P.flag,null,{tag:"flag",double:true,back:P.flag});}
+   addFace(F,pts,P.flag,null,{tag:"flag",double:true,back:P.flag});
+   flags.push({part:PART,x:mx,z:top-0.4,len,hoist:3,fly:0.2,wave:1.6});}
   PART=null;
   // ensign staff stepped on the taffrail itself, raking aft
   {const ex=sternX+2, ez=deckZAt(ex)+BULWARK-0.7, et=ez+11.4*fk;
    addPrism(F,[ex,0,ez],[ex,0,et],0.5*fk,0.4*fk,P.wood,"mast");
    const fl=[];for(let i=0;i<=5;i++){const t=i/5;fl.push([ex-t*13*fk,Math.sin(t*3.6)*1.4,et-0.6]);}
    for(let i=5;i>=0;i--){const t=i/5;fl.push([ex-t*13*fk,Math.sin(t*3.6)*1.4,et-0.6-6.2*fk]);}
-   addFace(F,fl,P.flag,null,{tag:"flag",double:true,back:P.flag});}
+   addFace(F,fl,P.flag,null,{tag:"flag",double:true,back:P.flag});
+   flags.push({part:null,x:ex,z:et-0.6,len:13*fk,hoist:6.2*fk,fly:6.2*fk,wave:1.4*fk});}
  }
  PART=null;
+ F.flags=flags;
  return F;
 }
 /* The model is bearing-independent, so it is built once and re-projected per
@@ -1355,8 +1365,10 @@ function rigBands(station, n) {
 /* The ship as a face list, for a renderer that brings its own projection: `faces` is the same cached
    list drawGalleon paints, in menu units (x toward the bow, y abeam, z up from the waterline, the
    hull running from x = -form.menu.Lh at the stern), and `rig` is what it was built from, whose
-   `masts` (foremost first) are the "mast0", "mast1" ... named on each face's `part`. Treat both as
-   read only: they are shared with every other caller. */
-function shipFaces(spec){const rig=rigFor(spec);return{faces:facesFor(rig),rig,form:rig.form||DEFAULT_FORM};}
+   `masts` (foremost first) are the "mast0", "mast1" ... named on each face's `part`. `flags` is
+   where each flag is bent on, as buildShip records it, for a renderer that blows its own. Treat all
+   of it as read only: it is shared with every other caller. */
+function shipFaces(spec){const rig=rigFor(spec),faces=facesFor(rig);
+ return{faces,flags:faces.flags||[],rig,form:rig.form||DEFAULT_FORM};}
 
 export { drawGalleon, shipFaces, RIG_STATIONS, RIG_KINDS, RIG_BERTHS, rigBands };
