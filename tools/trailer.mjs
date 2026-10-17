@@ -173,8 +173,11 @@ function holdWith(loadout) {
   }
   for (const mount of ["broadside", "bow", "swivel"]) for (const gun of loadout.guns[mount]) act("fitGun", ship, mount, act("buyPart", gun.id).part);
   act("setActiveShip", ship);
-  // an ordinary purse on the menu, not the yard's
-  return { ...rec, coins: 4820 };
+  // She is the only ship in the yard: the starter is struck off, because the menu's plate opens on
+  // the ship it first saw, which is the blank record's starter while the server is still answering.
+  // And an ordinary purse on the menu, not the yard's.
+  const ships = Object.fromEntries(Object.entries(rec.yard.ships).filter(([id]) => id === ship));
+  return { ...rec, coins: 4820, yard: { ...rec.yard, ships } };
 }
 
 /** The mark, rigged as the icon rigs her, through `resolve` like any ship in the yard. */
@@ -200,12 +203,14 @@ function sail(seed, loadout, secs, len) {
   const score = new Float64Array(ticks + 1);
   const alive = new Uint8Array(ticks + 1);
   const where = [];
+  const EDGE = 360; // within this of the sea's edge the camera stops following her and the rope is in shot
   for (let t = 0; t < ticks; t++) {
     const events = S.step(world, { [ME]: helm(world) });
     const me = S.shipOf(world, ME);
     alive[t] = me.alive && !world.result.over ? 1 : 0;
     where.push({ x: me.x, y: me.y });
     if (!alive[t]) break;
+    const edge = Math.min(me.x, me.y, S.WORLD - me.x, S.WORLD - me.y) < EDGE;
     const inView = (x, y) => Math.abs(x - me.x) < VIEW_X && Math.abs(y - me.y) < VIEW_Y;
     const firing = new Set();
     let v = 0;
@@ -216,7 +221,8 @@ function sail(seed, loadout, secs, len) {
       else if (e.type === "dismasted") v += 10;
     }
     for (const id of firing) v += id === me.id ? 2 : 1;
-    score[t] = v;
+    // a fight on the rope is worth half: open water all round her reads better
+    score[t] = edge ? v * 0.5 : v;
   }
   // the best window: every tick of it, and the second after, with her afloat
   let best = null;
@@ -328,7 +334,8 @@ async function openGame(state) {
   const frame = (ms = FRAME_MS) => page.evaluate((m) => window.__sternchaseFrame(m), ms);
   for (let i = 0; i < 20; i++) await frame();
   const shoot = async (file) => {
-    const { data } = await cdp.send("Page.captureScreenshot", { format: "jpeg", quality: 93 });
+    // the clip is the viewport at the device scale, which is what makes the frame 1080 by 1920
+    const { data } = await cdp.send("Page.captureScreenshot", { format: "jpeg", quality: 93, clip: { x: 0, y: 0, width: VW, height: VH, scale: DPR } });
     writeFileSync(file, Buffer.from(data, "base64"));
   };
   return { ctx, page, frame, shoot };
@@ -398,9 +405,10 @@ async function card(page, kind, text) {
     const c = document.createElement("canvas");
     c.width = W; c.height = H;
     const ctx = c.getContext("2d");
-    const fit = (str, x, y, size, font, color, maxW, spacing = 0) => {
+    // text that shrinks to fit the width it is given; `font` is the family and `weight` goes before the size
+    const fit = (str, x, y, size, font, color, maxW, spacing = 0, weight = "") => {
       let px = size;
-      const set = () => { ctx.font = `${px}px ${font}`; ctx.letterSpacing = `${spacing * px}px`; };
+      const set = () => { ctx.font = `${weight} ${px}px ${font}`.trim(); ctx.letterSpacing = `${spacing * px}px`; };
       set();
       while (ctx.measureText(str).width > maxW && px > 6) { px -= 1; set(); }
       ctx.textAlign = "center"; ctx.textBaseline = "alphabetic"; ctx.fillStyle = color;
@@ -409,14 +417,22 @@ async function card(page, kind, text) {
       return px;
     };
     if (kind === "caption") {
-      // a line over a soft dark band, placed in the open water between the counters and the stick
-      const size = W * 0.052;
+      // a line or two over a soft dark band, in the open water between the counters and the stick;
+      // a line too long for the width breaks at the space nearest its middle
+      const size = W * 0.05, maxW = W * 0.84;
       ctx.font = `600 ${size}px ${UI}`;
-      const tw = Math.min(W * 0.9, ctx.measureText(text).width + size * 1.6);
-      const y = H * 0.29;
-      ctx.fillStyle = "rgba(6,30,29,0.62)";
-      ctx.beginPath(); ctx.roundRect(W / 2 - tw / 2, y - size * 0.95, tw, size * 1.5, 20); ctx.fill();
-      fit(text, W / 2, y + size * 0.12, size, `600 ${UI}`, "#f3efe2", W * 0.86);
+      let lines = [text];
+      if (ctx.measureText(text).width > maxW) {
+        const gaps = [...text.matchAll(/ /g)].map((m) => m.index);
+        const cut = gaps.reduce((a, b) => (Math.abs(b - text.length / 2) < Math.abs(a - text.length / 2) ? b : a));
+        lines = [text.slice(0, cut), text.slice(cut + 1)];
+      }
+      const tw = Math.min(W * 0.92, Math.max(...lines.map((l) => ctx.measureText(l).width)) + size * 1.6);
+      const lh = size * 1.3, bh = lh * lines.length + size * 0.7;
+      const top = H * 0.265;
+      ctx.fillStyle = "rgba(6,30,29,0.64)";
+      ctx.beginPath(); ctx.roundRect(W / 2 - tw / 2, top, tw, bh, 20); ctx.fill();
+      lines.forEach((l, i) => fit(l, W / 2, top + size * 0.35 + lh * (i + 0.72), size, UI, "#f3efe2", maxW, 0, "600"));
       return c.toDataURL("image/png");
     }
     // the menu's ground, dark water lit in the middle, with the sea's wave marks over it
@@ -448,7 +464,7 @@ async function card(page, kind, text) {
       ctx.fillStyle = GOLD;
       ctx.beginPath(); ctx.roundRect(W / 2 - bw / 2, by - h / 2, bw, h, 20); ctx.fill();
       ctx.textBaseline = "middle";
-      fit(label, W / 2, by + h * 0.03, Math.round(h * 0.46), `600 ${UI}`, "#10302e", bw - h * 0.6);
+      fit(label, W / 2, by + h * 0.03, Math.round(h * 0.46), UI, "#10302e", bw - h * 0.6, 0, "600");
       ctx.textBaseline = "alphabetic";
       fit("sternchase.org", W / 2, by + h * 1.3, unit * 0.9, UI, DIM, tw);
     }
