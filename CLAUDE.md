@@ -109,7 +109,14 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   a forecastle. Everything standing over the rail (bulwarks, castles, taffrail, rail guns, the
   ensign staff) is drawn at `rx(x)`, her stern's full rake at that station, because the hull's top
   edge carries the rake and anything that does not stands forward of it with a sliver of transom
-  astern. **A shroud is not set up through a sail**: fore-and-aft canvas stands on her starboard
+  astern. **A raised deck stands on her side.** A castle is level at its own height (`z`, off her
+  castle score) from where it breaks off the waist, and where her sheer sweeps up past that toward
+  the taffrail or the stem the deck rises with it, a plank over the top of her side (`castleZ` in
+  `galleon.js`, which `deckZAt`, the castle, its rails, its stairs and its guns all read). Her castle
+  and sheer scores are separate figures, and on seven classes the sheer won: a level quarterdeck sat
+  under the top of her own side with her transom standing over its rail. A castle that clears her
+  sheer the whole way, the galleon's and the big rates', is the level deck it always was.
+  **A shroud is not set up through a sail**: fore-and-aft canvas stands on her starboard
   side of the pole, so a starboard shroud whose run passes through a lateen, gaff, lug or headsail
   outline is left off, ratlines with it, the way such a rig set its shrouds up to windward. One
   that clears the cloth stays, which is why the galleon's mizzen keeps both.
@@ -598,12 +605,10 @@ Rules above that the code does not yet satisfy. Tracked cleanups, not exceptions
   a fluyt's extreme tumblehome or a carrack's built-up works are still the shared family of shapes
   with different numbers. Refining a class means refining her form, not adding a size multiplier to
   the catalogue, which stays deliberately size-free.
-- **A quarterdeck can stand below her own stern.** `menuForm` sets a castle's deck off her castle
-  score and her stern's sheer off her sheer score, and on seven classes (the brigantine, both
-  xebecs, the corvette and the 6th, 4th and 3rd rates) the sheer wins: her deck is sunk under the
-  top of her side at the stern, and her transom stands two or three units above the quarterdeck
-  rail at its corners. Raising the quarterdeck to at least her stern's sheer is the fix; it changes
-  those seven silhouettes, so it waits on a look in the Ship Lab.
+- **There is no poop deck.** A castle score raises a quarterdeck and then a forecastle, and nothing
+  stacks a third deck aft, so the 3rd rate, a seventy-four, and the big rates draw without the poop
+  they carried over the quarterdeck. It wants a deck of its own in `hullform.js` and `galleon.js`
+  rather than a higher castle score, which only lifts the quarterdeck.
 - **Google sign-in has not been tried from the home-screen app on an iPhone.** A redirect out of a
   standalone web app is where that flow tends to break, so leave `GOOGLE_CLIENT_ID` unset in
   production until it has been, and email codes carry sign-in alone.

@@ -64,12 +64,25 @@ function hullKit(menu){
     wl:lerp(ST[i][3],ST[i+1][3],t)};}
   return station(0);
  }
+ /* A RAISED DECK STANDS ON HER SIDE. A castle's height is its own (`z`, off her
+    castle score) where it breaks from the waist, and from there it is level, as
+    long as it stays over her side. Where her sheer sweeps up past it, toward her
+    taffrail or her stem, the deck rises with the sheer, a plank over the top of
+    her side, the way a quarterdeck was laid on the same sweep as the deck under
+    it and ran up to the taffrail with it. Her castle score and her sheer score
+    are separate figures, and on a hull whose sheer outran her castle a level deck
+    ended up under the top of her own side at the stern, with her transom standing
+    over the quarterdeck rail. Where the castle stands clear of her sheer the
+    whole way, as the galleon's and the big rates' do, this is the level deck it
+    always was. */
+ const DECK_LIFT=0.3;
+ const castleZ=(c,x)=>Math.max(c.z,stationAt(x).sheer+DECK_LIFT);
  /* The height of whatever a mast is stepped on at x: the quarterdeck aft, the
     forecastle forward, and the open deck between them. An open boat has
     neither, so the answer is her sheer everywhere. */
  const deckZAt=x=>
-  (menu.aft&&x>=menu.aft.x0+2&&x<=menu.aft.x1)?menu.aft.z
-  :(menu.fore&&x>=menu.fore.x0&&x<=menu.fore.x1)?menu.fore.z
+  (menu.aft&&x>=menu.aft.x0+2&&x<=menu.aft.x1)?castleZ(menu.aft,x)
+  :(menu.fore&&x>=menu.fore.x0&&x<=menu.fore.x1)?castleZ(menu.fore,x)
   :stationAt(x).sheer;
  function bowShift(x,f){
   if(x<=BOW.x0) return 0;
@@ -100,7 +113,7 @@ function hullKit(menu){
   // the bulwark stands over the rail edge, so it carries the full rake of a leaning stern with it
   return[s.x+sternShift(s.x,1),side*s.w,lerp(s.sheer,rail,(u-uS)/(1-uS))];
  }
- kit={ST,BULWARK,station,stationAt,deckZAt,bowShift,sternShift,hullPtF,hullWAtZ,hullPt};
+ kit={ST,BULWARK,station,stationAt,castleZ,deckZAt,bowShift,sternShift,hullPtF,hullWAtZ,hullPt};
  KITS.set(menu,kit);
  return kit;
 }
@@ -444,7 +457,7 @@ function buildShip(rig){
  const whole=rig.form||DEFAULT_FORM;
  const form=whole.menu;
  const P=palFor(whole);
- const {ST,BULWARK,station,stationAt,deckZAt,sternShift,hullPtF,hullWAtZ,hullPt}=hullKit(form);
+ const {ST,BULWARK,station,stationAt,castleZ,deckZAt,sternShift,hullPtF,hullWAtZ,hullPt}=hullKit(form);
  const Lh=form.Lh, sternX=-Lh, fk=form.k;
  /* Where anything standing over her rail at x is drawn. A raking transom or an
     overhanging stern carries her rail aft of her waterline (`sternShift` at full
@@ -534,7 +547,7 @@ function buildShip(rig){
  const waistX0=form.aft?form.aft.x1:sternX;
  const waistX1=form.fore?form.fore.x0:Lh;
  bulwarkRun(waistX0,waistX1,0,0,0,!form.fore);
- if(form.fore) bulwarkRun(0.833*Lh,Lh,0,0,form.fore.z-stationAt(0.833*Lh).sheer);
+ if(form.fore) bulwarkRun(0.833*Lh,Lh,0,0,castleZ(form.fore,0.833*Lh)-stationAt(0.833*Lh).sheer);
  const uu=[0,0.46,0.74,0.87,1],s0=station(0),sN=station(ST.length-1);
  {
   const NB=12,NC=4;
@@ -704,7 +717,7 @@ function buildShip(rig){
    const oh=BULWARK*(row.main?0.34:0.30)*GS, ow=BULWARK*(row.main?0.46:0.42)*GS;
    const len=BULWARK*(row.main?1.1:0.75)*GS, rad=BULWARK*(row.main?0.22:0.19)*GS;
    for(const px of row.xs){
-    const z=(deck?deck.z:stationAt(px).sheer)+BULWARK*0.5;
+    const z=(deck?castleZ(deck,px):stationAt(px).sheer)+BULWARK*0.5;
     const w=railAt(px);
     const open=portN++<armed;
     for(const side of[1,-1]){
@@ -732,24 +745,27 @@ function buildShip(rig){
     could outrank it and paint over the rail's inner face. Short lengths keep each
     piece keyed beside whatever stands next to it. Consecutive pieces overlap by a
     hair so the run reads unbroken. */
- function railWall(ax,ay,bx,by,dz,rh,ix,iy,noOuter){
-  const top=dz+rh;
+ /* `dzB` is the deck at the far end where it differs from the near one: a rail
+    along a deck that rises with her sheer rises with it. */
+ function railWall(ax,ay,bx,by,dz,rh,ix,iy,noOuter,dzB){
+  const zb=dzB??dz;
   const run=Math.hypot(bx-ax,by-ay), NR=Math.max(1,Math.ceil(run/5));
   for(let s=0;s<NR;s++){
    const u0=s/NR, u1=(s+1)/NR+(s<NR-1?0.004:0);
    const x0=lerp(ax,bx,u0), y0=lerp(ay,by,u0), x1=lerp(ax,bx,u1), y1=lerp(ay,by,u1);
    const i0x=x0+ix*RAIL_T, i0y=y0+iy*RAIL_T, i1x=x1+ix*RAIL_T, i1y=y1+iy*RAIL_T;
-   if(!noOuter)addFace(F,[[x0,y0,dz],[x1,y1,dz],[x1,y1,top],[x0,y0,top]],P.top,[-ix,-iy,0],{tag:"castle",bias:3,paint:1});
-   addFace(F,[[i0x,i0y,dz],[i0x,i0y,top],[i1x,i1y,top],[i1x,i1y,dz]],P.dark,[ix,iy,0],{tag:"castle",bias:3,paint:0.8});
-   addFace(F,[[x0,y0,top],[x1,y1,top],[i1x,i1y,top],[i0x,i0y,top]],P.cap,[0,0,1],{tag:"castle",bias:3,paint:1});
+   const d0=lerp(dz,zb,u0), d1=lerp(dz,zb,u1), t0=d0+rh, t1=d1+rh;
+   if(!noOuter)addFace(F,[[x0,y0,d0],[x1,y1,d1],[x1,y1,t1],[x0,y0,t0]],P.top,[-ix,-iy,0],{tag:"castle",bias:3,paint:1});
+   addFace(F,[[i0x,i0y,d0],[i0x,i0y,t0],[i1x,i1y,t1],[i1x,i1y,d1]],P.dark,[ix,iy,0],{tag:"castle",bias:3,paint:0.8});
+   addFace(F,[[x0,y0,t0],[x1,y1,t1],[i1x,i1y,t1],[i0x,i0y,t0]],P.cap,[0,0,1],{tag:"castle",bias:3,paint:1});
   }
  }
  /* Stairs, and the gaps their heads open in the castle end rails. Both come from
     the same numbers, so a stair can never land against a closed rail. One
     flight per castle break, so an open boat has none. */
  const STAIR=[];
- if(form.fore) STAIR.push([form.fore.x0,-1,form.fore.z]);
- if(form.aft) STAIR.push([form.aft.x1,1,form.aft.z]);
+ if(form.fore) STAIR.push([form.fore.x0,-1,castleZ(form.fore,form.fore.x0)]);
+ if(form.aft) STAIR.push([form.aft.x1,1,castleZ(form.aft,form.aft.x1)]);
  const STAIR_W=4.4*Math.min(1,fk*1.1), STAIR_RUN=11*fk;
  // one flight per side, hard against the bulwark: [inboard edge, outboard edge]
  const stairSpan=(fx,dir,side)=>{const mx=fx+dir*STAIR_RUN*0.5,
@@ -779,14 +795,16 @@ function buildShip(rig){
    if(b<w-0.01)cap(b,1);
   }
  };
- function castle(xa,xb,dz,rh,ins,face){
-  const hw=x=>Math.max(stationAt(x).w-ins,2),bs=x=>Math.min(stationAt(x).sheer-0.6,dz-0.5);
+ // `dzAt` is the castle's deck at x, which rises with her sheer where it must (`castleZ`)
+ function castle(xa,xb,dzAt,rh,ins,face){
+  const hw=x=>Math.max(stationAt(x).w-ins,2),bs=x=>Math.min(stationAt(x).sheer-0.6,dzAt(x)-0.5);
   const xs=xSamples(xa,xb,3.5);   // finer plates: keeps the deck's depth sort local around the masts
   for(let i=0;i<xs.length-1;i++){
    const x0=xs[i],x1=xs[i+1],w0=hw(x0),w1=hw(x1),b0=bs(x0),b1=bs(x1),X0=rx(x0),X1=rx(x1);
+   const d0=dzAt(x0),d1=dzAt(x1);
    for(const side of[1,-1]){
-    addFace(F,[[X0,side*w0,b0],[X1,side*w1,b1],[X1,side*w1,dz],[X0,side*w0,dz]],P.top,[0,side,0],{tag:"castle",bias:3,paint:1});
-    railWall(X0,side*w0,X1,side*w1,dz,rh,0,-side);
+    addFace(F,[[X0,side*w0,b0],[X1,side*w1,b1],[X1,side*w1,d1],[X0,side*w0,d0]],P.top,[0,side,0],{tag:"castle",bias:3,paint:1});
+    railWall(X0,side*w0,X1,side*w1,d0,rh,0,-side,false,d1);
    }
    /* same treatment as the waist deck: plain plates, unstroked, split
       athwartships. These sit at the top of the ship, so unlike the waist plates
@@ -809,10 +827,10 @@ function buildShip(rig){
        plate's key close to the work standing along its edge. */
     xe=X1+(i<xs.length-2?0.6:0),NY=5;
    for(let k=0;k<NY;k++){const a=-1+2*k/NY-(k?0.02:0),b=-1+2*(k+1)/NY+(k<NY-1?0.02:0);
-    addFace(F,[[xp0,a*cw0,dz],[xe,a*cw1,dz],[xe,b*cw1,dz],[xp0,b*cw0,dz]],
+    addFace(F,[[xp0,a*cw0,d0],[xe,a*cw1,d1],[xe,b*cw1,d1],[xp0,b*cw0,d0]],
             P.deck,[0,0,1],{tag:"castle",bias:-1.6,nostroke:true,nearW:0});}
   }
-  const we=hw(face),be=bs(face),nf=face===xa?-1:1,FX=rx(face);
+  const dz=dzAt(face),we=hw(face),be=bs(face),nf=face===xa?-1:1,FX=rx(face);
   const st=STAIR.find(s=>s[0]===face), yi=st?Math.abs(stairSpan(st[0],st[1],1)[0]):0;
   /* Tiled finely for the same reason as the deck: the break wall is one plane, but
      each tile sorts on its own centroid, and a third-of-the-width tile was keyed
@@ -834,9 +852,10 @@ function buildShip(rig){
    addFace(F,[[FX,y0,dz],[FX,y1,dz],[FX,y1,dz+rh],[FX,y0,dz+rh]],P.wood,[nf,0,0],{tag:"castle",bias:3});}
  }
  if(form.aft){
-  castle(form.aft.x0,form.aft.x1,form.aft.z,BULWARK,0,form.aft.x1);
-  endRail(form.aft.x0,form.aft.z,BULWARK,1);
-  endRail(form.aft.x1,form.aft.z,BULWARK,-1,stairGaps(form.aft.x1,1),true);
+  const az=x=>castleZ(form.aft,x);
+  castle(form.aft.x0,form.aft.x1,az,BULWARK,0,form.aft.x1);
+  endRail(form.aft.x0,az(form.aft.x0),BULWARK,1);
+  endRail(form.aft.x1,az(form.aft.x1),BULWARK,-1,stairGaps(form.aft.x1,1),true);
  }else{
   /* No castle: the stern closes with a rail across the taffrail, flush with her
      transom, whose own face is its outer one, and between the inner faces of her
@@ -857,8 +876,9 @@ function buildShip(rig){
   }
  }
  if(form.fore){
-  castle(form.fore.x0,form.fore.x1,form.fore.z,BULWARK,0,form.fore.x0);
-  endRail(form.fore.x0,form.fore.z,BULWARK,1,stairGaps(form.fore.x0,-1),true);
+  const fz=x=>castleZ(form.fore,x);
+  castle(form.fore.x0,form.fore.x1,fz,BULWARK,0,form.fore.x0);
+  endRail(form.fore.x0,fz(form.fore.x0),BULWARK,1,stairGaps(form.fore.x0,-1),true);
  }
  /* Stern lights are a windowed stern: a gallery or a stern castle. A transom
     or a round tuck stays plain timber, whatever she cost. */

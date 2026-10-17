@@ -303,6 +303,10 @@ Three things fall out of it that were hard-coded before and had to stop being:
   as she gathers way. The 2D fallback keeps the fixed flag.
 - Stays chain off the masts that are actually there, rather than running between fixed points where a
   mast used to be.
+- A raised deck stands on her side. A castle is level at the height her castle score gives it
+  until her sheer sweeps up past it, and from there to the taffrail (or the stem) it rises with the
+  sheer, the way a quarterdeck was laid on the same sweep as the deck below. Seven classes had a
+  level quarterdeck sunk under the top of their own side at the stern before this.
 - Shrouds keep out of the canvas. Fore-and-aft sails stand on the starboard side of the pole, so a
   starboard shroud whose run would pass through one is not set up, and its ratlines go with it: on
   a gundalow they read as a ladder stood through her lateen.
