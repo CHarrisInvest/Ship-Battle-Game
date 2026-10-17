@@ -407,6 +407,33 @@ function rigFromSpec(spec, form) {
           bulge: slot.bulge * k, seg: slot.seg, stud: !!s.stud,
         };
       });
+      /* Square canvas over a gaff comes down to it. The square bands leave room
+         under the lowest of them for a course and its yard, and a gaff in the
+         course's berth has neither: her throat stands 0.22 of her height under
+         her peak, and her peak where a course's head would be. So the sails above
+         her stood a long way up a bare pole, 10 to 26 units over the throat. The
+         stack is brought down until its foot is just over her throat, where a
+         real spanker's jaws sat under the top with the topsail sheeted home over
+         them, and it takes back part of the air it gave up, its sails and the
+         gaps between them scaled up together, span and all, so they come out a
+         little larger as well as lower. The pole is cut to the canvas below, so
+         she stands a shorter mast for it: a seventy-four's mizzen comes down
+         from 0.95 of her main to 0.90, near what one really stood. */
+      if (sails.length > 1 && sails[0].cut === "gaff" && sails.slice(1).every((s) => s.cut === "square")) {
+        const gaff = sails[0], over = sails.slice(1);
+        const foot = gaff.zt - 0.22 * (gaff.zt - gaff.zb) + 1.2;
+        const bottom = over[0].zb, height = over[over.length - 1].zt - bottom;
+        const drop = bottom - foot;
+        if (drop > 0) {
+          // a quarter of the air given up goes back into canvas, and no sail grows past 1.15 of herself
+          const f = Math.min(1.15, 1 + (0.25 * drop) / height);
+          for (const s of over) {
+            s.zb = foot + (s.zb - bottom) * f;
+            s.zt = foot + (s.zt - bottom) * f;
+            s.span *= f; s.bulge *= f;
+          }
+        }
+      }
       /* The pole is then cut down to the canvas actually bent on it. A mast is as
          tall as it needs to be for its highest sail plus the room a masthead
          takes: leave it at its full nominal height and a boat carrying one small

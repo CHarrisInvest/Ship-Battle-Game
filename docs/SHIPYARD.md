@@ -315,6 +315,12 @@ Three things fall out of it that were hard-coded before and had to stop being:
   to the very top of a pole carried up (6 to 30% of its length) until the rope clears or at least
   only lies against the sail: the xebecs' mains and the light xebec's fore. Square and gaff masts
   keep their ladders.
+- Square canvas over a gaff comes down to it. The square bands leave room under the lowest of them
+  for a course and its yard, and a gaff in the course's berth has neither, so the sails over it
+  stood 10 to 26 units up a bare pole from her throat (every rated ship's mizzen, and the sloop,
+  cutter, clipper and brigantine). The stack now starts just over her throat and takes back a
+  quarter of the air it gave up, its sails scaled up with it to at most 1.15 of themselves, and the
+  pole is cut to the canvas below, so the mast stands shorter. The gaff itself is cut as before.
 
 The station numbers are the galleon's own, so handing her rig back reproduces the ship this file has
 always drawn. Verified against the pre-change code through the same renderer: 6 pixels of 177,952
