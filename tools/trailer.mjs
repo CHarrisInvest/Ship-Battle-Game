@@ -43,6 +43,7 @@ import { chromium } from "playwright-core";
 import { MARK } from "./mark.mjs";
 import * as S from "../src/sim/index.js";
 import * as Y from "../src/shipyard.js";
+import * as E from "../src/exact.js";
 import { blank, applyAction, shipLoadout } from "../src/holdrules.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -89,9 +90,10 @@ const VIEW_Y = (VH / (VW / (VIEW_X * 2))) / 0.6 / 2 - 30;
  * the shot be chosen in Node and filmed in the browser. The stick is rounded here the way
  * `controls.read()` rounds it, so what the screen steps with is what was chosen.
  *
- * Runs in the page as well as here, so it takes the engine as `S` and must stay free of imports.
+ * Runs in the page as well as here, so it takes the engine as `S` and the exact maths as `E` (a
+ * `Math.hypot` is not the same bits in every V8) and must stay free of imports.
  */
-function makeHelm(S, me) {
+function makeHelm(S, E, me) {
   const STEPS = 1024, ANGLE = (2 * Math.PI) / STEPS;
   let tgt = null, retargetAt = -1, avoidIsl = null, avoidSide = 1;
   // `avoidIslands`, with the island she is going round remembered here rather than on the ship
@@ -102,20 +104,20 @@ function makeHelm(S, me) {
     let isl = null, id = 1e9, iTo = 0, iRel = 0;
     for (const o of world.islands) {
       const dx = o.x - s.x, dy = o.y - s.y;
-      const d = Math.hypot(dx, dy);
+      const d = E.hypot(dx, dy);
       const R = o.r + clear;
       if (d - R > look) continue;
-      const toI = Math.atan2(dy, dx);
+      const toI = E.atan2(dy, dx);
       const rel = S.norm(toI - desired);
       const off = Math.abs(rel) > Math.PI / 2 + (d > R ? 0 : S.ISLAND_LEAN);
-      if (off || (d > R && Math.abs(Math.sin(rel)) * d > R)) continue;
+      if (off || (d > R && Math.abs(E.sin(rel)) * d > R)) continue;
       if (d < id) { isl = o; id = d; iTo = toI; iRel = rel; }
     }
     if (!isl) { avoidIsl = null; return desired; }
     const R = isl.r + clear;
     if (avoidIsl !== isl) { avoidIsl = isl; avoidSide = iRel > 0 ? -1 : 1; }
     if (id <= R) return iTo + avoidSide * (Math.PI / 2 + S.ISLAND_LEAN);
-    return iTo + avoidSide * Math.asin(Math.min(1, R / id));
+    return iTo + avoidSide * E.asin(Math.min(1, R / id));
   }
   return (world) => {
     const inp = { ...S.NO_INPUT };
@@ -124,13 +126,13 @@ function makeHelm(S, me) {
     if (!tgt || !tgt.alive || world.tick >= retargetAt) { tgt = S.pickTarget(world, s); retargetAt = world.tick + 48; }
     const W = S.WORLD;
     const nearWall = s.x < 140 || s.x > W - 140 || s.y < 140 || s.y > W - 140;
-    const toMid = Math.atan2(W / 2 - s.y, W / 2 - s.x);
+    const toMid = E.atan2(W / 2 - s.y, W / 2 - s.x);
     let desired, throttle;
     if (!tgt) { desired = toMid; throttle = 0.5; }
     else {
       const dx = tgt.x - s.x, dy = tgt.y - s.y;
-      const dist = Math.hypot(dx, dy);
-      const toT = Math.atan2(dy, dx);
+      const dist = E.hypot(dx, dy);
+      const toT = E.atan2(dy, dx);
       const bearing = S.norm(toT - s.heading);
       if (nearWall && dist > 260) { desired = toMid; throttle = 0.7; }
       else if ((tgt.hull < tgt.maxHull * 0.4 || tgt.crew < tgt.maxCrew * 0.4) && dist < 520) { desired = toT; throttle = 1; }
@@ -180,6 +182,13 @@ function holdWith(loadout) {
   return { ...rec, coins: 4820, yard: { ...rec.yard, ships } };
 }
 
+/**
+ * The loadout the server sends for a hold, as the JSON the browser builds its world from. The round
+ * is sailed in Node from this same JSON rather than from the catalogue's own object, because a
+ * figure summed in another order is another figure, and the two rounds would part company.
+ */
+const sent = (hold) => JSON.parse(JSON.stringify(shipLoadout(hold)));
+
 /** The mark, rigged as the icon rigs her, through `resolve` like any ship in the yard. */
 function markLoadout() {
   const hull = Y.HULLS[MARK.hull];
@@ -198,7 +207,7 @@ function markLoadout() {
  */
 function sail(seed, loadout, secs, len) {
   const world = S.createWorld({ mode: "ffa", seed, players: [{ id: ME, loadout }] });
-  const helm = makeHelm(S, ME);
+  const helm = makeHelm(S, E, ME);
   const ticks = Math.round(secs * FPS), span = Math.round(len * FPS), spare = FPS;
   const score = new Float64Array(ticks + 1);
   const alive = new Uint8Array(ticks + 1);
@@ -289,7 +298,7 @@ if (DRY) {
   for (const shot of SHOTS) {
     if (shot.kind !== "play") continue;
     const t0 = Date.now();
-    const chosen = chooseShot(Y.maximumLoadout(shot.hull), shot.secs, shot.seeds, 1000 + SHOTS.indexOf(shot) * 101);
+    const chosen = chooseShot(sent(holdWith(Y.maximumLoadout(shot.hull))), shot.secs, shot.seeds, 1000 + SHOTS.indexOf(shot) * 101);
     console.log(`${shot.key}: ${shot.hull} on seed ${chosen.seed} from ${(chosen.start / FPS).toFixed(1)} s, scoring ${chosen.score.toFixed(0)}, chosen in ${((Date.now() - t0) / 1000).toFixed(1)} s`);
   }
   process.exit(0);
@@ -359,8 +368,9 @@ async function filmRound(shot, state, dir, secs, clean) {
   await page.evaluate(`window.__makeHelm = ${makeHelm.toString()}`);
   await page.evaluate(async (me) => {
     const S = await import("/src/sim/index.js");
+    const E = await import("/src/exact.js");
     const { TILT } = await import("/src/render/view.js");
-    const helm = window.__makeHelm(S, me);
+    const helm = window.__makeHelm(S, E, me);
     window.__probe = { calls: 0 };
     window.__sternchaseHelm = (g, controls) => {
       const inp = helm(g);
@@ -495,12 +505,12 @@ try {
   }
   for (const shot of SHOTS) {
     if (shot.kind !== "play") continue;
-    const loadout = Y.maximumLoadout(shot.hull);
+    const hold = holdWith(Y.maximumLoadout(shot.hull));
     say(`choosing the ${shot.hull} shot over ${shot.seeds} seeds`);
     // each shot its own seeds, so no two are fought on the same sea
-    const chosen = chooseShot(loadout, shot.secs, shot.seeds, 1000 + SHOTS.indexOf(shot) * 101);
+    const chosen = chooseShot(sent(hold), shot.secs, shot.seeds, 1000 + SHOTS.indexOf(shot) * 101);
     say(`  seed ${chosen.seed}, from ${(chosen.start / FPS).toFixed(1)} s, scoring ${chosen.score.toFixed(0)}`);
-    const state = { hold: holdWith(loadout), version: 1, seed: chosen.seed };
+    const state = { hold, version: 1, seed: chosen.seed };
     dirs[shot.key] = join(work, shot.key);
     say(`filming the ${shot.hull}`);
     await filmRound(chosen, state, dirs[shot.key], shot.secs, !!shot.clean);
