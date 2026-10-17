@@ -69,7 +69,7 @@ const FRAME_MS = 1000 / FPS + 1e-6; // a hair over a tick, so the bank never com
 // plus the overlaps: 32 seconds of shots make the 30-second trailer.
 const XFADE = 0.4;
 const SHOTS = [
-  { key: "open", kind: "play", hull: "thirdRate", secs: 4.4, clean: true, seeds: 10 },
+  { key: "open", kind: "play", hull: "thirdRate", secs: 4.4, clean: true, seeds: 40 },
   { key: "title", kind: "card", secs: 2.8 },
   // the menu's caption sits low, over the mode cards, so the plate and her ship stay clear
   { key: "menu", kind: "menu", secs: 4.4, caption: "Outfit the ship.", captionAt: 0.905 },
