@@ -68,13 +68,17 @@ const FRAME_MS = 1000 / FPS + 1e-6; // a hair over a tick, so the bank never com
 // The cut, in seconds. Each shot runs into the next over `XFADE`, so the shots add up to the length
 // plus the overlaps: 32 seconds of shots make the 30-second trailer.
 const XFADE = 0.4;
+//
+// This table is the cut. Reorder its rows to reorder the shots, change `secs` to recut, swap a `hull`
+// for another class, write a `caption` (or none) on any shot, set `clean` to film a fight with no HUD,
+// and `captionAt` to move a caption off what it would cover (a share of the height; 0.265 is the
+// open water between the counters and the stick). `card` shots are drawn in `card()` below.
 const SHOTS = [
   { key: "open", kind: "play", hull: "thirdRate", secs: 4.4, clean: true, seeds: 40 },
   { key: "title", kind: "card", secs: 2.8 },
-  // the menu's caption sits low, over the mode cards, so the plate and her ship stay clear
-  { key: "menu", kind: "menu", secs: 4.4, caption: "Outfit the ship.", captionAt: 0.905 },
+  { key: "fast", kind: "play", hull: "baltimoreClipper", secs: 7.4, seeds: 40, caption: "Outfit the ship." },
+  { key: "menu", kind: "menu", secs: 4.4 },
   { key: "big", kind: "play", hull: "firstRate", secs: 9.4, seeds: 40, caption: "Start as an unrated ship, upgrade to a 1st rate." },
-  { key: "fast", kind: "play", hull: "baltimoreClipper", secs: 7.4, seeds: 40, caption: "Battle rival captains." },
   { key: "end", kind: "card", secs: 3.6 },
 ];
 if (QUICK) for (const shot of SHOTS) { shot.secs = Math.max(0.8, shot.secs * 0.12); shot.seeds = 2; }
@@ -102,11 +106,13 @@ const VIEW_Y = (VH / (VW / (VIEW_X * 2))) / 0.6 / 2 - 30;
 function makeHelm(S, E, me) {
   const STEPS = 1024, ANGLE = (2 * Math.PI) / STEPS;
   let tgt = null, retargetAt = -1, avoidIsl = null, avoidSide = 1;
-  // `avoidIslands`, with the island she is going round remembered here rather than on the ship
+  // `avoidIslands`, with the island she is going round remembered here rather than on the ship. She
+  // is the ship the camera is on, so she gives a beach twice the berth a rival does and looks further
+  // ahead for one: a first rate grinding along a shore is the worst thing a shot can hold.
   function clearOfIslands(world, s, desired) {
     if (!world.islands) return desired;
-    const clear = s.hullA * 0.76 + S.ISLAND_CLEAR;
-    const look = S.ISLAND_LOOK + s.spdCur * S.ISLAND_LOOK_SECS;
+    const clear = s.hullA * 0.76 + S.ISLAND_CLEAR * 2;
+    const look = S.ISLAND_LOOK * 1.5 + s.spdCur * S.ISLAND_LOOK_SECS * 1.5;
     let isl = null, id = 1e9, iTo = 0, iRel = 0;
     for (const o of world.islands) {
       const dx = o.x - s.x, dy = o.y - s.y;
@@ -231,6 +237,9 @@ function sail(seed, loadout, secs, len) {
     const toEdge = Math.min(me.x, W - me.x), toEnd = Math.min(me.y, W - me.y);
     const rope = toEdge < VIEW_X || toEnd < VIEW_Y;
     const pinned = toEdge < PINNED || toEnd < PINNED;
+    // ...and a beach: `moveShip` grounds her at `r + 0.76 hullA`, and a shot of her on one is no shot
+    const beach = world.islands.reduce((d, isl) => Math.min(d, Math.hypot(isl.x - me.x, isl.y - me.y) - isl.r - me.hullA * 0.76), 1e9);
+    const aground = beach < 8, shaving = beach < 50;
     const inView = (x, y) => Math.abs(x - me.x) < VIEW_X && Math.abs(y - me.y) < VIEW_Y;
     const firing = new Set();
     let v = 0;
@@ -241,9 +250,9 @@ function sail(seed, loadout, secs, len) {
       else if (e.type === "dismasted") v += 10;
     }
     for (const id of firing) v += id === me.id ? 2 : 1;
-    // open water all round her reads best: the rope in shot costs a third, and a fight she is
-    // pinned against it for costs three quarters
-    score[t] = pinned ? v * 0.25 : rope ? v * 0.66 : v;
+    // open water all round her reads best: the rope in shot costs a third, a fight she is pinned
+    // against it for three quarters, her bow in the sand nearly all of it
+    score[t] = (pinned ? 0.25 : rope ? 0.66 : 1) * (aground ? 0.1 : shaving ? 0.5 : 1) * v;
   }
   // the best window: every tick of it, and the second after, with her afloat
   let best = null;
@@ -434,12 +443,12 @@ async function card(page, kind, text, at = 0.265) {
     c.width = W; c.height = H;
     const ctx = c.getContext("2d");
     // text that shrinks to fit the width it is given; `font` is the family and `weight` goes before the size
-    const fit = (str, x, y, size, font, color, maxW, spacing = 0, weight = "") => {
+    const fit = (str, x, y, size, font, color, maxW, spacing = 0, weight = "", baseline = "alphabetic") => {
       let px = size;
       const set = () => { ctx.font = `${weight} ${px}px ${font}`.trim(); ctx.letterSpacing = `${spacing * px}px`; };
       set();
       while (ctx.measureText(str).width > maxW && px > 6) { px -= 1; set(); }
-      ctx.textAlign = "center"; ctx.textBaseline = "alphabetic"; ctx.fillStyle = color;
+      ctx.textAlign = "center"; ctx.textBaseline = baseline; ctx.fillStyle = color;
       ctx.fillText(str, x, y);
       ctx.letterSpacing = "0px";
       return px;
@@ -491,9 +500,8 @@ async function card(page, kind, text, at = 0.265) {
       const by = H * 0.36 + big * 2.9;
       ctx.fillStyle = GOLD;
       ctx.beginPath(); ctx.roundRect(W / 2 - bw / 2, by - h / 2, bw, h, 20); ctx.fill();
-      ctx.textBaseline = "middle";
-      fit(label, W / 2, by + h * 0.03, Math.round(h * 0.46), UI, "#10302e", bw - h * 0.6, 0, "600");
-      ctx.textBaseline = "alphabetic";
+      // the label on the middle of the pill, by its middle: an alphabetic baseline there sat it high
+      fit(label, W / 2, by + h * 0.04, Math.round(h * 0.46), UI, "#10302e", bw - h * 0.6, 0, "600", "middle");
       fit("sternchase.org", W / 2, by + h * 1.3, unit * 0.9, UI, DIM, tw);
     }
     return c.toDataURL("image/png");
