@@ -10,7 +10,7 @@ import { isHuman, moveShip, speedCap } from "./ships.js";
 import { canFire, fire, reloadOf } from "./weapons.js";
 import { BAULK_GRACE } from "./ram.js";
 import { canHit } from "./round.js";
-import { weatherCourse } from "./storm.js";
+import { weatherCourse, runFromWeather } from "./storm.js";
 import * as exact from "../exact.js";
 
 // How an AI captain sails round an island. She keeps this much water between her beach and the
@@ -94,12 +94,13 @@ export function avoidIslands(world, s, desired) {
 }
 
 export function pickTarget(world, s) {
-  if (!world.rules.melee) {
+  if (!world.rules.melee && !world.rules.sides) {
     // one quarry, whoever is sailing against the fleet: the nearest of them afloat
     let near = null;
     for (const c of world.ships) if (isHuman(c) && c.alive && (!near || exact.hypot(c.x - s.x, c.y - s.y) < exact.hypot(near.x - s.x, near.y - s.y))) near = c;
     return near;
   }
+  // a melee, or two sides: prey is whoever `canHit` says is an enemy, scored below
   const leaderSnow = world.leader && world.leader !== s && world.leader.earned > world.avgEarned * 1.6 && world.aliveCount > 2;
   // at the drop nobody has a reputation yet, so range is what matters: take the nearest hull
   // and only start shopping for weak or wealthy prey once the melee has had time to sort itself
@@ -108,7 +109,8 @@ export function pickTarget(world, s) {
   const shop = 1 - 0.75 * opening; // ...and reputation barely at all
   let best = null, bestScore = -1e9, nearest = null, nd = 1e9;
   for (const c of world.ships) {
-    if (c === s || !c.alive) continue;
+    // an enemy afloat: in a melee that is everyone else, between sides the other fleet
+    if (!canHit(world, s, c)) continue;
     const dist = exact.hypot(c.x - s.x, c.y - s.y);
     if (dist < nd) { nd = dist; nearest = c; }
     if (dist > 1500) continue;
@@ -343,9 +345,10 @@ export function stepAI(world, s, dt) {
     let away = exact.atan2(s.y - tgt.y, s.x - tgt.x);
     if (nearWall) away = exact.atan2(WORLD / 2 - s.y, WORLD / 2 - s.x);
     // ...and the weather has a say in where "away" is. A wounded captain running from the ship
-    // that wounded her is exactly who sails out of the ring and dies of the sea, so the run home
-    // is bent back the same way everyone else's course is.
-    const run = weatherCourse(world, s, away, 0.95);
+    // that wounded her is exactly who sails out of the ring and dies of the sea, so near the rail
+    // she runs round the ring rather than out of it, and the run is bent home the same way
+    // everyone else's course is.
+    const run = weatherCourse(world, s, runFromWeather(world, s, away), 0.95);
     moveShip(world, s, dt, avoidIslands(world, s, run.desired), run.throttle);
     // A captain running is still a captain with guns. She used to return here without firing
     // a shot, so a pursuer who came up on her beam, which is the one place a running ship can

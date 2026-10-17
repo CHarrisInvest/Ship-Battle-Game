@@ -5,7 +5,7 @@
 
 import { STARTER, ladder, measure, peers, rate, rateOf, stockOfHull, stockOfRate } from "../shipyard.js";
 import { random, seedOf } from "./rng.js";
-import { WORLD, ARENA_SPAWN_CLEAR, ARENA_SPAWN_GAP, STORM_R0, HUMAN_SPAWN_GAP } from "./tables.js";
+import { WORLD, ARENA_SPAWN_CLEAR, ARENA_SPAWN_GAP, STORM_R0, HUMAN_SPAWN_GAP, SIDES, FLANK, LINE_GAP } from "./tables.js";
 import { hunterOf, modeOf } from "./modes.js";
 import { isHuman, humanRange, makeShip } from "./ships.js";
 import { computeMeta } from "./round.js";
@@ -18,8 +18,11 @@ import * as exact from "../exact.js";
  * One captain opens in the middle of the sea with her bow to the north, as the game always began.
  * Several are scattered across it once the islands are down, as far apart as the sea allows.
  * `rivals`, when given, is how many AI ships sail besides them, in place of the mode's own count:
- * it is the host's setting in an online lobby. `seed` decides everything else that is left to
- * chance, so the same seed and the same players give the same round.
+ * it is the host's setting in an online lobby. Between sides it is how many ships each side has,
+ * captains counted, and each captain's record carries the `side` she sails with (`SIDES`; the left
+ * when it says nothing): the two lines are drawn up facing each other across the sea and the AI
+ * take the places the captains leave, so a side may be captains alone or AI alone. `seed` decides
+ * everything else that is left to chance, so the same seed and the same players give the same round.
  *
  * The world is plain data, with no functions in it and nothing from the page, so a copy of it is a
  * copy of the round. What the engine looks up rather than carries, the rules a mode's row names and
@@ -46,11 +49,32 @@ export function createWorld({ mode, seed, players, rivals }) {
   const field = fieldCaptain(rules, players);
   world.playerLoadout = field.loadout;
   world.playerStrength = measure(rate(world.playerLoadout));
-  const board = (pl, x, y, heading) => {
-    const ship = makeShip(world, x, y, heading, { playerId: pl.id, loadout: pl.loadout });
+  const board = (pl, x, y, heading, side = null) => {
+    const ship = makeShip(world, x, y, heading, { playerId: pl.id, loadout: pl.loadout, side });
     world.players[pl.id] = ship.id;
     world.ships.push(ship);
   };
+  const count = rivals ?? rules.rivals;
+  if (rules.sides) {
+    // islands first, then each side drawn up in a line along her flank, bows to the enemy: her
+    // captains at the head of the line and the AI filling the places they leave. Every captain
+    // sails, so a side with more captains than the figure raises the figure for both sides,
+    // and the lines stay even.
+    genIslands(world);
+    const n = Math.max(count, ...SIDES.map((side) => players.filter((pl) => sideOf(pl) === side).length));
+    for (const side of SIDES) {
+      const captains = players.filter((pl) => sideOf(pl) === side);
+      const heading = side === SIDES[0] ? 0 : Math.PI;
+      for (let i = 0; i < n; i++) {
+        const pos = flankPos(world, side, i, n);
+        if (captains[i]) board(captains[i], pos.x, pos.y, heading, side);
+        else world.ships.push(makeShip(world, pos.x, pos.y, heading, { livery: world.ships.length, loadout: rivalLoadout(world, 0), side }));
+      }
+    }
+    world.fieldSize = world.ships.length;
+    computeMeta(world);
+    return world;
+  }
   if (players.length === 1) {
     // her own ship, in the middle of the sea with her bow to the north, before the islands are
     // planted, which is the order the dice have always been thrown in for a single captain
@@ -64,7 +88,6 @@ export function createWorld({ mode, seed, players, rivals }) {
       board(pl, pos.x, pos.y, random(world) * Math.PI * 2);
     }
   }
-  const count = rivals ?? rules.rivals;
   for (let i = 0; i < count; i++) {
     // where a mode replaces its losses, rivals sail in from the horizon the same way the
     // reinforcements will; where the field is fixed, they are scattered across the whole sea
@@ -118,6 +141,25 @@ export function spawnPos(world, gap) {
     if (d > bestD) { bestD = d; best = { x, y }; }
   }
   return best || { x: WORLD / 2, y: WORLD / 2 };
+}
+
+/** The side a captain's record names, or the left when it names none the sea has. */
+export const sideOf = (pl) => (SIDES.includes(pl.side) ? pl.side : SIDES[0]);
+
+/**
+ * Where the `slot`th ship of a line of `n` lies on her side's flank: `FLANK` in from the sea's edge
+ * and spaced `LINE_GAP` along it, the line centred on the sea, and stepped inboard until she is
+ * clear of any island planted there. No dice: a line of battle is drawn up, not scattered.
+ */
+export function flankPos(world, side, slot, n) {
+  const y = WORLD / 2 + (slot - (n - 1) / 2) * LINE_GAP;
+  const x0 = side === SIDES[0] ? FLANK : WORLD - FLANK;
+  const inboard = side === SIDES[0] ? 1 : -1;
+  for (let k = 0; k < 12; k++) {
+    const x = x0 + inboard * k * 40;
+    if (!world.islands.some((isl) => exact.hypot(x - isl.x, y - isl.y) < isl.r + 55)) return { x, y };
+  }
+  return { x: x0, y };
 }
 
 /**

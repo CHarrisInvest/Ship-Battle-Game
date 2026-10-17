@@ -12,7 +12,7 @@
  * the exact maths, and every file it reaches has to load as a plain ES module.
  */
 
-import { createWorld, step, NO_INPUT } from "../src/sim/index.js";
+import { createWorld, step, NO_INPUT, SIDES } from "../src/sim/index.js";
 import { STARTER, resolve, ladder } from "../src/shipyard.js";
 import * as exact from "../src/exact.js";
 
@@ -20,7 +20,7 @@ import * as exact from "../src/exact.js";
 // the longest round in the game and a fully found first rate can take twenty minutes to climb
 // part of it, and a round in Node costs about a second for every twenty minutes of it.
 export const LIMIT = 3600;
-export const MODES = ["ffa", "derby", "wave", "ladder"];
+export const MODES = ["ffa", "derby", "wave", "ladder", "teams"];
 // Ticks between fingerprints: ten seconds of round.
 const CHECK = 600;
 
@@ -46,6 +46,8 @@ const HANDS = { idle, driven: drive, wandering: wander };
 export const ROUNDS = [
   ...MODES.flatMap((mode) => Object.keys(SHIPS).flatMap((ship) => Object.keys(HANDS).map((hands) => ({ mode, ship, hands, captains: 1 })))),
   { mode: "ffa", ship: "gundalow", hands: "wandering", captains: 4 },
+  // two sides, a captain on each, sailed on past the last of them by the AI
+  { mode: "teams", ship: "gundalow", hands: "wandering", captains: 2 },
 ];
 
 /**
@@ -82,7 +84,8 @@ export function fingerprint(text) {
 
 /** One recorded round, sailed to its end: its name, how long it ran, and its fingerprints. */
 export function playRound(round, index) {
-  const players = Array.from({ length: round.captains }, (_, i) => ({ id: `p${i + 1}`, loadout: SHIPS[round.ship] }));
+  // between sides the captains alternate sides, so a round with two has one on each
+  const players = Array.from({ length: round.captains }, (_, i) => ({ id: `p${i + 1}`, loadout: SHIPS[round.ship], side: round.mode === "teams" ? SIDES[i % SIDES.length] : null }));
   const world = createWorld({ mode: round.mode, seed: 1000 + index * 37, players });
   const hands = HANDS[round.hands];
   const checkpoints = [];

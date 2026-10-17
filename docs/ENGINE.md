@@ -33,6 +33,11 @@ isInput(record);                     // whether the controls could have made thi
   the sea as the game always began, and several are scattered across it, `HUMAN_SPAWN_GAP` apart
   where the sea allows. `rivals`, when given, replaces the mode's count of AI ships. The field is
   matched against the captain whose ship measures nearest the lobby's average (`fieldCaptain`).
+  In the `teams` mode each player record carries a `side`, `"left"` or `"right"` (`SIDES`, the left
+  when it says nothing), `rivals` is how many ships each side has with the captains counted, and
+  the two sides are drawn up in lines on opposite flanks (`flankPos`), bows to the enemy, the AI
+  taking the places the captains leave. Every captain sails, so a side with more captains than the
+  figure raises both sides to match.
 - **`step`** advances exactly one `TICK` (1/60 s) and returns what happened in it. A round that is
   over stays over.
 - **Inputs** are one record per human, keyed by player id: the stick's reach and world heading, the
@@ -52,7 +57,10 @@ isInput(record);                     // whether the controls could have made thi
   `{ playerId, rank }`, each loser carries her `cause` as well (`"hull"`, `"crew"`, `"storm"` or
   `"together"`), and `field` is how many ships started, for the placement line.
   Each captain is placed as she goes under, so `losers` lists them in the order they sank, and two
-  who sink on one step share a place.
+  who sink on one step share a place. Between sides it carries `side` as well, the side that won or
+  null when both went under together; nobody is placed (`rank` is 0), every captain of the winning
+  side is in `winners`, a sunk one with her `cause`, and `voyageStats` pays a winner afloat the
+  mode's `winBonus` and one who went under its `sunkWinBonus`.
 - **`playOn(world)`** is the rest of a round to watch once its captains are out of it: a copy of a
   finished free-for-all or derby with two ships or more still fighting (`playsOn` says whether there
   is one), which steps on without her until one ship or none is left. Its `result` keeps her winners
@@ -156,6 +164,28 @@ touches nothing of the page.
 - `npm run sim-test` runs `tools/captains-test.mjs` as well, which plays rounds with 2, 4 and 8
   captains and fails on a pile-up at the drop, a captain placed twice or never, or a round that
   ends while a captain and another ship are still afloat.
+
+## Two sides
+
+The `teams` row in `MODES` is a round with friends fought as two fleets, and it is a row rather
+than a flag on the free-for-all because every check reads the row.
+
+- **`hostile(world, a, b)`** is the one question: between sides it is the side a ship carries
+  (`ship.side`), in a melee everyone is hostile, otherwise the fleet is against the captains.
+  `canHit` reads it for every ball, and so do the AI's prey picking and her line-of-fire check, so a
+  consort's ball passes through a consort and finds an enemy behind her.
+- **A ram on a consort lands and pays nothing.** Two hulls meeting at speed is a fact of the sea
+  rather than a choice of target, so `stepRam` resolves the blow on a consort as on anyone, and tells
+  `applyHit` the attacker does not count: no coins, no damage dealt, no ram or kill in her tally.
+- **The round ends when a side has no ship afloat, AI included.** It does not end with the last
+  captain, because the side still at sea may win it for her, so whoever runs the round sails it on
+  until a fleet is gone; the server does so four times faster once nobody is in it. Both sides
+  wiped on one step is a round nobody won.
+- **What is a fact of the round and what is a look.** Which side a ship is on is the engine's;
+  which colour that side flies and what it is called are the renderer's (`SIDE_COLORS`), as every
+  ship's colours always were.
+- `tools/captains-test.mjs` holds all of this: the lines, the hostility rule, the uncredited ram,
+  the end and the purses, and whole rounds from the same seed twice.
 
 ## Left for later stages
 

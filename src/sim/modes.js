@@ -4,7 +4,7 @@
  */
 
 import { arenaHunter, ladderRung } from "../shipyard.js";
-import { ARENA_START, ARENA_MAX_ENEMIES, FFA_AI, DERBY_AI, DERBY_WEATHER, FFA_WEATHER, arenaReinforcements } from "./tables.js";
+import { ARENA_START, ARENA_MAX_ENEMIES, FFA_AI, DERBY_AI, TEAMS_SIDE, DERBY_WEATHER, FFA_WEATHER, arenaReinforcements } from "./tables.js";
 
 /**
  * A mode is a set of rules, not a name to compare against. Everything that used to ask "are we in
@@ -24,8 +24,10 @@ export const MODES = {
     guns: true, // cannons and muskets aboard
     repairs: true, // the repair rail, paid for out of the voyage's own earnings
     melee: false, // every hull hostile to every other, rather than only to the player
+    sides: false, // two fleets, each hull hostile to the other side alone (`SIDES`)
     ranked: false, // placements, a leader, and the rank badge
     lastAfloatWins: false,
+    lastSideWins: false, // ...or the round goes to the side with a ship still afloat
     reinforcements: true, // a sinking brings fresh hunters in from the horizon
     reinforce: "arena", // ...how many, by her nth sinking (`REINFORCE` below)
     fleetCap: ARENA_MAX_ENEMIES, // ...and how many may be on the water at once
@@ -36,6 +38,7 @@ export const MODES = {
     timeCoins: 0, // coins a second afloat, on top of what her guns and bow earn
     fullRound: 0, // ...and the span a winner is paid for whatever the clock said
     winBonus: 0,
+    sunkWinBonus: 0, // what a winner who went under before the end is paid, where a side can win for her
   },
   ladder: {
     key: "ladder",
@@ -43,8 +46,10 @@ export const MODES = {
     guns: true,
     repairs: true,
     melee: false,
+    sides: false,
     ranked: false,
     lastAfloatWins: false,
+    lastSideWins: false,
     reinforcements: true,
     reinforce: "ladder", // one for one: the next rung sails in as the last goes under
     fleetCap: 1,
@@ -58,6 +63,7 @@ export const MODES = {
     // the achievement for it pays besides. Bigger than a free-for-all's purse because it is the
     // longest round in the game and there is only one way to end it well.
     winBonus: 200,
+    sunkWinBonus: 0,
   },
   ffa: {
     key: "ffa",
@@ -65,8 +71,10 @@ export const MODES = {
     guns: true,
     repairs: true,
     melee: true,
+    sides: false,
     ranked: true,
     lastAfloatWins: true,
+    lastSideWins: false,
     reinforcements: false,
     reinforce: null,
     fleetCap: 0,
@@ -90,6 +98,41 @@ export const MODES = {
     // captain has been paid all round for the fighting that got her there and a derby captain has
     // not: there are no guns in that mode, so the win is most of what it pays.
     winBonus: 25,
+    sunkWinBonus: 0,
+  },
+  teams: {
+    // TWO SIDES, with friends: the lobby's captains pick the left or the right of the sea, the AI
+    // fill each side up to the figure the host set, and the two lines are drawn up facing each
+    // other across the whole width of it. A side's guns cannot hurt a ship of her own side, and
+    // her balls pass through one to find an enemy beyond; her bow can, since two hulls meeting at
+    // speed is a fact of the sea and not a choice of target, but a blow on a consort pays and
+    // counts for nothing. The round goes to the side with a ship still afloat when the other has
+    // none, AI included, and every captain of that side wins it, sunk or not: those still afloat
+    // at the end are paid the whole purse and those who went under before it a smaller one.
+    // Nobody is placed, because a finishing order means nothing across two fleets.
+    key: "teams",
+    rivals: TEAMS_SIDE, // ships a side, captains counted, rather than AI besides them
+    guns: true,
+    repairs: true,
+    melee: false,
+    sides: true,
+    ranked: false,
+    lastAfloatWins: false,
+    lastSideWins: true,
+    reinforcements: false,
+    reinforce: null,
+    fleetCap: 0,
+    hunter: null,
+    ladder: false,
+    flees: true,
+    // The same ring as the free-for-all, for the same reason: two sides can keep their distance as
+    // easily as three wounded captains, and the ring closing on the middle of the sea is what
+    // brings the lines together.
+    storm: FFA_WEATHER,
+    timeCoins: 0,
+    fullRound: 0,
+    winBonus: 25,
+    sunkWinBonus: 10,
   },
   derby: {
     key: "derby",
@@ -97,8 +140,10 @@ export const MODES = {
     guns: false,
     repairs: false,
     melee: true,
+    sides: false,
     ranked: true,
     lastAfloatWins: true,
+    lastSideWins: false,
     reinforcements: false,
     reinforce: null,
     fleetCap: 0,
@@ -115,12 +160,14 @@ export const MODES = {
     timeCoins: 1,
     fullRound: 175,
     winBonus: 75,
+    sunkWinBonus: 0,
   },
 };
 // Menu order, and the order the hold's per-mode bests are listed in. The two arenas sit last and
 // together: the wave arena is the hardest opening a new captain can pick, since the sea keeps
 // filling up behind every ship she sinks, and the ladder is the longest round in the game. The
-// first card is the one most players will take.
+// first card is the one most players will take. Two sides is not on it: it is a way of sailing with
+// friends, picked in the lobby, and a captain alone would be fighting beside AI for AI.
 export const MODE_LIST = ["ffa", "derby", "wave", "ladder"];
 export const modeOf = (m) => MODES[m] || MODES.wave;
 

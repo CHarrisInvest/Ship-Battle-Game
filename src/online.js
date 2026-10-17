@@ -10,8 +10,9 @@
  * ships comes too, and `desynced` turns true if this world ever parts company with it.
  *
  * `connectOnline({ onChange, onEvents })` returns the connection: `create()`, `join(code)`,
- * `leave()`, `setRivals(n)`, `start()`, `send(input)` for her controls, and `advance(n)` to step the
- * world up to `n` ticks of what the server has sent. `state` is everything the lobby screen reads.
+ * `leave()`, `setMode(mode)`, `setRivals(n)`, `setPerSide(n)`, `setSide(side)`, `start()`,
+ * `send(input)` for her controls, and `advance(n)` to step the world up to `n` ticks of what the
+ * server has sent. `state` is everything the lobby screen reads.
  */
 
 import { createWorld, step, shipsPrint, NO_INPUT, isInput } from "./sim/index.js";
@@ -27,6 +28,7 @@ export const ONLINE_FAILED = {
   "already-in": "You are already in that lobby, in another tab.",
   elsewhere: "You opened this lobby in another tab or window, so it moved there.",
   "not-ready": "Not everyone is ready yet.",
+  "side-full": "That side has no room for another captain.",
 };
 
 const askTicket = () => call("POST", "/online/ticket", { engine: ENGINE });
@@ -56,9 +58,12 @@ export async function connectOnline({ onChange = () => {}, onEvents = () => {}, 
     else if (msg.t === "start") {
       // a round, or the round she was sailing when her connection dropped, from its start: the
       // frames that follow sail it up to the server's tick
-      const world = createWorld({ mode: "ffa", seed: msg.seed, players: msg.players.map((p) => ({ id: p.id, loadout: p.loadout })), rivals: msg.rivals });
+      // built from exactly what the server built its own from: the mode, the seed, the field and
+      // each captain's loadout and side
+      const mode = msg.mode || "ffa";
+      const world = createWorld({ mode, seed: msg.seed, players: msg.players.map((p) => ({ id: p.id, loadout: p.loadout, side: p.side || null })), rivals: msg.rivals });
       state.round = {
-        world, you: msg.you, rejoin: !!msg.rejoin,
+        world, mode, you: msg.you, rejoin: !!msg.rejoin,
         names: Object.fromEntries(msg.players.map((p) => [p.id, p.name])),
         cur: Object.fromEntries(msg.players.map((p) => [p.id, { ...NO_INPUT }])),
         queue: [], desynced: false, over: false,
@@ -128,6 +133,11 @@ export async function connectOnline({ onChange = () => {}, onEvents = () => {}, 
     join: (code) => out({ t: "join", code }),
     leave: () => { out({ t: "leave" }); state.round = null; },
     setRivals: (n) => out({ t: "rivals", rivals: n }),
+    /** The host picks a melee ("ffa") or two sides ("teams"), and between sides how many ships each has. */
+    setMode: (mode) => out({ t: "mode", mode }),
+    setPerSide: (n) => out({ t: "perSide", perSide: n }),
+    /** Which side she sails with, between sides: "left" or "right". */
+    setSide: (side) => out({ t: "side", side }),
     start: () => out({ t: "start" }),
     /** Her controls, sent when they change (a repair always), for the server to sail her ship with. */
     send(input) {

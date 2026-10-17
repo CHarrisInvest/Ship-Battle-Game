@@ -5,6 +5,7 @@
 
 import { hunterOf, reinforcementsOf } from "./modes.js";
 import { isHuman, shipOf } from "./ships.js";
+import { SIDES } from "./tables.js";
 
 // What a sinking pays her killer, as a share of the hull that went down. A quarter of a ship's
 // launch is the flat 25 the game paid when every hull afloat was worth a hundred points.
@@ -21,7 +22,9 @@ export function voyageStats(world, playerId) {
   const time = (p.placed ? p.sankAt : world.time) || 0;
   const paidInFull = !!(won && r.fullRound); // she ended it early; she is paid as though she had not
   const timePay = Math.round((paidInFull ? r.fullRound : time) * r.timeCoins);
-  const winPay = won ? r.winBonus : 0;
+  // a side wins for every captain of it, and one who went under before the end is paid the smaller
+  // purse; where the last afloat wins, a winner is always afloat
+  const winPay = won ? (p.alive ? r.winBonus : r.sunkWinBonus) : 0;
   const fought = Math.round(p.earned || 0);
   const repaired = Math.round(p.repaired || 0);
   const total = fought + timePay + winPay;
@@ -88,6 +91,13 @@ export function voyageRun(world, playerId) {
  * ship afloat (or the top of the ladder) says the ones who are have won. A sinking outranks a
  * win: a captain not afloat was not the last afloat, whatever else went down beside her. With one
  * captain aboard this is the rule the game always had: her sinking ends it.
+ *
+ * Between sides the question is asked of the fleets rather than of the captains. The round is over
+ * when a side has no ship afloat, AI included, and goes to the other, every captain of it, sunk or
+ * not: `result.side` names it, and a captain who went under before the end is in `winners` with
+ * the cause she went down for, where `voyageStats` pays her the smaller purse. Both sides wiped on
+ * one step is a round nobody won. It does not end when the last captain is out, because the side
+ * is still at sea: whoever runs the round sails it on until a fleet is gone.
  */
 export function judge(world) {
   if (world.result.over) return;
@@ -101,6 +111,7 @@ export function judge(world) {
   }
   const humans = world.ships.filter(isHuman);
   const standing = world.ships.filter((s) => s.alive).length;
+  if (world.rules.sides) return judgeSides(world, humans);
   const together = world.rules.lastAfloatWins && standing === 0;
   for (const s of humans) {
     if (s.alive || s.placed) continue;
@@ -121,6 +132,28 @@ export function judge(world) {
     winners = afloat.map((s) => ({ playerId: s.playerId, rank: world.rules.ranked ? 1 : 0 }));
   } else if (afloat.length) return;
   world.result = { over: true, winners, losers: world.out.map((o) => ({ ...o })), field: world.fieldSize };
+  world.events.push({ type: "round_over", result: world.result });
+}
+
+function judgeSides(world, humans) {
+  const gone = SIDES.filter((side) => afloatOf(world, side).length === 0);
+  const together = gone.length === SIDES.length;
+  for (const s of humans) {
+    if (s.alive || s.placed) continue;
+    s.placed = true;
+    s.sankAt = world.time;
+    // nobody is placed between sides: a finishing order means nothing across two fleets
+    const out = { playerId: s.playerId, rank: 0, cause: together ? "together" : s._deathBar || "hull" };
+    world.out.push(out);
+    world.events.push({ type: "player_out", ...out });
+  }
+  if (!gone.length) return;
+  const side = together ? null : SIDES.find((x) => !gone.includes(x));
+  const sunk = (s) => world.out.find((o) => o.playerId === s.playerId);
+  const entry = (s) => (s.alive ? { playerId: s.playerId, rank: 0 } : { ...sunk(s) });
+  const winners = side ? humans.filter((s) => s.side === side).map(entry) : [];
+  const losers = humans.filter((s) => s.side !== side).map(entry);
+  world.result = { over: true, winners, losers, field: world.fieldSize, side };
   world.events.push({ type: "round_over", result: world.result });
 }
 
@@ -189,11 +222,25 @@ export function killShip(world, s, attacker, cause, standing = !!(attacker && at
   }
 }
 
-export function canHit(world, owner, target) {
-  if (!target.alive || target === owner) return false;
+/**
+ * Whether two hulls are enemies, which is the one question every weapon and every AI captain asks.
+ * Between sides it is the side she sails with; in a melee everyone is; otherwise the fleet is
+ * against the captains and nobody else.
+ */
+export function hostile(world, a, b) {
+  if (a === b) return false;
+  if (world.rules.sides) return a.side !== b.side;
   if (world.rules.melee) return true;
-  return owner.controller !== target.controller;
+  return a.controller !== b.controller;
 }
+
+/** Whether a ball or a volley from `owner` can touch `target`: afloat, and an enemy. */
+export function canHit(world, owner, target) {
+  return target.alive && hostile(world, owner, target);
+}
+
+/** The ships of one side still afloat, in a mode fought between sides. */
+export const afloatOf = (world, side) => world.ships.filter((s) => s.alive && s.side === side);
 
 /**
  * One hit landing. `cause` names what landed it, `ram` or the weapon kind on the ball, and it is
