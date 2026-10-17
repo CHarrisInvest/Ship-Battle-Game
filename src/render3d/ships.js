@@ -15,6 +15,9 @@
  *     until her rig stands at least `RIG_FLOOR` of her length (and `RIG_MIN` units) over the
  *     water, the way the 2D sea rig exaggerated it, or a gundalow at sea is a bean with no mast;
  *   - her heel: the look's roll into a turn with the idle heel on the swell, the 2D figure;
+ *   - her flags blown: down the wind when she lies stopped, swinging round to stream astern as she
+ *     gathers way (flags.js), each ship's wave started at her own phase so a fleet does not flap in
+ *     step;
  *   - a hit: a brief, faint warm light over her timber, off `look.flash`, held low and squared so
  *     her colours and the toon bands survive a broadside landing hit after hit;
  *   - a dismasting: every mast and what is set on the bowsprit struck, a broken stump left standing;
@@ -45,6 +48,7 @@ import { SX, SY } from "../render/view.js";
 import { norm, clamp } from "../sim/index.js";
 import { rigSpec } from "../shipyard.js";
 import { hullForm } from "../hullform.js";
+import { WIND } from "./flags.js";
 
 const SINK_TIME = 2.5; // seconds from the last step she was afloat to under the water
 const WARM = [1.0, 0.92, 0.78]; // the hit's light, a warm white, as linear-ish multipliers
@@ -312,7 +316,7 @@ export function createShipLayer(scene, ctx) {
   // ---- one ship ------------------------------------------------------------------------------
 
   function makeEntry(s, look) {
-    const model = ctx.shipModel(rigSpec(s.loadout), { units: "sea" });
+    const model = ctx.shipModel(rigSpec(s.loadout), { units: "sea", phase: (hashId(s.id) % 628) / 100 });
     const [timber0, canvas0, flag0] = model.materials;
     const livery = s.id === lastFx.me ? C.gold : look.fill;
     const timber = paintWith(timber0.clone(), new THREE.Color(look.fill));
@@ -323,6 +327,7 @@ export function createShipLayer(scene, ctx) {
     const mats = [timber, canvas, flag];
     const meshes = [model.parts.hull, model.parts.bowsprit, model.parts.sprit, ...model.parts.masts].filter(Boolean);
     for (const m of meshes) m.material = mats;
+    for (const m of model.flags.meshes) m.material = flag;
 
     // the whole of her, yawed on her heading; the model inside it heels, pitches and settles
     const outer = new THREE.Group();
@@ -482,6 +487,8 @@ export function createShipLayer(scene, ctx) {
     e.outer.rotation.set(0, -e.h, 0);
     e.model.group.position.set(0, y, 0);
     e.model.group.rotation.set(-list, 0, pitch, "XYZ");
+    // her way is gone, so her flags fall back to the wind as she goes
+    e.model.flags.blow(WIND.sea - e.h, 0, dt);
     if (e.blob) {
       e.blob.position.set(e.x + 1.5, 0.2, e.y + 4);
       e.blob.rotation.y = -e.h;
@@ -529,6 +536,7 @@ export function createShipLayer(scene, ctx) {
       e.model.group.rotation.set(-roll, 0, 0);
       setMastDown(e, !!s.mastDown);
       setFlash(e, clamp(look.flash / FLASH_MAX, 0, 1));
+      e.model.flags.blow(WIND.sea - pos.h, e.speed, dt);
       // the bow wave, subtle at cruise and pronounced on a charge
       const sf = clamp((e.speed - 28) / 110, 0, 1);
       e.bow.visible = sf > 0.03;

@@ -85,6 +85,26 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   plate's own 2D canvas) and the generated art all turn that model. `drawGalleon(ctx, w, h, deg,
   spec)` still paints the same faces flat, and is what the menu falls back to without WebGL; the
   bench reads its rig tables, so they stay exported.
+- **Her flags fly from the wind and from her way, and the wind is a look.** Every ship flies a
+  pennant from her tallest truck and an ensign from her taffrail. `galleon.js` records where each
+  is bent on (`shipFaces(spec).flags`) and still paints a fixed flag for the 2D fallback; the 3D
+  model leaves that out and hangs live cloth there (`src/render3d/flags.js`). Stopped, a ship flies
+  her flags down a fixed wind (`WIND`); as she gathers way they swing round to stream astern, taut
+  and fluttering faster. That is the apparent wind's look without its odd cases (a ship running
+  down the wind at its own speed would fly a limp flag), so the angle off her stern is the wind's
+  scaled down by her speed. The engine knows nothing of it. If wind ever comes to matter to the
+  sailing it moves into the engine and the flags read it off the world. The menu's wind is fixed
+  to the viewer, so on a turning plate the flags hold their line and she swings under them.
+- **The Ship Lab is how a ship's look is changed.** `shiplab/` is a dev page that draws every class
+  through `createMenuShip` with her fit, bearing, speed, the wind and the hull figures she is drawn
+  from under the reader's hand; the figures are reshaped live under a lab id of their own, so
+  nothing in the game's caches is touched, and the changes come back as lines to paste into
+  `data/hulls.tsv`. `npx vite` serves it at `/shiplab/`, every preview deployment builds it there
+  (never the real site), and `npm run shiplab -- --artifact` folds it into one file to publish as an
+  Artifact, which is how the captain who owns the game looks at it from a phone. `npm run shiplab --
+  --sheet` draws the fleet in one picture and `--diff REF` draws it from another commit beside this
+  one and names the classes that came out different; run the diff against `staging` before pushing
+  a change to a ship's art, and say what it found.
 - `src/shipyard.js` is the catalogue and the maths for buying ships and parts. Hulls, masts, sails
   and guns as data, what fits what, and `rate()` turning a set of them into the figures a fight
   reads. It holds no state, touches no storage and imports nothing but `exact.js`, and it should
@@ -538,6 +558,10 @@ screen shows itself. The second sails the recorded rounds in `tools/rounds.js` i
 WebKit and Firefox and fails unless all four end every round on the same bits. A change to the hold's
 rules runs `npm run hold-test`, and a change to `server/` runs `npm run server-test`, which needs
 Docker locally.
+
+A change to how a ship is drawn (`galleon.js`, `hullform.js`, `render3d/shipmodel.js`,
+`render3d/flags.js` or a reference column in `hulls.tsv`) runs `npm run shiplab -- --diff staging`,
+which names every class it changed: a class in that list nobody meant to touch is the bug.
 
 Verify visual changes in the running game, not only in a standalone harness. A harness that
 replicates the draw code is useful for iterating on geometry and for comparing before and after, but

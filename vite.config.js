@@ -7,7 +7,10 @@ import { engineHash } from "./server/enginehash.js";
 // that serves it from a subpath, such as /Ship-Battle-Game/.
 //
 // Two pages: the game, and the privacy policy at /privacy/, which has to be an address of its own
-// because AdSense and Google's consent message are given it as a link.
+// because AdSense and Google's consent message are given it as a link. A preview deployment
+// (staging and every feature branch) also builds the Ship Lab at /shiplab/, a dev page for looking
+// at the fleet (`shiplab/index.html`), so a branch that changes a ship can be looked at on a phone.
+// It is decided per build, like `__PREVIEW__`, and the real site never carries it.
 //
 // The engine's fingerprint is built in as `__ENGINE__`, from the same files the server hashes, so a
 // page left open across a deploy is told to reload rather than sail a round the server would replay
@@ -28,6 +31,12 @@ export default defineConfig({
     // site. A preview build loads no ads and no analytics (`ads.js`, `analytics.js`), so staging play
     // never lands in the real site's figures. It is decided per build, never per visitor.
     __PREVIEW__: JSON.stringify(process.env.VERCEL_ENV === "preview"),
+    // Which commit the Ship Lab was built from, for its footer. Only the lab reads it.
+    __SHIPLAB_STAMP__: JSON.stringify(
+      process.env.VERCEL_GIT_COMMIT_SHA
+        ? `Built from ${process.env.VERCEL_GIT_COMMIT_REF} at ${process.env.VERCEL_GIT_COMMIT_SHA.slice(0, 7)}.`
+        : "Served live from this checkout.",
+    ),
   },
   server: { proxy: api },
   preview: { proxy: api },
@@ -36,6 +45,7 @@ export default defineConfig({
       input: {
         main: fileURLToPath(new URL("index.html", import.meta.url)),
         privacy: fileURLToPath(new URL("privacy/index.html", import.meta.url)),
+        ...(process.env.VERCEL_ENV === "preview" ? { shiplab: fileURLToPath(new URL("shiplab/index.html", import.meta.url)) } : {}),
       },
     },
   },
