@@ -31,8 +31,9 @@ with the whole HUD, one in a fully found Baltimore Clipper, and the title again 
 Her ship is sailed by the engine's own AI through a helm the frame loop consults, and each round
 is sailed first in Node to pick the window with the most guns going off in view of her. Silent,
 with an empty audio track so every uploader takes it. Re-cut it when the ships or the HUD change;
-`--dry` only chooses the shots, `--quick` cuts a sketch a few seconds long, and `--keep` leaves the
-frames behind. Needs ffmpeg.
+`--dry` only chooses the shots, `--quick` cuts a sketch a few seconds long, `--keep` leaves the
+frames behind, and `--from <folder>` cuts again from kept frames with the cards and captions drawn
+afresh. Needs ffmpeg.
 
 ## Gameplay (`screens/`)
 

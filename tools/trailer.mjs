@@ -30,7 +30,9 @@
  *
  * Copy is player-facing and follows the rules in CLAUDE.md. Needs ffmpeg on the path, `playwright-core`
  * (a dev dependency) and a Chromium: point SMOKE_CHROME at an executable if Playwright has none.
- * About twenty minutes on a machine without a GPU; `--keep` leaves the frames behind for a look.
+ * About twenty minutes on a machine without a GPU. `--dry` only chooses the shots, `--quick` cuts a
+ * sketch a few seconds long, `--keep` leaves the frames behind for a look, and `--from <folder>`
+ * cuts again from frames so kept, with the cards and captions drawn afresh.
  */
 
 import { spawn, spawnSync } from "node:child_process";
@@ -53,6 +55,9 @@ const SITE = `http://127.0.0.1:${PORT}/`;
 const KEEP = process.argv.includes("--keep");
 const DRY = process.argv.includes("--dry"); // choose the shots in Node and say which, filming nothing
 const QUICK = process.argv.includes("--quick"); // a sketch a few seconds long, to check the pipeline
+// `--from <folder>`: cut again from the frames a `--keep` run left, drawing the cards and captions
+// afresh and filming nothing, for working on the words without another twenty minutes of filming
+const FROM = process.argv[process.argv.indexOf("--from") + 1] && process.argv.includes("--from") ? process.argv[process.argv.indexOf("--from") + 1] : null;
 const ME = "p1"; // the player id the screen sails under
 
 // The picture: a phone held upright at three device pixels to the CSS pixel, so 1080 by 1920.
@@ -66,7 +71,8 @@ const XFADE = 0.4;
 const SHOTS = [
   { key: "open", kind: "play", hull: "thirdRate", secs: 4.4, clean: true, seeds: 10 },
   { key: "title", kind: "card", secs: 2.8 },
-  { key: "menu", kind: "menu", secs: 4.4, caption: "Outfit the ship." },
+  // the menu's caption sits low, over the mode cards, so the plate and her ship stay clear
+  { key: "menu", kind: "menu", secs: 4.4, caption: "Outfit the ship.", captionAt: 0.905 },
   { key: "big", kind: "play", hull: "firstRate", secs: 9.4, seeds: 10, caption: "Start as an unrated ship, upgrade to a 1st rate." },
   { key: "fast", kind: "play", hull: "baltimoreClipper", secs: 7.4, seeds: 10, caption: "Battle rival captains." },
   { key: "end", kind: "card", secs: 3.6 },
@@ -320,8 +326,8 @@ if (!(await up())) { try { process.kill(-server.pid); } catch { server.kill(); }
 const say = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 const GPU = process.platform === "darwin" ? ["--enable-gpu", "--use-angle=metal"] : ["--enable-unsafe-swiftshader"];
 const browser = await chromium.launch({ executablePath: process.env.SMOKE_CHROME || undefined, headless: true, args: ["--no-sandbox", ...GPU] });
-const work = mkdtempSync(join(tmpdir(), "sternchase-trailer-"));
-say("frames in", work);
+const work = FROM || mkdtempSync(join(tmpdir(), "sternchase-trailer-"));
+say(FROM ? "cutting again from" : "frames in", work);
 
 /** A page of the game on the virtual clock, with the server answered from `state`. */
 async function openGame(state) {
@@ -419,8 +425,8 @@ async function filmRound(shot, state, dir, secs, clean) {
 /* ---- the cards, drawn in the page -------------------------------------------------------------- */
 
 /** The title card, the end card and a caption, drawn on a canvas the size of the picture, as PNG. */
-async function card(page, kind, text) {
-  const url = await page.evaluate(({ kind, text, W, H }) => {
+async function card(page, kind, text, at = 0.265) {
+  const url = await page.evaluate(({ kind, text, at, W, H }) => {
     const DISPLAY = 'Georgia, "Iowan Old Style", "Times New Roman", serif';
     const UI = '-apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
     const GOLD = "#e8c877", INK = "rgba(238,244,242,0.86)", DIM = "rgba(238,244,242,0.62)";
@@ -451,7 +457,7 @@ async function card(page, kind, text) {
       }
       const tw = Math.min(W * 0.92, Math.max(...lines.map((l) => ctx.measureText(l).width)) + size * 1.6);
       const lh = size * 1.3, bh = lh * lines.length + size * 0.7;
-      const top = H * 0.265;
+      const top = H * at;
       ctx.fillStyle = "rgba(6,30,29,0.64)";
       ctx.beginPath(); ctx.roundRect(W / 2 - tw / 2, top, tw, bh, 20); ctx.fill();
       lines.forEach((l, i) => fit(l, W / 2, top + size * 0.35 + lh * (i + 0.72), size, UI, "#f3efe2", maxW, 0, "600"));
@@ -491,7 +497,7 @@ async function card(page, kind, text) {
       fit("sternchase.org", W / 2, by + h * 1.3, unit * 0.9, UI, DIM, tw);
     }
     return c.toDataURL("image/png");
-  }, { kind, text, W: VW * DPR, H: VH * DPR });
+  }, { kind, text, at, W: VW * DPR, H: VH * DPR });
   return Buffer.from(url.split(",")[1], "base64");
 }
 
@@ -506,24 +512,27 @@ try {
     const game = await openGame(state);
     for (const shot of SHOTS) {
       if (shot.kind === "card") { cards[shot.key] = join(work, `${shot.key}.png`); writeFileSync(cards[shot.key], await card(game.page, shot.key)); }
-      if (shot.caption) { cards[`${shot.key}-caption`] = join(work, `${shot.key}-caption.png`); writeFileSync(cards[`${shot.key}-caption`], await card(game.page, "caption", shot.caption)); }
+      if (shot.caption) { cards[`${shot.key}-caption`] = join(work, `${shot.key}-caption.png`); writeFileSync(cards[`${shot.key}-caption`], await card(game.page, "caption", shot.caption, shot.captionAt)); }
     }
     // the menu: the mark on her plate, turning
     const menu = SHOTS.find((s) => s.kind === "menu");
-    say("filming the menu");
     dirs.menu = join(work, "menu");
-    await film(game, dirs.menu, Math.round(menu.secs * FPS));
+    if (!FROM) {
+      say("filming the menu");
+      await film(game, dirs.menu, Math.round(menu.secs * FPS));
+    }
     await game.ctx.close();
   }
   for (const shot of SHOTS) {
     if (shot.kind !== "play") continue;
+    dirs[shot.key] = join(work, shot.key);
+    if (FROM) continue;
     const hold = holdWith(Y.maximumLoadout(shot.hull));
     say(`choosing the ${shot.hull} shot over ${shot.seeds} seeds`);
     // each shot its own seeds, so no two are fought on the same sea
     const chosen = chooseShot(sent(hold), shot.secs, shot.seeds, 1000 + SHOTS.indexOf(shot) * 101);
     say(`  seed ${chosen.seed}, from ${(chosen.start / FPS).toFixed(1)} s, scoring ${chosen.score.toFixed(0)}`);
     const state = { hold, version: 1, seed: chosen.seed };
-    dirs[shot.key] = join(work, shot.key);
     say(`filming the ${shot.hull}`);
     await filmRound(chosen, state, dirs[shot.key], shot.secs, !!shot.clean);
   }
@@ -571,6 +580,6 @@ try {
 } finally {
   await browser.close();
   try { process.kill(-server.pid); } catch { server.kill(); }
-  if (!KEEP) rmSync(work, { recursive: true, force: true });
+  if (!KEEP && !FROM) rmSync(work, { recursive: true, force: true });
   else say(`frames kept in ${work}`);
 }
