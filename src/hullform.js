@@ -158,12 +158,19 @@ const SPECIES = {
   Oak: { bright: 1, r: 1, g: 1, b: 1 },
 };
 
-function timberOf(ref) {
-  const s = SPECIES[ref.species] || SPECIES.Oak;
+/**
+ * The cast one species of timber lays over the palette, at a density (the reference's `timber`
+ * score). A class is drawn in her own; a captain's ships are drawn in another (`CAPTAIN_TIMBER` in
+ * the palette), which is why this is a reader of its own rather than folded into her row.
+ */
+export function timberCast(species, density = 1) {
+  const s = SPECIES[species] || SPECIES.Oak;
   // denser timber reads a little darker; oak at 1 stays the identity
-  const bright = s.bright * exact.pow(1 / (ref.timber || 1), 0.35);
+  const bright = s.bright * exact.pow(1 / (density || 1), 0.35);
   return { bright, r: s.r, g: s.g, b: s.b };
 }
+
+const timberOf = (ref) => timberCast(ref.species, ref.timber);
 
 /** One hex colour under a timber cast. The identity cast returns the colour unchanged. */
 export function tintTimber(hex, t) {
@@ -513,6 +520,27 @@ function menuForm(ref) {
 // used to share, which is also what keeps the middle of the fleet feeling as it always did.
 const SEA_POW = 0.62;
 
+// Every hull at sea is drawn and sailed at this multiple of the compressed size above: her length
+// and beam (and so her collision ellipse), her outline, her cabin, her masts and their spread. It
+// was 1 until the 3D sea showed a gundalow as a speck at phone zoom, then 2, which made the whole
+// fleet look too big for the sea and too quick across it.
+const SEA_SIZE = 1.5;
+
+// A sea form at `k` times its compressed size, every figure in it alike.
+function scaleSea(sea, k) {
+  const masts = {}, tops = {}, wBase = {};
+  for (const kName of Object.keys(sea.masts)) {
+    masts[kName] = sea.masts[kName] * k; tops[kName] = sea.tops[kName] * k; wBase[kName] = sea.wBase[kName] * k;
+  }
+  const c = sea.castle;
+  return {
+    L: sea.L * k, W: sea.W * k,
+    outline: sea.outline.map(([u, v]) => [u * k, v * k]),
+    castle: c && { fx: c.fx * k, bx: c.bx * k, hw: c.hw * k, h: c.h * k },
+    masts, tops, wBase, deckH: sea.deckH * k,
+  };
+}
+
 function seaForm(ref, menu) {
   const L = clamp(36 * exact.pow(ref.lod / G.lod, SEA_POW), 16, 52);
   const W = clamp(13 * exact.pow(ref.beam / G.beam, SEA_POW), 5.5, 20);
@@ -551,11 +579,12 @@ function seaForm(ref, menu) {
   for (const kName of Object.keys(wBase)) wBase[kName] = Math.max(4, wBase[kName] * exact.pow(W / 13, 0.9));
 
   const deckH = clamp(4 * exact.pow(W / 13, 0.5), 2.4, 5.2);
-  return { L, W, outline, castle, masts, tops, wBase, deckH };
+  return scaleSea({ L, W, outline, castle, masts, tops, wBase, deckH }, SEA_SIZE);
 }
 
-// The galleon's own sea numbers: exactly the hull every ship used to draw.
-const GALLEON_SEA = {
+// The galleon's own sea numbers: exactly the hull every ship used to draw, before `SEA_SIZE`, which
+// she takes with the rest of the fleet.
+const GALLEON_SEA = scaleSea({
   L: 36, W: 13,
   outline: [[18, 0], [11, -6], [-13, -6], [-17, 0], [-13, 6], [11, 6]],
   castle: { fx: -11, bx: -17, hw: 5, h: 9 },
@@ -563,7 +592,7 @@ const GALLEON_SEA = {
   tops: { fore: 30, main: 36, mizzen: 26, bonaventure: 20 },
   wBase: { fore: 14, main: 18, mizzen: 13, bonaventure: 10 },
   deckH: 4,
-};
+}, SEA_SIZE);
 
 /* ---- the forms, one per class, worked out once ------------------------------------------------- */
 

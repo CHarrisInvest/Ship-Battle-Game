@@ -1,10 +1,13 @@
 /**
- * SAILING WITH FRIENDS — lobbies, and a free-for-all the server runs for everyone in one.
+ * SAILING WITH FRIENDS — lobbies, and a round the server runs for everyone in one.
  *
  * A captain opens a lobby and gets a code; her friends join with it (or with the link that carries
- * it). The host sets how many AI ships sail besides them and starts. The server builds the world from
- * a seed of its own and each captain's loadout off her own hold, and then runs the round at 60 ticks
- * a second on its own clock, taking each captain's latest controls as they come in.
+ * it). The host picks a melee or two sides, sets how many AI ships sail (besides the captains in a
+ * melee, to fill each side between sides, where every captain picks her own) and starts. The server
+ * builds the world from a seed of its own and each captain's loadout off her own hold, and then runs
+ * the round at 60 ticks a second on its own clock, taking each captain's latest controls as they
+ * come in. Between sides it runs on after the last captain is out, faster, until a fleet is gone,
+ * because the side still at sea may win the round for her.
  *
  * What it sends back is not the world but the controls: each tick, every captain's input that
  * changed. The engine steps to the same bits in every browser and in Node (`npm run determinism`), so
@@ -22,7 +25,7 @@
 
 import { createHmac, randomInt, randomUUID, timingSafeEqual } from "node:crypto";
 import { WebSocketServer } from "ws";
-import { createWorld, step, voyageRun, isInput, shipsPrint, NO_INPUT, TICK } from "../src/sim/index.js";
+import { createWorld, step, voyageRun, isInput, isHuman, shipsPrint, NO_INPUT, TICK, SIDES, SIDE_MIN, SIDE_MAX, TEAMS_SIDE } from "../src/sim/index.js";
 import { bank, blank, shipLoadout, shipName } from "../src/holdrules.js";
 import { transaction } from "./db.js";
 import { lockHold, writeHold } from "./hold.js";
@@ -30,6 +33,14 @@ import { lockHold, writeHold } from "./hold.js";
 /** Captains in a lobby, and ships on the water, AI included: the free-for-all's own field. */
 export const MAX_CAPTAINS = 8;
 export const MAX_SHIPS = 11;
+/** The two ways a lobby sails: a melee, or two sides drawn up across the sea. The host picks. */
+export const LOBBY_MODES = ["ffa", "teams"];
+/**
+ * How much faster a round between sides runs once no captain is afloat. The round goes on until a
+ * fleet is gone, because the side still at sea may yet win it for her captains, but a fight nobody
+ * is in wants a quick end: the same ticks, taken four at a time.
+ */
+export const AI_PACE = 4;
 /** How long a ticket is good for. Long enough to open a socket, too short to be worth stealing. */
 const TICKET_MS = 60 * 1000;
 /** Ticks per frame sent: three, so twenty messages a second. */
@@ -87,12 +98,22 @@ export function createOnline({ pool, engine, secret, publicWs, now = () => Date.
     }
   }
 
-  /** What every member is told about the lobby. `mid` tells two rows apart even for one captain. */
+  /**
+   * What every member is told about the lobby. `mid` tells two rows apart even for one captain.
+   * `rivals` is the melee's AI count and `perSide` the ships a side between sides; both are kept, so
+   * the host can switch between the two without losing either figure.
+   */
   function lobbyView(lobby) {
     return {
-      t: "lobby", code: lobby.code, state: lobby.state, rivals: lobby.rivals, host: lobby.host, public: lobby.public,
-      captains: lobby.members.map((m) => ({ mid: m.mid, userId: m.userId, name: m.name, ready: !!m.ready, away: !!m.away, playerId: m.playerId || null })),
+      t: "lobby", code: lobby.code, state: lobby.state, mode: lobby.mode, rivals: lobby.rivals, perSide: lobby.perSide, host: lobby.host, public: lobby.public,
+      captains: lobby.members.map((m) => ({ mid: m.mid, userId: m.userId, name: m.name, ready: !!m.ready, away: !!m.away, playerId: m.playerId || null, side: m.side || null })),
     };
+  }
+
+  /** The side with fewer captains on it, the left when they are even: where a captain who has not picked is put. */
+  function lighterSide(lobby) {
+    const n = (side) => lobby.members.filter((m) => m.side === side).length;
+    return n(SIDES[1]) < n(SIDES[0]) ? SIDES[1] : SIDES[0];
   }
   const tellLobby = (lobby) => { const v = lobbyView(lobby); for (const m of lobby.members) send(m.ws, { ...v, you: m.userId }); tellLobbies(); };
 
@@ -104,7 +125,7 @@ export function createOnline({ pool, engine, secret, publicWs, now = () => Date.
   function publicList() {
     return [...lobbies.values()]
       .filter((l) => l.public && l.state === "waiting" && l.members.length > 0 && l.members.length < MAX_CAPTAINS)
-      .map((l) => ({ code: l.code, host: (l.members.find((m) => m.userId === l.host) || l.members[0]).name, captains: l.members.length, max: MAX_CAPTAINS }));
+      .map((l) => ({ code: l.code, host: (l.members.find((m) => m.userId === l.host) || l.members[0]).name, captains: l.members.length, max: MAX_CAPTAINS, mode: l.mode }));
   }
   let listQueued = false;
   function tellLobbies() {
@@ -160,10 +181,15 @@ export function createOnline({ pool, engine, secret, publicWs, now = () => Date.
         lobby.members[lobby.members.indexOf(earlier)] = member;
         member.ready = earlier.ready;
         member.playerId = earlier.playerId;
+        member.side = earlier.side;
         clearTimeout(earlier.awayTimer);
         earlier.lobby = null;
         if (!earlier.away) send(earlier.ws, { t: "left", reason: "elsewhere" });
-      } else lobby.members.push(member);
+      } else {
+        // a newcomer joins the side with fewer captains, and can move
+        member.side = lighterSide(lobby);
+        lobby.members.push(member);
+      }
       tellLobby(lobby);
       if (lobby.state === "sailing") {
         // back mid-round: the round so far, so her browser can sail it up to the server's tick; or,
@@ -178,8 +204,22 @@ export function createOnline({ pool, engine, secret, publicWs, now = () => Date.
 
   // ---- a round --------------------------------------------------------------------------------------
 
+  /**
+   * The field a lobby's setting gives, as the world will be built: the melee's AI count held to what
+   * the sea takes beside the captains, or the ships a side held to the sea's figures and to the
+   * larger side's captains, who all sail whatever the host set.
+   */
+  function fieldOf(lobby) {
+    if (lobby.mode === "teams") {
+      const most = Math.max(...SIDES.map((side) => lobby.members.filter((m) => m.side === side).length));
+      return Math.max(SIDE_MIN, most, Math.min(SIDE_MAX, lobby.perSide));
+    }
+    return Math.max(0, Math.min(lobby.rivals, MAX_SHIPS - lobby.members.length));
+  }
+
   async function startRound(lobby) {
     const humans = lobby.members;
+    const teams = lobby.mode === "teams";
     const players = [];
     for (let i = 0; i < humans.length; i++) {
       const m = humans[i];
@@ -188,13 +228,16 @@ export function createOnline({ pool, engine, secret, publicWs, now = () => Date.
       // the loadout off her own hold on the server, as the JSON every browser builds the world from
       const loadout = JSON.parse(JSON.stringify(shipLoadout(hold || blank())));
       m.playerId = `p${i + 1}`;
-      players.push({ id: m.playerId, loadout, userId: m.userId, name: m.name });
+      players.push({ id: m.playerId, loadout, userId: m.userId, name: m.name, side: teams ? m.side : null });
     }
-    const rivals = Math.max(0, Math.min(lobby.rivals, MAX_SHIPS - players.length));
+    const rivals = fieldOf(lobby);
     const seed = randomInt(0, 2 ** 32);
-    const world = createWorld({ mode: "ffa", seed, players: players.map((p) => ({ id: p.id, loadout: p.loadout })), rivals });
+    // the roster is the whole of what a browser builds the world from, so it carries each
+    // captain's side as well as her loadout
+    const roster = players.map((p) => ({ id: p.id, name: p.name, loadout: p.loadout, side: p.side }));
+    const world = createWorld({ mode: lobby.mode, seed, players: roster.map((p) => ({ id: p.id, loadout: p.loadout, side: p.side })), rivals });
     const round = {
-      world, players, seed, rivals,
+      world, players, seed, rivals, mode: lobby.mode, roster,
       cur: Object.fromEntries(players.map((p) => [p.id, { ...NO_INPUT }])), // the input each tick is stepped with
       sent: Object.fromEntries(players.map((p) => [p.id, JSON.stringify(NO_INPUT)])),
       next: {}, // the latest input each captain sent since the last tick
@@ -204,12 +247,13 @@ export function createOnline({ pool, engine, secret, publicWs, now = () => Date.
       log: [], // every frame entry sent, so a captain who reconnects can sail the round up to now
       started: now(),
       ticksDone: 0,
+      // the clock the ticks are owed by: `base` ticks were done at `baseAt`, and `pace` ticks a
+      // tick's worth of real time have fallen due since. Rebased when the pace changes.
+      pace: 1, base: 0, baseAt: now(),
     };
     lobby.round = round;
     lobby.state = "sailing";
-    const roster = players.map((p) => ({ id: p.id, name: p.name, loadout: p.loadout }));
-    round.roster = roster;
-    for (const m of humans) send(m.ws, { t: "start", seed, rivals, players: roster, you: m.playerId });
+    for (const m of humans) send(m.ws, { t: "start", mode: lobby.mode, seed, rivals, players: roster, you: m.playerId });
     tellLobby(lobby);
     round.timer = setInterval(() => tick(lobby), 1000 / 60);
   }
@@ -221,7 +265,7 @@ export function createOnline({ pool, engine, secret, publicWs, now = () => Date.
    */
   function catchUpRound(lobby, member) {
     const round = lobby.round;
-    send(member.ws, { t: "start", seed: round.seed, rivals: round.rivals, players: round.roster, you: member.playerId, rejoin: true });
+    send(member.ws, { t: "start", mode: round.mode, seed: round.seed, rivals: round.rivals, players: round.roster, you: member.playerId, rejoin: true });
     send(member.ws, { t: "frame", ticks: round.log.concat(round.frame) });
     const told = round.bankedSent[member.playerId];
     if (told) send(member.ws, told);
@@ -235,7 +279,12 @@ export function createOnline({ pool, engine, secret, publicWs, now = () => Date.
   function tick(lobby) {
     const round = lobby.round;
     if (!round) return;
-    const due = Math.min(Math.floor((now() - round.started) / (TICK * 1000)), MAX_TICKS);
+    // Between sides a round nobody is in any more runs faster to its end; the ticks are the same
+    // ticks, so every browser steps the same world, only sooner. The clock is rebased when the
+    // pace changes, so no tick is owed twice or skipped.
+    const pace = round.world.rules.sides && !round.world.ships.some((s) => isHuman(s) && s.alive) ? AI_PACE : 1;
+    if (pace !== round.pace) { round.pace = pace; round.base = round.ticksDone; round.baseAt = now(); }
+    const due = Math.min(round.base + Math.floor(((now() - round.baseAt) * pace) / (TICK * 1000)), MAX_TICKS);
     let n = 0;
     while (round.ticksDone < due && n++ < catchUp && !round.world.result.over) {
       // Each captain sails on the last controls she sent. What changed since the last tick is
@@ -253,7 +302,9 @@ export function createOnline({ pool, engine, secret, publicWs, now = () => Date.
       round.frame.push(Object.keys(changes).length ? [at, changes] : [at]);
       round.ticksDone++;
       for (const e of events) {
-        if (e.type === "player_out") settle(lobby, e.playerId, e.rank);
+        // a captain out of a melee is banked at once, placed and beaten; between sides her side
+        // may yet win the round for her, so everyone is banked when it ends
+        if (e.type === "player_out" && !round.world.rules.sides) settle(lobby, e.playerId, e.rank);
         if (e.type === "round_over") for (const p of round.players) settle(lobby, p.id);
       }
       if (round.world.tick % PRINT_TICKS === 0) round.frame.push(["print", round.world.tick, shipsPrint(round.world)]);
@@ -316,7 +367,7 @@ export function createOnline({ pool, engine, secret, publicWs, now = () => Date.
         if (member.joining) return;
         if (member.lobby) leave(member);
         const code = newCode();
-        const created = { code, members: [], host: userId, rivals: MAX_SHIPS - 1, state: "waiting", round: null, public: msg.public === true };
+        const created = { code, members: [], host: userId, mode: "ffa", rivals: MAX_SHIPS - 1, perSide: TEAMS_SIDE, state: "waiting", round: null, public: msg.public === true };
         lobbies.set(code, created);
         await join(member, code);
       } else if (msg.t === "join" && typeof msg.code === "string") {
@@ -326,6 +377,17 @@ export function createOnline({ pool, engine, secret, publicWs, now = () => Date.
         send(ws, { t: "left" });
       } else if (msg.t === "rivals" && lobby && lobby.host === userId && lobby.state === "waiting" && Number.isInteger(msg.rivals)) {
         lobby.rivals = Math.max(0, Math.min(MAX_SHIPS - 1, msg.rivals));
+        tellLobby(lobby);
+      } else if (msg.t === "mode" && lobby && lobby.host === userId && lobby.state === "waiting" && LOBBY_MODES.includes(msg.mode)) {
+        lobby.mode = msg.mode;
+        tellLobby(lobby);
+      } else if (msg.t === "perSide" && lobby && lobby.host === userId && lobby.state === "waiting" && Number.isInteger(msg.perSide)) {
+        lobby.perSide = Math.max(SIDE_MIN, Math.min(SIDE_MAX, msg.perSide));
+        tellLobby(lobby);
+      } else if (msg.t === "side" && lobby && lobby.state === "waiting" && SIDES.includes(msg.side)) {
+        // any captain picks her own side, as long as it has room for her under the sea's ceiling
+        if (lobby.members.filter((m) => m !== member && m.side === msg.side).length >= SIDE_MAX) return send(ws, { t: "error", error: "side-full" });
+        member.side = msg.side;
         tellLobby(lobby);
       } else if (msg.t === "ready" && lobby && lobby.state === "waiting" && typeof msg.ready === "boolean") {
         member.ready = msg.ready;

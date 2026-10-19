@@ -26,6 +26,12 @@ export const STORM_RECOVER = 2.2; // exposure shed a second once she is back ins
 // weather and hold her there — and once she is out, her own exposure is what turns the pull urgent.
 export const STORM_HOME = 0.45; // share of the ring she is content to fight anywhere within
 export const STORM_PULL = 0.8; // how hard the middle bends her course at the very rail
+// Out in the weather the pull starts where the rail left it and is the whole of her course within
+// this many seconds of exposure. It used to start at 0.55, weaker than at the rail she had just
+// crossed, and take the full STORM_RAMP of twelve seconds to reach one, which is longer than the
+// weather takes to kill a ship: a wounded captain running from a rival ran straight out of the ring
+// and was dead before the pull had turned her round.
+export const STORM_URGENT = 2;
 
 /** Where the ring stands at `t` seconds, for one mode's weather. */
 export const stormRadius = (t, w) => {
@@ -70,7 +76,7 @@ export function weatherCourse(world, s, desired, throttle) {
   const dc = exact.hypot(s.x - WORLD / 2, s.y - WORLD / 2);
   const out = dc > world.stormR;
   const lean = out
-    ? clamp(0.55 + 0.45 * (s.exposure / STORM_RAMP), 0, 1)
+    ? 1 - (1 - STORM_PULL) * clamp(1 - s.exposure / STORM_URGENT, 0, 1)
     : STORM_PULL * clamp((dc / Math.max(1, world.stormR) - STORM_HOME) / (1 - STORM_HOME), 0, 1);
   if (lean <= 0.01) return { desired, throttle };
   const toMid = exact.atan2(WORLD / 2 - s.y, WORLD / 2 - s.x);
@@ -78,6 +84,23 @@ export function weatherCourse(world, s, desired, throttle) {
     desired: desired + norm(toMid - desired) * lean, // swing part of the way onto the course home
     throttle: out ? Math.max(throttle, 0.9) : throttle,
   };
+}
+
+/**
+ * Where a captain running from a rival runs, when the weather has a say: her flight as it was, unless
+ * it would carry her out of the ring, in which case she runs round the ring instead, whichever way
+ * round lies nearer her flight. A wounded captain's whole reason to run is to live, and the weather
+ * kills a ship at a third of her crew in about three seconds, so a flight that opens the range by
+ * sailing into it was never a flight. Well inside the ring (`STORM_HOME`) she runs as she pleases.
+ */
+export function runFromWeather(world, s, away) {
+  if (!world.rules.storm) return away;
+  const dc = exact.hypot(s.x - WORLD / 2, s.y - WORLD / 2);
+  if (dc < world.stormR * STORM_HOME) return away;
+  const toMid = exact.atan2(WORLD / 2 - s.y, WORLD / 2 - s.x);
+  if (exact.cos(away - toMid) >= 0) return away; // her flight already leads inward
+  const a = toMid + Math.PI / 2, b = toMid - Math.PI / 2;
+  return exact.cos(a - away) >= exact.cos(b - away) ? a : b;
 }
 
 // The squall is weather, not an attack: no captain is paid for it, so it does not run through

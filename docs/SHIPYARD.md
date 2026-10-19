@@ -298,9 +298,29 @@ Three things fall out of it that were hard-coded before and had to stop being:
   that has lost its sails rather than a boat that never had them.
 - The masthead pennant flies from the truck of the tallest mast stepped, and from nothing if there is
   none. It used to be pinned to the height the galleon's main mast happened to reach, which left it
-  hanging in the sky above a cutter.
+  hanging in the sky above a cutter. In the 3D model it and the ensign are live cloth
+  (`render3d/flags.js`): down a fixed wind when she lies stopped, swinging round to stream astern
+  as she gathers way. The 2D fallback keeps the fixed flag.
 - Stays chain off the masts that are actually there, rather than running between fixed points where a
   mast used to be.
+- A raised deck stands on her side. A castle is level at the height her castle score gives it
+  until her sheer sweeps up past it, and from there to the taffrail (or the stem) it rises with the
+  sheer, the way a quarterdeck was laid on the same sweep as the deck below. Seven classes had a
+  level quarterdeck sunk under the top of their own side at the stern before this.
+- Shrouds keep out of the canvas. Lateens and lugs hang on the starboard side of the pole, and on a
+  gundalow her ladder read as one stood through her lateen, because the lateen's head bellied a
+  long way off its yard and left a pocket for the shrouds to run into. Its head is now laced along
+  the yard and the cloth fills out below, which by itself clears the gundalow's and the Bermuda
+  sloop's ladders. A mast whose ladder still cuts the cloth carries one rope a side, square abreast,
+  to the very top of a pole carried up (6 to 30% of its length) until the rope clears or at least
+  only lies against the sail: the xebecs' mains and the light xebec's fore. Square and gaff masts
+  keep their ladders.
+- Square canvas over a gaff comes down to it. The square bands leave room under the lowest of them
+  for a course and its yard, and a gaff in the course's berth has neither, so the sails over it
+  stood 10 to 26 units up a bare pole from her throat (every rated ship's mizzen, and the sloop,
+  cutter, clipper and brigantine). The stack now starts just over her throat and takes back a
+  quarter of the air it gave up, its sails scaled up with it to at most 1.15 of themselves, and the
+  pole is cut to the canvas below, so the mast stands shorter. The gaff itself is cut as before.
 
 The station numbers are the galleon's own, so handing her rig back reproduces the ship this file has
 always drawn. Verified against the pre-change code through the same renderer: 6 pixels of 177,952
@@ -318,6 +338,12 @@ colours; the same cast tints her hull and spars at sea. The galleon's form is th
 under the plain Oak identity cast, so she still builds the exact hull this file always drew, checked
 by pixel diff, and a cutter is finally a small hull under a small rig. Her battery is the exception,
 and deliberately: see **The anchor is pierced too** below.
+
+**Refining a class's look happens in the Ship Lab** (`shiplab/`, see the README). Her reference
+figures are sliders there, drawn by the real model as they move, and what comes out is a list of
+figures for `data/hulls.tsv` rather than an edit to anything the game reads. A shape the reference
+figures cannot reach is a change to the rules in `hullform.js` or `galleon.js`, which every class
+shares; `npm run shiplab -- --diff staging` is how to see which classes such a change moved.
 
 ### The volley
 

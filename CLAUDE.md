@@ -1,6 +1,7 @@
 # Sternchase: Helm & Hull
 
-An isometric age-of-sail combat game. Canvas 2D, React shell, no engine.
+An isometric age-of-sail combat game. three.js on WebGL, Canvas 2D where WebGL cannot be had, a
+React shell, and no game engine.
 
 The game is Sternchase; `Helm & Hull` is the second line of the title and never stands alone. The
 repository keeps its old name, `Ship-Battle-Game`, but the site is served from the root of
@@ -40,21 +41,101 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   once, in the component's `round_over` handler. Every random number a round uses comes off `world.rng`; only what decorates
   the sea keeps `Math.random`, in the renderer.
 - **The engine says what happened, and the screen decides how it looks.** Smoke, splinters, wakes, the
-  words over a sinking, the vignette, a ship's colours, her heel and her drawn rig are `src/render/`'s,
-  built from the step's events and the world and never read back by the engine. The end screen's
-  sentences are the component's, picked from `world.result`. A visual field on a ship or a line of
+  words over a sinking, the vignette, a ship's colours, her heel and her drawn rig are the
+  renderers' (`src/render/` and `src/render3d/`), built from the step's events and the world and
+  never read back by the engine. The end screen's sentences are the component's, picked from
+  `world.result`. A visual field on a ship or a line of
   copy in the engine is the old tangle coming back.
 - **The round steps at a fixed `TICK`, a sixtieth of a second, and the screen draws between steps.**
   The frame loop banks real time and takes a step for every whole tick, five a frame at most, and the
   renderer blends each ship and ball by what is left over. A figure tuned per frame is per step now,
   the same on a 60 Hz phone, a 120 Hz one and a server.
-- `src/render/` is the canvas: `renderer.js` draws a world and holds the camera, `effects.js` is one
-  viewer's picture of the round, and the palette, the view, the island planting, the sea rig and the
-  HUD's placement sit beside them. `src/input/controls.js` turns the joystick, the fire buttons and
-  the repair rail into the input record.
-- `src/galleon.js` draws the rotating ship on the menu. It draws a rig rather than *the* rig:
-  `drawGalleon(ctx, w, h, deg, spec)` builds whatever is stepped and bent on, and falls back to the
-  galleon it was written around when given no spec.
+- **The sea is one three.js scene, and the 2D sea is its fallback.** `src/render3d/renderer3d.js`
+  (`createRenderer3d`) draws a world on the WebGL canvas in a soft toon light: one key and one fill,
+  a four-step ramp (`toon.js`), the sun's shadows. Its layers each own a module and are updated in
+  one order every frame: `islands.js`, `water.js` (the sea, its caps, the boundary, the storm, the
+  wakes and the surf), `ships.js` and `effects3d.js` (shot, smoke, flashes, splinters, splashes).
+  Depth does the sorting the painter's algorithm used to; what is see-through goes by `renderOrder`,
+  shallows under surf under wakes under a ship's own foam under the smoke. `camera.js` places the
+  sea where the 2D view put it, to the pixel, and `npm run camera-check` says so, so the aim, the
+  follow and the edge clamp play the same. `pickQuality()` picks a tier off what the device is (a
+  mouse is high, a touch screen mid, under 4 GB or 4 cores low) and every layer reads it: the low
+  one has no shadows, simpler water, half the particles and a pixel ratio capped at 1.5. No figure
+  a browser reports measures its GPU, so the renderer also steps down at run time while frames stay
+  over 20 ms. three.js is its own chunk (`render3d/index.js`), fetched once the screen has mounted:
+  until it arrives the sea is the 2D one and the plate is `drawGalleon`, for every visitor alike.
+  `src/render/` is the 2D canvas it falls back to: `renderer.js`, with the palette, the view (`view.js`, the camera, the follow and the step blend both
+  renderers share), the island planting, the sea rig and the HUD's placement beside it, and
+  `effects.js`, which is one viewer's picture of the round for both. **The fallback is a test of the
+  device and nothing else**: `createRenderer3d` throws when the browser has no WebGL 2 or a layer
+  cannot stand, and the component takes the 2D renderer instead, so
+  every browser that can draw the 3D sea gets it. Do not switch it on anything about the visitor.
+  `src/input/controls.js` turns the joystick, the fire buttons and the repair rail into the input
+  record.
+- **What is read rather than seen is flat, over the scene.** The bars and rank over each ship, the
+  aiming guides, the words on the water, the storm's edge, the vignette and the radar are
+  `src/render3d/overlay.js`, drawn on a transparent 2D canvas stacked over the WebGL one, and the 2D
+  renderer draws them through the same module, so there is one copy of each. A ship layer tells the
+  overlay where to hang a ship's bars (`labelOf`); the overlay never reaches into the scene.
+- **One ship model, at sea and on the menu.** `src/galleon.js` builds a rig rather than *the* rig:
+  `shipFaces(spec)` is the face list of whatever is stepped and bent on, falling back to the galleon
+  it was written around when given no spec, and `src/render3d/shipmodel.js` turns it into the
+  geometry every view shares, scaled from menu units to her sea length and cached per spec. The sea's
+  ships, the plate on the menu and the yard (`menuship.js`, one shared WebGL context copied into each
+  plate's own 2D canvas) and the generated art all turn that model. `drawGalleon(ctx, w, h, deg,
+  spec)` still paints the same faces flat, and is what the menu falls back to without WebGL; the
+  bench reads its rig tables, so they stay exported.
+- **Her flags fly from the wind and from her way, and the wind is a look.** Every ship flies a
+  pennant from her tallest truck and an ensign from her taffrail. `galleon.js` records where each
+  is bent on (`shipFaces(spec).flags`) and still paints a fixed flag for the 2D fallback; the 3D
+  model leaves that out and hangs live cloth there (`src/render3d/flags.js`). Stopped, a ship flies
+  her flags down a fixed wind (`WIND`); as she gathers way they swing round to stream astern, taut
+  and fluttering faster. That is the apparent wind's look without its odd cases (a ship running
+  down the wind at its own speed would fly a limp flag), so the angle off her stern is the wind's
+  scaled down by her speed. The engine knows nothing of it. If wind ever comes to matter to the
+  sailing it moves into the engine and the flags read it off the world. The menu's wind is fixed
+  to the viewer, so on a turning plate the flags hold their line and she swings under them.
+- **A captain's ships are built of live oak, and a rival keeps her class's timber.**
+  `CAPTAIN_TIMBER` in `palette.js` is the species every ship a captain owns or sails is drawn in,
+  whatever her class: on the menu's plate and in the yard (`ownRig` in the screen), and at sea for
+  any ship with a `playerId` (`ships.js`, and `lookOf` for the 2D sea). A rig spec carries it as
+  `timber`, which `galleon.js` casts through `timberCast` in `hullform.js`; `rigSpec` never sets it,
+  because it is a look and the catalogue has no say in it. At sea her topsides still wear her
+  livery over it, so the timber shows on her deck, rails and lower strakes.
+- **Over her rail, the hull closes and follows her stern.** A waist with no castle at an end runs
+  its bulwark the whole length to that end: to her stem, where the two sides' inner faces meet on
+  the centreline, and to her transom, where a taffrail cut to meet the side rails closes it. Both
+  used to stop 1.2 short, which left the bow open and both quarters notched on every class without
+  a forecastle. Everything standing over the rail (bulwarks, castles, taffrail, rail guns, the
+  ensign staff) is drawn at `rx(x)`, her stern's full rake at that station, because the hull's top
+  edge carries the rake and anything that does not stands forward of it with a sliver of transom
+  astern. **A raised deck stands on her side.** A castle is level at its own height (`z`, off her
+  castle score) from where it breaks off the waist, and where her sheer sweeps up past that toward
+  the taffrail or the stem the deck rises with it, a plank over the top of her side (`castleZ` in
+  `galleon.js`, which `deckZAt`, the castle, its rails, its stairs and its guns all read). Her castle
+  and sheer scores are separate figures, and on seven classes the sheer won: a level quarterdeck sat
+  under the top of her own side with her transom standing over its rail. A castle that clears her
+  sheer the whole way, the galleon's and the big rates', is the level deck it always was.
+  **A ladder is not set up through a sail.** A lateen or a lug hangs from a yard on her starboard
+  side of the pole, and a lateen's head is laced along its yard (`laced` in `triCloth`), so the
+  cloth fills out below the spar instead of standing off it with a pocket a rope could run into. A
+  mast whose starboard ladder would still cut a lateen or lug (tested against the cloth's own
+  surface, the one the sail is drawn from, a rope's thickness either side) is rigged as such a boat
+  was: one rope a side, square abreast of her, to the very top of a pole carried up 6 to 30% of its
+  length until the rope clears, or failing that until it only lies against the cloth. Ropes are
+  never led fore or aft to dodge a sail. That leaves the xebecs' mains and the light xebec's fore
+  single-roped; every other mast keeps its ladder and her pole, gaff masts included, whose ladders
+  only brush the luff by the pole.
+- **The Ship Lab is how a ship's look is changed.** `shiplab/` is a dev page that draws every class
+  through `createMenuShip` with her fit, bearing, speed, the wind and the hull figures she is drawn
+  from under the reader's hand; the figures are reshaped live under a lab id of their own, so
+  nothing in the game's caches is touched, and the changes come back as lines to paste into
+  `data/hulls.tsv`. `npx vite` serves it at `/shiplab/`, every preview deployment builds it there
+  (never the real site), and `npm run shiplab -- --artifact` folds it into one file to publish as an
+  Artifact, which is how the captain who owns the game looks at it from a phone. `npm run shiplab --
+  --sheet` draws the fleet in one picture and `--diff REF` draws it from another commit beside this
+  one and names the classes that came out different; run the diff against `staging` before pushing
+  a change to a ship's art, and say what it found.
 - `src/shipyard.js` is the catalogue and the maths for buying ships and parts. Hulls, masts, sails
   and guns as data, what fits what, and `rate()` turning a set of them into the figures a fight
   reads. It holds no state, touches no storage and imports nothing but `exact.js`, and it should
@@ -78,7 +159,10 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   galleon is the authored anchor: her hull, castles and mast geometry are the literal numbers the
   game always drew under the plain Oak palette, a few small fittings are re-derived as ratios that
   agree to within a few hundredths of a unit, and every other class is derived by the same rules from
-  her own row. Sizes are deliberately compressed around her, so she is the size she always was. A
+  her own row. Sizes are deliberately compressed around her, then every hull at sea, hers included,
+  is grown by half again (`SEA_SIZE`), her collision ellipse with her, because the 3D sea showed a
+  gundalow as a speck at phone zoom; doubled, the fleet looked too big for the sea. The balls in
+  `tables.js` grew by the same figure, since a ball's `r` is its reach. A
   class's size lives here, with her art, and still never in the catalogue.
   **Her battery is the one part of her that is solved rather than authored.** `GALLEON_REF` is her
   row and her ports come out of the same `portsOf` as everyone's, because an anchor the port rules do
@@ -143,6 +227,20 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   and mid-round she is sent the start and every tick so far, which her browser sails up to the
   server's tick in a moment. `npm run online-test` sails two
   captains through a round over real sockets; `npm run online-smoke` does it in two real browsers.
+  **A lobby sails a melee or two sides, and the host picks which.** Two sides is the `teams` row in
+  `MODES`, a row and not a flag on the free-for-all, because every check reads the row: each captain
+  picks the left or the right of the sea in the lobby (`SIDES`), the host sets how many ships each
+  side has (`SIDE_MIN` to `SIDE_MAX`, captains counted, the AI filling the rest, so a side may be all
+  AI for friends who want to sail together), and the two lines are drawn up on opposite flanks facing
+  each other. `hostile()` in `round.js` is the one statement of who may hurt whom: a side's guns
+  cannot touch her own ships and her balls pass through them, her bow can and is paid and counted
+  nothing for it. The round ends when a side has no ship afloat, AI included, never with the last
+  captain, so the server sails it on after her, four times faster, and banks everyone at the end:
+  every captain of the winning side wins, one still afloat paid `winBonus` and one who went under
+  `sunkWinBonus`, and nobody is placed, so there is no rank, no leader and no best finish. The side
+  is a fact of the round and lives on the ship; what colour it flies and what it is called are the
+  renderer's (`SIDE_COLORS` in `palette.js`), and the HUD's badge in the rank's place shows the two
+  fleets' ships afloat and the hull they have left.
 - `src/consent.js` is the cookie prompt's answer: essential, analytics and advertising, kept
   under its own key. **The hold is the essential category and is never gated on
   it**: "Reject all" must not touch a captain's progress.
@@ -305,7 +403,11 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   the ones authored in `STATION_GEOM`, so the galleon is unchanged; a taller stack is that profile
   resampled and squeezed into the same air, because three sails already reach the masthead and there
   is nothing above them to extend into. Five is the ceiling and the bench holds the catalogue to it.
-  Adding a row to `STATION_GEOM` is not how a sixth would be added.
+  Adding a row to `STATION_GEOM` is not how a sixth would be added. **Square canvas over a gaff
+  comes down to it**: the bands leave room for a course and its yard under the lowest, and a gaff
+  in that berth has neither, so the stack is brought down to just over her throat, grows a little
+  into the air it gave up, and the pole is cut shorter with it. Raise the square sails' foot, never
+  the gaff, to change that gap.
 - **A broadside is one ball a gun, spread over a moment, and laid as it bears.** Fifty balls leaving
   in the same instant cannot be told apart at any size they could be drawn, so every gun takes her
   own moment inside `volleyWindow`: several ports go off together, then a few more elsewhere, and
@@ -357,7 +459,7 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   class whose ports no longer add up to her guns are all faults, and all three were true of the
   fleet for as long as nothing counted them.
 - `tools/promo.mjs` (`npm run promo`) draws the ad and store art in `promo/` through the same
-  `drawGalleon` the icons use, and with `--play` plays a round for real frames to pick from. Its copy
+  `createMenuShip` the icons use, and with `--play` plays a round for real frames to pick from. Its copy
   is player-facing and follows the rules below; its counts are read off the catalogue.
 - `docs/SHIPYARD.md` is the design note for the shipyard: the model, what is deliberately not built
   yet, and the open questions. Read it before extending any of the above.
@@ -454,7 +556,7 @@ Buttons take size over tracking. Wide letterspacing makes every control read as 
   `env(safe-area-inset-*)`. The canvas reads the wrapper's insets on resize to place the radar by the
   same edges. The game is a home-screen app (`public/manifest.webmanifest` and the meta tags in
   `index.html`), which is the only way to a full screen on an iPhone; `npm run icon` draws the icons,
-  the favicon and the share card from a gaff-rigged cutter through the menu's own `drawGalleon`, so
+  the favicon and the share card from a gaff-rigged cutter through the menu's own `createMenuShip`, so
   they are generated and never edited by hand.
 - **Text is the size the source says, sideways as well as upright.** `index.css` sets
   `text-size-adjust: 100%`, because iOS Safari boosts the text in ordinary blocks when a phone turns
@@ -493,6 +595,10 @@ WebKit and Firefox and fails unless all four end every round on the same bits. A
 rules runs `npm run hold-test`, and a change to `server/` runs `npm run server-test`, which needs
 Docker locally.
 
+A change to how a ship is drawn (`galleon.js`, `hullform.js`, `render3d/shipmodel.js`,
+`render3d/flags.js` or a reference column in `hulls.tsv`) runs `npm run shiplab -- --diff staging`,
+which names every class it changed: a class in that list nobody meant to touch is the bug.
+
 Verify visual changes in the running game, not only in a standalone harness. A harness that
 replicates the draw code is useful for iterating on geometry and for comparing before and after, but
 it is a replica, and it can agree with itself while disagreeing with the game. When a screenshot
@@ -510,6 +616,10 @@ Rules above that the code does not yet satisfy. Tracked cleanups, not exceptions
   a fluyt's extreme tumblehome or a carrack's built-up works are still the shared family of shapes
   with different numbers. Refining a class means refining her form, not adding a size multiplier to
   the catalogue, which stays deliberately size-free.
+- **There is no poop deck.** A castle score raises a quarterdeck and then a forecastle, and nothing
+  stacks a third deck aft, so the 3rd rate, a seventy-four, and the big rates draw without the poop
+  they carried over the quarterdeck. It wants a deck of its own in `hullform.js` and `galleon.js`
+  rather than a higher castle score, which only lifts the quarterdeck.
 - **Google sign-in has not been tried from the home-screen app on an iPhone.** A redirect out of a
   standalone web app is where that flow tends to break, so leave `GOOGLE_CLIENT_ID` unset in
   production until it has been, and email codes carry sign-in alone.

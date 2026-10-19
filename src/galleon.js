@@ -10,7 +10,7 @@
  * the box at every bearing, so the ship never wanders as it turns.
  */
 
-import { hullForm, DEFAULT_FORM, GALLEON_GEOM, portZ, tintTimber } from "./hullform.js";
+import { hullForm, DEFAULT_FORM, GALLEON_GEOM, portZ, tintTimber, timberCast } from "./hullform.js";
 
 const ISO_X=0.866, ISO_Y=0.5, VIEW=[1,1,1];
 const LIGHT=(()=>{const v=[-0.42,0.46,0.78],l=Math.hypot(...v);return v.map(c=>c/l)})();
@@ -64,12 +64,25 @@ function hullKit(menu){
     wl:lerp(ST[i][3],ST[i+1][3],t)};}
   return station(0);
  }
+ /* A RAISED DECK STANDS ON HER SIDE. A castle's height is its own (`z`, off her
+    castle score) where it breaks from the waist, and from there it is level, as
+    long as it stays over her side. Where her sheer sweeps up past it, toward her
+    taffrail or her stem, the deck rises with the sheer, a plank over the top of
+    her side, the way a quarterdeck was laid on the same sweep as the deck under
+    it and ran up to the taffrail with it. Her castle score and her sheer score
+    are separate figures, and on a hull whose sheer outran her castle a level deck
+    ended up under the top of her own side at the stern, with her transom standing
+    over the quarterdeck rail. Where the castle stands clear of her sheer the
+    whole way, as the galleon's and the big rates' do, this is the level deck it
+    always was. */
+ const DECK_LIFT=0.3;
+ const castleZ=(c,x)=>Math.max(c.z,stationAt(x).sheer+DECK_LIFT);
  /* The height of whatever a mast is stepped on at x: the quarterdeck aft, the
     forecastle forward, and the open deck between them. An open boat has
     neither, so the answer is her sheer everywhere. */
  const deckZAt=x=>
-  (menu.aft&&x>=menu.aft.x0+2&&x<=menu.aft.x1)?menu.aft.z
-  :(menu.fore&&x>=menu.fore.x0&&x<=menu.fore.x1)?menu.fore.z
+  (menu.aft&&x>=menu.aft.x0+2&&x<=menu.aft.x1)?castleZ(menu.aft,x)
+  :(menu.fore&&x>=menu.fore.x0&&x<=menu.fore.x1)?castleZ(menu.fore,x)
   :stationAt(x).sheer;
  function bowShift(x,f){
   if(x<=BOW.x0) return 0;
@@ -100,16 +113,22 @@ function hullKit(menu){
   // the bulwark stands over the rail edge, so it carries the full rake of a leaning stern with it
   return[s.x+sternShift(s.x,1),side*s.w,lerp(s.sheer,rail,(u-uS)/(1-uS))];
  }
- kit={ST,BULWARK,station,stationAt,deckZAt,bowShift,sternShift,hullPtF,hullWAtZ,hullPt};
+ kit={ST,BULWARK,station,stationAt,castleZ,deckZAt,bowShift,sternShift,hullPtF,hullWAtZ,hullPt};
  KITS.set(menu,kit);
  return kit;
 }
 function newell(p){let x=0,y=0,z=0;for(let i=0;i<p.length;i++){const a=p[i],b=p[(i+1)%p.length];
  x+=(a[1]-b[1])*(a[2]+b[2]);y+=(a[2]-b[2])*(a[0]+b[0]);z+=(a[0]-b[0])*(a[1]+b[1]);}
  const l=Math.hypot(x,y,z);return l<1e-9?null:[x/l,y/l,z/l];}
+/* Which piece of the ship a face belongs to, for a renderer that keeps the pieces apart: "mast0",
+   "mast1" and on for each mast standing (foremost first) with everything she carries, "bowsprit"
+   for the spar, "sprit" for what is set on it, and nothing for the hull. drawGalleon never reads it; the
+   three.js model (src/render3d/shipmodel.js) does, so a mast can come down on its own. */
+let PART=null;
 function addFace(F,pts,color,hint,opts){let n=newell(pts);if(!n)return;
  if(hint&&n[0]*hint[0]+n[1]*hint[1]+n[2]*hint[2]<0){pts=pts.slice().reverse();n=n.map(v=>-v);}
- F.push(Object.assign({pts,n,color},opts||{}));}
+ const f=Object.assign({pts,n,color},opts||{});if(PART!==null)f.part=PART;
+ F.push(f);}
 function addPrism(F,a,b,r0,r1,color,tag,sides,bias){
  const n=sides||4;
  let d=[b[0]-a[0],b[1]-a[1],b[2]-a[2]];const L=Math.hypot(...d);if(L<1e-6)return;d=d.map(c=>c/L);
@@ -388,6 +407,33 @@ function rigFromSpec(spec, form) {
           bulge: slot.bulge * k, seg: slot.seg, stud: !!s.stud,
         };
       });
+      /* Square canvas over a gaff comes down to it. The square bands leave room
+         under the lowest of them for a course and its yard, and a gaff in the
+         course's berth has neither: her throat stands 0.22 of her height under
+         her peak, and her peak where a course's head would be. So the sails above
+         her stood a long way up a bare pole, 10 to 26 units over the throat. The
+         stack is brought down until its foot is just over her throat, where a
+         real spanker's jaws sat under the top with the topsail sheeted home over
+         them, and it takes back part of the air it gave up, its sails and the
+         gaps between them scaled up together, span and all, so they come out a
+         little larger as well as lower. The pole is cut to the canvas below, so
+         she stands a shorter mast for it: a seventy-four's mizzen comes down
+         from 0.95 of her main to 0.90, near what one really stood. */
+      if (sails.length > 1 && sails[0].cut === "gaff" && sails.slice(1).every((s) => s.cut === "square")) {
+        const gaff = sails[0], over = sails.slice(1);
+        const foot = gaff.zt - 0.22 * (gaff.zt - gaff.zb) + 1.2;
+        const bottom = over[0].zb, height = over[over.length - 1].zt - bottom;
+        const drop = bottom - foot;
+        if (drop > 0) {
+          // a quarter of the air given up goes back into canvas, and no sail grows past 1.15 of herself
+          const f = Math.min(1.15, 1 + (0.25 * drop) / height);
+          for (const s of over) {
+            s.zb = foot + (s.zb - bottom) * f;
+            s.zt = foot + (s.zt - bottom) * f;
+            s.span *= f; s.bulge *= f;
+          }
+        }
+      }
       /* The pole is then cut down to the canvas actually bent on it. A mast is as
          tall as it needs to be for its highest sail plus the room a masthead
          takes: leave it at its full nominal height and a boat carrying one small
@@ -430,7 +476,7 @@ const GALLEON_RIG = rigFromSpec({
 }, DEFAULT_FORM);
 
 function buildShip(rig){
- const F=[];
+ const F=[];PART=null;
  /* Everything about the hull under this rig comes off the form: her stations,
     castles, bow, bulwark, fittings and timber. The galleon's form is the
     authored numbers under the plain Oak palette, so her ship is built exactly
@@ -438,8 +484,14 @@ function buildShip(rig){
  const whole=rig.form||DEFAULT_FORM;
  const form=whole.menu;
  const P=palFor(whole);
- const {ST,BULWARK,station,stationAt,deckZAt,hullPtF,hullWAtZ,hullPt}=hullKit(form);
+ const {ST,BULWARK,station,stationAt,castleZ,deckZAt,sternShift,hullPtF,hullWAtZ,hullPt}=hullKit(form);
  const Lh=form.Lh, sternX=-Lh, fk=form.k;
+ /* Where anything standing over her rail at x is drawn. A raking transom or an
+    overhanging stern carries her rail aft of her waterline (`sternShift` at full
+    height), so her bulwarks, castles, taffrail and whatever stands on them carry
+    the same rake, or they stand forward of the hull they sit on and leave a sliver
+    of transom standing on its own astern of them. Zero rake is a no-op. */
+ const rx=x=>x+sternShift(x,1);
  // plank courses: the topside band is split into three strakes at ±6% so the
  // hull reads as laid planking rather than one flat panel
  const fs=[0,0.14,0.34,0.50,0.66,0.82,1],
@@ -458,7 +510,7 @@ function buildShip(rig){
    for(const side of[1,-1]){
     for(let k=0;k<6;k++)
      addFace(F,[hullPtF(pa,side,fs[k]),hullPtF(pb,side,fs[k]),hullPtF(pb,side,fs[k+1]),hullPtF(pa,side,fs[k+1])],
-             bc[k],[0,side,0],{tag:"hull"});
+             bc[k],[0,side,0],k?{tag:"hull",paint:1}:{tag:"hull"});
    }
   }
  }
@@ -471,20 +523,24 @@ function buildShip(rig){
   out.push(xb);
   return out;
  }
- function bulwarkRun(xa,xb,capA,capB,lift){
+ /* `meet` says the run ends on her stem: there the two sides' inner faces close
+    on the centreline, so the rail comes to a point over the stem. A run that
+    stopped short of it left a slot open down the middle of her bow, and the
+    deck showed through it from ahead and the sea through it from astern. */
+ function bulwarkRun(xa,xb,capA,capB,lift,meet){
   const xs=xSamples(xa,xb,3.5), L=lift||0;
   const dz=s=>s.sheer+L, tz=s=>s.sheer+BULWARK+L;
-  const iw=s=>Math.max(s.w-1.35,0.3);
+  const iw=s=>meet&&s.x>=xb-1e-6?0:Math.max(s.w-1.35,0.3);
   for(let i=0;i<xs.length-1;i++){
-   const x0=xs[i],x1=xs[i+1],s0=stationAt(x0),s1=stationAt(x1);
+   const x0=xs[i],x1=xs[i+1],s0=stationAt(x0),s1=stationAt(x1),X0=rx(x0),X1=rx(x1);
    const d0=dz(s0),d1=dz(s1),t0=tz(s0),t1=tz(s1);
    for(const side of[1,-1]){
-    addFace(F,[[x0,side*s0.w,s0.sheer],[x1,side*s1.w,s1.sheer],
-               [x1,side*s1.w,t1],[x0,side*s0.w,t0]],P.top,[0,side,0],{tag:"hull"});
-    addFace(F,[[x0,side*s0.w,t0],[x1,side*s1.w,t1],
-               [x1,side*(iw(s1)),t1],[x0,side*(iw(s0)),t0]],P.cap,[0,0,1],{tag:"hull"});
-    addFace(F,[[x0,side*(iw(s0)),d0],[x1,side*(iw(s1)),d1],
-               [x1,side*(iw(s1)),t1],[x0,side*(iw(s0)),t0]],P.dark,[0,-side,0],{tag:"hull"});
+    addFace(F,[[X0,side*s0.w,s0.sheer],[X1,side*s1.w,s1.sheer],
+               [X1,side*s1.w,t1],[X0,side*s0.w,t0]],P.top,[0,side,0],{tag:"hull",paint:1});
+    addFace(F,[[X0,side*s0.w,t0],[X1,side*s1.w,t1],
+               [X1,side*(iw(s1)),t1],[X0,side*(iw(s0)),t0]],P.cap,[0,0,1],{tag:"hull",paint:1});
+    addFace(F,[[X0,side*(iw(s0)),d0],[X1,side*(iw(s1)),d1],
+               [X1,side*(iw(s1)),t1],[X0,side*(iw(s0)),t0]],P.dark,[0,-side,0],{tag:"hull",paint:0.8});
    }
    /* One plain plate per sample, unstroked and held clear of the bulwark. The
       plank banding added seam lines across the deck and its outline spilled onto
@@ -496,26 +552,29 @@ function buildShip(rig){
       plate behind the hull skin, which keying on the far corner did. Sunk plates
       must not stop short of what surrounds them either, or the face behind shows
       as a dark hairline — so the plate now tucks UNDER the bulwark. */
-   {const INSET=-0.25, w0=iw(s0)-INSET, w1=iw(s1)-INSET, xe=x1+(i<xs.length-2?0.6:0), NY=5;
+   {const INSET=-0.25, w0=iw(s0)-INSET, w1=iw(s1)-INSET, xe=X1+(i<xs.length-2?0.6:0), NY=5;
     for(let k=0;k<NY;k++){const a=-1+2*k/NY-(k?0.02:0),b=-1+2*(k+1)/NY+(k<NY-1?0.02:0);
-     addFace(F,[[x0,a*w0,d0],[xe,a*w1,d1],[xe,b*w1,d1],[x0,b*w0,d0]],
+     addFace(F,[[X0,a*w0,d0],[xe,a*w1,d1],[xe,b*w1,d1],[X0,b*w0,d0]],
              P.deck,[0,0,1],{tag:"deck",bias:-1.6,nostroke:true,nearW:0,sink:2.6});}}
   }
   for(const[xc,dir]of[[xa,capA],[xb,capB]]){
    if(!dir)continue;
-   const s=stationAt(xc);
+   const s=stationAt(xc), X=rx(xc);
    for(const side of[1,-1])
-    addFace(F,[[xc,side*s.w,dz(s)],[xc,side*(iw(s)),dz(s)],
-               [xc,side*(iw(s)),tz(s)],[xc,side*s.w,tz(s)]],P.cap,[dir,0,0],{tag:"hull"});
+    addFace(F,[[X,side*s.w,dz(s)],[X,side*(iw(s)),dz(s)],
+               [X,side*(iw(s)),tz(s)],[X,side*s.w,tz(s)]],P.cap,[dir,0,0],{tag:"hull",paint:1});
   }
  }
- /* The open deck's bulwark runs between the castles when she has them, and
-    nearly the whole length of her when she does not; the lifted run over the
-    beakhead belongs to the forecastle and goes with it. */
- const waistX0=form.aft?form.aft.x1:sternX+1.2;
- const waistX1=form.fore?form.fore.x0:Lh-1.2;
- bulwarkRun(waistX0,waistX1,0,0);
- if(form.fore) bulwarkRun(0.833*Lh,Lh,0,0,form.fore.z-stationAt(0.833*Lh).sheer);
+ /* The open deck's bulwark runs between the castles when she has them, and the
+    whole length of her when she does not: from her transom, where the taffrail
+    closes it, to her stem, where the two sides meet. It used to stop 1.2 short
+    of both ends, which on a boat with neither castle left her rail open at the
+    bow and notched at both quarters. The lifted run over the beakhead belongs to
+    the forecastle and goes with it. */
+ const waistX0=form.aft?form.aft.x1:sternX;
+ const waistX1=form.fore?form.fore.x0:Lh;
+ bulwarkRun(waistX0,waistX1,0,0,0,!form.fore);
+ if(form.fore) bulwarkRun(0.833*Lh,Lh,0,0,castleZ(form.fore,0.833*Lh)-stationAt(0.833*Lh).sheer);
  const uu=[0,0.46,0.74,0.87,1],s0=station(0),sN=station(ST.length-1);
  {
   const NB=12,NC=4;
@@ -536,13 +595,13 @@ function buildShip(rig){
   /* A patch laid on the side of her, sampled so it follows the curve underneath.
      `at` is what surface it lies on: the hull's own skin for a gunport, and above
      the sheer the flat outer face of a bulwark, which has no tumblehome in it. */
-  const patch=(px,side,zc,hw,hh,out,col,bias,flat,tag,at)=>{
-   const NX=4,NZ=3, W=at||surfW, T=tag||"hull";
+  const patch=(px,side,zc,hw,hh,out,col,bias,flat,tag,at,raked)=>{
+   const NX=4,NZ=3, W=at||surfW, T=tag||"hull", R=raked?rx:(x=>x);
    for(let i=0;i<NX;i++)for(let j=0;j<NZ;j++){
     const xa=px-hw+2*hw*i/NX, xb=px-hw+2*hw*(i+1)/NX;
     const za=zc-hh+2*hh*j/NZ, zb=zc-hh+2*hh*(j+1)/NZ;
-    addFace(F,[[xa,side*(W(xa,za)+out),za],[xb,side*(W(xb,za)+out),za],
-               [xb,side*(W(xb,zb)+out),zb],[xa,side*(W(xa,zb)+out),zb]],
+    addFace(F,[[R(xa),side*(W(xa,za)+out),za],[R(xb),side*(W(xb,za)+out),za],
+               [R(xb),side*(W(xb,zb)+out),zb],[R(xa),side*(W(xa,zb)+out),zb]],
             col,[0,side,0],flat!=null?{tag:T,bias,flat}:{tag:T,bias});
    }
   };
@@ -685,15 +744,15 @@ function buildShip(rig){
    const oh=BULWARK*(row.main?0.34:0.30)*GS, ow=BULWARK*(row.main?0.46:0.42)*GS;
    const len=BULWARK*(row.main?1.1:0.75)*GS, rad=BULWARK*(row.main?0.22:0.19)*GS;
    for(const px of row.xs){
-    const z=(deck?deck.z:stationAt(px).sheer)+BULWARK*0.5;
+    const z=(deck?castleZ(deck,px):stationAt(px).sheer)+BULWARK*0.5;
     const w=railAt(px);
     const open=portN++<armed;
     for(const side of[1,-1]){
      const i0=F.length;
-     patch(px,side,z,ow,oh,0.06,"#0b0806",4.4,0.09,tag,railAt);
+     patch(px,side,z,ow,oh,0.06,"#0b0806",4.4,0.09,tag,railAt,true);
      const g0=F.length;
      if(open){
-      const at=t=>[px,side*(w+t),z];
+      const at=t=>[rx(px),side*(w+t),z];
       addSpar(F,at(0),at(len*0.86),rad,rad*0.82,"#57504a",tag,fine?4:1,fine?10:5,4.6);
       addPrism(F,at(len*0.84),at(len),rad*0.86,rad*0.68,"#6a635c",tag,fine?10:5,4.7);
      }
@@ -713,24 +772,27 @@ function buildShip(rig){
     could outrank it and paint over the rail's inner face. Short lengths keep each
     piece keyed beside whatever stands next to it. Consecutive pieces overlap by a
     hair so the run reads unbroken. */
- function railWall(ax,ay,bx,by,dz,rh,ix,iy,noOuter){
-  const top=dz+rh;
+ /* `dzB` is the deck at the far end where it differs from the near one: a rail
+    along a deck that rises with her sheer rises with it. */
+ function railWall(ax,ay,bx,by,dz,rh,ix,iy,noOuter,dzB){
+  const zb=dzB??dz;
   const run=Math.hypot(bx-ax,by-ay), NR=Math.max(1,Math.ceil(run/5));
   for(let s=0;s<NR;s++){
    const u0=s/NR, u1=(s+1)/NR+(s<NR-1?0.004:0);
    const x0=lerp(ax,bx,u0), y0=lerp(ay,by,u0), x1=lerp(ax,bx,u1), y1=lerp(ay,by,u1);
    const i0x=x0+ix*RAIL_T, i0y=y0+iy*RAIL_T, i1x=x1+ix*RAIL_T, i1y=y1+iy*RAIL_T;
-   if(!noOuter)addFace(F,[[x0,y0,dz],[x1,y1,dz],[x1,y1,top],[x0,y0,top]],P.top,[-ix,-iy,0],{tag:"castle",bias:3});
-   addFace(F,[[i0x,i0y,dz],[i0x,i0y,top],[i1x,i1y,top],[i1x,i1y,dz]],P.dark,[ix,iy,0],{tag:"castle",bias:3});
-   addFace(F,[[x0,y0,top],[x1,y1,top],[i1x,i1y,top],[i0x,i0y,top]],P.cap,[0,0,1],{tag:"castle",bias:3});
+   const d0=lerp(dz,zb,u0), d1=lerp(dz,zb,u1), t0=d0+rh, t1=d1+rh;
+   if(!noOuter)addFace(F,[[x0,y0,d0],[x1,y1,d1],[x1,y1,t1],[x0,y0,t0]],P.top,[-ix,-iy,0],{tag:"castle",bias:3,paint:1});
+   addFace(F,[[i0x,i0y,d0],[i0x,i0y,t0],[i1x,i1y,t1],[i1x,i1y,d1]],P.dark,[ix,iy,0],{tag:"castle",bias:3,paint:0.8});
+   addFace(F,[[x0,y0,t0],[x1,y1,t1],[i1x,i1y,t1],[i0x,i0y,t0]],P.cap,[0,0,1],{tag:"castle",bias:3,paint:1});
   }
  }
  /* Stairs, and the gaps their heads open in the castle end rails. Both come from
     the same numbers, so a stair can never land against a closed rail. One
     flight per castle break, so an open boat has none. */
  const STAIR=[];
- if(form.fore) STAIR.push([form.fore.x0,-1,form.fore.z]);
- if(form.aft) STAIR.push([form.aft.x1,1,form.aft.z]);
+ if(form.fore) STAIR.push([form.fore.x0,-1,castleZ(form.fore,form.fore.x0)]);
+ if(form.aft) STAIR.push([form.aft.x1,1,castleZ(form.aft,form.aft.x1)]);
  const STAIR_W=4.4*Math.min(1,fk*1.1), STAIR_RUN=11*fk;
  // one flight per side, hard against the bulwark: [inboard edge, outboard edge]
  const stairSpan=(fx,dir,side)=>{const mx=fx+dir*STAIR_RUN*0.5,
@@ -741,8 +803,8 @@ function buildShip(rig){
  const stairGaps=(fx,dir)=>[1,-1].map(side=>{const yi=stairSpan(fx,dir,side)[0],
    yo=side*(stationAt(fx).w+2);
    return[Math.min(yi,yo),Math.max(yi,yo)];}).sort((a,b)=>a[0]-b[0]);
- const endRail=(xr,dz,rh,ix,gaps,noOuter)=>{
-  const w=stationAt(xr).w;
+ const endRail=(xs,dz,rh,ix,gaps,noOuter)=>{
+  const w=stationAt(xs).w, xr=rx(xs);
   let segs=[[-w,w]];
   for(const g of gaps||[]){const out=[];
    for(const[a,b]of segs){
@@ -760,14 +822,16 @@ function buildShip(rig){
    if(b<w-0.01)cap(b,1);
   }
  };
- function castle(xa,xb,dz,rh,ins,face){
-  const hw=x=>Math.max(stationAt(x).w-ins,2),bs=x=>Math.min(stationAt(x).sheer-0.6,dz-0.5);
+ // `dzAt` is the castle's deck at x, which rises with her sheer where it must (`castleZ`)
+ function castle(xa,xb,dzAt,rh,ins,face){
+  const hw=x=>Math.max(stationAt(x).w-ins,2),bs=x=>Math.min(stationAt(x).sheer-0.6,dzAt(x)-0.5);
   const xs=xSamples(xa,xb,3.5);   // finer plates: keeps the deck's depth sort local around the masts
   for(let i=0;i<xs.length-1;i++){
-   const x0=xs[i],x1=xs[i+1],w0=hw(x0),w1=hw(x1),b0=bs(x0),b1=bs(x1);
+   const x0=xs[i],x1=xs[i+1],w0=hw(x0),w1=hw(x1),b0=bs(x0),b1=bs(x1),X0=rx(x0),X1=rx(x1);
+   const d0=dzAt(x0),d1=dzAt(x1);
    for(const side of[1,-1]){
-    addFace(F,[[x0,side*w0,b0],[x1,side*w1,b1],[x1,side*w1,dz],[x0,side*w0,dz]],P.top,[0,side,0],{tag:"castle",bias:3});
-    railWall(x0,side*w0,x1,side*w1,dz,rh,0,-side);
+    addFace(F,[[X0,side*w0,b0],[X1,side*w1,b1],[X1,side*w1,d1],[X0,side*w0,d0]],P.top,[0,side,0],{tag:"castle",bias:3,paint:1});
+    railWall(X0,side*w0,X1,side*w1,d0,rh,0,-side,false,d1);
    }
    /* same treatment as the waist deck: plain plates, unstroked, split
       athwartships. These sit at the top of the ship, so unlike the waist plates
@@ -782,18 +846,18 @@ function buildShip(rig){
       the wall plane: the break reads as one unbroken face, and the wall's own
       seam stroke covers the joint. */
    const cw0=w0-RAIL_T+0.25,cw1=w1-RAIL_T+0.25,
-    xp0=x0,
+    xp0=X0,
     /* Five strips athwartships, not three. A plate is keyed on its own centroid,
        so a wide strip is keyed metres away from the rail it butts against: the
        margin over the rail's bias ran out at a fair number of headings and the
        deck painted over the rail's inner face and cap. Narrower strips keep each
        plate's key close to the work standing along its edge. */
-    xe=x1+(i<xs.length-2?0.6:0),NY=5;
+    xe=X1+(i<xs.length-2?0.6:0),NY=5;
    for(let k=0;k<NY;k++){const a=-1+2*k/NY-(k?0.02:0),b=-1+2*(k+1)/NY+(k<NY-1?0.02:0);
-    addFace(F,[[xp0,a*cw0,dz],[xe,a*cw1,dz],[xe,b*cw1,dz],[xp0,b*cw0,dz]],
+    addFace(F,[[xp0,a*cw0,d0],[xe,a*cw1,d1],[xe,b*cw1,d1],[xp0,b*cw0,d0]],
             P.deck,[0,0,1],{tag:"castle",bias:-1.6,nostroke:true,nearW:0});}
   }
-  const we=hw(face),be=bs(face),nf=face===xa?-1:1;
+  const dz=dzAt(face),we=hw(face),be=bs(face),nf=face===xa?-1:1,FX=rx(face);
   const st=STAIR.find(s=>s[0]===face), yi=st?Math.abs(stairSpan(st[0],st[1],1)[0]):0;
   /* Tiled finely for the same reason as the deck: the break wall is one plane, but
      each tile sorts on its own centroid, and a third-of-the-width tile was keyed
@@ -803,7 +867,7 @@ function buildShip(rig){
   const NWY=9,NWZ=4;
   for(let iy=0;iy<NWY;iy++)for(let iz=0;iz<NWZ;iz++){
    const y0=-we+2*we*iy/NWY,y1=-we+2*we*(iy+1)/NWY,z0=be+(dz-be)*iz/NWZ,z1=be+(dz-be)*(iz+1)/NWZ;
-   addFace(F,[[face,y0,z0],[face,y1,z0],[face,y1,z1],[face,y0,z1]],P.wood,[nf,0,0],{tag:"castle",bias:3});}
+   addFace(F,[[FX,y0,z0],[FX,y1,z0],[FX,y1,z1],[FX,y0,z1]],P.wood,[nf,0,0],{tag:"castle",bias:3});}
   /* Above the deck the break wall carries on to the top of the rail, in the same
      timber as below it, so the whole face reads as one plane from the main deck
      to the rail cap instead of changing colour and picking up a seam where the
@@ -812,19 +876,36 @@ function buildShip(rig){
      outer face over that span (endRail's noOuter) so nothing is drawn twice. */
   if(yi>0.3)for(let iy=0;iy<NWY;iy++){
    const y0=-yi+2*yi*iy/NWY,y1=-yi+2*yi*(iy+1)/NWY;
-   addFace(F,[[face,y0,dz],[face,y1,dz],[face,y1,dz+rh],[face,y0,dz+rh]],P.wood,[nf,0,0],{tag:"castle",bias:3});}
+   addFace(F,[[FX,y0,dz],[FX,y1,dz],[FX,y1,dz+rh],[FX,y0,dz+rh]],P.wood,[nf,0,0],{tag:"castle",bias:3});}
  }
  if(form.aft){
-  castle(form.aft.x0,form.aft.x1,form.aft.z,BULWARK,0,form.aft.x1);
-  endRail(form.aft.x0,form.aft.z,BULWARK,1);
-  endRail(form.aft.x1,form.aft.z,BULWARK,-1,stairGaps(form.aft.x1,1),true);
+  const az=x=>castleZ(form.aft,x);
+  castle(form.aft.x0,form.aft.x1,az,BULWARK,0,form.aft.x1);
+  endRail(form.aft.x0,az(form.aft.x0),BULWARK,1);
+  endRail(form.aft.x1,az(form.aft.x1),BULWARK,-1,stairGaps(form.aft.x1,1),true);
  }else{
-  // no castle: the stern still closes with a rail across the taffrail
-  endRail(sternX+0.4,stationAt(sternX).sheer,BULWARK,1);
+  /* No castle: the stern closes with a rail across the taffrail, flush with her
+     transom, whose own face is its outer one, and between the inner faces of her
+     side rails. It used to stand 0.4 inboard of the transom, which left an open
+     strip along the top of her stern and, where the side rails stopped short of
+     it, a notch at each quarter. */
+  /* Its inner face stands one rail's thickness inboard, where her side rails'
+     inner faces have opened out with her beam, so it is cut to meet them there
+     rather than to the narrower transom; a straight rail left a slot at each
+     corner. Laid in lengths for the same reason `railWall` lays them. */
+  const iw=s=>Math.max(s.w-1.35,0.3), s0=stationAt(sternX), s1=stationAt(sternX+RAIL_T);
+  const X0=rx(sternX), X1=rx(sternX+RAIL_T), a=iw(s0), b=iw(s1);
+  const t0=s0.sheer+BULWARK, t1=s1.sheer+BULWARK, NR=Math.max(1,Math.ceil(2*b/5));
+  for(let k=0;k<NR;k++){
+   const u0=-1+2*k/NR, u1=-1+2*(k+1)/NR+(k<NR-1?0.004:0);
+   addFace(F,[[X1,u0*b,s1.sheer],[X1,u0*b,t1],[X1,u1*b,t1],[X1,u1*b,s1.sheer]],P.dark,[1,0,0],{tag:"castle",bias:3,paint:0.8});
+   addFace(F,[[X0,u0*a,t0],[X0,u1*a,t0],[X1,u1*b,t1],[X1,u0*b,t1]],P.cap,[0,0,1],{tag:"castle",bias:3,paint:1});
+  }
  }
  if(form.fore){
-  castle(form.fore.x0,form.fore.x1,form.fore.z,BULWARK,0,form.fore.x0);
-  endRail(form.fore.x0,form.fore.z,BULWARK,1,stairGaps(form.fore.x0,-1),true);
+  const fz=x=>castleZ(form.fore,x);
+  castle(form.fore.x0,form.fore.x1,fz,BULWARK,0,form.fore.x0);
+  endRail(form.fore.x0,fz(form.fore.x0),BULWARK,1,stairGaps(form.fore.x0,-1),true);
  }
  /* Stern lights are a windowed stern: a gallery or a stern castle. A transom
     or a round tuck stays plain timber, whatever she cost. */
@@ -863,11 +944,114 @@ function buildShip(rig){
            {tag:"trim",flat:0.94,nearW:0,nostroke:true,bias:2.2});
   }
  }
+ /* The cloth itself, as a surface over two parameters: three corners fanned from
+    B across the edge between A and C, or four lofted between luff and leech,
+    bellied out in y either way. The sail is drawn off it cell by cell, and the
+    shrouds test their runs against the same cells, so a rope is kept out of the
+    canvas that is actually there rather than out of a box drawn round it.
+    Fanned, both edges off B carry the belly unless the one to A is `laced`: a
+    lateen's head is bent to its yard the whole length of it, so it lies along
+    the spar and the cloth fills out below it, fullest at the loose foot. */
+ const mix3=(p,q,s)=>[lerp(p[0],q[0],s),lerp(p[1],q[1],s),lerp(p[2],q[2],s)];
+ const triCloth=(B,A,C,belly,laced)=>{
+  const on=(p,q,t,b)=>[lerp(p[0],q[0],t),lerp(p[1],q[1],t)+b*Math.sin(Math.PI*t),lerp(p[2],q[2],t)];
+  return{na:12,nb:3,at:(t,s)=>mix3(on(B,A,t,laced?0:belly),on(B,C,t,belly),s)};};
+ const quadCloth=(tack,head,clew,peak,belly)=>({na:3,nb:12,at:(u,v)=>{
+  const a=mix3(tack,head,v),b=mix3(clew,peak,v),p=mix3(a,b,u);
+  return[p[0],p[1]+belly*Math.sin(Math.PI*u)*Math.sin(Math.PI*(0.12+0.76*v)),p[2]];}});
+ /* Where each fore-and-aft sail's corners stand and the cloth between them,
+    worked out here and read twice: by the sail, which is drawn off it, and by
+    the shrouds, which have to know where the cloth is to keep out of it. All of
+    it stands on her starboard side of the pole, 1.1 out, and the belly carries
+    the cloth further out from there. */
+ const lateenCut=(mx,zb,zt)=>{const h=zt-zb;
+  const B=[mx+0.621*h,1.1,zb+0.310*h],A=[mx-0.690*h,1.1,zt],C=[mx-0.552*h,1.1,zb];
+  return{B,A,C,cloth:triCloth(B,A,C,3.6,true)};};
+ const gaffCut=(mx,zb,zt,run)=>{const h=zt-zb,y=1.1;
+  const reach=Math.min(1.05*h,run||1.05*h);
+  const tack=[mx-0.6,y,zb+0.03*h], clew=[mx-reach,y,zb+0.10*h];
+  const throat=[mx-0.6,y,zt-0.22*h], peak=[mx-0.74*reach,y,zt];
+  return{tack,clew,throat,peak,cloth:quadCloth(tack,throat,clew,peak,2.8)};};
+ const lugCut=(mx,zb,zt,run)=>{const h=zt-zb,y=1.1;
+  const aft=Math.min(1,(run||0.64*h)/(0.64*h));
+  const tack=[mx+0.36*h,y,zb], clew=[mx-0.62*h*aft,y,zb+0.05*h];
+  const fore=[mx+0.46*h,y,zt-0.28*h], peak=[mx-0.64*h*aft,y,zt];
+  return{tack,clew,fore,peak,cloth:quadCloth(tack,fore,clew,peak,2.6)};};
  const masts=rig.masts;
- for(const m of masts){
+ /* HER STANDING RIGGING, PLANNED BEFORE HER POLES ARE DRAWN, because what a
+    mast is stayed with decides how tall her pole stands.
+
+    A sail slung from a yard across the pole, a lateen or a lug, stands on her
+    starboard side of it, so a starboard shroud can run straight through the
+    cloth, and with its ratlines it read as a ladder stood through her sail. A
+    mast whose ladder would do that is rigged the way such a boat was: one rope a
+    side, square abreast of her and run to the very top of her pole, with no
+    ratlines, and the pole carried up above her canvas until that rope clears
+    the cloth. A mast whose ladder clears keeps it, and her pole stops where it
+    always did: every square-rigged mast, and a gaff's, whose ladder only
+    brushes the luff close by the pole and reads as standing beside her sail. */
+ const cloths=[];
+ for(const m of masts) for(const s of m.sails){
+  if(s.cut==="triangle")cloths.push(lateenCut(m.x,s.zb,s.zt).cloth);
+  else if(s.cut==="lug")cloths.push(lugCut(m.x,s.zb,s.zt,s.run).cloth);}
+ // whether the segment p..q passes through the triangle a,b,c (Moller and Trumbore)
+ const pierces=(p,q,a,b,c)=>{
+  const d=[q[0]-p[0],q[1]-p[1],q[2]-p[2]],e1=[b[0]-a[0],b[1]-a[1],b[2]-a[2]],e2=[c[0]-a[0],c[1]-a[1],c[2]-a[2]];
+  const cross=(u,v)=>[u[1]*v[2]-u[2]*v[1],u[2]*v[0]-u[0]*v[2],u[0]*v[1]-u[1]*v[0]],dot=(u,v)=>u[0]*v[0]+u[1]*v[1]+u[2]*v[2];
+  const h=cross(d,e2),det=dot(e1,h);if(Math.abs(det)<1e-9)return false;
+  const s=[p[0]-a[0],p[1]-a[1],p[2]-a[2]],u=dot(s,h)/det;if(u<0||u>1)return false;
+  const g=cross(s,e1),v=dot(d,g)/det;if(v<0||u+v>1)return false;
+  const t=dot(e2,g)/det;return t>=0&&t<=1;};
+ /* A rope is as thick as it is drawn: it is tested along its axis and a little
+    over its radius either side of it in y, so one whose side would sink into
+    the cloth counts as through it. `edge` 0 tests the axis alone. */
+ const ROPE=0.35;
+ const throughCloth=(p,q,edge=ROPE)=>{
+  for(const off of edge?[0,-edge,edge]:[0]){const P0=[p[0],p[1]+off,p[2]],Q0=[q[0],q[1]+off,q[2]];
+   for(const{na,nb,at}of cloths)for(let i=0;i<na;i++)for(let j=0;j<nb;j++){
+    const a=at(i/na,j/nb),b=at((i+1)/na,j/nb),c=at((i+1)/na,(j+1)/nb),d=at(i/na,(j+1)/nb);
+    if(pierces(P0,Q0,a,b,c)||pierces(P0,Q0,a,c,d))return true;}}
+  return false;};
+ /* Made fast just inside the rail, not on top of the cap. Landing on the cap
+    put the rope's axis exactly in the cap's plane, so half its thickness stood
+    above the timber and should have shown — but the cap outranks rope in the
+    sort at almost every heading, and no bias that fixes that leaves the rope
+    behind its own mast. Set 0.35 inboard of the rail's inner face the rope
+    runs up and inboard from the start, never crossing the cap's plane, so the
+    cap occludes it only where it genuinely should. */
+ const footAt=(x,side)=>[x,side*(stationAt(x).w-1.7),deckZAt(x)+BULWARK];
+ /* Her ladder on one side, as the ropes it is drawn from: the after mast
+    carries one shroud a side, square-rigged masts two, each from its foot at
+    the station's own offset about the mast to the head of them. The one is set
+    abaft its mast: level with it, it projected straight down the pole and read
+    as the mast carrying on through the quarterdeck. Ratlines run across a pair
+    and stop well short of the head, as they do aboard. */
+ const ladderOf=(m,side,sz)=>{const head=[m.x,0,sz],foot=m.shrouds.map(d=>footAt(m.x+d,side));
+  const ropes=foot.map(p=>({a:head,b:p,r:0.3}));
+  if(m.ratlines&&foot.length>=2)for(let k=1;k<=7;k++){const t=(k/8)*0.62;
+   ropes.push({a:foot[0].map((c,i)=>lerp(c,head[i],t)),b:foot[1].map((c,i)=>lerp(c,head[i],t)),r:0.17,sides:4});}
+  return ropes;};
+ /* How far a single-roped pole may be carried over her own top, as shares of
+    its length. She takes the least lift that clears; failing that, the least
+    at which the rope lies against her cloth without passing through it (the
+    light xebec's fore, whose rope runs down along the full of her foot, and
+    gains nothing from a taller pole but height); failing that, the most. */
+ const POLE_LIFT=[0.06,0.30];
+ const stays=masts.map(m=>{
+  const sz=m.top*m.hoist;
+  if(!OPT.rig||!ladderOf(m,1,sz).some(({a,b})=>throughCloth(a,b)))return{single:false,head:m.top,sz};
+  const len=m.top-deckZAt(m.x), foot=footAt(m.x,1);
+  let clear=null, touch=null;
+  for(let k=0;k<=24&&clear===null;k++){const z=m.top+lerp(POLE_LIFT[0],POLE_LIFT[1],k/24)*len;
+   if(!throughCloth([m.x,0,z],foot))clear=z;
+   else if(touch===null&&!throughCloth([m.x,0,z],foot,0))touch=z;}
+  const head=clear??touch??m.top+POLE_LIFT[1]*len;
+  return{single:true,head,sz:head};
+ });
+ for(const [mi,m] of masts.entries()){PART="mast"+mi;
   const dz=deckZAt(m.x);
   m.deck=dz;
-  addSpar(F,[m.x,0,dz],[m.x,0,m.top],m.r0,m.r1,P.wood,"mast",0,10);
+  addSpar(F,[m.x,0,dz],[m.x,0,stays[mi].head],m.r0,m.r1,P.wood,"mast",0,10);
   /* Mast partner: a short ring in two stacked bands, biased forward of the deck
      plate it sits in, so from bow-on views it reads as a collar around the pole
      instead of a lump half-swallowed by the planking. */
@@ -891,7 +1075,9 @@ function buildShip(rig){
     addFace(F,[pt(rp,ct,t0),pt(ro,ct,t0),pt(ro,ct,t1),pt(rp,ct,t1)],P.dark,[0,0,1],{tag:"mast",bias:2.2});}
   }
  }
+ PART="bowsprit";
  if(rig.bowsprit) addSpar(F,form.bowsprit.heel,form.bowsprit.tip,form.bowsprit.r0,form.bowsprit.r1,P.wood,"mast",0);
+ PART=null;
  function sail(mx,span,zt,zb,bulge,seg,stud){if(!OPT.sails)return;
   /* The cloth stands clear of the pole in x (CLEAR), and the yard sits between
      the two — so no part of the mast can be closer to the eye than the canvas
@@ -939,37 +1125,31 @@ function buildShip(rig){
     serves a lateen on a big ship's after mast and the single standing sail of a
     boat that has nothing else. */
  /* The cloth of a three-cornered sail: a panel fanned from corner B across the
-    edge between A and C, bellied out in y so it stands full rather than flat.
-    Both edges off B carry the belly and the far edge inherits it, so all three
-    corners come to a point and everything between them is under strain. */
- const triPanel=(B,A,C,belly)=>{
-  const on=(p,q,t)=>[lerp(p[0],q[0],t),lerp(p[1],q[1],t)+belly*Math.sin(Math.PI*t),lerp(p[2],q[2],t)];
-  const mix=(p,q,s)=>[lerp(p[0],q[0],s),lerp(p[1],q[1],s),lerp(p[2],q[2],s)];
-  for(let i=0;i<12;i++){const t0=i/12,t1=(i+1)/12,a0=on(B,A,t0),a1=on(B,A,t1),c0=on(B,C,t0),c1=on(B,C,t1);
-   for(const[s0v,s1v]of[[0,1/3],[1/3,2/3],[2/3,1]])
-    addFace(F,[mix(a0,c0,s0v),mix(a1,c1,s0v),mix(a1,c1,s1v),mix(a0,c0,s1v)],P.sail,[0,1,0],{tag:"sail",double:true,back:P.back,amb:0.66,gain:0.46});}
+    edge between A and C (`triCloth`), bellied out in y so it stands full rather
+    than flat, and all three corners come to a point so everything between them
+    is under strain. */
+ const triPanel=({na,nb,at})=>{
+  for(let i=0;i<na;i++)for(let j=0;j<nb;j++){const t0=i/na,t1=(i+1)/na,s0=j/nb,s1=(j+1)/nb;
+   addFace(F,[at(t0,s0),at(t1,s0),at(t1,s1),at(t0,s1)],P.sail,[0,1,0],{tag:"sail",double:true,back:P.back,amb:0.66,gain:0.46});}
  };
  function lateen(mx,zb,zt){if(!OPT.sails)return;
   const h=zt-zb;
-  const B=[mx+0.621*h,1.1,zb+0.310*h],A=[mx-0.690*h,1.1,zt],C=[mx-0.552*h,1.1,zb];
+  const {B,A,C,cloth}=lateenCut(mx,zb,zt);
   const mix=(p,q,s)=>[lerp(p[0],q[0],s),lerp(p[1],q[1],s),lerp(p[2],q[2],s)];
-  // straight lateen yard: a plain chord from tack to peak, so the bellied head
-  // of the cloth stands off it rather than the spar bending with the canvas
+  // straight lateen yard: a plain chord from tack to peak, with the head of the
+  // cloth laced along it and the belly filling out below
   const yq=t=>{const p=mix(B,A,t);return[p[0],p[1]-0.75,p[2]];};
   const YS=16;
   for(let i=0;i<YS;i++){const t0=i/YS,t1=(i+1)/YS;
    addPrism(F,yq(t0),yq(t1),lerp(0.55,0.42,t0),lerp(0.55,0.42,t1),P.dark,"mast");}
   addSpar(F,yq(1),[mx-0.828*h,1.1-0.75,zt+0.069*h],0.42,0.36,P.dark,"mast",0);
-  triPanel(B,A,C,3.6);
+  triPanel(cloth);
  }
  /* The cloth of a four-cornered fore-and-aft sail: two rails, luff and leech,
     with the panel lofted between them and bellied out in y. Both rails keep
     their corners, so the head and foot stay straight enough to read as spars
     and everything between them stands full. */
- const quadPanel=(tack,head,clew,peak,belly)=>{
-  const mix=(p,q,s)=>[lerp(p[0],q[0],s),lerp(p[1],q[1],s),lerp(p[2],q[2],s)];
-  const at=(u,v)=>{const a=mix(tack,head,v),b=mix(clew,peak,v),p=mix(a,b,u);
-   return[p[0],p[1]+belly*Math.sin(Math.PI*u)*Math.sin(Math.PI*(0.12+0.76*v)),p[2]];};
+ const quadPanel=({at})=>{
   const NV=12,NU=3;
   for(let i=0;i<NV;i++){const v0=i/NV,v1=(i+1)/NV;
    for(let j=0;j<NU;j++){const u0=j/NU,u1=(j+1)/NU;
@@ -980,32 +1160,26 @@ function buildShip(rig){
     the throat with the peak the highest corner of the sail. Proportions are
     cut from the band it stands in, the same way the lateen's are. */
  function gaffSail(mx,zb,zt,run){if(!OPT.sails)return;
-  const h=zt-zb,y=1.1;
-  const reach=Math.min(1.05*h,run||1.05*h);
-  const tack=[mx-0.6,y,zb+0.03*h], clew=[mx-reach,y,zb+0.10*h];
-  const throat=[mx-0.6,y,zt-0.22*h], peak=[mx-0.74*reach,y,zt];
+  const {tack,clew,throat,peak,cloth}=gaffCut(mx,zb,zt,run);
   const off=(p)=>[p[0],p[1]-0.75,p[2]];
   const past=(a,b,t)=>[lerp(a[0],b[0],t),lerp(a[1],b[1],t),lerp(a[2],b[2],t)];
   // the boom, jaw at the mast and run a little past the clew
   addSpar(F,off(past(tack,clew,-0.04)),off(past(tack,clew,1.06)),0.5,0.4,P.dark,"mast",0);
   // the gaff, jaw at the throat and run a little past the peak
   addSpar(F,off(past(throat,peak,-0.04)),off(past(throat,peak,1.08)),0.45,0.35,P.dark,"mast",0);
-  quadPanel(tack,throat,clew,peak,2.8);
+  quadPanel(cloth);
  }
  /* A lugsail: four sided on a yard slung across the pole and raking the way a
     lateen's does, the forward end low and the peak high and aft. More of the
     cloth stands abaft the mast than forward of it, which is what makes it a
     lug rather than a square sail askew. */
  function lugSail(mx,zb,zt,run){if(!OPT.sails)return;
-  const h=zt-zb,y=1.1;
-  const aft=Math.min(1,(run||0.64*h)/(0.64*h));
-  const tack=[mx+0.36*h,y,zb], clew=[mx-0.62*h*aft,y,zb+0.05*h];
-  const fore=[mx+0.46*h,y,zt-0.28*h], peak=[mx-0.64*h*aft,y,zt];
+  const {tack,clew,fore,peak,cloth}=lugCut(mx,zb,zt,run);
   const off=(p)=>[p[0],p[1]-0.75,p[2]];
   const past=(a,b,t)=>[lerp(a[0],b[0],t),lerp(a[1],b[1],t),lerp(a[2],b[2],t)];
   // the slung yard, run past both ends of the head
   addSpar(F,off(past(fore,peak,-0.06)),off(past(fore,peak,1.06)),0.5,0.38,P.dark,"mast",0);
-  quadPanel(tack,fore,clew,peak,2.6);
+  quadPanel(cloth);
  }
  /* A headsail has no spar at all: it is tacked down to the bowsprit, hoisted up
     the stay to the masthead, and sheeted home to the deck aft of both. So it is
@@ -1014,9 +1188,9 @@ function buildShip(rig){
     forward of. */
  function headsail(tack,head,clew){if(!OPT.sails)return;
   const y=1.1, at=p=>[p[0],p[1]+y,p[2]];
-  triPanel(at(tack),at(head),at(clew),2.6);
+  triPanel(triCloth(at(tack),at(head),at(clew),2.6));
  }
- for(const m of masts) for(const s of m.sails){
+ for(const [mi,m] of masts.entries()) for(const s of m.sails){PART="mast"+mi;
   if(s.cut==="triangle") lateen(m.x,s.zb,s.zt);
   else if(s.cut==="gaff") gaffSail(m.x,s.zb,s.zt,s.run);
   else if(s.cut==="lug") lugSail(m.x,s.zb,s.zt,s.run);
@@ -1024,49 +1198,33 @@ function buildShip(rig){
  }
  // and whatever is set on the bowsprit: headsails out on the stay, a spritsail
  // slung under the spar
- for(const sp of rig.spars||[]) for(const s of sp.sails){
+ for(const sp of rig.spars||[]) for(const s of sp.sails){PART="sprit";
   if(s.cut==="headsail") headsail(s.tack,s.head,s.clew);
   else sail(s.mx,s.span,s.zt,s.zb,s.bulge,s.seg);
  }
  if(OPT.rig){const rope=P.dark,r=0.3;
   // shrouds land on the rail cap abreast of the mast, not out on the open deck
-  for(const m of masts){const sz=m.top*m.hoist;
-   for(const side of[1,-1]){
-    // the after mast carries one shroud a side, square-rigged masts two. The one
-    // is set abaft its mast: level with it, it projected straight down the pole
-    // and read as the mast carrying on through the quarterdeck.
-    const offs=m.shrouds;
-    /* Made fast just inside the rail, not on top of the cap. Landing on the cap
-       put the rope's axis exactly in the cap's plane, so half its thickness stood
-       above the timber and should have shown — but the cap outranks rope in the
-       sort at almost every heading, and no bias that fixes that leaves the rope
-       behind its own mast. Set 0.35 inboard of the rail's inner face the rope
-       runs up and inboard from the start, never crossing the cap's plane, so the
-       cap occludes it only where it genuinely should. */
-    const foot=offs.map(d=>{const lx=m.x+d,s=stationAt(lx);
-     return[lx,side*(s.w-1.7),deckZAt(lx)+BULWARK];});
-    for(const p of foot) addSpar(F,[m.x,0,sz],p,r,r,rope,"rig",0);
-    // ratlines: the rungs stop well short of the head, as they do aboard, and
-    // they need two shrouds to run between
-    if(!m.ratlines||foot.length<2)continue;
-    const RN=7, top=0.62;
-    for(let k=1;k<=RN;k++){
-     const t=(k/(RN+1))*top,
-      a=foot[0].map((c,i)=>lerp(c,[m.x,0,sz][i],t)),
-      b=foot[1].map((c,i)=>lerp(c,[m.x,0,sz][i],t));
-     addSpar(F,a,b,0.17,0.17,rope,"rig",0,4);
-    }}}
+  for(const [mi,m] of masts.entries()){const st=stays[mi],sz=st.sz;PART="mast"+mi;
+   // a single-roped mast: one rope a side from square abreast of her to the top of her pole
+   if(st.single){
+    for(const side of[1,-1]) addSpar(F,[m.x,0,st.head],footAt(m.x,side),r,r,rope,"rig",0);
+    continue;
+   }
+   for(const side of[1,-1]) for(const{a,b,r,sides}of ladderOf(m,side,sz))
+    addSpar(F,a,b,r,r,rope,"rig",0,sides);
+  }
   /* Stays run forward down the line of masts: each one from a point near its own
      head to a point near the head of the mast ahead of it, and the foremost mast
      to the end of the bowsprit. Chaining them off the masts that are actually
      stepped is what lets a ship with one mast, or none, rig correctly instead of
      leaving ropes hanging in the air where a mast used to be. */
-  masts.forEach((m,i)=>{
+  masts.forEach((m,i)=>{PART="mast"+i;
    const fwd=masts[i-1];
    if(fwd) addSpar(F,[m.x,0,m.top*m.stay.from],[fwd.x,0,fwd.top*m.stay.to],r,r,rope,"rig",0);
    else if(rig.bowsprit) addSpar(F,[m.x,0,m.top*m.stay.from],[form.bowsprit.tip[0],0,form.bowsprit.tip[2]-0.4],r,r,rope,"rig",0);
   });
  }
+ PART=null;
  /* ---- timbers and deck fittings ---- */
  {
   const waist=x=>stationAt(x).sheer;
@@ -1128,7 +1286,7 @@ function buildShip(rig){
      for(let i=0;i<RS;i++){
       const a=R(i/RS), b=R(Math.min(1,(i+1)/RS+(i<RS-1?0.03:0)));
       if(a.z1-a.z0<0.05&&b.z1-b.z0<0.05)continue;
-      addFace(F,[[a.x,a.y,a.z0],[b.x,b.y,b.z0],[b.x,b.y,b.z1],[a.x,a.y,a.z1]],P.top,[0,side,0],{tag:"castle",bias:3.1,nostroke:true});
+      addFace(F,[[a.x,a.y,a.z0],[b.x,b.y,b.z0],[b.x,b.y,b.z1],[a.x,a.y,a.z1]],P.top,[0,side,0],{tag:"castle",bias:3.1,nostroke:true,paint:1});
       addFace(F,[[a.x,a.yi,a.z0],[b.x,b.yi,b.z0],[b.x,b.yi,b.z1],[a.x,a.yi,a.z1]],P.dark,[0,-side,0],{tag:"castle",bias:3.1,nostroke:true});
       addFace(F,[[a.x,a.y,a.z1],[b.x,b.y,b.z1],[b.x,b.yi,b.z1],[a.x,a.yi,a.z1]],P.cap,[0,0,1],{tag:"castle",bias:3.2,nostroke:true});
      }
@@ -1193,19 +1351,31 @@ function buildShip(rig){
  /* The pennant flies from the truck of the tallest mast she has stepped, and
     from nothing if she has none. It used to be pinned to the height the galleon's
     main mast happened to reach, which left it hanging in the sky above a boat
-    whose one mast stopped thirty feet below it. */
- {const truck=masts.reduce((a,m)=>(!a||m.top>a.top?m:a),null);
-  if(truck){const top=truck.top+0.5,mx=truck.x,len=Math.min(22,(top-truck.deck)*0.33),pts=[];
+    whose one mast stopped thirty feet below it.
+
+    Each flag is also written down as a mount on `F.flags`: the top of its hoist,
+    its length and depth and how far its wave reaches. drawGalleon paints the
+    fixed flag below and never reads the mounts; the three.js model leaves that
+    flag out and hangs cloth of its own there, which the wind and her speed blow
+    (src/render3d/flags.js). */
+ const flags=[];
+ {const ti=masts.reduce((a,m,i)=>(a<0||stays[i].head>stays[a].head?i:a),-1), truck=masts[ti];
+  if(truck){PART="mast"+ti;const top=stays[ti].head+0.5,mx=truck.x,len=Math.min(22,(top-truck.deck)*0.33),pts=[];
    for(let i=0;i<=6;i++){const t=i/6;pts.push([mx-t*len,Math.sin(t*4.2)*1.6,top-0.4-t*1.2]);}
    for(let i=6;i>=0;i--){const t=i/6;pts.push([mx-t*len,Math.sin(t*4.2)*1.6,top-3.4+t*1.9]);}
-   addFace(F,pts,P.flag,null,{tag:"flag",double:true,back:P.flag});}
+   addFace(F,pts,P.flag,null,{tag:"flag",double:true,back:P.flag});
+   flags.push({part:PART,x:mx,z:top-0.4,len,hoist:3,fly:0.2,wave:1.6});}
+  PART=null;
   // ensign staff stepped on the taffrail itself, raking aft
-  {const ex=sternX+2, ez=deckZAt(ex)+BULWARK-0.7, et=ez+11.4*fk;
+  {const ex0=sternX+2, ex=rx(ex0), ez=deckZAt(ex0)+BULWARK-0.7, et=ez+11.4*fk;
    addPrism(F,[ex,0,ez],[ex,0,et],0.5*fk,0.4*fk,P.wood,"mast");
    const fl=[];for(let i=0;i<=5;i++){const t=i/5;fl.push([ex-t*13*fk,Math.sin(t*3.6)*1.4,et-0.6]);}
    for(let i=5;i>=0;i--){const t=i/5;fl.push([ex-t*13*fk,Math.sin(t*3.6)*1.4,et-0.6-6.2*fk]);}
-   addFace(F,fl,P.flag,null,{tag:"flag",double:true,back:P.flag});}
+   addFace(F,fl,P.flag,null,{tag:"flag",double:true,back:P.flag});
+   flags.push({part:null,x:ex,z:et-0.6,len:13*fk,hoist:6.2*fk,fly:6.2*fk,wave:1.4*fk});}
  }
+ PART=null;
+ F.flags=flags;
  return F;
 }
 /* The model is bearing-independent, so it is built once and re-projected per
@@ -1233,7 +1403,20 @@ function rigFor(spec){
  if(!spec) return GALLEON_RIG;
  const key=JSON.stringify(spec);
  // the spec names the hull, so the key already tells one class's ship from another's
- return cache(RIGS,key,()=>Object.assign(rigFromSpec(spec,hullForm(spec.hull)),{key}));
+ const form=spec.timber?timbered(hullForm(spec.hull),spec.timber):hullForm(spec.hull);
+ return cache(RIGS,key,()=>Object.assign(rigFromSpec(spec,form),{key}));
+}
+/* A ship drawn in a timber other than her class's: `timber` on a spec names a
+   species `hullform.js` casts, and a captain's own ships carry one
+   (`CAPTAIN_TIMBER` in the palette). It is her form with that cast in place of
+   her own, kept one per class and species so the palette cached on the form is
+   worked out once. Everything else about her hull is the class's. */
+const TIMBERED=new Map();
+function timbered(form,species){
+ const key=form.id+"|"+species;
+ let f=TIMBERED.get(key);
+ if(!f){f={...form,timber:timberCast(species)};TIMBERED.set(key,f);}
+ return f;
 }
 const facesFor=rig=>cache(BUILT,rig.key||"default",()=>buildShip(rig));
 
@@ -1341,4 +1524,13 @@ function rigBands(station, n) {
   return { square: squares, tri: tris };
 }
 
-export { drawGalleon, RIG_STATIONS, RIG_KINDS, RIG_BERTHS, rigBands };
+/* The ship as a face list, for a renderer that brings its own projection: `faces` is the same cached
+   list drawGalleon paints, in menu units (x toward the bow, y abeam, z up from the waterline, the
+   hull running from x = -form.menu.Lh at the stern), and `rig` is what it was built from, whose
+   `masts` (foremost first) are the "mast0", "mast1" ... named on each face's `part`. `flags` is
+   where each flag is bent on, as buildShip records it, for a renderer that blows its own. Treat all
+   of it as read only: it is shared with every other caller. */
+function shipFaces(spec){const rig=rigFor(spec),faces=facesFor(rig);
+ return{faces,flags:faces.flags||[],rig,form:rig.form||DEFAULT_FORM};}
+
+export { drawGalleon, shipFaces, RIG_STATIONS, RIG_KINDS, RIG_BERTHS, rigBands };

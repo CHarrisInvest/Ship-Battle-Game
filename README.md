@@ -43,6 +43,19 @@ are read off `npm run catalogue` and played.
 npm run icon       # redraw the home-screen icons in public/ from the menu's galleon
 ```
 
+```bash
+npm run shiplab -- --sheet         # every class at three bearings, into shiplab-out/sheet.png
+npm run shiplab -- --diff staging  # the fleet drawn from staging and from here; names what changed
+npm run shiplab -- --artifact      # the Ship Lab as one file, shiplab-out/ship-lab.html
+```
+
+The Ship Lab (`shiplab/`) is a dev page for looking at the fleet and reshaping a class: her fit, her
+bearing, her speed, the wind on her flags and the figures her hull is drawn from, all drawn by the
+game's own ship model. `npm run dev` serves it at <http://localhost:5173/shiplab/>, and every preview
+deployment builds it at `/shiplab/`; the real site does not. What it changes stays in the page until
+the figures it lists are copied back into `data/hulls.tsv`. The tool needs the same Chromium as the
+smoke test.
+
 ## Playing full screen
 
 A phone browser keeps its address bar and tabs over the top of the sea. The game is set up as a

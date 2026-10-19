@@ -78,4 +78,30 @@ export const AI_COLORS = [
   { fill: "#b8794f", stroke: "#7a4b2c" },
 ];
 
+/**
+ * The two sides of a round fought between fleets, named by the colours their ships fly, since the
+ * colour is what a captain sees at sea and "left" and "right" are only where they began. The
+ * engine calls them `left` and `right` (`SIDES`); these are the screen's names for them.
+ *
+ * Chosen against each other first: violet and yellow sit across the wheel, so a ship is one or the
+ * other at any size. Against the grounds: the yellow scores 2.3 on open water, 4.0 past the buoys
+ * and 7.5 on the radar's backing; the violet carries by hue rather than by light on open water
+ * (1.26, the same figure the AI's own purple livery has always had) and scores 4.4 on the dark
+ * grounds. The yellow is a shade off the HUD's gold and the cream of her own hull, which is why
+ * her own dot on the radar wears a dark ring and her hull keeps its cream whichever side she is on.
+ */
+export const SIDE_COLORS = {
+  left: { name: "Violet", fill: "#b07ae8", stroke: "#6a4697" },
+  right: { name: "Yellow", fill: "#f0c419", stroke: "#8f7410" },
+};
+
+/**
+ * WHAT A CAPTAIN'S SHIPS ARE BUILT OF, as drawn. Every ship a captain owns or sails is drawn in this
+ * timber whatever her class, on the menu's plate, in the yard and at sea, while a rival keeps her
+ * class's own: the starting gundalow is a pine boat by her reference, and pine against the sand of
+ * the plate read as a pale toy. It is a species `hullform.js` casts (`timberCast`), and a look:
+ * nothing in the catalogue or the round reads it.
+ */
+export const CAPTAIN_TIMBER = "Live oak";
+
 export const UI = 'ui-monospace, "SF Mono", Menlo, Consolas, monospace';

@@ -9,7 +9,7 @@
  *
  * The whole of the interface is five functions and one constant:
  *
- *   createWorld({ mode, seed, players })   a fresh round, as plain data
+ *   createWorld({ mode, seed, players, rivals })   a fresh round, as plain data
  *   step(world, inputs)                    one TICK of it, and the events that happened in it
  *   voyageStats(world, playerId)           what a player has earned so far
  *   repairQuote(world, playerId, system)   what a repair would cost her, without making it
