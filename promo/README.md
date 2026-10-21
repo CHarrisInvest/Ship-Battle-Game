@@ -20,6 +20,21 @@ The copy names no count of ships, since the fleet will grow.
 | `story-1080x1920.png` | Stories, Reels and TikTok cover |
 | `ad-*.jpg` | Standard display-ad sizes (IAB), each under Google Ads' 150 KB limit |
 
+## The trailer (`npm run trailer`)
+
+`trailer-1080x1920.mp4` is a 30-second trailer, upright, for a store listing, Shorts, Reels or a
+feed. `tools/trailer.mjs` cuts it from real frames: the game runs in a headless Chromium on a clock
+the tool advances a sixtieth of a second a frame, so every frame is one step of a round and the
+picture is smooth however slowly the machine draws. A fight between 3rd rates with no HUD, the
+title, the menu with the mark turning on her plate, a free-for-all between fully found 1st rates
+with the whole HUD, one in a fully found Baltimore Clipper, and the title again with the address.
+Her ship is sailed by the engine's own AI through a helm the frame loop consults, and each round
+is sailed first in Node to pick the window with the most guns going off in view of her. Silent,
+with an empty audio track so every uploader takes it. Re-cut it when the ships or the HUD change;
+`--dry` only chooses the shots, `--quick` cuts a sketch a few seconds long, `--keep` leaves the
+frames behind, and `--from <folder>` cuts again from kept frames with the cards and captions drawn
+afresh. Needs ffmpeg.
+
 ## Gameplay (`screens/`)
 
 **Due for replacing.** The ships at sea are drawn by a different, simpler renderer than the menu's
