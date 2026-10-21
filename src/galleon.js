@@ -1430,7 +1430,7 @@ const NEAR_W=0.35;
  * `shipyard.js`. Leave it out and the galleon this file was written around is
  * drawn, which is what the menu did before there was anything else to draw.
  */
-function drawGalleon(ctx,W,H,deg,spec){
+function drawGalleon(ctx,W,H,deg,spec,{join="round"}={}){
  const rig=rigFor(spec);
  /* Every class draws at her own size in the one box: her form says how much air
     her model needs, so a cutter reads small at the galleon's scale and the few
@@ -1465,13 +1465,37 @@ function drawGalleon(ctx,W,H,deg,spec){
   items.push({proj,c:shade(color,bright),d:key+bias,ns:f.nostroke});
  }
  items.sort((p,q)=>p.d-q.d);
- ctx.lineJoin="round";ctx.lineWidth=Math.max(0.6,scale*0.55);
+ ctx.lineJoin=join;ctx.lineWidth=Math.max(0.6,scale*0.55);
  for(const it of items){ctx.beginPath();ctx.moveTo(it.proj[0][0],it.proj[0][1]);
   for(let i=1;i<it.proj.length;i++)ctx.lineTo(it.proj[i][0],it.proj[i][1]);ctx.closePath();
   ctx.fillStyle=it.c;ctx.fill();
   // coplanar tiles (the hatch grating) skip the seam stroke: at this scale a 2px
   // outline on the neighbouring cell would swallow the black square
   if(!it.ns){ctx.strokeStyle=it.c;ctx.stroke();}}
+}
+
+/* The menu plate's painter, where it is drawGalleon's: what a plate turning sixty frames a second
+   without WebGL can afford. Two things lighten it, both out of sight. The seams are stroked with
+   bevelled joins rather than round ones, which was most of the cost of a first rate's thirteen
+   thousand faces and changes about one pixel in three hundred, along the seams. And a ship that
+   takes longer than `PLATE_HEAVY_MS` to paint keeps her last frame until she has turned
+   `PLATE_STEP_DEG`, about every other frame at the plate's pace, which moves her ends under a
+   pixel between paints. A light ship is painted every frame, as she always was. */
+const PLATE_HEAVY_MS=8,PLATE_STEP_DEG=0.4;
+function platePainter(){
+ let last=null,cost=0;
+ /* `reset()` forgets the frame on the canvas, for whoever has just cleared it (a resize does) or
+    painted over it */
+ return Object.assign((ctx,w,h,dpr,deg,spec)=>{
+  if(last&&last.spec===spec&&last.w===w&&last.h===h&&last.dpr===dpr&&cost>PLATE_HEAVY_MS&&
+     Math.abs(((deg-last.deg)%360+540)%360-180)<PLATE_STEP_DEG)return;
+  const t=performance.now();
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,w,h);
+  drawGalleon(ctx,w,h,deg,spec||undefined,{join:"bevel"});
+  cost=performance.now()-t;
+  last={spec,w,h,dpr,deg};
+ },{reset(){last=null;}});
 }
 
 /* The stations this renderer can actually put a mast at. A spec naming any other
@@ -1533,4 +1557,4 @@ function rigBands(station, n) {
 function shipFaces(spec){const rig=rigFor(spec),faces=facesFor(rig);
  return{faces,flags:faces.flags||[],rig,form:rig.form||DEFAULT_FORM};}
 
-export { drawGalleon, shipFaces, RIG_STATIONS, RIG_KINDS, RIG_BERTHS, rigBands };
+export { drawGalleon, platePainter, shipFaces, RIG_STATIONS, RIG_KINDS, RIG_BERTHS, rigBands };

@@ -80,11 +80,16 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
 - **One ship model, at sea and on the menu.** `src/galleon.js` builds a rig rather than *the* rig:
   `shipFaces(spec)` is the face list of whatever is stepped and bent on, falling back to the galleon
   it was written around when given no spec, and `src/render3d/shipmodel.js` turns it into the
-  geometry every view shares, scaled from menu units to her sea length and cached per spec. The sea's
+  geometry every view shares, scaled from menu units to her sea length and cached per spec. At sea it
+  is two meshes, her hull with her bowsprit and her whole rig, because a dismasting there strikes
+  every mast and the sprit together and each mesh is a draw call a material: a first rate's body is
+  three draw calls rather than nine, and a frame comes out the same to the pixel. The sea's
   ships, the plate on the menu and the yard (`menuship.js`, one shared WebGL context copied into each
   plate's own 2D canvas) and the generated art all turn that model. `drawGalleon(ctx, w, h, deg,
-  spec)` still paints the same faces flat, and is what the menu falls back to without WebGL; the
-  bench reads its rig tables, so they stay exported.
+  spec)` still paints the same faces flat, and is what the menu falls back to without WebGL, through
+  `platePainter`, which strokes the seams with bevelled joins and repaints a heavy ship only every
+  0.4° of her turn, because a first rate's thirteen thousand faces cost a CPU-drawn canvas twice a
+  frame's time; the bench reads its rig tables, so they stay exported.
 - **Her flags fly from the wind and from her way, and the wind is a look.** Every ship flies a
   pennant from her tallest truck and an ensign from her taffrail. `galleon.js` records where each
   is bent on (`shipFaces(spec).flags`) and still paints a fixed flag for the 2D fallback; the 3D

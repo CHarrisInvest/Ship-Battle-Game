@@ -61,6 +61,7 @@ const FLASH_GAIN = 0.12; // how much warm light a fresh hit adds to her timber
 const RIG_FLOOR = 0.8; // her rig stands at least this share of her length over the water...
 const RIG_MIN = 14; // ...and at least this many units
 const RIG_MAX_SCALE = 2.2; // and is never blown up more than this
+const RIG = { floor: RIG_FLOOR, min: RIG_MIN, max: RIG_MAX_SCALE };
 const LIVERY_MIX = 0.92; // how far her painted planking goes from the timber to her colour
 
 /**
@@ -319,7 +320,7 @@ export function createShipLayer(scene, ctx) {
   function makeEntry(s, look) {
     // a captain's ship is built of the captain's timber, a rival of her class's own
     const spec = s.playerId ? { ...rigSpec(s.loadout), timber: CAPTAIN_TIMBER } : rigSpec(s.loadout);
-    const model = ctx.shipModel(spec, { units: "sea", phase: (hashId(s.id) % 628) / 100 });
+    const model = ctx.shipModel(spec, { units: "sea", phase: (hashId(s.id) % 628) / 100, rig: RIG });
     const [timber0, canvas0, flag0] = model.materials;
     const livery = s.id === lastFx.me ? C.gold : look.fill;
     const timber = paintWith(timber0.clone(), new THREE.Color(look.fill));
@@ -328,7 +329,7 @@ export function createShipLayer(scene, ctx) {
     flag.color.set(livery);
     const floor = canvas0.emissive.clone();
     const mats = [timber, canvas, flag];
-    const meshes = [model.parts.hull, model.parts.bowsprit, model.parts.sprit, ...model.parts.masts].filter(Boolean);
+    const meshes = [model.parts.hull, model.parts.rig].filter(Boolean);
     for (const m of meshes) m.material = mats;
     for (const m of model.flags.meshes) m.material = flag;
 
@@ -358,26 +359,16 @@ export function createShipLayer(scene, ctx) {
     bottom.name = "bottom";
     model.group.add(bottom);
 
-    // a small craft's rig, scaled up about each mast's foot until it reads
-    let rigTop = 0;
-    for (const m of model.parts.masts) rigTop = Math.max(rigTop, m.geometry.boundingBox.max.y);
-    const want = Math.max(RIG_FLOOR * model.length, RIG_MIN);
-    const rigScale = rigTop > 0 ? clamp(want / rigTop, 1, RIG_MAX_SCALE) : 1;
-    if (rigScale > 1) {
-      for (const m of model.parts.masts) {
-        const bb = m.geometry.boundingBox, fx0 = (bb.min.x + bb.max.x) / 2, fy0 = Math.max(0, bb.min.y);
-        m.scale.setScalar(rigScale);
-        m.position.set(fx0 * (1 - rigScale), fy0 * (1 - rigScale), 0);
-      }
-    }
+    // a small craft's rig, scaled up about each mast's foot until it reads (`RIG`, which the model
+    // bakes into her rig's geometry)
+    const rigTop = model.rig.top, rigScale = model.rig.scale;
     const height = Math.max(model.height, rigTop * rigScale);
 
     // the stump, stood where her mainmast was: the tallest mast's foot
     let stump = null;
-    if (model.parts.masts.length) {
-      let tall = model.parts.masts[0];
-      for (const m of model.parts.masts) if (m.geometry.boundingBox.max.y > tall.geometry.boundingBox.max.y) tall = m;
-      const bb = tall.geometry.boundingBox;
+    if (model.rig.boxes.length) {
+      let bb = model.rig.boxes[0];
+      for (const b of model.rig.boxes) if (b.max.y > bb.max.y) bb = b;
       const spar = look.cols.spar;
       let sm = stumpMats.get(spar);
       if (!sm) stumpMats.set(spar, (sm = ctx.toon.material({ color: spar })));
@@ -423,7 +414,6 @@ export function createShipLayer(scene, ctx) {
     e.model.group.remove(e.trim);
     e.model.group.remove(e.bottom);
     if (e.stump) e.model.group.remove(e.stump);
-    for (const m of e.model.parts.masts) { m.scale.setScalar(1); m.position.set(0, 0, 0); }
     e.model.dispose();
     if (e.blob) e.blob.removeFromParent();
     for (const m of e.mats) m.dispose();
@@ -446,8 +436,7 @@ export function createShipLayer(scene, ctx) {
   function setMastDown(e, down) {
     if (e.mastDown === down) return;
     e.mastDown = down;
-    for (const m of e.model.parts.masts) m.visible = !down;
-    if (e.model.parts.sprit) e.model.parts.sprit.visible = !down;
+    if (e.model.parts.rig) e.model.parts.rig.visible = !down;
     if (e.stump) e.stump.visible = down;
   }
 
