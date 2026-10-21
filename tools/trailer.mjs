@@ -2,7 +2,8 @@
  * THE TRAILER — `npm run trailer`
  *
  * Cuts a 30-second trailer of the game from real frames and writes it to
- * `promo/trailer-1080x1920.mp4`, upright, for a store listing, Shorts, Reels or a feed. The cut:
+ * `promo/trailer-1080x1920.mp4`, upright, for a store listing, Shorts, Reels or a feed. The video is
+ * not committed (`.gitignore` leaves `promo/*.mp4` out); cut it when it is wanted. The cut:
  *
  *   1. a fight between 3rd rates, the sea and the ships alone with no HUD over them
  *   2. the title
