@@ -19,15 +19,15 @@
  * every menu ship draws through one shared WebGLRenderer on a canvas nobody sees and copies the
  * frame into her own 2D canvas. The canvas a component holds is therefore always a 2D one, which is
  * also the whole of the fallback: when WebGL cannot be had, or the context is lost, the same canvas
- * is painted by `drawGalleon` exactly as it was before. The shared renderer is kept for the life of
- * the page. Releasing it after every plate (as each voyage did) leaked a whole dead renderer a time:
+ * is painted by `drawGalleon`, through the plate's lighter painter (`platePainter` in galleon.js).
+ * The shared renderer is kept for the life of the page. Releasing it after every plate (as each voyage did) leaked a whole dead renderer a time:
  * three's `dispose()` leaves its listeners on the materials and geometry it drew, which are the
  * app-long shared caches, so each one kept its lost context and program cache reachable, and every
  * return to the menu compiled the shaders again. One idle context costs nothing while it waits.
  */
 
 import * as THREE from "three";
-import { drawGalleon } from "../galleon.js";
+import { platePainter } from "../galleon.js";
 import { hullForm } from "../hullform.js";
 import { shipModel } from "./shipmodel.js";
 import { WIND } from "./flags.js";
@@ -142,11 +142,8 @@ export function createMenuShip(canvas, { shadow = true } = {}) {
     }
   }
 
-  const paint2d = (spec, deg) => {
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, w, h);
-    drawGalleon(ctx, w, h, deg, spec || undefined);
-  };
+  const flat = platePainter();
+  const paint2d = (spec, deg) => flat(ctx, w, h, dpr, deg, spec);
 
   let lastSpec; // the spec placed last: a plate redraws the same object every frame
   let lastT = 0; // the page's clock at the last frame, for her flags
@@ -176,10 +173,12 @@ export function createMenuShip(canvas, { shadow = true } = {}) {
       w = cw; h = ch; dpr = r;
       canvas.width = Math.round(cw * r);
       canvas.height = Math.round(ch * r);
+      flat.reset();
     },
     draw(spec, deg, how = {}) {
       if (!gl || gl.lost || shared !== gl) return paint2d(spec, deg);
       place(spec);
+      flat.reset(); // this frame is painted over whatever the flat painter left
       // the wind, turned into her own frame: the plate turns her by `deg`, the wind stays put
       const rel = (how.wind ?? WIND.menu) - (deg * Math.PI) / 180;
       const speed = how.speed || 0;

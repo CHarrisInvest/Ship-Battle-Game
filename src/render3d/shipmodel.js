@@ -23,7 +23,10 @@
  * PIECES. The faces carry a `part` from galleon.js: each mast standing with all she carries
  * ("mast0" foremost), the bowsprit spar, what is set on it ("sprit"), and the hull, which is
  * everything else. Each is a mesh of its own, so a mast can be hidden or dropped on its own and a
- * dismasting takes the masts and the sprit and leaves the hull and her bowsprit.
+ * dismasting takes the masts and the sprit and leaves the hull and her bowsprit. At sea, given a
+ * `rig` rule, the pieces are merged into two meshes, her hull with her bowsprit and her whole rig,
+ * because that is all a dismasting there ever tells apart and every mesh is a draw call a material
+ * (see `seaPieces`).
  *
  * MATERIALS. Each mesh carries three material groups: 0 timber and fittings, 1 canvas, 2 flags.
  * Colour is per vertex for the first two, the palette under her timber exactly as the menu paints
@@ -189,7 +192,90 @@ function visibleFaces(faces) {
   return drop.size ? faces.filter((_, i) => !drop.has(i)) : faces;
 }
 
-function build(spec, units, seaLength) {
+/**
+ * Several pieces' geometries as one, laid out group after group as `buildGeometry` lays out one:
+ * every piece's timber, then every piece's canvas, so the whole is one draw call a material however
+ * many pieces went in. Each piece's vertices are copied as they stand, normals and all, so nothing
+ * is smoothed across a seam that was not smoothed before. `moves[i]`, where given, is a uniform
+ * scale `s` about a point `[x, y]` in the model's frame, baked into piece i's positions.
+ */
+function mergeGeometry(geos, moves = []) {
+  const names = ["position", "normal", "color", "paint"];
+  let count = 0;
+  for (const g of geos) count += g.attributes.position.count;
+  const out = {};
+  for (const n of names) out[n] = new Float32Array(count * geos[0].attributes[n].itemSize);
+  const geo = new THREE.BufferGeometry();
+  let v = 0;
+  for (let mat = 0; mat < 3; mat++) {
+    const start = v;
+    geos.forEach((g, i) => {
+      for (const grp of g.groups) {
+        if (grp.materialIndex !== mat) continue;
+        for (const n of names) {
+          const a = g.attributes[n], w = a.itemSize;
+          out[n].set(a.array.subarray(grp.start * w, (grp.start + grp.count) * w), v * w);
+        }
+        const mv = moves[i];
+        if (mv && mv.s !== 1) {
+          const p = out.position;
+          for (let j = v; j < v + grp.count; j++) {
+            p[j * 3] = mv.at[0] + (p[j * 3] - mv.at[0]) * mv.s;
+            p[j * 3 + 1] = mv.at[1] + (p[j * 3 + 1] - mv.at[1]) * mv.s;
+            p[j * 3 + 2] *= mv.s;
+          }
+        }
+        v += grp.count;
+      }
+    });
+    if (v > start) geo.addGroup(start, v - start, mat);
+  }
+  geo.setAttribute("position", new THREE.BufferAttribute(out.position, 3));
+  geo.setAttribute("normal", new THREE.BufferAttribute(out.normal, 3));
+  geo.setAttribute("color", new THREE.BufferAttribute(out.color, 3));
+  geo.setAttribute("paint", new THREE.BufferAttribute(out.paint, 1));
+  geo.computeBoundingBox();
+  geo.computeBoundingSphere();
+  return geo;
+}
+
+/**
+ * At sea she is two meshes, not one a piece. A ship at sea only ever loses her masts and what is set
+ * on the bowsprit all together, so her hull and bowsprit are one mesh and every mast and the sprit
+ * the other, which is three draw calls where a first rate's eight pieces were eleven. A small craft's
+ * rig is scaled up about each mast's foot until it reads (`rig` is the rule: at least `floor` of her
+ * length and `min` units over the water, never more than `max` times), and that is baked into the
+ * rig's positions here rather than set on each mast's mesh as it was. `pivots` are where each mast's
+ * pennant hangs, scaled about the same foot.
+ */
+function seaPieces(geoms, masts, length, rig) {
+  const mastGeos = [];
+  for (let i = 0; i < masts; i++) if (geoms["mast" + i]) mastGeos.push(["mast" + i, geoms["mast" + i]]);
+  let top = 0;
+  for (const [, g] of mastGeos) top = Math.max(top, g.boundingBox.max.y);
+  const want = Math.max(rig.floor * length, rig.min);
+  const scale = top > 0 ? Math.min(Math.max(want / top, 1), rig.max) : 1;
+  const boxes = [], pivots = {}, moves = [];
+  for (const [name, g] of mastGeos) {
+    const bb = g.boundingBox;
+    const at = [(bb.min.x + bb.max.x) / 2, Math.max(0, bb.min.y)];
+    boxes.push(bb.clone());
+    pivots[name] = { s: scale, at };
+    moves.push({ s: scale, at });
+  }
+  const hullGeos = [geoms.hull, geoms.bowsprit].filter(Boolean);
+  const rigGeos = [...mastGeos.map(([, g]) => g)];
+  if (geoms.sprit) { rigGeos.push(geoms.sprit); moves.push(null); }
+  const out = {
+    hull: hullGeos.length ? mergeGeometry(hullGeos) : null,
+    rig: rigGeos.length ? mergeGeometry(rigGeos, moves) : null,
+  };
+  // the pieces are copied, so they go
+  for (const g of Object.values(geoms)) g.dispose();
+  return { geoms: out, sea: { top, scale, boxes, pivots } };
+}
+
+function build(spec, units, seaLength, rigRule) {
   const { faces: all, flags, rig, form } = shipFaces(spec);
   const faces = visibleFaces(all);
   const L = seaLength ?? (units === "sea" ? hullForm(spec?.hull).sea.L : 2 * form.menu.Lh);
@@ -207,14 +293,18 @@ function build(spec, units, seaLength) {
     if (!list) byPart.set(p, (list = []));
     list.push(f);
   }
-  const geoms = {};
+  let geoms = {};
   for (const [p, list] of byPart) geoms[p] = buildGeometry(list, k);
   const box = new THREE.Box3();
   for (const g of Object.values(geoms)) box.union(g.boundingBox);
-  return { geoms, flags, masts: rig.masts.length, scale: k, height: box.max.y, length: 2 * form.menu.Lh * k, beam: 2 * box.max.z, box };
+  const length = 2 * form.menu.Lh * k;
+  let sea = null;
+  if (rigRule) ({ geoms, sea } = seaPieces(geoms, rig.masts.length, length, rigRule));
+  return { geoms, flags, masts: rig.masts.length, sea, scale: k, height: box.max.y, length, beam: 2 * box.max.z, box };
 }
 
-const keyFor = (spec, units, seaLength) => `${units}|${seaLength ?? ""}|${spec ? JSON.stringify(spec) : "galleon"}`;
+const keyFor = (spec, units, seaLength, rig) =>
+  `${units}|${seaLength ?? ""}|${rig ? `${rig.floor},${rig.min},${rig.max}` : ""}|${spec ? JSON.stringify(spec) : "galleon"}`;
 
 /**
  * A ship as a three.js Group, ready to add to a scene.
@@ -224,10 +314,16 @@ const keyFor = (spec, units, seaLength) => `${units}|${seaLength ?? ""}|${spec ?
  *   units  "sea" (default) for her length at sea, "menu" for galleon.js's own units
  *   seaLength  overrides her length in "sea" units
  *   phase  where her flags' wave starts, in radians, so a fleet's flags do not flap in step
+ *   rig    at sea, `{ floor, min, max }`: build her as two meshes with a small craft's rig scaled
+ *          up by that rule and baked in (see `seaPieces`)
  *
  * Returns
  *   { group, parts: { hull, bowsprit, sprit, masts: [mesh, ...] }, flags: { meshes, blow, pose },
- *     materials, scale, height, length, beam, key, dispose() }
+ *     materials, scale, height, length, beam, key, rig, dispose() }
+ *
+ * Given `rig`, `parts` is `{ hull, rig }` with the others empty, and `rig` says what was done to her
+ * rig: `{ top, scale, boxes, pivots }`, her tallest mast before it was scaled, the scale, and each
+ * mast's own box before it.
  *
  * `group` is in the model frame described at the top of this file. `parts` are its child meshes
  * (`bowsprit` and `sprit` are null when she has none); `masts` runs foremost first. `flags` is her
@@ -236,8 +332,8 @@ const keyFor = (spec, units, seaLength) => `${units}|${seaLength ?? ""}|${spec ?
  * renderer's shadow map decides whether that costs anything. `dispose()` takes the group out of its
  * parent and lets go of her flags; the shared geometry stays cached.
  */
-export function shipModel(spec, { units = "sea", seaLength, phase = 0 } = {}) {
-  const key = keyFor(spec, units, seaLength);
+export function shipModel(spec, { units = "sea", seaLength, phase = 0, rig } = {}) {
+  const key = keyFor(spec, units, seaLength, rig);
   let built = CACHE.get(key);
   if (built) {
     // most recently used goes to the back of the line
@@ -245,7 +341,7 @@ export function shipModel(spec, { units = "sea", seaLength, phase = 0 } = {}) {
     CACHE.set(key, built);
   } else {
     evict(KEEP - 1);
-    built = build(spec, units, seaLength);
+    built = build(spec, units, seaLength, rig);
     built.refs = 0;
     CACHE.set(key, built);
   }
@@ -264,14 +360,29 @@ export function shipModel(spec, { units = "sea", seaLength, phase = 0 } = {}) {
     group.add(m);
     return m;
   };
-  const parts = { hull: mesh("hull"), bowsprit: mesh("bowsprit"), sprit: mesh("sprit"), masts: [] };
-  for (let i = 0; i < built.masts; i++) parts.masts.push(mesh("mast" + i));
-  parts.masts = parts.masts.filter(Boolean);
+  let parts;
+  if (built.sea) {
+    parts = { hull: mesh("hull"), rig: mesh("rig"), bowsprit: null, sprit: null, masts: [] };
+    // a pivot a mast, under the rig so it comes down with her, for the pennant that flies there
+    for (const [name, { s, at }] of Object.entries(built.sea.pivots)) {
+      const pivot = new THREE.Group();
+      pivot.name = name;
+      pivot.scale.setScalar(s);
+      pivot.position.set(at[0] * (1 - s), at[1] * (1 - s), 0);
+      (parts.rig || group).add(pivot);
+    }
+  } else {
+    parts = { hull: mesh("hull"), bowsprit: mesh("bowsprit"), sprit: mesh("sprit"), masts: [] };
+    for (let i = 0; i < built.masts; i++) parts.masts.push(mesh("mast" + i));
+    parts.masts = parts.masts.filter(Boolean);
+  }
+  // a flag bent on to a piece merged into another flies from the one it went into
+  const merged = { bowsprit: parts.hull, sprit: parts.rig };
 
   // her flags, each on the piece of her it flies from
   const cloths = [], flagMeshes = [];
   for (const mount of built.flags) {
-    const host = (mount.part && group.getObjectByName(mount.part)) || parts.hull || group;
+    const host = (mount.part && (group.getObjectByName(mount.part) || (built.sea && merged[mount.part]))) || parts.hull || group;
     const cloth = flagCloth(mount, built.scale, phase);
     const m = new THREE.Mesh(cloth.geometry, materials[2]);
     m.name = mount.part ? "pennant" : "ensign";
@@ -285,7 +396,7 @@ export function shipModel(spec, { units = "sea", seaLength, phase = 0 } = {}) {
   flags.pose(WIND.menu, 0);
 
   return {
-    group, parts, flags, materials, key,
+    group, parts, flags, materials, key, rig: built.sea,
     scale: built.scale, height: built.height, length: built.length, beam: built.beam,
     dispose() {
       group.removeFromParent();

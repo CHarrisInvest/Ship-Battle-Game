@@ -80,11 +80,16 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
 - **One ship model, at sea and on the menu.** `src/galleon.js` builds a rig rather than *the* rig:
   `shipFaces(spec)` is the face list of whatever is stepped and bent on, falling back to the galleon
   it was written around when given no spec, and `src/render3d/shipmodel.js` turns it into the
-  geometry every view shares, scaled from menu units to her sea length and cached per spec. The sea's
+  geometry every view shares, scaled from menu units to her sea length and cached per spec. At sea it
+  is two meshes, her hull with her bowsprit and her whole rig, because a dismasting there strikes
+  every mast and the sprit together and each mesh is a draw call a material: a first rate's body is
+  three draw calls rather than nine, and a frame comes out the same to the pixel. The sea's
   ships, the plate on the menu and the yard (`menuship.js`, one shared WebGL context copied into each
   plate's own 2D canvas) and the generated art all turn that model. `drawGalleon(ctx, w, h, deg,
-  spec)` still paints the same faces flat, and is what the menu falls back to without WebGL; the
-  bench reads its rig tables, so they stay exported.
+  spec)` still paints the same faces flat, and is what the menu falls back to without WebGL, through
+  `platePainter`, which strokes the seams with bevelled joins and repaints a heavy ship only every
+  0.4° of her turn, because a first rate's thirteen thousand faces cost a CPU-drawn canvas twice a
+  frame's time; the bench reads its rig tables, so they stay exported.
 - **Her flags fly from the wind and from her way, and the wind is a look.** Every ship flies a
   pennant from her tallest truck and an ensign from her taffrail. `galleon.js` records where each
   is bent on (`shipFaces(spec).flags`) and still paints a fixed flag for the 2D fallback; the 3D
@@ -123,9 +128,9 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   surface, the one the sail is drawn from, a rope's thickness either side) is rigged as such a boat
   was: one rope a side, square abreast of her, to the very top of a pole carried up 6 to 30% of its
   length until the rope clears, or failing that until it only lies against the cloth. Ropes are
-  never led fore or aft to dodge a sail. That leaves the xebecs' mains and the light xebec's fore
-  single-roped; every other mast keeps its ladder and her pole, gaff masts included, whose ladders
-  only brush the luff by the pole.
+  never led fore or aft to dodge a sail. That leaves both of the light xebec's masts and the heavy
+  xebec's main single-roped; every other mast keeps its ladder and her pole, gaff masts included,
+  whose ladders only brush the luff by the pole.
 - **The Ship Lab is how a ship's look is changed.** `shiplab/` is a dev page that draws every class
   through `createMenuShip` with her fit, bearing, speed, the wind and the hull figures she is drawn
   from under the reader's hand; the figures are reshaped live under a lab id of their own, so
@@ -407,7 +412,12 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   comes down to it**: the bands leave room for a course and its yard under the lowest, and a gaff
   in that berth has neither, so the stack is brought down to just over her throat, grows a little
   into the air it gave up, and the pole is cut shorter with it. Raise the square sails' foot, never
-  the gaff, to change that gap.
+  the gaff, to change that gap. **Square canvas over a lateen stands clear above every lateen's
+  yard** at its station (`lateenHeadAt`), her own and the next mast's, because a xebec's lateens
+  reach aft past the mast behind them: the stack is lifted as it is and her pole carried up to
+  hold it. The light xebec sets no square canvas at all: her fore and main are small lateen
+  sockets, which only the Lateen yard fits, and her `speed` carries the top speed the topsails
+  used to.
 - **A broadside is one ball a gun, spread over a moment, and laid as it bears.** Fifty balls leaving
   in the same instant cannot be told apart at any size they could be drawn, so every gun takes her
   own moment inside `volleyWindow`: several ports go off together, then a few more elsewhere, and

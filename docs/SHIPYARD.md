@@ -313,14 +313,29 @@ Three things fall out of it that were hard-coded before and had to stop being:
   the yard and the cloth fills out below, which by itself clears the gundalow's and the Bermuda
   sloop's ladders. A mast whose ladder still cuts the cloth carries one rope a side, square abreast,
   to the very top of a pole carried up (6 to 30% of its length) until the rope clears or at least
-  only lies against the sail: the xebecs' mains and the light xebec's fore. Square and gaff masts
-  keep their ladders.
+  only lies against the sail: both of the light xebec's masts and the heavy xebec's main. Square
+  and gaff masts keep their ladders.
 - Square canvas over a gaff comes down to it. The square bands leave room under the lowest of them
   for a course and its yard, and a gaff in the course's berth has neither, so the sails over it
   stood 10 to 26 units up a bare pole from her throat (every rated ship's mizzen, and the sloop,
   cutter, clipper and brigantine). The stack now starts just over her throat and takes back a
   quarter of the air it gave up, its sails scaled up with it to at most 1.15 of themselves, and the
   pole is cut to the canvas below, so the mast stands shorter. The gaff itself is cut as before.
+- Square canvas over a lateen stands clear above every lateen's yard. The square bands were cut for
+  a course under them, and a lateen in that berth is a far bigger sail on a yard raking up past the
+  masthead, so a topsail hung into its own yard; and a xebec's lateens reach aft past the next mast,
+  so the heavy xebec's main topsail stood in the fore lateen's cloth and her mizzen's in the main's.
+  The stack over a lateen is lifted, at its own size, until its foot clears the highest lateen yard
+  crossing its station, and the pole goes up with it: on the heavy xebec the main from 84.7 to
+  100 and the mizzen from 82.6 to 93, the fore unchanged.
+- The light xebec sets no square canvas. Her fore and main sockets are `small/lateen`, which the
+  Lateen yard fits and the Lateen mast (lateen with a square berth over it) does not, so she sails
+  under her two lateens and her headsails. Taking the topsails away cost her half a knot fully
+  found, so her `speed` went from 0.97 to 1.015 and she makes the 12.0 knots she always did; her
+  bare figure rises from 8.1 to 8.5 knots with it, which was the smaller of the two moves (lowering
+  her `canvas` to 0.58 would have made the same top speed and put her bare at 8.9). A captain who
+  had stepped Lateen masts in her finds them back in her hold on load, with her sails, and a part
+  sells back in full.
 
 The station numbers are the galleon's own, so handing her rig back reproduces the ship this file has
 always drawn. Verified against the pre-change code through the same renderer: 6 pixels of 177,952

@@ -1,5 +1,5 @@
 import React, { Fragment, useRef, useState, useEffect, useCallback, useMemo } from "react";
-import { drawGalleon } from "./galleon.js";
+import { platePainter } from "./galleon.js";
 import {
   getHold, subscribeHold, modeRecord, shipLoadout, shortfall, connect, holdStatus, subscribeStatus, hadLocalSave, adoptHold, holdSettled, hasProgress,
   buyShip, buyPart, fitMast, fitSail, fitStud, fitGun, unfitGun, setActiveShip, spareParts, ownedShips, partOf,
@@ -51,6 +51,7 @@ function loadThree() {
 /** The plate's ship painted flat by drawGalleon: what shows until three.js arrives, or without it. */
 function flatMenuShip(canvas) {
   const ctx = canvas.getContext("2d");
+  const paint = platePainter();
   let w = canvas.width, h = canvas.height, dpr = 1;
   return {
     kind: "2d",
@@ -58,11 +59,10 @@ function flatMenuShip(canvas) {
       w = cw; h = ch; dpr = r;
       canvas.width = Math.round(cw * r);
       canvas.height = Math.round(ch * r);
+      paint.reset();
     },
     draw(spec, deg) {
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.clearRect(0, 0, w, h);
-      drawGalleon(ctx, w, h, deg, spec || undefined);
+      paint(ctx, w, h, dpr, deg, spec);
     },
     dispose() {},
   };
@@ -685,6 +685,10 @@ export default function App() {
           let steps = 0;
           // her controls are read once a step, so a repair she tapped is spent by the first of them
           while (bank >= TICK && steps < MAX_STEPS && !g.result.over) {
+            // The trailer's helm (`tools/trailer.mjs`), when the page carries one: a hand laid on
+            // her controls before they are read, so a recorded round sails by the engine's own
+            // judgement rather than by a script's guesses. Nothing in play defines it.
+            if (window.__sternchaseHelm) window.__sternchaseHelm(g, controls);
             const input = controls.read();
             if (recorder) recorder.record(g.tick, input[meRef.current]);
             for (const e of step(g, input)) events.push(e);

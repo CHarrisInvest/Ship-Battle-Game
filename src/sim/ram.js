@@ -10,7 +10,7 @@ export const HULL_PAD = 3; // rigging and oars, so hulls never touch pixels
 export const RAM_MIN_CLOSE = 25; // closing speed at which a collision starts to count as a ram
 export const RAM_FULL_CLOSE = 94; // closing speed for a full-weight ram: a fresh ship's top speed
 export const RAM_CURVE = 1.5; // how sharply the blow grows with closing speed, for every angle alike
-export const RAM_MAX_FORCE = 2.4; // ceiling on it, so a head-on cannot run away with the match
+export const RAM_MAX_FORCE = 2; // ceiling on it, so a head-on cannot run away with the match
 export const RAM_BEAM = 1.25; // weight of a blow square on the beam...
 export const RAM_FINE = 0.6; // ...and of one that glances off her bow or stern
 export const RAM_GRAZE = 1; // below this a touch is not a ram at all: no damage, no cooldown, no lock
@@ -18,7 +18,7 @@ export const RAM_MUTUAL_CAP = 0.8; // most of a bow-to-bow blow one ship's speed
 export const RAM_KNOCK = 150; // impulse thrown apart on a ram (scaled by closing speed)
 export const RAM_RECOIL = 0.3; // floor on the bounce for whoever drove into the blow
 export const RAM_DRIVE_LOSS = 0.88; // share of her way a ship spends into the impact, bow-on
-export const RAM_REARM_GAP = 26; // hulls must break this far clear before the pair can ram again
+export const RAM_REARM_GAP = 32; // hulls must break this far clear before the pair can ram again
 export const RAM_CD = 0.9; // seconds before a ship can ram again
 // Hulls touching without a charge behind them are eased apart with this much push a second. It is a
 // force a second rather than a knock a frame: it was 32 a frame, which at sixty frames is this figure
