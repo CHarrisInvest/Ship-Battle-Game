@@ -200,6 +200,27 @@ const OPT={sails:true,rig:true};
    for it. */
 const TRIANGULAR = new Set(["TRI", "LAT"]);
 
+/* Where a lateen stands off her mast and the band she fills: tack B forward
+   and low, peak A aft at the head, clew C aft at the foot, and the yard run on
+   from the tack past the peak to its end E. The fractions are the galleon's
+   mizzen lateen held against the height of the band. Read by the drawing, and
+   by the rig, which keeps square canvas clear of every lateen's head. */
+function lateenCorners(mx, zb, zt) {
+  const h = zt - zb;
+  return {
+    B: [mx + 0.621 * h, 1.1, zb + 0.310 * h], A: [mx - 0.690 * h, 1.1, zt], C: [mx - 0.552 * h, 1.1, zb],
+    E: [mx - 0.828 * h, 1.1, zt + 0.069 * h],
+  };
+}
+/* How high a lateen's yard stands at `x`, fore and aft, or null where it does
+   not reach: the head of her cloth is laced along it from B to A, and the bare
+   spar runs on to E. */
+function lateenHeadAt({ B, A, E }, x) {
+  if (x > B[0] || x < E[0]) return null;
+  const [p, q] = x >= A[0] ? [B, A] : [A, E];
+  return p[2] + ((p[0] - x) / (p[0] - q[0])) * (q[2] - p[2]);
+}
+
 /* ---- how many sails, and where they sit ------------------------------------
    Each station above is authored with three bands, which was every stack the
    catalogue could build. A four or five sail mast is a real rig -- course,
@@ -354,6 +375,8 @@ function rigFromSpec(spec, form) {
   const { deckZAt } = hullKit(form.menu);
   const sternEdge = -form.menu.Lh + 4;
   const entries = spec.masts || [];
+  // the room a masthead takes over the highest sail on her, as a share of her pole
+  const HEAD = 0.14;
   const masts = entries
     .map((m) => {
       const g = geom[m.station];
@@ -442,13 +465,36 @@ function rigFromSpec(spec, form) {
          galleon's own masts are already cut this way, so her three come out
          unchanged. A mast with nothing on her keeps her full height: a bare pole
          is exactly what she is. */
-      const HEAD = 0.14;
       const highest = sails.reduce((a, s) => Math.max(a, s.zt), 0);
       const top = highest ? Math.min(pole, highest + HEAD * pole) : pole;
-      return { x: g.x, top, r0: g.r0, r1: g.r1, hoist: g.hoist, shrouds: g.shrouds, ratlines: g.ratlines, stay: g.stay, sails };
+      return { x: g.x, top, pole, r0: g.r0, r1: g.r1, hoist: g.hoist, shrouds: g.shrouds, ratlines: g.ratlines, stay: g.stay, sails };
     })
     .filter(Boolean)
     .sort((a, b) => b.x - a.x);
+
+  /* Square canvas over a lateen stands clear above every lateen's yard. The
+     square bands were cut for a course under them, and a lateen in that berth
+     is a far bigger sail on a yard that rakes up past the masthead, so her
+     topsail hung into her own yard. Worse, a xebec's lateens reach aft past
+     the next mast, so the topsail over her main stood in the middle of the
+     fore lateen's cloth and the one over her mizzen in the main's. So a stack
+     of square sails over a lateen is lifted, as it is, until its foot clears
+     the highest lateen yard that crosses its station, her own or the one
+     ahead, and her pole is carried up to hold it. The yard is half a unit
+     thick at its heaviest, and a unit of air is left over that. */
+  const lateens = masts.filter((m) => m.sails[0] && m.sails[0].cut === "triangle")
+    .map((m) => lateenCorners(m.x, m.sails[0].zb, m.sails[0].zt));
+  for (const m of masts) {
+    const over = m.sails.slice(1);
+    if (!(m.sails[0] && m.sails[0].cut === "triangle" && over.length && over.every((s) => s.cut === "square"))) continue;
+    const at = m.x + 2.4; // where square canvas hangs, forward of the pole
+    let clear = -Infinity;
+    for (const L of lateens) { const z = lateenHeadAt(L, at); if (z !== null) clear = Math.max(clear, z + 1.6); }
+    const lift = clear - over[0].zb;
+    if (!(lift > 0)) continue;
+    for (const s of over) { s.zb += lift; s.zt += lift; }
+    m.top = Math.max(m.top, over[over.length - 1].zt + HEAD * m.pole);
+  }
 
   // the spars, once the masts they hoist against are known
   const spars = [];
@@ -964,9 +1010,8 @@ function buildShip(rig){
     the shrouds, which have to know where the cloth is to keep out of it. All of
     it stands on her starboard side of the pole, 1.1 out, and the belly carries
     the cloth further out from there. */
- const lateenCut=(mx,zb,zt)=>{const h=zt-zb;
-  const B=[mx+0.621*h,1.1,zb+0.310*h],A=[mx-0.690*h,1.1,zt],C=[mx-0.552*h,1.1,zb];
-  return{B,A,C,cloth:triCloth(B,A,C,3.6,true)};};
+ const lateenCut=(mx,zb,zt)=>{const{B,A,C,E}=lateenCorners(mx,zb,zt);
+  return{B,A,C,E,cloth:triCloth(B,A,C,3.6,true)};};
  const gaffCut=(mx,zb,zt,run)=>{const h=zt-zb,y=1.1;
   const reach=Math.min(1.05*h,run||1.05*h);
   const tack=[mx-0.6,y,zb+0.03*h], clew=[mx-reach,y,zb+0.10*h];
@@ -1133,8 +1178,7 @@ function buildShip(rig){
    addFace(F,[at(t0,s0),at(t1,s0),at(t1,s1),at(t0,s1)],P.sail,[0,1,0],{tag:"sail",double:true,back:P.back,amb:0.66,gain:0.46});}
  };
  function lateen(mx,zb,zt){if(!OPT.sails)return;
-  const h=zt-zb;
-  const {B,A,C,cloth}=lateenCut(mx,zb,zt);
+  const {B,A,E,cloth}=lateenCut(mx,zb,zt);
   const mix=(p,q,s)=>[lerp(p[0],q[0],s),lerp(p[1],q[1],s),lerp(p[2],q[2],s)];
   // straight lateen yard: a plain chord from tack to peak, with the head of the
   // cloth laced along it and the belly filling out below
@@ -1142,7 +1186,7 @@ function buildShip(rig){
   const YS=16;
   for(let i=0;i<YS;i++){const t0=i/YS,t1=(i+1)/YS;
    addPrism(F,yq(t0),yq(t1),lerp(0.55,0.42,t0),lerp(0.55,0.42,t1),P.dark,"mast");}
-  addSpar(F,yq(1),[mx-0.828*h,1.1-0.75,zt+0.069*h],0.42,0.36,P.dark,"mast",0);
+  addSpar(F,yq(1),[E[0],E[1]-0.75,E[2]],0.42,0.36,P.dark,"mast",0);
   triPanel(cloth);
  }
  /* The cloth of a four-cornered fore-and-aft sail: two rails, luff and leech,
