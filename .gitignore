@@ -8,3 +8,6 @@ npm-debug.log*
 .env*
 .worktrees/
 shiplab-out/
+
+# a trailer is cut by `npm run trailer` and kept outside the repository
+promo/*.mp4
