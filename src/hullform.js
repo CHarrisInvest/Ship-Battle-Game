@@ -543,7 +543,14 @@ function scaleSea(sea, k) {
 
 function seaForm(ref, menu) {
   const L = clamp(36 * exact.pow(ref.lod / G.lod, SEA_POW), 16, 52);
-  const W = clamp(13 * exact.pow(ref.beam / G.beam, SEA_POW), 5.5, 20);
+  // A class with a bespoke 3D model is drawn at sea scaled by length to L, so her beam on the
+  // water is the model's own proportion of it, and her collision ellipse takes that beam rather
+  // than the compressed one, which on a first rate stood a fifth wider than her planking. The two
+  // figures are the reference's `drawnLength` and `drawnBeam`, in metres as the model stands.
+  const drawn = ref.drawnLength > 0 && ref.drawnBeam > 0;
+  const W = drawn
+    ? clamp((L * ref.drawnBeam) / ref.drawnLength, 5.5, 20)
+    : clamp(13 * exact.pow(ref.beam / G.beam, SEA_POW), 5.5, 20);
 
   // Outline points, bow first, clockwise down the starboard side: a fine entry pulls the shoulders
   // aft, and the stern is the type the reference names. A transom cuts flat; a round or pear tuck

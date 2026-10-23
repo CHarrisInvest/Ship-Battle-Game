@@ -279,8 +279,8 @@ const FLEET = [
   {
     id: "firstRate", name: "1st rate", price: 100000,
     blurb: "A hundred guns and a flag at the main. There is nothing above her.",
-    hull: 2699, crew: 800, speed: 0.79, hand: 0.62, canvas: 5.68, tons: 297.7,
-    guns: [50, 2, 6], masts: ["bowsprit/large/headsails", "fore/heavy/square", "main/heavy/square", "mizzen/large/spanker"],
+    hull: 2699, crew: 800, speed: 0.796, hand: 0.629, canvas: 5.68, tons: 297.7,
+    guns: [50, 2, 6], masts: ["bowsprit/small/headsails", "fore/large/square", "main/large/square", "mizzen/heavy/spanker"],
   },
 ];
 /* end:hulls */
@@ -2341,6 +2341,9 @@ export function rigSpec(loadout) {
     masts.push({
       station: socket.station,
       height: entry.mast.height,
+      // every berth the mast has, filled or not, by category: a bespoke model reads how tall the
+      // mast stands off this, and crosses a bare yard for a berth left empty
+      berths: entry.mast.berths.map((b) => b.kind),
       // `stud` says a studdingsail is boomed out beyond this sail, which the renderer draws as an
       // extension of the sail rather than a sail of its own, because that is what it is
       sails: sailsOn(entry).map((sail, i) =>

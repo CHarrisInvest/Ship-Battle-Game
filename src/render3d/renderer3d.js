@@ -31,6 +31,7 @@ import { createView, sizeView, followView, blend, shipUnder } from "../render/vi
 import { createCamera, syncCamera, toThree, viewGround } from "./camera.js";
 import { toonMaterial, flatMaterial, toonRamp, color, LIGHTING, disposeToon } from "./toon.js";
 import { shipModel, clearShipModels } from "./shipmodel.js";
+import { tickSails } from "./bespoke/kit.js";
 import { drawOverlay } from "./overlay.js";
 import { createIslandLayer } from "./islands.js";
 import { createWaterLayer } from "./water.js";
@@ -245,6 +246,7 @@ export function createRenderer3d(webglCanvas, overlayCanvas, { quality = pickQua
     }
     syncCamera(camera, view);
     placeSun();
+    tickSails(clock.t); // the bespoke ships' sails breathe on the sea's clock
     const alpha = opts.alpha ?? 1;
     islands.update(world);
     water.update(world, fx, alpha, ctx.dt, clock.t);

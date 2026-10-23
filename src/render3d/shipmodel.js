@@ -57,20 +57,94 @@
 
 import * as THREE from "three";
 import { shipFaces } from "../galleon.js";
-import { hullForm } from "../hullform.js";
+import { hullForm, timberCast } from "../hullform.js";
 import { toonMaterial } from "./toon.js";
 import { flagCloth, flagSet, WIND } from "./flags.js";
+import { bespokeOf, dressBespoke, tintOf, clearBespoke } from "./bespoke/index.js";
+import { lineMaterial } from "./bespoke/kit.js";
 
 const FLAG = "#c8452f"; // galleon.js's flag, which no timber changes
 const CLOTH_FLOOR = "#24211b"; // canvas is lit through from both sides: a floor under its bands
+const LIVERY_MIX = 0.92; // how far a painted plank goes from the timber to her colour
 
-/** The three shared materials every ship mesh uses, in group order: timber, canvas, flags. */
+/** The three shared materials every face-list ship mesh uses, in group order: timber, canvas, flags. */
 export function shipMaterials() {
   return [
     toonMaterial({ vertexColors: true }),
     toonMaterial({ vertexColors: true, emissive: CLOTH_FLOOR }),
     toonMaterial({ color: FLAG }),
   ];
+}
+
+/**
+ * Give a clone of the shared timber material a livery: every vertex the face-list model marks
+ * `paint` takes `color` in place of the timber, keeping a little of each strake's light and dark so
+ * she still reads as planked. One program serves every ship; the colour is a uniform of her own.
+ */
+function paintWith(mat, color) {
+  const uLivery = { value: color };
+  mat.userData.livery = uLivery;
+  mat.onBeforeCompile = (sh) => {
+    sh.uniforms.uLivery = uLivery;
+    sh.vertexShader = sh.vertexShader
+      .replace("#include <common>", "#include <common>\nattribute float paint;\nvarying float vPaint;")
+      .replace("#include <begin_vertex>", "#include <begin_vertex>\nvPaint = paint;");
+    sh.fragmentShader = sh.fragmentShader
+      .replace("#include <common>", "#include <common>\nuniform vec3 uLivery;\nvarying float vPaint;")
+      .replace(
+        "#include <color_fragment>",
+        `#include <color_fragment>
+        {
+          float lum = dot(vColor.rgb, vec3(0.2126, 0.7152, 0.0722));
+          vec3 coat = uLivery * clamp(0.72 + 1.5 * lum, 0.86, 1.1);
+          diffuseColor.rgb = mix(diffuseColor.rgb, coat, vPaint * ${LIVERY_MIX.toFixed(3)});
+        }`,
+      );
+  };
+  mat.customProgramCacheKey = () => "ship-livery";
+  return mat;
+}
+
+/**
+ * A BESPOKE SHIP: a class with a hand-modelled three.js ship of her own (`bespoke/`), built in
+ * metres by her own file and scaled here to the same menu and sea lengths her form gives her, so
+ * everything that places, follows, labels or sinks a ship is none the wiser. She comes as her hull
+ * (with her bowsprit, her decks and her under-body) and her rig, which is what a dismasting tells
+ * apart, each with its rope as a line batch of its own, and her pennant mounts for flags.js.
+ */
+function scaleGeometry(geo, k) {
+  if (!geo) return null;
+  geo.applyMatrix4(new THREE.Matrix4().makeScale(k, k, k));
+  // the sails' breathing is a distance along x, in metres until now
+  const w = geo.attributes.aWaveA;
+  if (w) { for (let i = 0; i < w.count; i++) w.setX(i, w.getX(i) * k); w.needsUpdate = true; }
+  geo.computeBoundingBox();
+  geo.computeBoundingSphere();
+  return geo;
+}
+function buildBespoke(entry, spec, units, seaLength) {
+  const form = hullForm(spec.hull);
+  const L = seaLength ?? (units === "sea" ? form.sea.L : 2 * form.menu.Lh);
+  const k = L / entry.length;
+  const b = entry.build(spec);
+  const geoms = { hull: scaleGeometry(b.hull, k), rig: scaleGeometry(b.rig, k) };
+  const lines = { hull: scaleGeometry(b.hullLines, k), rig: scaleGeometry(b.rigLines, k) };
+  const box = new THREE.Box3();
+  for (const g of Object.values(geoms)) if (g) box.union(g.boundingBox);
+  const boxes = b.boxes.map((bb) => new THREE.Box3(bb.min.clone().multiplyScalar(k), bb.max.clone().multiplyScalar(k)));
+  const pivots = {};
+  boxes.forEach((bb, i) => { pivots["mast" + i] = { s: 1, at: [0, 0] }; });
+  let top = 0;
+  for (const bb of boxes) top = Math.max(top, bb.max.y);
+  // The plate's box, cut for the galleon: the span her bowsprit and her rig need, as hullform works
+  // it out for a form, with a little less air over her truck, because a bespoke rig stands at its
+  // true height over her length and the form's margin left her small in the box.
+  const reach = Math.max(box.max.x + 8 * k, L / 2 + 10 * k);
+  const span = units === "menu" ? Math.max(248, reach * 2.62, (box.max.y + 4 * k) * 2.45) : null;
+  return {
+    geoms, lines, flags: b.flags, masts: b.masts, scale: k, height: box.max.y, length: entry.length * k, beam: entry.beam * k, box,
+    sea: { top, scale: 1, boxes, pivots }, bespoke: entry, guns: b.guns, span,
+  };
 }
 
 const KEEP = 32;
@@ -276,6 +350,8 @@ function seaPieces(geoms, masts, length, rig) {
 }
 
 function build(spec, units, seaLength, rigRule) {
+  const entry = bespokeOf(spec?.hull);
+  if (entry) return buildBespoke(entry, spec, units, seaLength);
   const { faces: all, flags, rig, form } = shipFaces(spec);
   const faces = visibleFaces(all);
   const L = seaLength ?? (units === "sea" ? hullForm(spec?.hull).sea.L : 2 * form.menu.Lh);
@@ -347,7 +423,25 @@ export function shipModel(spec, { units = "sea", seaLength, phase = 0, rig } = {
   }
   built.refs++;
   let held = true;
-  const materials = shipMaterials();
+  const bespoke = built.bespoke || null;
+  // a bespoke ship wears materials of her own from the start; a face-list ship the shared trio
+  let current = null;
+  const dressFor = (how) => {
+    if (bespoke) {
+      const tint = tintOf(spec.timber ? timberCast(spec.timber) : hullForm(spec.hull).timber);
+      return dressBespoke(bespoke, { trim: how.trim, guns: built.guns, tint, name: how.name || "" });
+    }
+    const [t0, c0, f0] = shipMaterials();
+    const trim = how.trim ?? FLAG;
+    const timber = paintWith(t0.clone(), new THREE.Color(how.paint ?? trim));
+    const canvas = c0.clone();
+    const flag = f0.clone();
+    flag.color.set(trim);
+    const mats = [timber, canvas, flag];
+    return { mats, flag, lit: [timber], dispose() { for (const m of mats) m.dispose(); } };
+  };
+  if (bespoke) current = dressFor({});
+  const materials = current ? current.mats : shipMaterials();
   const group = new THREE.Group();
   group.name = "ship";
   const mesh = (name) => {
@@ -358,6 +452,9 @@ export function shipModel(spec, { units = "sea", seaLength, phase = 0, rig } = {
     m.castShadow = true;
     m.receiveShadow = true;
     group.add(m);
+    // her rope, a line batch under the piece it is bent to, so it goes where the piece goes
+    const l = built.lines && built.lines[name];
+    if (l) { const ls = new THREE.LineSegments(l, lineMaterial()); ls.name = name + "-lines"; m.add(ls); }
     return m;
   };
   let parts;
@@ -384,7 +481,7 @@ export function shipModel(spec, { units = "sea", seaLength, phase = 0, rig } = {
   for (const mount of built.flags) {
     const host = (mount.part && (group.getObjectByName(mount.part) || (built.sea && merged[mount.part]))) || parts.hull || group;
     const cloth = flagCloth(mount, built.scale, phase);
-    const m = new THREE.Mesh(cloth.geometry, materials[2]);
+    const m = new THREE.Mesh(cloth.geometry, current ? current.flag : materials[2]);
     m.name = mount.part ? "pennant" : "ensign";
     m.castShadow = true;
     m.receiveShadow = true;
@@ -395,16 +492,38 @@ export function shipModel(spec, { units = "sea", seaLength, phase = 0, rig } = {
   const flags = Object.assign(flagSet(cloths), { meshes: flagMeshes });
   flags.pose(WIND.menu, 0);
 
+  const pieces = () => [parts.hull, parts.rig, parts.bowsprit, parts.sprit, ...parts.masts].filter(Boolean);
+
   return {
-    group, parts, flags, materials, key, rig: built.sea,
+    group, parts, flags, materials, key, rig: built.sea, bespoke: !!bespoke, span: built.span || null,
     scale: built.scale, height: built.height, length: built.length, beam: built.beam,
+    /**
+     * Dress her for whoever sails her: `trim` is her livery (her flags, and a bespoke ship's trim),
+     * `paint` the colour a face-list ship's planking takes (her livery again if left out), `name`
+     * what a bespoke ship paints across her stern. The materials are hers alone and go with her;
+     * `lit` are the ones a hit's light is put on. Dressing her again replaces the last set.
+     */
+    dress(how = {}) {
+      const next = dressFor(how);
+      for (const m of pieces()) m.material = next.mats;
+      for (const m of flagMeshes) m.material = next.flag;
+      if (current) current.dispose();
+      current = next;
+      return { mats: next.mats, flag: next.flag, lit: next.lit };
+    },
     dispose() {
       group.removeFromParent();
       for (const m of flagMeshes) { m.removeFromParent(); m.geometry.dispose(); }
       flagMeshes.length = 0;
+      if (current) { current.dispose(); current = null; }
       if (held) { held = false; built.refs--; }
     },
   };
+}
+
+function disposeBuilt(b) {
+  for (const g of Object.values(b.geoms)) if (g) g.dispose();
+  if (b.lines) for (const g of Object.values(b.lines)) if (g) g.dispose();
 }
 
 /**
@@ -417,13 +536,14 @@ function evict(keep) {
   for (const [key, b] of CACHE) {
     if (CACHE.size <= keep) break;
     if (b.refs > 0) continue;
-    for (const g of Object.values(b.geoms)) g.dispose();
+    disposeBuilt(b);
     CACHE.delete(key);
   }
 }
 
-/** Release every cached ship geometry. For the renderer's teardown; live models re-upload if drawn. */
+/** Release every cached ship geometry and painted sheet. For the renderer's teardown; live models re-upload if drawn. */
 export function clearShipModels() {
-  for (const b of CACHE.values()) for (const g of Object.values(b.geoms)) g.dispose();
+  for (const b of CACHE.values()) disposeBuilt(b);
   CACHE.clear();
+  clearBespoke();
 }
