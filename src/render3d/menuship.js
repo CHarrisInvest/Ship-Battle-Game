@@ -31,6 +31,7 @@ import { platePainter } from "../galleon.js";
 import { hullForm } from "../hullform.js";
 import { shipModel } from "./shipmodel.js";
 import { WIND } from "./flags.js";
+import { tickSails } from "./bespoke/kit.js";
 
 const ISO = Math.sqrt(1.5); // drawGalleon's projection is isometric magnified by this
 const PIVOT_Y = 0.71; // where the waterline amidships sits, as a share of the box's height
@@ -182,14 +183,16 @@ export function createMenuShip(canvas, { shadow = true } = {}) {
       // the wind, turned into her own frame: the plate turns her by `deg`, the wind stays put
       const rel = (how.wind ?? WIND.menu) - (deg * Math.PI) / 180;
       const speed = how.speed || 0;
-      if (how.time != null) model.flags.pose(rel, speed, how.time);
+      if (how.time != null) { model.flags.pose(rel, speed, how.time); tickSails(how.time); }
       else {
         const now = performance.now() / 1000;
         model.flags.blow(rel, speed, lastT ? Math.min(0.1, now - lastT) : 0);
         lastT = now;
+        tickSails(now); // a bespoke ship's sails breathe on this clock
       }
-      // her size in the box is drawGalleon's: the class's span fills the width
-      const span = spanOf(spec);
+      // her size in the box is drawGalleon's: the class's span fills the width; a bespoke ship
+      // brings a span of her own, worked out the same way from her own reach and height
+      const span = model.span || spanOf(spec);
       const px = (w / span) * ISO; // CSS pixels to a model unit
       const uw = w / px, uh = h / px;
       camera.left = -uw / 2; camera.right = uw / 2;
