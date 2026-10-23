@@ -313,7 +313,7 @@ const inject = (src, chunk, code) => {
  * hemisphere fill is tuned for the toon ramp, which never falls that far. Worked per fragment, so
  * it costs a mix and a dot. `k` is how strong; 0 switches it off.
  */
-export const FILL = { k: 0.5, sky: "#a9d3e4", horizon: "#d5ebef", ground: "#3c8aa6" };
+export const FILL = { k: 0.8, sky: "#a9d3e4", horizon: "#d5ebef", ground: "#3c8aa6" };
 function withFill(m) {
   const prev = m.onBeforeCompile, key = m.customProgramCacheKey.call(m);
   const u = { sky: { value: col(FILL.sky).multiplyScalar(FILL.k) }, horizon: { value: col(FILL.horizon).multiplyScalar(FILL.k) }, ground: { value: col(FILL.ground).multiplyScalar(FILL.k) } };
