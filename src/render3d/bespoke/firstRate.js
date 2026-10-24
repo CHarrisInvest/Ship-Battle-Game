@@ -373,13 +373,22 @@ function port(gg, cx, cy, w, h, fw, fh, lining, stain, stainLen, shut) {
 
 const GLASS = ["#27404b", "#2a4450", "#2f4b57", "#33505c"];
 
+// The bands behind her rows of ports are painted partway from oak to her livery, the way a ship of
+// the line's were in yellow ochre: enough to say whose she is down the length of her side, and
+// still a painted timber rather than a stripe of flag. Raise this with care; at 1 it is a toy.
+const LIVERY_BAND = 0.3;
+const mixHex = (a, b, k) => {
+  const ch = (h, i) => parseInt(h.slice(1 + 2 * i, 3 + 2 * i), 16);
+  return "#" + [0, 1, 2].map((i) => Math.round(ch(a, i) + (ch(b, i) - ch(a, i)) * k).toString(16).padStart(2, "0")).join("");
+};
+
 /**
  * Her texture sheet, painted afresh: `trim` is the livery her stern carving, mouldings and name board
- * take, `guns` her fitted broadside (an unarmed port is painted shut), `name` what is painted on the
- * board across her stern. Returns the canvas; the caller makes the texture.
+ * take, and the bands behind her ports a share of (`LIVERY_BAND`), `guns` her fitted broadside (an
+ * unarmed port is painted shut), `name` what is painted on the board across her stern. Returns the canvas; the caller makes the texture.
  */
 export function paintAtlas({ trim = "#e8c877", guns = PORTS_A_SIDE, name = "" } = {}) {
-  const TRIM = trim;
+  const TRIM = trim, STRAKE = mixHex(P.oak, trim, LIVERY_BAND);
   const [atlasC, g] = canvas(ATLAS, ATLAS);
   const rnd = prng(11);
   g.fillStyle = P.hull; g.fillRect(0, 0, ATLAS, ATLAS); // gaps in the hull's colour, so mipmaps blend nothing odd
@@ -396,7 +405,7 @@ export function paintAtlas({ trim = "#e8c877", guns = PORTS_A_SIDE, name = "" } 
     const band = (y0, y1, fill) => { g.fillStyle = fill; g.fillRect(0, Vy(y1), W, Vy(y0) - Vy(y1)); };
     rnd.reset(11);
     band(Y_CUT, Y_TOP, P.hull);
-    STRAKES.forEach(([a, b]) => band(a, b, P.oak));
+    STRAKES.forEach(([a, b]) => band(a, b, STRAKE));
     [[Y_COPPER, Y_TOP]].concat(STRAKES).forEach(([a, b]) => {
       for (let k = 0; k < 150; k++) {
         const y = a + Math.floor(rnd() * (b - a) / 0.27) * 0.27, light = rnd() < 0.5;
@@ -470,7 +479,7 @@ export function paintAtlas({ trim = "#e8c877", guns = PORTS_A_SIDE, name = "" } 
     const band = (a, b, fill) => { a = Math.max(a, y0); b = Math.min(b, y1); if (b > a) { g.fillStyle = fill; g.fillRect(X0, Vy(b), W, Vy(a) - Vy(b)); } };
     g.save(); g.beginPath(); g.rect(X0, Vy(y1), W, Vy(y0) - Vy(y1)); g.clip();
     band(y0, y1, P.hull);
-    STRAKES.forEach(([a, b]) => band(a, b, P.oak));
+    STRAKES.forEach(([a, b]) => band(a, b, STRAKE));
     for (let k = 0; k < 40; k++) {
       const y = y0 + Math.floor(rnd() * (y1 - y0) / 0.27) * 0.27, light = rnd() < 0.5;
       g.fillStyle = light ? `rgba(255, 225, 180, ${0.025 + rnd() * 0.035})` : `rgba(30, 16, 6, ${0.03 + rnd() * 0.04})`;

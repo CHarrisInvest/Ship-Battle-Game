@@ -32,16 +32,19 @@ export function createFx(me) {
 export function lookOf(fx, s) {
   let look = fx.ships.get(s.id);
   if (!look) {
-    // between sides every ship flies her side's colour, captain or AI, so friend and enemy are
-    // told apart at a glance; in any other round the AI cycle through their own liveries
+    // between sides every ship flies her side's colour, the viewer's own included, so friend and
+    // enemy are told apart at a glance; in any other round the AI cycle through their own liveries
+    // and the viewer's ship is hers, cream planking under her own gold
     const pal = (s.side && SIDE_COLORS[s.side]) || AI_COLORS[(s.livery || 0) % AI_COLORS.length];
+    const mine = s.id === fx.me && !SIDE_COLORS[s.side];
     // her hull's own size and shape, from the class's form, and her timber with it, so a pine
     // boat sits pale on the water beside an oak brig; a captain's ship is built of hers
     const form = hullForm(s.loadout.hull.id);
     const timber = s.playerId ? timberCast(CAPTAIN_TIMBER) : form.timber;
     look = {
-      fill: s.id === fx.me ? C.player : pal.fill,
-      stroke: s.id === fx.me ? C.playerStroke : pal.stroke,
+      fill: mine ? C.player : pal.fill,
+      stroke: mine ? C.playerStroke : pal.stroke,
+      trim: mine ? C.own : pal.fill, // her livery: her flags and her trim
       sea: form.sea,
       rig: buildSeaRig(s.loadout, form.sea),
       cols: {

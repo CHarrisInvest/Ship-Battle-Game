@@ -45,6 +45,10 @@ export const C = {
   front: "#7a9cc6",
   splinter: "#b98a4a",
   gold: "#e8c877",
+  // the livery the viewer's own ship flies outside a round fought between sides: her flags, her trim
+  // and on the first rate the bands along her gun decks. Brighter and fuller than the HUD's gold, so
+  // she reads as hers against the AI's muted liveries; between sides she flies her side's colour
+  own: "#f9c440",
   panel: "rgba(11,51,49,0.80)",
   hair: "rgba(160,224,210,0.20)",
   ink: "#eef4f2",
@@ -87,8 +91,10 @@ export const AI_COLORS = [
  * other at any size. Against the grounds: the yellow scores 2.3 on open water, 4.0 past the buoys
  * and 7.5 on the radar's backing; the violet carries by hue rather than by light on open water
  * (1.26, the same figure the AI's own purple livery has always had) and scores 4.4 on the dark
- * grounds. The yellow is a shade off the HUD's gold and the cream of her own hull, which is why
- * her own dot on the radar wears a dark ring and her hull keeps its cream whichever side she is on.
+ * grounds. Her own ship flies her side's colour like every other ship of it, because a captain on
+ * the yellow side in her own gold was one more yellow ship to puzzle over; the camera and the HUD
+ * say which ship is hers. The yellow is a shade off the HUD's gold and the cream of her old hull,
+ * which is why her own dot on the radar wears a dark ring.
  */
 export const SIDE_COLORS = {
   left: { name: "Violet", fill: "#b07ae8", stroke: "#6a4697" },

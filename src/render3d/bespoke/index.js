@@ -19,8 +19,8 @@ import { C } from "../../render/palette.js";
 import { solidMaterial, hullMaterial, deckMaterial, sailMaterial, flagMaterial, toTex } from "./kit.js";
 import { FIRST_RATE, FIRST_RATE_FRAME, buildFirstRate, paintAtlas as paintFirstRate, SLOT as FIRST_RATE_SLOT } from "./firstRate.js";
 
-/** The trim a bespoke ship wears until a layer dresses her: the gold the game titles in, which the viewer's own ship flies. */
-export const BESPOKE_TRIM = C.gold;
+/** The trim a bespoke ship wears until a layer dresses her: the gold the viewer's own ship flies, as on the menu's plate. */
+export const BESPOKE_TRIM = C.own;
 
 /**
  * One entry per class with a model of her own:

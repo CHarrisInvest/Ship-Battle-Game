@@ -152,8 +152,10 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   follows, labels or sinks a ship knows the difference. Her beam at sea is the model's: the row's
   `drawnLength` and `drawnBeam` are the model's figures, `seaForm` takes her collision beam from
   their ratio, and `npm run bespoke-test` holds the row to the model. Her livery is the game's: the
-  trim the viewer's gold or a rival's colour, through `model.dress`, which both model kinds answer
-  (`paint` is the face-list ship's planking colour; a bespoke ship keeps her own painted sides),
+  trim the viewer's gold (`C.own`) or a rival's colour, through `model.dress`, which both model kinds
+  answer (`paint` is the face-list ship's planking colour; a bespoke ship keeps her own painted
+  sides, but for the bands behind her ports, painted `LIVERY_BAND` of the way from oak to her trim
+  and kept that far, and a moulding in her trim under her cap rail),
   her sheet painted once per livery and gun count and pre-warmed when a round starts, her timber a
   tint over sheet and solids, her three pennants the game's cloth blown by wind and way, no ensign.
   Her rope stays at sea as line batches under her hull and her rig. Her under-body is built to the
@@ -283,7 +285,9 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   `sunkWinBonus`, and nobody is placed, so there is no rank, no leader and no best finish. The side
   is a fact of the round and lives on the ship; what colour it flies and what it is called are the
   renderer's (`SIDE_COLORS` in `palette.js`), and the HUD's badge in the rank's place shows the two
-  fleets' ships afloat and the hull they have left.
+  fleets' ships afloat and the hull they have left. A captain's own ship flies her side's colour
+  too, planking and trim, rather than the gold she flies elsewhere (`lookOf` in `effects.js` is the
+  one statement of every ship's colours, for both renderers).
 - `src/consent.js` is the cookie prompt's answer: essential, analytics and advertising, kept
   under its own key. **The hold is the essential category and is never gated on
   it**: "Reject all" must not touch a captain's progress.

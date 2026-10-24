@@ -407,7 +407,7 @@ export function createRenderer(canvas) {
     }
 
     // ship colour reads as TRIM; the hull itself is brown wood
-    const trim = s.id === fx.me ? C.gold : look.fill;
+    const trim = look.trim;
 
     // hull: dark waterline body + brown deck, trimmed in the ship's colour. The outline is the
     // class's own: her length, her beam, her entry and her stern.
