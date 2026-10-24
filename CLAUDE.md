@@ -154,8 +154,8 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   their ratio, and `npm run bespoke-test` holds the row to the model. Her livery is the game's: the
   trim the viewer's gold (`C.own`) or a rival's colour, through `model.dress`, which both model kinds
   answer (`paint` is the face-list ship's planking colour; a bespoke ship keeps her own painted
-  sides, but for the bands behind her gun decks' ports, painted `LIVERY_BAND` of the way from oak to her trim
-  and kept that far, and a moulding in her trim under her cap rail),
+  sides, but for the bands behind her gun decks' ports, painted solid in her trim, and a moulding
+  in her trim under her cap rail),
   her sheet painted once per livery and gun count and pre-warmed when a round starts, her timber a
   tint over sheet and solids, her three pennants the game's cloth blown by wind and way, no ensign.
   Her rope stays at sea as line batches under her hull and her rig. Her under-body is built to the
@@ -348,8 +348,9 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   livery in `LIVERY_KEYS` (`holdrules.js`, keys only, gold first) through `paintShip`, for nothing;
   the record carries `livery` only once she is painted something other than gold, so an unpainted
   ship compares equal to one from before, and `shipLivery` is the one reader. What each key looks
-  like is `LIVERIES` in `palette.js`: her own gold and every colour the game already flies, the AI's
-  ten and the violet side's (the yellow side's is a shade off her gold). It is her flags and her trim
+  like is `LIVERIES` in `palette.js`: her own gold and a brighter cut of every colour the game flies,
+  the AI's ten and the violet side's (the yellow side's is a shade off her gold), brighter so she is
+  not taken for the AI ship whose colour she borrowed. It is her flags and her trim
   as the captain herself sees her, at sea (`createFx`'s `own`, read by `lookOf`) and on the plate;
   her planking stays cream, and between sides she flies her side's colour whatever she is painted.
   Nothing about it reaches the engine, the server's world or another captain's screen.

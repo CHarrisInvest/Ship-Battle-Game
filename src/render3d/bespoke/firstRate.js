@@ -373,24 +373,20 @@ function port(gg, cx, cy, w, h, fw, fh, lining, stain, stainLen, shut) {
 
 const GLASS = ["#27404b", "#2a4450", "#2f4b57", "#33505c"];
 
-// The bands behind her rows of ports are painted partway from oak to her livery, the way a ship of
-// the line's were in yellow ochre: enough to say whose she is down the length of her side, and
-// still a painted timber rather than a stripe of flag. Raise this with care; at 1 it is a toy. Only
-// her three gun decks' bands take it: the quarterdeck and forecastle's, just under the moulding in
-// her trim, stays oak, or the two read as one heavy stripe along her rail.
-const LIVERY_BAND = 0.6, LIVERY_STRAKES = 3;
-const mixHex = (a, b, k) => {
-  const ch = (h, i) => parseInt(h.slice(1 + 2 * i, 3 + 2 * i), 16);
-  return "#" + [0, 1, 2].map((i) => Math.round(ch(a, i) + (ch(b, i) - ch(a, i)) * k).toString(16).padStart(2, "0")).join("");
-};
+// The bands behind her gun decks' rows of ports are painted solid in her livery, the way a ship of
+// the line's were in yellow ochre, so she says whose she is down the length of her side. The
+// quarterdeck and forecastle's band, just under the moulding in her trim, stays oak, or the two
+// read as one heavy stripe along her rail.
+const LIVERY_STRAKES = 3;
 
 /**
  * Her texture sheet, painted afresh: `trim` is the livery her stern carving, mouldings and name board
- * take, and the bands behind her gun decks' ports a share of (`LIVERY_BAND`), `guns` her fitted broadside (an
+ * take, `band` what the bands behind her gun decks' ports are painted (her livery, lifted by the
+ * caller to come out as her livery under her timber's tint), `guns` her fitted broadside (an
  * unarmed port is painted shut), `name` what is painted on the board across her stern. Returns the canvas; the caller makes the texture.
  */
-export function paintAtlas({ trim = "#e8c877", guns = PORTS_A_SIDE, name = "" } = {}) {
-  const TRIM = trim, STRAKE = mixHex(P.oak, trim, LIVERY_BAND);
+export function paintAtlas({ trim = "#e8c877", guns = PORTS_A_SIDE, name = "", band = trim } = {}) {
+  const TRIM = trim, STRAKE = band;
   const [atlasC, g] = canvas(ATLAS, ATLAS);
   const rnd = prng(11);
   g.fillStyle = P.hull; g.fillRect(0, 0, ATLAS, ATLAS); // gaps in the hull's colour, so mipmaps blend nothing odd
@@ -408,7 +404,8 @@ export function paintAtlas({ trim = "#e8c877", guns = PORTS_A_SIDE, name = "" } 
     rnd.reset(11);
     band(Y_CUT, Y_TOP, P.hull);
     STRAKES.forEach(([a, b], i) => band(a, b, i < LIVERY_STRAKES ? STRAKE : P.oak));
-    [[Y_COPPER, Y_TOP]].concat(STRAKES).forEach(([a, b]) => {
+    // weathering over the timber, and not over the painted bands, which read as paint
+    [[Y_COPPER, Y_TOP]].concat(STRAKES.slice(LIVERY_STRAKES)).forEach(([a, b]) => {
       for (let k = 0; k < 150; k++) {
         const y = a + Math.floor(rnd() * (b - a) / 0.27) * 0.27, light = rnd() < 0.5;
         g.fillStyle = light ? `rgba(255, 225, 180, ${0.025 + rnd() * 0.035})` : `rgba(30, 16, 6, ${0.03 + rnd() * 0.04})`;

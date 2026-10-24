@@ -2046,6 +2046,28 @@ function YardScreen({ hold, shipId, onView, onBack, onCommission, onOutfit }) {
         <Glossary />
       </Slab>
 
+      <Slab title="Armament" sub="Tap a mount to arm it">
+        {/* Her iron first, because it is the figure every gun below is bought against. */}
+        <IronRow weight={stats.weight} tons={loadout.hull.tons} />
+        {/* Green once a mount is full, and the ordinary gold otherwise. Colouring a short mount by its
+            system read as an alarm: no swivels is not a fault, it is a purchase she has not made. */}
+        {/* Every gun row opens the guns tab as a whole rather than one mount's picker: the tonnage
+            and the three mounts are read together, and a picker sprung open under one of them
+            landed a captain in the middle of a screen she had not seen the top of. */}
+        {guns.map(([mount, label, has, bears]) => (
+          <DoorRow
+            key={mount}
+            onClick={() => onOutfit({ view: "guns" })}
+            label={<span style={{ fontSize: 11, color: "rgba(238,244,242,0.6)", letterSpacing: 0.5 }}>{label}</span>}
+            value={
+              <span style={{ fontSize: 13, fontWeight: 700, color: bears > 0 && has >= bears ? C.grass : C.gold }}>
+                {has} of {bears}
+              </span>
+            }
+          />
+        ))}
+      </Slab>
+
       {/* Every row here is a door. Tapping a socket or a berth opens the outfitter on the rigging
           tab, so reading what she has and changing it are one screen apart rather than a screen and
           a tab and a scroll. The tab opens whole, with no picker up: a picker sprung open under a
@@ -2111,28 +2133,6 @@ function YardScreen({ hold, shipId, onView, onBack, onCommission, onOutfit }) {
             </div>
           );
         })}
-      </Slab>
-
-      <Slab title="Armament" sub="Tap a mount to arm it">
-        {/* Her iron first, because it is the figure every gun below is bought against. */}
-        <IronRow weight={stats.weight} tons={loadout.hull.tons} />
-        {/* Green once a mount is full, and the ordinary gold otherwise. Colouring a short mount by its
-            system read as an alarm: no swivels is not a fault, it is a purchase she has not made. */}
-        {/* Every gun row opens the guns tab as a whole rather than one mount's picker: the tonnage
-            and the three mounts are read together, and a picker sprung open under one of them
-            landed a captain in the middle of a screen she had not seen the top of. */}
-        {guns.map(([mount, label, has, bears]) => (
-          <DoorRow
-            key={mount}
-            onClick={() => onOutfit({ view: "guns" })}
-            label={<span style={{ fontSize: 11, color: "rgba(238,244,242,0.6)", letterSpacing: 0.5 }}>{label}</span>}
-            value={
-              <span style={{ fontSize: 13, fontWeight: 700, color: bears > 0 && has >= bears ? C.grass : C.gold }}>
-                {has} of {bears}
-              </span>
-            }
-          />
-        ))}
       </Slab>
 
       {/* What she is short, and what of it the captain already owns, loose or aboard another of her
@@ -2317,7 +2317,7 @@ function NamePlate({ hold, shipId }) {
 
 /**
  * Her colours: a swatch for every livery a ship can be painted in, the one she wears ringed, and its
- * name and what it paints said under them. A tap paints her at once and costs nothing, and the ship
+ * name under them. A tap paints her at once and costs nothing, and the ship
  * over it turns in the new colour. Every swatch is a mass of colour with no mark inside it, so the
  * ring is the only thing that says which is chosen, drawn in ink off her own swatch and the hair
  * on the others.
@@ -2350,9 +2350,6 @@ function LiveryPicker({ hold, shipId }) {
         })}
       </div>
       <div style={{ fontSize: 12, color: C.ink, textAlign: "center", marginTop: 6 }}>{chosen.name}</div>
-      <div style={{ fontSize: 10, color: "rgba(238,244,242,0.55)", textAlign: "center", marginTop: 3, lineHeight: 1.5 }}>
-        Her flags and trim at sea. In TEAMS she flies her side&apos;s colour instead.
-      </div>
     </Slab>
   );
 }
