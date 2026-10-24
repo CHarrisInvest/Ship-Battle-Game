@@ -102,6 +102,32 @@ export const SIDE_COLORS = {
 };
 
 /**
+ * THE LIVERIES A CAPTAIN MAY PAINT HER SHIP IN, in the yard: her own gold, then every other colour
+ * the game already flies, the AI's ten and the violet side's. The keys and their order are the
+ * hold's (`LIVERY_KEYS` in holdrules.js), which keeps no colour; the names and the colours are here.
+ * A livery is her flags and her trim, and on the first rate the bands along her gun decks; her
+ * planking stays her own. Between sides she flies her side's colour whatever she is painted.
+ */
+export const LIVERIES = Object.freeze([
+  { key: "gold", name: "Gold", fill: C.own },
+  { key: "vermilion", name: "Vermilion", fill: AI_COLORS[0].fill },
+  { key: "amber", name: "Amber", fill: AI_COLORS[1].fill },
+  { key: "brick", name: "Brick", fill: AI_COLORS[2].fill },
+  { key: "sage", name: "Sage", fill: AI_COLORS[3].fill },
+  { key: "lilac", name: "Lilac", fill: AI_COLORS[4].fill },
+  { key: "olive", name: "Olive", fill: AI_COLORS[5].fill },
+  { key: "slate", name: "Slate blue", fill: AI_COLORS[6].fill },
+  { key: "rose", name: "Rose", fill: AI_COLORS[7].fill },
+  { key: "green", name: "Green", fill: AI_COLORS[8].fill },
+  { key: "copper", name: "Copper", fill: AI_COLORS[9].fill },
+  { key: "violet", name: "Violet", fill: SIDE_COLORS.left.fill },
+]);
+
+/** The colour a livery key paints in: her own gold for a key it does not know. */
+export const liveryFill = (key) => (LIVERIES.find((l) => l.key === key) || LIVERIES[0]).fill;
+
+
+/**
  * WHAT A CAPTAIN'S SHIPS ARE BUILT OF, as drawn. Every ship a captain owns or sails is drawn in this
  * timber whatever her class, on the menu's plate, in the yard and at sea, while a rival keeps her
  * class's own: the starting gundalow is a pine boat by her reference, and pine against the sand of

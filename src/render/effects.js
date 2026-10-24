@@ -16,10 +16,11 @@ import { buildSeaRig } from "./searig.js";
 
 /**
  * A fresh picture for the viewer whose ship is `me`: no smoke on the water and no ship yet seen. Her
- * own ship is drawn in her own colours and the screen reddens for her hits rather than anyone's.
+ * own ship is drawn in her own colours, `own` her livery (the colour she painted her in the yard),
+ * and the screen reddens for her hits rather than anyone's.
  */
-export function createFx(me) {
-  return { me, parts: [], wakes: [], texts: [], vign: 0, ships: new Map() };
+export function createFx(me, own = C.own) {
+  return { me, own, parts: [], wakes: [], texts: [], vign: 0, ships: new Map() };
 }
 
 /**
@@ -34,7 +35,7 @@ export function lookOf(fx, s) {
   if (!look) {
     // between sides every ship flies her side's colour, the viewer's own included, so friend and
     // enemy are told apart at a glance; in any other round the AI cycle through their own liveries
-    // and the viewer's ship is hers, cream planking under her own gold
+    // and the viewer's ship is hers, cream planking under the livery she painted her in
     const pal = (s.side && SIDE_COLORS[s.side]) || AI_COLORS[(s.livery || 0) % AI_COLORS.length];
     const mine = s.id === fx.me && !SIDE_COLORS[s.side];
     // her hull's own size and shape, from the class's form, and her timber with it, so a pine
@@ -44,7 +45,7 @@ export function lookOf(fx, s) {
     look = {
       fill: mine ? C.player : pal.fill,
       stroke: mine ? C.playerStroke : pal.stroke,
-      trim: mine ? C.own : pal.fill, // her livery: her flags and her trim
+      trim: mine ? fx.own : pal.fill, // her livery: her flags and her trim
       sea: form.sea,
       rig: buildSeaRig(s.loadout, form.sea),
       cols: {

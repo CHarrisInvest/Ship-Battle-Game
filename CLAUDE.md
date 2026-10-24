@@ -344,6 +344,15 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   `NAME_LIMIT` and `cleanName` are the whole of the rule. There is no filter, because until online
   play the only reader was the captain who wrote it; sailing with friends shows a ship's name to
   them, and those are people she chose to sail with.
+- **A ship's colours are the captain's too, and they are a look.** The yard paints a ship in any
+  livery in `LIVERY_KEYS` (`holdrules.js`, keys only, gold first) through `paintShip`, for nothing;
+  the record carries `livery` only once she is painted something other than gold, so an unpainted
+  ship compares equal to one from before, and `shipLivery` is the one reader. What each key looks
+  like is `LIVERIES` in `palette.js`: her own gold and every colour the game already flies, the AI's
+  ten and the violet side's (the yellow side's is a shade off her gold). It is her flags and her trim
+  as the captain herself sees her, at sea (`createFx`'s `own`, read by `lookOf`) and on the plate;
+  her planking stays cream, and between sides she flies her side's colour whatever she is painted.
+  Nothing about it reaches the engine, the server's world or another captain's screen.
 - **Her tonnage is a hard limit, and the rail refuses a gun she cannot bear.** `hull.tons` is the
   iron she carries, in the tons the guns are weighed in, and a broadside gun counts twice because it
   is mounted both sides. `gunTons` and `gunFits` in `shipyard.js` are the one statement of that rule;

@@ -71,6 +71,16 @@ const act = (rec, name, ...args) => R.applyAction(rec, name, args);
     "nameShip keeps the name as cleanName leaves it");
   rec = named.rec;
 
+  check(R.shipLivery(rec, sloop) === "gold" && !("livery" in rec.yard.ships[sloop]), "an unpainted ship is gold and carries no livery field");
+  const painted = act(rec, "paintShip", sloop, "slate");
+  check(painted && R.shipLivery(painted.rec, sloop) === "slate" && painted.rec.coins === rec.coins,
+    "paintShip paints her for nothing");
+  check(json(R.sanitize(JSON.parse(json(painted.rec)))) === json(painted.rec), "a painted record survives sanitize unchanged");
+  const regilt = act(painted.rec, "paintShip", sloop, "gold");
+  check(regilt && json(regilt.rec) === json(rec), "painting her gold again leaves her as she was before she was painted");
+  check(act(rec, "paintShip", sloop, "tartan") === null && act(rec, "paintShip", "nope", "slate") === null,
+    "paintShip refuses a colour or a ship that is not there");
+
   const active = act(rec, "setActiveShip", sloop);
   check(active && active.rec.yard.active === sloop, "setActiveShip moves which ship she sails");
   rec = active.rec;

@@ -376,7 +376,7 @@ const GLASS = ["#27404b", "#2a4450", "#2f4b57", "#33505c"];
 // The bands behind her rows of ports are painted partway from oak to her livery, the way a ship of
 // the line's were in yellow ochre: enough to say whose she is down the length of her side, and
 // still a painted timber rather than a stripe of flag. Raise this with care; at 1 it is a toy.
-const LIVERY_BAND = 0.3;
+const LIVERY_BAND = 0.4;
 const mixHex = (a, b, k) => {
   const ch = (h, i) => parseInt(h.slice(1 + 2 * i, 3 + 2 * i), 16);
   return "#" + [0, 1, 2].map((i) => Math.round(ch(a, i) + (ch(b, i) - ch(a, i)) * k).toString(16).padStart(2, "0")).join("");

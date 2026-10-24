@@ -22,7 +22,7 @@ import { call, ensureSession } from "./net.js";
 
 export {
   NAME_LIMIT, HOLD_SHARE, REFUND_SHARE, cleanName, refundOf,
-  modeRecord, voyageValue, partOf, ownedShips, shipName, spareParts, shipLoadout, shortfall, ownedFill, readiness,
+  modeRecord, voyageValue, partOf, ownedShips, shipName, shipLivery, spareParts, shipLoadout, shortfall, ownedFill, readiness,
 } from "./holdrules.js";
 
 const OLD_KEY = "sternchase.hold";
@@ -212,6 +212,9 @@ export function buyShip(hullId) {
 
 /** Name a ship, or pass an empty string to let her go by her class again. */
 export const nameShip = (shipId, name) => recOf(act("nameShip", shipId, name));
+
+/** Paint a ship in one of the liveries in `LIVERY_KEYS`. It costs nothing. */
+export const paintShip = (shipId, key) => recOf(act("paintShip", shipId, key));
 
 /** Sell one part back to the yard, off whichever of her ships carry it, for its full price. */
 export const sellPart = (partId) => recOf(act("sellPart", partId));
