@@ -138,9 +138,11 @@ function buildBespoke(entry, spec, units, seaLength) {
   for (const bb of boxes) top = Math.max(top, bb.max.y);
   // The plate's box, cut for the galleon: the span her bowsprit and her rig need, as hullform works
   // it out for a form, with a little less air over her truck, because a bespoke rig stands at its
-  // true height over her length and the form's margin left her small in the box.
-  const reach = Math.max(box.max.x + 8 * k, L / 2 + 10 * k);
-  const span = units === "menu" ? Math.max(248, reach * 2.62, (box.max.y + 4 * k) * 2.45) : null;
+  // true height over her length and the form's margin left her small in the box. Worked from the
+  // most she can ever carry (`frame`), so she is the same size in the box at every fit.
+  const fx = entry.frame ? entry.frame.reach * k : box.max.x, fy = entry.frame ? entry.frame.top * k : box.max.y;
+  const reach = Math.max(fx + 8 * k, L / 2 + 10 * k);
+  const span = units === "menu" ? Math.max(248, reach * 2.62, (fy + 4 * k) * 2.45) : null;
   return {
     geoms, lines, flags: b.flags, masts: b.masts, scale: k, height: box.max.y, length: entry.length * k, beam: entry.beam * k, box,
     sea: { top, scale: 1, boxes, pivots }, bespoke: entry, guns: b.guns, span,

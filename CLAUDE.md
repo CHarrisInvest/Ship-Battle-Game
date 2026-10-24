@@ -141,7 +141,9 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   the shiplab diff is for. A bespoke ship is built in metres from the same `rigSpec` as everyone
   (which now carries each mast's `berths`): each mast stands as tall as its berths, a filled berth is
   a sail set and an empty one a yard crossed bare, so all 15 ways to fill four berths draw; the
-  spanker is the mizzen's gaff berth, the headsails the bowsprit's, and `guns` arms her from the
+  spanker is the mizzen's gaff berth, the headsails the bowsprit's (a jib-boom only when a spar of two
+  berths is stepped, the staysail on its first berth and the jib outside it on its second; with a
+  standing bowsprit or nothing stepped her stays come in to the bowsprit's cap), and `guns` arms her from the
   lowest deck up, an armed port open with a barrel run out and an unarmed one painted shut. The
   registry scales her to the menu and sea lengths her form gives her, so nothing that places,
   follows, labels or sinks a ship knows the difference. Her beam at sea is the model's: the row's
@@ -382,6 +384,9 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   the families it takes, written `station/size/family+family` in `hulls.tsv`. `mastFitsSocket`
   matches the family before the size rung, the way it matches spar against mast, because size alone
   let a lug mast step in a first rate and her "plain" stock fit really did sail under lug topmasts.
+  A socket may add a fourth figure, the fewest sails a mast stepped there carries
+  (`fore/large/square/2`, `minBerths` on the socket): a lower mast and a topmast are both medium, so
+  size cannot keep a bare lower mast out of a first rate's fore and main, and this does.
   Berths run deck upward, and a fore-and-aft driving sail sharing the lowest
   level with a course takes berth 0 with the square canvas above it, because the model holds one sail
   to a band and a spanker belongs at the bottom of the rig rather than over the topgallant.

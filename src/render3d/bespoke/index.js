@@ -17,7 +17,7 @@
 import * as THREE from "three";
 import { C } from "../../render/palette.js";
 import { solidMaterial, hullMaterial, deckMaterial, sailMaterial, flagMaterial, toTex } from "./kit.js";
-import { FIRST_RATE, buildFirstRate, paintAtlas as paintFirstRate, SLOT as FIRST_RATE_SLOT } from "./firstRate.js";
+import { FIRST_RATE, FIRST_RATE_FRAME, buildFirstRate, paintAtlas as paintFirstRate, SLOT as FIRST_RATE_SLOT } from "./firstRate.js";
 
 /** The trim a bespoke ship wears until a layer dresses her: the gold the game titles in, which the viewer's own ship flies. */
 export const BESPOKE_TRIM = C.gold;
@@ -28,9 +28,11 @@ export const BESPOKE_TRIM = C.gold;
  *   paintAtlas({ trim, guns, name })  her texture sheet, as a canvas
  *   length, beam                  her drawn size in metres, which the reference row repeats
  *   slot                          the material slots her geometry's groups index
+ *   frame                         { reach, top } in metres: her furthest bowsprit tip and highest
+ *                                 truck at any fit, which the menu frames her by
  */
 const BESPOKE = {
-  firstRate: { ...FIRST_RATE, build: buildFirstRate, paintAtlas: paintFirstRate, slot: FIRST_RATE_SLOT },
+  firstRate: { ...FIRST_RATE, build: buildFirstRate, paintAtlas: paintFirstRate, slot: FIRST_RATE_SLOT, frame: FIRST_RATE_FRAME },
 };
 
 /** The bespoke entry for a hull id, or null for a class drawn from her form. */

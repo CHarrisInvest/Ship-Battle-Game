@@ -247,6 +247,15 @@ const jb = (f) => jbStart.clone().addScaledVector(bsDir, JB_LEN * f);
 const CAT_X = 24.95; // where the catheads leave the bow; each anchor hangs from a cathead's end
 const RING_DROP = 1.3; // the top of each anchor's ring hangs this far below its cathead's end
 
+/**
+ * How far forward and how high she can ever reach, rig and jib-boom at their fullest: the menu frames
+ * her by these rather than by what she carries today, so stepping a shorter spar or striking a
+ * topgallant never makes her jump in her box. They are the extent of her model fully found (the cap
+ * knob at the jib-boom's end, the main truck with royals aloft), and `npm run bespoke-test` holds
+ * them to it, so she is framed exactly as she was when the frame followed her box.
+ */
+export const FIRST_RATE_FRAME = { reach: 55.998, top: 62.548 };
+
 /* ---- decks' figures ---------------------------------------------------------------------------- */
 const CAMBER = 0.12;
 const deckY = (x, Y, z = 0) => yOf(x, Y) + CAMBER * Math.max(0, 1 - Math.pow(z / deckHalf(x, Y), 2));
@@ -275,12 +284,22 @@ const CH_K = 36, CH_STEP = 0.66, CH_R = { x: 520, y: 960, w: Math.round((1 + 9 *
  * headsails; her fitted broadside. A station the spec does not step stays null and is not built.
  */
 export function rigOf(spec) {
-  const out = { fore: null, main: null, mizzen: null, gaff: false, jibs: 0, guns: PORTS_A_SIDE };
+  // `sprit` is what is stepped on the bowsprit, as the length of spar it carries (0 nothing, 1 a
+  // standing bowsprit, 2 a jib-boom run out beyond it), and which of its headsails are set, berth by
+  // berth: the fore topmast staysail first, the jib outside it second
+  const out = { fore: null, main: null, mizzen: null, gaff: false, sprit: { spar: 0, set: [false, false] }, guns: PORTS_A_SIDE };
   if (spec && Number.isFinite(spec.guns)) out.guns = Math.max(0, Math.min(PORTS_A_SIDE, spec.guns));
   for (const m of (spec && spec.masts) || []) {
     const berths = m.berths || [];
     const sails = m.sails || [];
-    if (m.station === "bowsprit") { out.jibs = Math.min(2, sails.filter((s) => s.kind === "TRI").length); continue; }
+    if (m.station === "bowsprit") {
+      // a spec with no berth list (an old one) is read as long as its sails need
+      const n = berths.length || (sails.length ? Math.max(...sails.map((s) => s.berth)) + 1 : 0);
+      const spar = Math.max(1, Math.min(2, n));
+      const set = [0, 1].map((i) => i < spar && sails.some((s) => s.kind === "TRI" && s.berth === i));
+      out.sprit = { spar, set };
+      continue;
+    }
     if (!MAST_BY_STATION[m.station]) continue;
     const squares = berths.map((k, i) => ({ k, i })).filter((b) => b.k !== "GAF");
     const setAt = new Set(sails.map((s) => s.berth));
@@ -1056,12 +1075,19 @@ export function buildFirstRate(spec) {
   const flags = [];
 
   // the bowsprit, the jib-boom laid along its top with a black cap block at the bowsprit's end, and a cap at the tip
+  // The bowsprit is always hers; the jib-boom only when a spar carrying two headsails is stepped on
+  // it. Without one the bowsprit's cap takes the trim knob the jib-boom's end would have carried.
+  const boom = cfg.sprit.spar >= 2;
   if (spec?.bowsprit !== false) {
     const bw = new THREE.Group();
     fitAdd(bw, PINE, rodGeo(bsR(0) + 0.06, bsR(1), bs(-0.12), bs(1), 8));
-    fitAdd(bw, PINE, rodGeo(0.27, 0.13, jbStart.clone().addScaledVector(bsDir, -0.4), jb(1), 6));
     fitAdd(bw, blackMat, frameBox(0.45, 1.6, 0.95, bs(1).addScaledVector(bsPerp, 0.2), bsDir, bsPerp, V3(0, 0, 1)));
-    fitAdd(bw, trimMat, rodGeo(0.16, 0.16, jb(0.99), jb(1.004), 6), sphereGeo(0.16, jb(1.004)));
+    if (boom) {
+      fitAdd(bw, PINE, rodGeo(0.27, 0.13, jbStart.clone().addScaledVector(bsDir, -0.4), jb(1), 6));
+      fitAdd(bw, trimMat, rodGeo(0.16, 0.16, jb(0.99), jb(1.004), 6), sphereGeo(0.16, jb(1.004)));
+    } else {
+      fitAdd(bw, trimMat, sphereGeo(0.2, bs(1).addScaledVector(bsDir, 0.3).addScaledVector(bsPerp, 0.2)));
+    }
     // the bowsprit is the hull's: it stays when she is dismasted
     hullPieces.push({ geo: bakeGeos(bw).get("solid"), material: SLOT.solid });
   }
@@ -1174,17 +1200,25 @@ export function buildFirstRate(spec) {
   const onBs = (f) => bs(f).addScaledVector(bsPerp, bsR(f));
   const sprit = spec?.bowsprit !== false;
   if (F && sprit) {
+    // Three stays come forward from the foremast whatever is set on them: the forestay to the
+    // bowsprit by the stem, the fore topmast stay to the bowsprit's end and the fore topgallant
+    // stay to the jib-boom's end. Without a jib-boom the topgallant stay comes in to the bowsprit's
+    // cap and the topmast stay sets up a little further inboard, so the two never share a point.
     const foreTop = F.at(F.x + 2.6, F.top), forestayFoot = onBs(0.1);
-    const ftmTop = F.at(F.xT + 1.0, F.xt - 0.3), ftmFoot = onBs(0.95), jibTop = F.n >= 2 ? tgHead(F) : below(F), jibFoot = jb(1);
+    const capTop = bs(1).addScaledVector(bsPerp, 0.95);
+    const ftmTop = F.at(F.xT + 1.0, F.xt - 0.3), ftmFoot = onBs(boom ? 0.95 : 0.72);
+    const jibTop = F.n >= 2 ? tgHead(F) : below(F), jibFoot = boom ? jb(1) : capTop;
     rigLines.push(foreTop, forestayFoot, ROPE.tar, ftmTop, ftmFoot, ROPE.tar, jibTop, jibFoot, ROPE.tar);
-    // head sails: the jib outermost on the stay to the jib-boom's end, the fore topmast staysail inside it
-    const clew = (share, stayFoot, dy) => V3(F.x + share * (jb(1).x - F.x), stayFoot.y + dy, 0);
+    // head sails, berth by berth: the fore topmast staysail on the topmast stay, and outside it the
+    // jib on the stay to the jib-boom's end, which has nowhere to set without the jib-boom
+    const reach = boom ? jb(1).x : bs(1).x;
+    const clew = (share, stayFoot, dy) => V3(F.x + share * (reach - F.x), stayFoot.y + dy, 0);
     const headSail = (stayTop, stayFoot, tackAt, headAt, clewAt, sheetTo, belly) => {
       sails.tri(stayFoot.clone().lerp(stayTop, tackAt), stayFoot.clone().lerp(stayTop, headAt), clewAt, belly, 0.07, 0.05);
       rigLines.push(clewAt, sheetTo, ROPE.hemp);
     };
-    if (cfg.jibs >= 1) headSail(jibTop, jibFoot, 0.1, 0.75, clew(0.63, jibFoot, 1.3), bs(0.97).add(V3(0, 0, bsR(0.97))), 1.4);
-    if (cfg.jibs >= 2) headSail(ftmTop, ftmFoot, 0.15, 0.72, clew(0.33, ftmFoot, 2.0), forestayFoot.clone(), 1.0);
+    if (boom && cfg.sprit.set[1]) headSail(jibTop, jibFoot, 0.1, 0.75, clew(0.63, jibFoot, 1.3), bs(0.97).add(V3(0, 0, bsR(0.97))), 1.4);
+    if (cfg.sprit.set[0]) headSail(ftmTop, ftmFoot, 0.15, 0.72, clew(boom ? 0.33 : 0.42, ftmFoot, 2.0), forestayFoot.clone(), 1.0);
   }
   if (F && Mn) {
     rigLines.push(Mn.at(Mn.xT + 1.0, Mn.xt - 0.3), F.at(F.x - 0.3, F.top - 0.3), ROPE.tar); // main topmast stay: to the fore top

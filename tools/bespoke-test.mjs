@@ -40,6 +40,15 @@ for (const id of bespokeIds()) {
     fault(where, `the reference row says drawnLength ${ref.drawnLength} and drawnBeam ${ref.drawnBeam}; the model is ${entry.length} by ${entry.beam}`);
   }
 
+  // her frame is the extent of her model fully found, which is what the menu frames her by
+  if (entry.frame) {
+    const b = entry.build(rigSpec(fitOut(id, 1)));
+    const box = b.hull.boundingBox.clone().union(b.rig.boundingBox);
+    if (Math.abs(box.max.x - entry.frame.reach) > 0.01 || Math.abs(box.max.y - entry.frame.top) > 0.01) {
+      fault(where, `her frame says she reaches ${entry.frame.reach} and stands ${entry.frame.top}; fully found she reaches ${box.max.x.toFixed(3)} and stands ${box.max.y.toFixed(3)}`);
+    }
+  }
+
   // every fit the stock fleet issues her at, on the sea and on the plate
   for (const st of STANDARDS) {
     const lo = fitOut(id, st.quality), spec = rigSpec(lo);
@@ -108,11 +117,40 @@ for (const id of bespokeIds()) {
     combos++;
     void verts;
   }
+  // everything that can be stepped on her bowsprit, and every way to fill it: nothing, then each
+  // spar with each set of its berths, and her headsails come out as the spec bends them on
+  const sprit = hull.sockets.find((s) => s.station === "bowsprit");
+  let spritCases = 0;
+  if (sprit) {
+    const spars = [null, ...Object.values(MASTS).filter((mm) => mastFitsSocket(mm, sprit))];
+    for (const spar of spars) {
+      const n = spar ? berthsOf(spar).length : 0;
+      for (let mask = 0; mask < 1 << n; mask++) {
+        const lo = fitOut(id, 1);
+        lo.rig[sprit.id] = spar
+          ? { mast: spar, sails: berthsOf(spar).map((b, i) => (mask & (1 << i) ? dearest(b) : null)), studs: [] }
+          : { mast: null, sails: [], studs: [] };
+        const spec = rigSpec(lo);
+        const at = `${where} with ${spar ? spar.name : "nothing"} on her bowsprit, berths ${mask.toString(2).padStart(n, "0")}`;
+        let m;
+        try { m = shipModel(spec, { units: "sea", rig: RIG }); } catch (e) { fault(at, `does not build: ${e.message}`); continue; }
+        const set = spec.masts.reduce((k, mm) => k + mm.sails.length, 0);
+        const want = spec.masts.reduce((k, mm) => k + mm.sails.reduce((q, s) => q + (s.kind === "TRI" ? 28 : s.kind === "GAF" ? 25 : 35), 0), 0);
+        const g = m.parts.rig?.geometry, grp = g?.groups.find((x) => x.materialIndex === entry.slot.sail);
+        const seen = new Set();
+        if (grp) for (let i = grp.start; i < grp.start + grp.count; i++) seen.add(g.index.array[i]);
+        if (seen.size !== want) fault(at, `${set} sails bent on should draw ${want} vertices of canvas and draw ${seen.size}`);
+        if (!finite(m.parts.hull?.geometry) || !finite(g)) fault(at, "a vertex that is not a number");
+        m.dispose();
+        spritCases++;
+      }
+    }
+  }
   // her sheet paints for an empty battery, a full one and one in between
   for (const guns of [0, Math.floor(hull.guns.broadside / 2), hull.guns.broadside]) {
     try { entry.paintAtlas({ trim: "#e8c877", guns, name: "Sternchase" }); } catch (e) { fault(`${where} with ${guns} guns a side`, `her sheet does not paint: ${e.message}`); }
   }
-  if (!problems.some((p) => p.startsWith(where))) ok(`${hull.name}: ${STANDARDS.length} fits on the sea and the plate, ${combos} ways to fill her fore and main, her sheet at 3 batteries`);
+  if (!problems.some((p) => p.startsWith(where))) ok(`${hull.name}: ${STANDARDS.length} fits on the sea and the plate, ${combos} ways to fill her fore and main, ${spritCases} on her bowsprit, her sheet at 3 batteries`);
 }
 clearShipModels();
 
