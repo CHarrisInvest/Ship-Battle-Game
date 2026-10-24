@@ -124,14 +124,15 @@ for (const id of bespokeIds()) {
   if (sprit) {
     const spars = [null, ...Object.values(MASTS).filter((mm) => mastFitsSocket(mm, sprit))];
     for (const spar of spars) {
-      const n = spar ? berthsOf(spar).length : 0;
-      for (let mask = 0; mask < 1 << n; mask++) {
+      // every sail that fits each berth, or none, chosen berth by berth
+      const choices = spar ? berthsOf(spar).map((bb) => [null, ...sailsForBerth(bb)]) : [];
+      const fills = choices.reduce((acc, opts) => acc.flatMap((f) => opts.map((o) => [...f, o])), [[]]);
+      const drawn = new Map();
+      for (const fill of fills) {
         const lo = fitOut(id, 1);
-        lo.rig[sprit.id] = spar
-          ? { mast: spar, sails: berthsOf(spar).map((b, i) => (mask & (1 << i) ? dearest(b) : null)), studs: [] }
-          : { mast: null, sails: [], studs: [] };
+        lo.rig[sprit.id] = spar ? { mast: spar, sails: fill, studs: [] } : { mast: null, sails: [], studs: [] };
         const spec = rigSpec(lo);
-        const at = `${where} with ${spar ? spar.name : "nothing"} on her bowsprit, berths ${mask.toString(2).padStart(n, "0")}`;
+        const at = `${where} with ${spar ? spar.name : "nothing"} on her bowsprit, carrying ${fill.map((x) => (x ? x.name : "nothing")).join(" and ") || "nothing"}`;
         let m;
         try { m = shipModel(spec, { units: "sea", rig: RIG }); } catch (e) { fault(at, `does not build: ${e.message}`); continue; }
         const set = spec.masts.reduce((k, mm) => k + mm.sails.length, 0);
@@ -141,6 +142,13 @@ for (const id of bespokeIds()) {
         if (grp) for (let i = grp.start; i < grp.start + grp.count; i++) seen.add(g.index.array[i]);
         if (seen.size !== want) fault(at, `${set} sails bent on should draw ${want} vertices of canvas and draw ${seen.size}`);
         if (!finite(m.parts.hull?.geometry) || !finite(g)) fault(at, "a vertex that is not a number");
+        // a different sail in a berth is a different sail drawn: two fillings that bend on different
+        // sails (plain and fine grades being one cloth) must not come out the same
+        const key = fill.map((x) => (x ? x.id.replace(/Fine$/, "") : "-")).join(",");
+        let sig = "none";
+        if (grp) { let h = 0; const pos = g.attributes.position.array; for (const v of seen) h += (pos[v * 3] * 3.1 + pos[v * 3 + 1] * 7.3 + pos[v * 3 + 2] * 1.7) * ((v % 13) + 1); sig = h.toFixed(3) + "|" + seen.size; }
+        if (drawn.has(sig) && drawn.get(sig) !== key) fault(at, `draws the same canvas as ${drawn.get(sig)}`);
+        drawn.set(sig, key);
         m.dispose();
         spritCases++;
       }

@@ -2351,7 +2351,7 @@ export function rigSpec(loadout) {
       // `stud` says a studdingsail is boomed out beyond this sail, which the renderer draws as an
       // extension of the sail rather than a sail of its own, because that is what it is
       sails: sailsOn(entry).map((sail, i) =>
-        sail ? { kind: sail.kind, berth: i, ...(studs[i] ? { stud: true } : {}) } : null,
+        sail ? { kind: sail.kind, berth: i, sail: sail.id, ...(studs[i] ? { stud: true } : {}) } : null,
       ).filter(Boolean),
     });
   }

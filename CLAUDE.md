@@ -142,8 +142,11 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   (which now carries each mast's `berths`): each mast stands as tall as its berths, a filled berth is
   a sail set and an empty one a yard crossed bare, so all 15 ways to fill four berths draw; the
   spanker is the mizzen's gaff berth, the headsails the bowsprit's (a jib-boom only when a spar of two
-  berths is stepped, the staysail on its first berth and the jib outside it on its second; with a
-  standing bowsprit or nothing stepped her stays come in to the bowsprit's cap), and `guns` arms her from the
+  berths is stepped, its first berth on the inner stay and its second on the stay to the jib-boom's
+  end; with a standing bowsprit or nothing stepped her stays come in to the bowsprit's cap). **What
+  is bent on a berth is what is drawn there**: the spec names each sail (`sail` on its entry), so a
+  staysail in the outer berth is a staysail on the outer stay, a trysail on the gaff stands short of
+  the spanker's peak, and a course on a topsail yard is drawn in a course's cloth. `guns` arms her from the
   lowest deck up, an armed port open with a barrel run out and an unarmed one painted shut. The
   registry scales her to the menu and sea lengths her form gives her, so nothing that places,
   follows, labels or sinks a ship knows the difference. Her beam at sea is the model's: the row's
