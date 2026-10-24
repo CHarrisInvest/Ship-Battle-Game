@@ -141,7 +141,9 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   as the first rate's; editing one class never touches another, and editing the kit touches them
   all, which is what the shiplab diff is for. The 2nd rate is a base second rate, 176 ft on the gun
   deck to the first rate's 186 and 49 ft in the beam to her 52, her decks kept within 5 cm of hers
-  apart, her rig at 0.955 of hers, and pierced 26/26/26+10/2 as her row says. She has no poop: her
+  apart, her rig at 0.955 of hers, her anchors at 0.946 of hers (her length), and pierced
+  26/26/26+10/2 as her row says. Fittings sized for the crew (the wheel, the capstan, the
+  carriages, the casks) are the first rate's own, since a man is a man's size. She has no poop: her
   quarterdeck runs from its break to her taffrail, the mizzen, the wheel and everything the first
   rate carries on her poop stand on it, and her stern and quarter galleries carry two tiers of
   windows and no open walks. A bespoke ship is built in metres from the same `rigSpec` as everyone
