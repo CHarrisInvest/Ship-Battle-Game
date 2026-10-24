@@ -154,7 +154,7 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   their ratio, and `npm run bespoke-test` holds the row to the model. Her livery is the game's: the
   trim the viewer's gold (`C.own`) or a rival's colour, through `model.dress`, which both model kinds
   answer (`paint` is the face-list ship's planking colour; a bespoke ship keeps her own painted
-  sides, but for the bands behind her ports, painted `LIVERY_BAND` of the way from oak to her trim
+  sides, but for the bands behind her gun decks' ports, painted `LIVERY_BAND` of the way from oak to her trim
   and kept that far, and a moulding in her trim under her cap rail),
   her sheet painted once per livery and gun count and pre-warmed when a round starts, her timber a
   tint over sheet and solids, her three pennants the game's cloth blown by wind and way, no ensign.
