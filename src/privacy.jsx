@@ -16,7 +16,7 @@
 
 import { analyticsLive, conversionsLive } from "./analytics.js";
 
-export const PRIVACY_UPDATED = "13 October 2026";
+export const PRIVACY_UPDATED = "24 October 2026";
 
 // The host this build was made for, set by `vite.config.js`. Each host's build names itself, so the
 // page is true wherever it is served from.
@@ -59,7 +59,7 @@ export function PrivacyPolicy({ Section, P, linkColor }) {
 
       <Section title="What the game saves">
         <P>
-          Your coins, ships, ship names and records are kept on the game's server, so they are there the
+          Your coins, ships, ship names and colours, and records are kept on the game's server, so they are there the
           next time you play. The first time you play, the game makes you a guest account. It holds no
           name or email of yours: only a random identifier, and a placeholder name and address the
           account system fills in itself. Your browser keeps a cookie that says which
