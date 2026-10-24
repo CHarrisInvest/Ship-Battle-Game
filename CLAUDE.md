@@ -131,14 +131,20 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   never led fore or aft to dodge a sail. That leaves both of the light xebec's masts and the heavy
   xebec's main single-roped; every other mast keeps its ladder and her pole, gaff masts included,
   whose ladders only brush the luff by the pole.
-- **A class may have a 3D model of her own, and the first rate does.** `src/render3d/bespoke/` is
-  the hand-modelled ships: `kit.js` is the toolkit they share (sweeps, baking, the materials, the
-  painted sheet, the sails, the railings, rope as lines, one sky fill `FILL` over the scene's lights),
-  `index.js` the registry `shipModel` asks before it turns to `shipFaces`, and one file per class,
-  `firstRate.js`, holding every figure of her: the form, the decks, the breaks, the tiers of ports,
-  the stern, the masts and their yards. A second class starts as a copy of that file over the same
-  kit; editing one class never touches another, and editing the kit touches them all, which is what
-  the shiplab diff is for. A bespoke ship is built in metres from the same `rigSpec` as everyone
+- **A class may have a 3D model of her own, and the first and second rates do.**
+  `src/render3d/bespoke/` is the hand-modelled ships: `kit.js` is the toolkit they share (sweeps,
+  baking, the materials, the painted sheet, the sails, the railings, rope as lines, one sky fill
+  `FILL` over the scene's lights), `index.js` the registry `shipModel` asks before it turns to
+  `shipFaces`, and one file per class, `firstRate.js` and `secondRate.js`, each holding every figure
+  of her: the form, the decks, the breaks, the tiers of ports, the stern, the masts and their yards.
+  A new class starts as a copy of one of those files over the same kit, the way the 2nd rate began
+  as the first rate's; editing one class never touches another, and editing the kit touches them
+  all, which is what the shiplab diff is for. The 2nd rate is a base second rate, 176 ft on the gun
+  deck to the first rate's 186 and 49 ft in the beam to her 52, her decks kept within 5 cm of hers
+  apart, her rig at 0.955 of hers, and pierced 26/26/26+10/2 as her row says. She has no poop: her
+  quarterdeck runs from its break to her taffrail, the mizzen, the wheel and everything the first
+  rate carries on her poop stand on it, and her stern and quarter galleries carry two tiers of
+  windows and no open walks. A bespoke ship is built in metres from the same `rigSpec` as everyone
   (which now carries each mast's `berths`): each mast stands as tall as its berths, a filled berth is
   a sail set and an empty one a yard crossed bare, so all 15 ways to fill four berths draw; the
   spanker is the mizzen's gaff berth, the headsails the bowsprit's (a jib-boom only when a spar of two
@@ -685,14 +691,16 @@ Rules above that the code does not yet satisfy. Tracked cleanups, not exceptions
   with different numbers. Refining a class means refining her form, not adding a size multiplier to
   the catalogue, which stays deliberately size-free.
 - **There is no poop deck in the form-drawn fleet.** A castle score raises a quarterdeck and then a
-  forecastle, and nothing stacks a third deck aft, so the 3rd rate, a seventy-four, and the 2nd rate
-  draw without the poop they carried over the quarterdeck. It wants a deck of its own in
-  `hullform.js` and `galleon.js` rather than a higher castle score, which only lifts the quarterdeck.
-  The first rate has hers, because she is modelled by hand.
+  forecastle, and nothing stacks a third deck aft, so the 3rd rate, a seventy-four, draws without
+  the poop she carried over the quarterdeck. It wants a deck of its own in `hullform.js` and
+  `galleon.js` rather than a higher castle score, which only lifts the quarterdeck. The first rate
+  has hers, because she is modelled by hand; the 2nd rate is modelled by hand without one, by design.
 - **A bespoke ship is the 3D sea's and the 3D plate's only.** Where WebGL cannot be had the first
-  rate is still drawn from her form by `drawGalleon`, and the catalogue bench still audits her ports
-  off the form, so the two drawings of her disagree in detail (the form says 28/28/30+12/2, the
-  model pierces 28/28/28 with 12 and 4 above). Nothing reads both. A bespoke ship has not been
+  and second rates are still drawn from their forms by `drawGalleon`, and the catalogue bench still
+  audits their ports off the form, so the two drawings of the first rate disagree in detail (the
+  form says 28/28/30+12/2, the model pierces 28/28/28 with 12 and 4 above). The 2nd rate's form and
+  model both pierce 26/26/26+10/2, but the two are still separate drawings of her and agree on
+  nothing else by construction. Nothing reads both. A bespoke ship has not been
   measured on a phone either: eleven of her in a free-for-all on both quality tiers is the field to
   look at before trusting the budget in `tools/bespoke-test.mjs`.
 - **Google sign-in has not been tried from the home-screen app on an iPhone.** A redirect out of a
