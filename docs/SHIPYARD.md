@@ -354,6 +354,26 @@ under the plain Oak identity cast, so she still builds the exact hull this file 
 by pixel diff, and a cutter is finally a small hull under a small rig. Her battery is the exception,
 and deliberately: see **The anchor is pierced too** below.
 
+**A class may be modelled by hand instead, and the first rate is.** `src/render3d/bespoke/` holds
+a toolkit (`kit.js`) and one file per such class (`firstRate.js`): her form, decks, breaks, tiers of
+ports, stern galleries, masts and yards are figures of her own, in metres, built into three.js
+geometry directly rather than through the galleon's face list. `shipmodel.js` asks the registry
+(`bespoke/index.js`) first and scales her to the menu and sea lengths her form gives her, so the
+plate, the sea, the labels, the dismasting and the sinking are none the wiser. She reads the same
+`rigSpec` as everyone: each mast's `berths` (new on the spec) says how tall it stands, a filled berth
+is a sail set and an empty one a yard crossed bare, the mizzen's gaff berth is her spanker, the
+bowsprit's berths her headsails, and `guns` arms her from the lowest deck up with an unarmed port
+painted shut. Her beam at sea is the model's: the row's `drawnLength` and `drawnBeam` repeat the
+model's figures and `seaForm` takes her collision beam from their ratio, which made the first rate's
+ellipse a fifth narrower and as wide as her planking. Her livery is the trim alone, in the game's
+own colours through `model.dress`, her sheet painted per livery and gun count and pre-warmed at the
+start of a round, her timber a tint, her pennants the game's cloth. Her sockets were capped with her:
+fore and main at large (four square sails), the mizzen at heavy (a spanker and four), the bowsprit
+at small (two headsails), with `speed` 0.79 to 0.796 and `hand` 0.62 to 0.629 so she makes the 8.29
+knots fully found she always did. `npm run bespoke-test` builds every bespoke class in Node at every
+stock fit and every way her fore and main can be filled. The 2D fallback and the port audit still
+draw her from her form.
+
 **Refining a class's look happens in the Ship Lab** (`shiplab/`, see the README). Her reference
 figures are sliders there, drawn by the real model as they move, and what comes out is a list of
 figures for `data/hulls.tsv` rather than an edit to anything the game reads. A shape the reference

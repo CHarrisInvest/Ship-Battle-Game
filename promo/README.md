@@ -22,8 +22,10 @@ The copy names no count of ships, since the fleet will grow.
 
 ## The trailer (`npm run trailer`)
 
-`trailer-1080x1920.mp4` is a 30-second trailer, upright, for a store listing, Shorts, Reels or a
-feed. `tools/trailer.mjs` cuts it from real frames: the game runs in a headless Chromium on a clock
+`npm run trailer` writes `trailer-1080x1920.mp4` here, a 30-second trailer, upright, for a store
+listing, Shorts, Reels or a feed. The video is not kept in the repository (`.gitignore` leaves
+`promo/*.mp4` out): at 14 MB it went into every server build Railway made, so cut it when it is
+wanted and keep it wherever the listing is. `tools/trailer.mjs` cuts it from real frames: the game runs in a headless Chromium on a clock
 the tool advances a sixtieth of a second a frame, so every frame is one step of a round and the
 picture is smooth however slowly the machine draws. A fight between 3rd rates with no HUD, the
 title, the menu with the mark turning on her plate, a free-for-all between fully found 1st rates

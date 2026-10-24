@@ -279,8 +279,8 @@ const FLEET = [
   {
     id: "firstRate", name: "1st rate", price: 100000,
     blurb: "A hundred guns and a flag at the main. There is nothing above her.",
-    hull: 2699, crew: 800, speed: 0.79, hand: 0.62, canvas: 5.68, tons: 297.7,
-    guns: [50, 2, 6], masts: ["bowsprit/large/headsails", "fore/heavy/square", "main/heavy/square", "mizzen/large/spanker"],
+    hull: 2699, crew: 800, speed: 0.796, hand: 0.629, canvas: 5.68, tons: 297.7,
+    guns: [50, 2, 6], masts: ["bowsprit/small/headsails", "fore/large/square/2", "main/large/square/2", "mizzen/heavy/spanker"],
   },
 ];
 /* end:hulls */
@@ -308,12 +308,13 @@ function buildHull(row, index) {
     bowsprit: r.bowsprit,
     guns: { broadside, bow, swivel },
     sockets: (r.masts || []).map((m) => {
-      const [station, size, families] = m.split("/");
+      const [station, size, families, least] = m.split("/");
       // the bowsprit takes a spar and every other station takes a mast, which is a fact about the
       // place rather than something a row has to say twice. `rigs` is the families the socket
       // takes, and an empty list is a socket that has not said, which takes anything of its size.
+      // `minBerths` is the fewest sails a mast stepped there must carry, 1 when the row says nothing.
       const rigs = families ? families.split("+").filter(Boolean) : [];
-      return { id: station, station, size, spar: SPAR_STATIONS.has(station), rigs };
+      return { id: station, station, size, spar: SPAR_STATIONS.has(station), rigs, minBerths: least ? Number(least) : 1 };
     }),
   };
 }
@@ -1267,6 +1268,9 @@ export function mastFitsSocket(mast, socket) {
   if (!mast || !socket || mast.part !== "mast") return false;
   if (!!mast.spar !== !!socket.spar) return false;
   if (socket.rigs && socket.rigs.length && !socket.rigs.includes(mast.family)) return false;
+  // a socket may ask for a mast of some height, which size cannot say: a lower mast and a topmast
+  // are both medium, and a first rate's fore and main step nothing shorter than a topmast
+  if (socket.minBerths && mast.berths.length < socket.minBerths) return false;
   return sizeRank(mast.size) <= sizeRank(socket.size);
 }
 
@@ -2341,10 +2345,13 @@ export function rigSpec(loadout) {
     masts.push({
       station: socket.station,
       height: entry.mast.height,
+      // every berth the mast has, filled or not, by category: a bespoke model reads how tall the
+      // mast stands off this, and crosses a bare yard for a berth left empty
+      berths: entry.mast.berths.map((b) => b.kind),
       // `stud` says a studdingsail is boomed out beyond this sail, which the renderer draws as an
       // extension of the sail rather than a sail of its own, because that is what it is
       sails: sailsOn(entry).map((sail, i) =>
-        sail ? { kind: sail.kind, berth: i, ...(studs[i] ? { stud: true } : {}) } : null,
+        sail ? { kind: sail.kind, berth: i, sail: sail.id, ...(studs[i] ? { stud: true } : {}) } : null,
       ).filter(Boolean),
     });
   }

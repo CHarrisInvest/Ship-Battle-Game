@@ -15,6 +15,7 @@
     "sim-test": "node tools/sim-test.mjs && node tools/captains-test.mjs",
     "exact-test": "node tools/exact-test.mjs",
     "hold-test": "node tools/hold-test.mjs",
+    "bespoke-test": "node tools/bespoke-test.mjs",
     "server": "node server/index.js",
     "server-test": "node server/test.mjs",
     "client-test": "node server/client-test.mjs",

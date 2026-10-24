@@ -28,6 +28,7 @@ jobs:
       - run: npm run sim-test
       # the hold's rules, pure, and the browser's store on them
       - run: npm run hold-test
+      - run: npm run bespoke-test
       # the exact maths agree with the built-in ones they replace
       - run: npm run exact-test
       # every round ends on the same bits in Chromium, WebKit and Firefox as in Node, which is what

@@ -96,6 +96,10 @@ input[type="range"] { width: 100%; accent-color: var(--gold); height: 28px; marg
 .ghost { font: 600 13px var(--ui); color: var(--gold); background: transparent; border: 1px solid var(--rule); border-radius: 20px; padding: 6px 12px; min-height: 34px; cursor: pointer; }
 .ghost:disabled { opacity: 0.4; cursor: default; }
 .lede { margin: 0; font-size: 13px; color: var(--muted); max-width: 62ch; }
+.berths { display: grid; gap: 6px; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+.berth { display: grid; gap: 3px; font-size: 12px; color: var(--muted); }
+.berth.set span { color: var(--gold); }
+.berth select { font-size: 14px; min-height: 36px; padding: 6px 8px; }
 .changes { width: 100%; min-height: 84px; resize: vertical; font: 12px/1.5 var(--mono); color: var(--ink); background: var(--deep); border: 1px solid var(--rule); border-radius: 10px; padding: 10px; }
 .actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .primary { font: 700 14px var(--ui); color: var(--gold-ink); background: var(--gold); border: 0; border-radius: 10px; padding: 10px 16px; min-height: 42px; cursor: pointer; }

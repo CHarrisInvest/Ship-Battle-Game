@@ -49,9 +49,14 @@ npm run shiplab -- --diff staging  # the fleet drawn from staging and from here;
 npm run shiplab -- --artifact      # the Ship Lab as one file, shiplab-out/ship-lab.html
 ```
 
+```bash
+npm run bespoke-test   # every hand-modelled class builds in Node, at every fit and every way to fill her berths
+```
+
 The Ship Lab (`shiplab/`) is a dev page for looking at the fleet and reshaping a class: her fit, her
-bearing, her speed, the wind on her flags and the figures her hull is drawn from, all drawn by the
-game's own ship model. `npm run dev` serves it at <http://localhost:5173/shiplab/>, and every preview
+rig (a mast for each socket and a chip for each berth of it), her bearing, her speed, the wind on her
+flags and the figures her hull is drawn from, all drawn by the game's own ship model. A class with a
+model of her own (`src/render3d/bespoke/`, the first rate so far) is drawn by it here as in the game. `npm run dev` serves it at <http://localhost:5173/shiplab/>, and every preview
 deployment builds it at `/shiplab/`; the real site does not. What it changes stays in the page until
 the figures it lists are copied back into `data/hulls.tsv`. The tool needs the same Chromium as the
 smoke test.
@@ -118,6 +123,12 @@ order; see "The road to production" below.
    - keep `RESEND_API_KEY` and `EMAIL_FROM` if codes should send from staging, and leave
      `GOOGLE_CLIENT_ID` unset unless the OAuth client is given
      `https://staging.sternchase.org/api/auth/callback/google` as a second redirect URI.
+   - on staging the menu's tap code stocks a hold for trying the shipyard, with nothing to set:
+     tapping STERNCHASE, HELM & HULL, STERNCHASE, HELM & HULL, each within a second and a half of
+     the last, adds 100,000 coins every time, because the server reads Railway's own
+     `RAILWAY_ENVIRONMENT_NAME`. In production the taps do nothing. `COIN_GRANT` overrides either:
+     `off` stops it on staging, `all` allows it for everyone, and a sign-in email (a comma-separated
+     list for several) allows it for those accounts alone.
 
    Railway deploys each environment from its own branch on every push, so `staging` deploys when
    `staging` moves and `production` when `main` does.

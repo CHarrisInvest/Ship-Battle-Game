@@ -22,6 +22,7 @@ import { createServer } from "node:http";
 import pg from "pg";
 import { testDatabase } from "./testdb.mjs";
 import { createApp } from "./app.js";
+import { grantRule } from "./config.js";
 import { makePool } from "./db.js";
 import { PARTS } from "../src/shipyard.js";
 import * as R from "../src/holdrules.js";
@@ -40,6 +41,7 @@ const pool = makePool(db.url);
 const clock = { t: Date.parse("2026-10-13T12:00:00Z") };
 const codes = new Map(); // the sign-in codes the server "sent", by address
 
+let grantTo = grantRule("");
 const server = createServer();
 await new Promise((r) => server.listen(0, "127.0.0.1", r));
 const base = `http://127.0.0.1:${server.address().port}`;
@@ -49,6 +51,8 @@ const app = await createApp({
     secret: "test-secret-that-is-long-enough-for-better-auth-0123456789", baseURL: base, origins: [ORIGIN], cookieDomain: null,
     sendCode: async (email, code) => { codes.set(email, code); },
     google: { clientId: "test-client.apps.googleusercontent.com", clientSecret: "test-secret" },
+    // the tap code's rule, switched by the test below as `COIN_GRANT` would set it
+    coinGrant: (user) => grantTo(user),
   },
   now: () => clock.t,
 });
@@ -120,6 +124,30 @@ try {
       "a stale version is refused with the current record, and nothing is bought");
     const unknown = await a("POST", "/hold/actions", { action: "bank", args: [{ earned: 1e9 }], version: bought.data.version });
     check(unknown.status === 422, "banking is not an action the browser can ask for");
+
+    // the menu's tap code: nothing at all unless the environment names her, then 100,000 a time
+    const asAction = await a("POST", "/hold/actions", { action: "grantCoins", args: [], version: bought.data.version });
+    check(asAction.status === 422, "the grant is not a shop action the browser can send");
+    const shut = await a("POST", "/hold/grant", {});
+    const still = (await a("GET", "/hold")).data;
+    check(shut.status === 404 && still.version === bought.data.version && still.hold.coins === bought.data.hold.coins,
+      "with COIN_GRANT unset the tap code does nothing, and says nothing");
+    check(!grantRule("owner@example.com")({ isAnonymous: true, email: "temp@guest" }) && grantRule("Owner@Example.com")({ isAnonymous: false, email: "owner@example.com" }),
+      "a list of addresses grants only to an account signed in with one of them, a guest never");
+    const anyone = { isAnonymous: true };
+    check(grantRule("", "staging")(anyone) && !grantRule("", "production")(anyone) && !grantRule("", undefined)(anyone),
+      "unset, it grants to everybody in Railway's staging and to nobody in production or off Railway");
+    check(!grantRule("off", "staging")(anyone) && grantRule("all", "production")(anyone),
+      "and COIN_GRANT overrides the environment either way");
+    grantTo = grantRule("all");
+    const one = await a("POST", "/hold/grant", {});
+    const two = await a("POST", "/hold/grant", {});
+    check(one.status === 200 && one.data.granted === R.GRANT_COINS && one.data.hold.coins === still.hold.coins + R.GRANT_COINS
+      && two.data.hold.coins === still.hold.coins + 2 * R.GRANT_COINS && two.data.version === still.version + 2,
+      "with COIN_GRANT=all each entry adds 100,000 coins and moves the version");
+    check(two.data.hold.granted === 2 * R.GRANT_COINS && two.data.hold.lifetime.earned === still.hold.lifetime.earned,
+      "on a ledger line of its own, leaving what she earned at sea alone");
+    grantTo = grantRule("");
   }
 
   {

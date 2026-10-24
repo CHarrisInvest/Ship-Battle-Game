@@ -111,7 +111,7 @@ const REFERENCE = [
   "era", "region", "role", "lod", "lbp", "beam", "draft", "depth", "freeboard", "lb", "bd",
   "burthen", "disp", "bowFine", "tumblehome", "deadrise", "sheer", "castle", "stern", "mastHeight",
   "decks", "wale", "topside", "roomSpace", "species", "timber", "crewMin", "cruise", "topSpeed",
-  "manoeuvre", "histGuns", "battery",
+  "manoeuvre", "histGuns", "battery", "drawnLength", "drawnBeam",
 ];
 
 /**
@@ -173,7 +173,11 @@ function hullRows() {
     const masts = need(r, "masts", file).split(/\s+/).filter(Boolean);
     // every socket is station/size/family+family, and each word has to be one the catalogue knows
     for (const m of masts) {
-      const [station, size, rigs] = m.split("/");
+      const [station, size, rigs, least, ...rest] = m.split("/");
+      if (rest.length) throw new Error(`${file}: "${id}" has a socket "${m}" with more than four parts (station/size/family/fewest sails)`);
+      if (least !== undefined && !(Number.isInteger(Number(least)) && Number(least) >= 1)) {
+        throw new Error(`${file}: "${id}" says her ${station} takes masts carrying at least "${least}" sails, which is not a whole number above zero`);
+      }
       if (!STATIONS.includes(station)) throw new Error(`${file}: "${id}" steps a mast at "${station}", which is not a station (${STATIONS.join(", ")})`);
       if (!SIZES.includes(size)) throw new Error(`${file}: "${id}" has a ${station} socket of size "${size}", which is not a size (${SIZES.join(", ")})`);
       for (const f of (rigs || "").split("+").filter(Boolean)) {

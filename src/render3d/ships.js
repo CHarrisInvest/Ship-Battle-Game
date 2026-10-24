@@ -50,6 +50,7 @@ import { rigSpec } from "../shipyard.js";
 import { hullForm } from "../hullform.js";
 import { WIND } from "./flags.js";
 import { CAPTAIN_TIMBER } from "../render/palette.js";
+import { prewarmBespoke } from "./bespoke/index.js";
 
 const SINK_TIME = 2.5; // seconds from the last step she was afloat to under the water
 const WARM = [1.0, 0.92, 0.78]; // the hit's light, a warm white, as linear-ish multipliers
@@ -62,38 +63,6 @@ const RIG_FLOOR = 0.8; // her rig stands at least this share of her length over 
 const RIG_MIN = 14; // ...and at least this many units
 const RIG_MAX_SCALE = 2.2; // and is never blown up more than this
 const RIG = { floor: RIG_FLOOR, min: RIG_MIN, max: RIG_MAX_SCALE };
-const LIVERY_MIX = 0.92; // how far her painted planking goes from the timber to her colour
-
-/**
- * Give a clone of the shared timber material her livery: every vertex the ship model marks
- * `paint` (shipmodel.js) takes `color` in place of the timber, keeping a little of each strake's
- * light and dark so she still reads as planked. One program serves every ship; the colour is a
- * uniform of her own.
- */
-function paintWith(mat, color) {
-  const uLivery = { value: color };
-  mat.userData.livery = uLivery;
-  mat.onBeforeCompile = (sh) => {
-    sh.uniforms.uLivery = uLivery;
-    sh.vertexShader = sh.vertexShader
-      .replace("#include <common>", "#include <common>\nattribute float paint;\nvarying float vPaint;")
-      .replace("#include <begin_vertex>", "#include <begin_vertex>\nvPaint = paint;");
-    sh.fragmentShader = sh.fragmentShader
-      .replace("#include <common>", "#include <common>\nuniform vec3 uLivery;\nvarying float vPaint;")
-      .replace(
-        "#include <color_fragment>",
-        `#include <color_fragment>
-        {
-          float lum = dot(vColor.rgb, vec3(0.2126, 0.7152, 0.0722));
-          vec3 coat = uLivery * clamp(0.72 + 1.5 * lum, 0.86, 1.1);
-          diffuseColor.rgb = mix(diffuseColor.rgb, coat, vPaint * ${LIVERY_MIX.toFixed(3)});
-        }`,
-      );
-  };
-  mat.customProgramCacheKey = () => "ship-livery";
-  return mat;
-}
-
 // a stable small hash of an id, for which way a ship goes down
 function hashId(id) {
   const str = String(id);
@@ -321,43 +290,44 @@ export function createShipLayer(scene, ctx) {
     // a captain's ship is built of the captain's timber, a rival of her class's own
     const spec = s.playerId ? { ...rigSpec(s.loadout), timber: CAPTAIN_TIMBER } : rigSpec(s.loadout);
     const model = ctx.shipModel(spec, { units: "sea", phase: (hashId(s.id) % 628) / 100, rig: RIG });
-    const [timber0, canvas0, flag0] = model.materials;
+    // her livery: gold for the viewer's own ship, her colour for anyone else. A face-list ship takes
+    // it on her flags and her rail band and paints her planking in `look.fill`; a bespoke ship takes
+    // it on her flags and her trim and keeps her own painted sides (the trim is all she wears)
     const livery = s.id === lastFx.me ? C.gold : look.fill;
-    const timber = paintWith(timber0.clone(), new THREE.Color(look.fill));
-    const canvas = canvas0.clone();
-    const flag = flag0.clone();
-    flag.color.set(livery);
-    const floor = canvas0.emissive.clone();
-    const mats = [timber, canvas, flag];
-    const meshes = [model.parts.hull, model.parts.rig].filter(Boolean);
-    for (const m of meshes) m.material = mats;
-    for (const m of model.flags.meshes) m.material = flag;
+    const dressed = model.dress({ trim: livery, paint: look.fill });
 
     // the whole of her, yawed on her heading; the model inside it heels, pitches and settles
     const outer = new THREE.Group();
     outer.name = "ship:" + s.id;
     outer.add(model.group);
 
-    // her livery along the rail
-    const trimMat = flag.clone();
-    trimMat.side = THREE.DoubleSide;
-    trimMat.polygonOffset = true;
-    trimMat.polygonOffsetFactor = -1;
-    trimMat.polygonOffsetUnits = -2;
-    const hullId = s.loadout.hull.id;
-    const bits = hullBits(hullId, model.scale);
-    const trim = new THREE.Mesh(bits.trim, trimMat);
-    trim.name = "trim";
-    trim.castShadow = false;
-    trim.receiveShadow = true;
-    model.group.add(trim);
-    // and her body under the water, in her darkest timber
-    const dark = look.cols.dark;
-    let bm = bottomMats.get(dark);
-    if (!bm) bottomMats.set(dark, (bm = ctx.toon.material({ color: dark, side: THREE.DoubleSide })));
-    const bottom = new THREE.Mesh(bits.bottom, bm);
-    bottom.name = "bottom";
-    model.group.add(bottom);
+    // a face-list hull is built from the waterline up and has no band of colour along her rail, so
+    // this layer gives her both; a bespoke ship brings her own trim and her own under-body
+    let trimMat = null, trim = null, bottom = null, freeboard = model.height * 0.25;
+    if (!model.bespoke) {
+      trimMat = dressed.flag.clone();
+      trimMat.side = THREE.DoubleSide;
+      trimMat.polygonOffset = true;
+      trimMat.polygonOffsetFactor = -1;
+      trimMat.polygonOffsetUnits = -2;
+      const hullId = s.loadout.hull.id;
+      const bits = hullBits(hullId, model.scale);
+      trim = new THREE.Mesh(bits.trim, trimMat);
+      trim.name = "trim";
+      trim.castShadow = false;
+      trim.receiveShadow = true;
+      model.group.add(trim);
+      // and her body under the water, in her darkest timber
+      const dark = look.cols.dark;
+      let bm = bottomMats.get(dark);
+      if (!bm) bottomMats.set(dark, (bm = ctx.toon.material({ color: dark, side: THREE.DoubleSide })));
+      bottom = new THREE.Mesh(bits.bottom, bm);
+      bottom.name = "bottom";
+      model.group.add(bottom);
+      freeboard = bits.freeboard;
+    } else {
+      freeboard = model.parts.hull ? Math.max(1, model.parts.hull.geometry.boundingBox.max.y * 0.45) : freeboard;
+    }
 
     // a small craft's rig, scaled up about each mast's foot until it reads (`RIG`, which the model
     // bakes into her rig's geometry)
@@ -402,7 +372,7 @@ export function createShipLayer(scene, ctx) {
 
     root.add(outer);
     return {
-      id: s.id, model, outer, mats, floor, trimMat, trim, bottom, freeboard: bits.freeboard, height, rigScale,
+      id: s.id, model, outer, lit: dressed.lit, trimMat, trim, bottom, freeboard, height, rigScale,
       stump, bow, bowGeo, bowMat, blob,
       stamp: 0, x: 0, y: 0, h: 0, roll: 0, speed: 0, mastDown: false, flashK: -1,
       sink: null, // { t, pitch, list, vx, vy, depth }
@@ -411,13 +381,12 @@ export function createShipLayer(scene, ctx) {
 
   function disposeEntry(e) {
     e.outer.removeFromParent();
-    e.model.group.remove(e.trim);
-    e.model.group.remove(e.bottom);
+    if (e.trim) e.model.group.remove(e.trim);
+    if (e.bottom) e.model.group.remove(e.bottom);
     if (e.stump) e.model.group.remove(e.stump);
-    e.model.dispose();
+    e.model.dispose(); // and her dressing with her
     if (e.blob) e.blob.removeFromParent();
-    for (const m of e.mats) m.dispose();
-    e.trimMat.dispose();
+    if (e.trimMat) e.trimMat.dispose();
     e.bowGeo.dispose();
     e.bowMat.dispose();
   }
@@ -430,7 +399,7 @@ export function createShipLayer(scene, ctx) {
     if (k === e.flashK) return;
     e.flashK = k;
     const g = k * k * FLASH_GAIN;
-    e.mats[0].emissive.setRGB(WARM[0] * g, WARM[1] * g, WARM[2] * g);
+    for (const m of e.lit) m.emissive.setRGB(WARM[0] * g, WARM[1] * g, WARM[2] * g);
   }
 
   function setMastDown(e, down) {
@@ -506,8 +475,18 @@ export function createShipLayer(scene, ctx) {
   }
 
   function update(world, fx, alpha, dt = 0) {
-    // a fresh picture is a fresh round: nothing from the last one goes down in this one
-    if (fx !== lastFx) { clearAll(); lastFx = fx; }
+    // a fresh picture is a fresh round: nothing from the last one goes down in this one, and the
+    // painted sheets the bespoke ships in it will wear are painted now rather than on the frame
+    // each first appears
+    if (fx !== lastFx) {
+      clearAll();
+      lastFx = fx;
+      prewarmBespoke(world.ships.map((s) => ({
+        hullId: s.loadout.hull.id,
+        trim: s.id === fx.me ? C.gold : ctx.lookOf(fx, s).fill,
+        guns: (s.loadout.guns.broadside || []).length,
+      })));
+    }
     frame++;
     const ships = world.ships;
     for (let i = 0; i < ships.length; i++) {

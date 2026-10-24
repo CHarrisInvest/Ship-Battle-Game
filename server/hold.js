@@ -5,7 +5,7 @@
  * version is refused with the record as it stands, which is how a second tab learns it is behind.
  */
 
-import { blank, applyAction } from "../src/holdrules.js";
+import { blank, applyAction, grantCoins } from "../src/holdrules.js";
 import { HttpError } from "./http.js";
 
 /** The user's hold row, locked for this transaction, made blank at version 1 if she has none. */
@@ -39,4 +39,18 @@ export async function act(client, userId, { action, args, version }, now) {
   const next = cur.version + 1;
   await writeHold(client, userId, rec, next, now);
   return { status: 200, body: { ...extras, hold: rec, version: next } };
+}
+
+/**
+ * `POST /hold/grant`: the menu's tap code, once the route has checked the account may use it. It
+ * needs no version from the browser, since it is the same grant whatever the record holds; the
+ * record moves on a version, so a tab with shop actions in flight is told it is behind and resends.
+ */
+export async function grant(client, userId, now) {
+  const cur = await lockHold(client, userId, now);
+  const out = grantCoins(cur.hold);
+  if (!out) return { status: 422, body: cur };
+  const next = cur.version + 1;
+  await writeHold(client, userId, out.rec, next, now);
+  return { status: 200, body: { granted: out.granted, hold: out.rec, version: next } };
 }

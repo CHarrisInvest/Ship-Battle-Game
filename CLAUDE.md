@@ -131,6 +131,34 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   never led fore or aft to dodge a sail. That leaves both of the light xebec's masts and the heavy
   xebec's main single-roped; every other mast keeps its ladder and her pole, gaff masts included,
   whose ladders only brush the luff by the pole.
+- **A class may have a 3D model of her own, and the first rate does.** `src/render3d/bespoke/` is
+  the hand-modelled ships: `kit.js` is the toolkit they share (sweeps, baking, the materials, the
+  painted sheet, the sails, the railings, rope as lines, one sky fill `FILL` over the scene's lights),
+  `index.js` the registry `shipModel` asks before it turns to `shipFaces`, and one file per class,
+  `firstRate.js`, holding every figure of her: the form, the decks, the breaks, the tiers of ports,
+  the stern, the masts and their yards. A second class starts as a copy of that file over the same
+  kit; editing one class never touches another, and editing the kit touches them all, which is what
+  the shiplab diff is for. A bespoke ship is built in metres from the same `rigSpec` as everyone
+  (which now carries each mast's `berths`): each mast stands as tall as its berths, a filled berth is
+  a sail set and an empty one a yard crossed bare, so all 15 ways to fill four berths draw; the
+  spanker is the mizzen's gaff berth, the headsails the bowsprit's (a jib-boom only when a spar of two
+  berths is stepped, its first berth on the inner stay and its second on the stay to the jib-boom's
+  end; with a standing bowsprit or nothing stepped her stays come in to the bowsprit's cap). **What
+  is bent on a berth is what is drawn there**: the spec names each sail (`sail` on its entry), so a
+  staysail in the outer berth is a staysail on the outer stay, a trysail on the gaff stands short of
+  the spanker's peak, and a course on a topsail yard is drawn in a course's cloth. `guns` arms her from the
+  lowest deck up, an armed port open with a barrel run out and an unarmed one painted shut. The
+  registry scales her to the menu and sea lengths her form gives her, so nothing that places,
+  follows, labels or sinks a ship knows the difference. Her beam at sea is the model's: the row's
+  `drawnLength` and `drawnBeam` are the model's figures, `seaForm` takes her collision beam from
+  their ratio, and `npm run bespoke-test` holds the row to the model. Her livery is the game's: the
+  trim the viewer's gold or a rival's colour, through `model.dress`, which both model kinds answer
+  (`paint` is the face-list ship's planking colour; a bespoke ship keeps her own painted sides),
+  her sheet painted once per livery and gun count and pre-warmed when a round starts, her timber a
+  tint over sheet and solids, her three pennants the game's cloth blown by wind and way, no ensign.
+  Her rope stays at sea as line batches under her hull and her rig. Her under-body is built to the
+  keel in copper. The 2D fallback still draws her from her form, as the bench audits her ports from
+  it. The Ship Lab's rig panel sets a mast per socket and a chip per berth for every class.
 - **The Ship Lab is how a ship's look is changed.** `shiplab/` is a dev page that draws every class
   through `createMenuShip` with her fit, bearing, speed, the wind and the hull figures she is drawn
   from under the reader's hand; the figures are reshaped live under a lab id of their own, so
@@ -199,7 +227,17 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   first time takes it, and an account that already has one keeps its own, because merging two holds
   duplicates coins; the account screen (`src/account.js`) warns a guest with progress first.
   Signing out and `POST /account/delete` leave the browser a fresh guest.
-  A shop action is `applyAction` under a row lock with the record's `version` as the check, so a stale tab is refused with the record as it stands. A voyage is
+  A shop action is `applyAction` under a row lock with the record's `version` as the check, so a stale tab is refused with the record as it stands.
+  **The menu's tap code is the server's to grant.** STERNCHASE, HELM & HULL, STERNCHASE,
+  HELM & HULL (`TAP_CODE` in the screen) asks `POST /hold/grant` for 100,000 coins
+  (`grantCoins` in `holdrules.js`, kept out of `ACTIONS` so no browser can send it as a shop
+  action), and the server grants only where it should: with `COIN_GRANT` unset it reads Railway's own
+  `RAILWAY_ENVIRONMENT_NAME` and grants to everybody in `staging` and nobody elsewhere, production
+  and a developer's machine included, so nothing has to be set; `COIN_GRANT` overrides that with
+  `all`, `off` or a list of emails, those accounts alone. The sequence is in the public script, so the check is the server's and a refusal is
+  a plain 404. What is granted goes on its own ledger line, `granted`, written only once something
+  has been, so `coins` still reconstructs, `earned` and every achievement are untouched, and a record
+  never granted still compares equal to a blank one. A voyage is
   started by the server (its seed, the loadout off its own copy of the hold, sent as the JSON the
   browser builds the world from), fed its input log in pieces no faster than real time, and banked
   only after the server replays it and finds it ends where the browser said. The replay runs in a
@@ -359,6 +397,9 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   the families it takes, written `station/size/family+family` in `hulls.tsv`. `mastFitsSocket`
   matches the family before the size rung, the way it matches spar against mast, because size alone
   let a lug mast step in a first rate and her "plain" stock fit really did sail under lug topmasts.
+  A socket may add a fourth figure, the fewest sails a mast stepped there carries
+  (`fore/large/square/2`, `minBerths` on the socket): a lower mast and a topmast are both medium, so
+  size cannot keep a bare lower mast out of a first rate's fore and main, and this does.
   Berths run deck upward, and a fore-and-aft driving sail sharing the lowest
   level with a course takes berth 0 with the square canvas above it, because the model holds one sail
   to a band and a spanker belongs at the bottom of the rig rather than over the topgallant.
@@ -606,8 +647,11 @@ rules runs `npm run hold-test`, and a change to `server/` runs `npm run server-t
 Docker locally.
 
 A change to how a ship is drawn (`galleon.js`, `hullform.js`, `render3d/shipmodel.js`,
-`render3d/flags.js` or a reference column in `hulls.tsv`) runs `npm run shiplab -- --diff staging`,
-which names every class it changed: a class in that list nobody meant to touch is the bug.
+`render3d/flags.js`, anything in `render3d/bespoke/` or a reference column in `hulls.tsv`) runs
+`npm run shiplab -- --diff staging`, which names every class it changed: a class in that list nobody
+meant to touch is the bug. A change to a bespoke ship or the kit runs `npm run bespoke-test` as
+well, which builds every such class in Node at every stock fit and every way her fore and main
+berths can be filled.
 
 Verify visual changes in the running game, not only in a standalone harness. A harness that
 replicates the draw code is useful for iterating on geometry and for comparing before and after, but
@@ -626,10 +670,17 @@ Rules above that the code does not yet satisfy. Tracked cleanups, not exceptions
   a fluyt's extreme tumblehome or a carrack's built-up works are still the shared family of shapes
   with different numbers. Refining a class means refining her form, not adding a size multiplier to
   the catalogue, which stays deliberately size-free.
-- **There is no poop deck.** A castle score raises a quarterdeck and then a forecastle, and nothing
-  stacks a third deck aft, so the 3rd rate, a seventy-four, and the big rates draw without the poop
-  they carried over the quarterdeck. It wants a deck of its own in `hullform.js` and `galleon.js`
-  rather than a higher castle score, which only lifts the quarterdeck.
+- **There is no poop deck in the form-drawn fleet.** A castle score raises a quarterdeck and then a
+  forecastle, and nothing stacks a third deck aft, so the 3rd rate, a seventy-four, and the 2nd rate
+  draw without the poop they carried over the quarterdeck. It wants a deck of its own in
+  `hullform.js` and `galleon.js` rather than a higher castle score, which only lifts the quarterdeck.
+  The first rate has hers, because she is modelled by hand.
+- **A bespoke ship is the 3D sea's and the 3D plate's only.** Where WebGL cannot be had the first
+  rate is still drawn from her form by `drawGalleon`, and the catalogue bench still audits her ports
+  off the form, so the two drawings of her disagree in detail (the form says 28/28/30+12/2, the
+  model pierces 28/28/28 with 12 and 4 above). Nothing reads both. A bespoke ship has not been
+  measured on a phone either: eleven of her in a free-for-all on both quality tiers is the field to
+  look at before trusting the budget in `tools/bespoke-test.mjs`.
 - **Google sign-in has not been tried from the home-screen app on an iPhone.** A redirect out of a
   standalone web app is where that flow tends to break, so leave `GOOGLE_CLIENT_ID` unset in
   production until it has been, and email codes carry sign-in alone.

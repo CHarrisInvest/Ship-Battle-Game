@@ -15,7 +15,10 @@
 
 import { createMenuShip } from "../src/render3d/menuship.js";
 import { WIND } from "../src/render3d/flags.js";
-import { HULL_LIST, HULLS, STANDARDS, fitOut, emptyLoadout, rigSpec, rate, rateOf } from "../src/shipyard.js";
+import {
+  HULL_LIST, HULLS, STANDARDS, MASTS, STATIONS, fitOut, emptyLoadout, rigSpec, rate, rateOf,
+  mastsForSocket, mastFitsSocket, berthsOf, sailsForBerth, sailFitsBerth, SAILS, SAIL_KINDS,
+} from "../src/shipyard.js";
 import { HULL_REF } from "../src/shipref.js";
 import { BASE_SPEED } from "../src/sim/ships.js";
 import { CAPTAIN_TIMBER } from "../src/render/palette.js";
@@ -54,6 +57,9 @@ const deg = (r) => (((r * 180) / Math.PI) % 360 + 360) % 360;
 const state = {
   view: "one", id: HULL_LIST[0].id, fit: "full", deg: 300, turn: true, speed: 0,
   wind: Math.round(deg(WIND.menu)), edits: {}, captain: true,
+  // her rig as set here, class by class: which mast in each socket and which of its berths are
+  // filled, starting from the fit above and changed one chip at a time (see "her rig" below)
+  rig: {},
 };
 try {
   const saved = JSON.parse(localStorage.getItem(STORE) || "null");
@@ -62,6 +68,8 @@ try {
 if (!HULLS[state.id]) state.id = HULL_LIST[0].id;
 if (!FITS.some((f) => f.key === state.fit)) state.fit = "full";
 for (const id of Object.keys(state.edits)) if (!HULLS[id]) delete state.edits[id];
+if (!state.rig || typeof state.rig !== "object") state.rig = {};
+for (const id of Object.keys(state.rig)) if (!HULLS[id]) delete state.rig[id];
 const fromHash = () => {
   const id = decodeURIComponent(location.hash.slice(1));
   if (HULLS[id]) { state.id = id; state.view = "one"; return true; }
@@ -98,15 +106,51 @@ function hullIdFor(id) {
   return lid;
 }
 
-const loadoutFor = (id) => {
+/* ---- her rig: what is stepped in each socket and what is bent on it ------------------------- */
+
+// The fit is a preset: it says what her guns are and what her rig starts as. The rig panel then
+// changes the rig socket by socket, mast and berth, the way the shipyard lets a captain, and the
+// result is drawn through the same `rigSpec` the game draws from.
+const fitLoadout = (id) => {
   const fit = FITS.find((f) => f.key === state.fit);
   return fit.quality == null ? emptyLoadout(id) : fitOut(id, fit.quality);
 };
-// one object per class, fit and shape, so a plate redrawn every frame sees the same spec
+const dearest = (list) => list.slice().sort((a, b) => a.price - b.price).pop() || null;
+// a loadout's rig in the panel's own terms: a mast id per socket and, per berth, the id of the sail
+// bent on there or null for a berth left empty
+function rigFromLoadout(lo) {
+  const out = {};
+  for (const s of lo.hull.sockets) {
+    const e = lo.rig[s.id];
+    out[s.id] = { mast: e && e.mast ? e.mast.id : null, sails: e && e.mast ? berthsOf(e.mast).map((_, i) => (e.sails[i] ? e.sails[i].id : null)) : [] };
+  }
+  return out;
+}
+// the sail a berth holds, as the panel recorded it: an id that still fits, or, from a lab that saved
+// only whether a berth was filled, the best sail of its kind
+function sailIn(berth, want) {
+  if (typeof want === "string") { const sail = SAILS[want]; return sailFitsBerth(sail, berth) ? sail : null; }
+  return want ? dearest(sailsForBerth(berth)) : null;
+}
+const rigOf = (id) => state.rig[id] || (state.rig[id] = rigFromLoadout(fitLoadout(id)));
+function loadoutFor(id) {
+  const lo = fitLoadout(id); // her guns, from the fit
+  const r = rigOf(id);
+  for (const s of lo.hull.sockets) {
+    const want = r[s.id], mast = want && want.mast ? MASTS[want.mast] : null;
+    if (!mast || !mastFitsSocket(mast, s)) { lo.rig[s.id] = { mast: null, sails: [], studs: [] }; continue; }
+    // a filled berth carries the best sail of its kind, as the fully found fit does
+    lo.rig[s.id] = { mast, sails: berthsOf(mast).map((b, i) => sailIn(b, want.sails[i])), studs: [] };
+  }
+  return lo;
+}
+const rigKey = (id) => JSON.stringify(rigOf(id));
+
+// one object per class, fit, rig and shape, so a plate redrawn every frame sees the same spec
 const specs = new Map();
 function specFor(id) {
   const hull = hullIdFor(id);
-  const key = `${id}|${state.fit}|${hull}|${state.captain}`;
+  const key = `${id}|${state.fit}|${rigKey(id)}|${hull}|${state.captain}`;
   let s = specs.get(key);
   if (!s) {
     // a captain's ship is drawn in the captain's timber, a rival in her class's own
@@ -233,8 +277,8 @@ const classPanel = el("section", { class: "panel", "aria-label": "Class" },
       el("button", { type: "button", class: "step", "aria-label": "Next class", text: "›", on: { click: () => stepClass(1) } }))),
   panelFacts);
 
-// her fit
-const fitButtons = FITS.map((f) => el("button", { type: "button", "aria-pressed": "false", text: f.label, on: { click: () => { state.fit = f.key; refresh(); } } }));
+// her fit: a preset for her guns and her rig, so choosing one starts every class's rig over from it
+const fitButtons = FITS.map((f) => el("button", { type: "button", "aria-pressed": "false", text: f.label, on: { click: () => { state.fit = f.key; state.rig = {}; refresh(); } } }));
 
 // whose she is, which decides her timber
 const WHOSE = [{ captain: true, label: "Yours" }, { captain: false, label: "A rival's" }];
@@ -271,6 +315,79 @@ const sailPanel = el("section", { class: "panel", "aria-label": "Fit and sailing
   el("div", { class: "row" }, el("label", { for: "wind" }, "Wind", windVal),
     el("div", { class: "inline" }, arrow, wind), el("div", { class: "actions" }, windReset)),
   el("p", { class: "lede", text: "Stopped, her flags fly down the wind. Give her way and they swing round to stream astern. The game's wind is fixed; this one is here to try others." }));
+
+// her rig: a mast for each socket and, for each berth of it, which sail is bent on there, as the
+// outfitter lets a captain choose
+const STATION_LABEL = { bowsprit: "Bowsprit", fore: "Fore", main: "Main", mizzen: "Mizzen", bonaventure: "Bonaventure" };
+const rigRows = el("div", { class: "rig-rows" });
+const rigReset = el("button", { type: "button", class: "ghost", text: "Back to the fit", on: { click: () => { delete state.rig[state.id]; refresh(); } } });
+const rigPanel = el("section", { class: "panel", "aria-label": "Her rig" },
+  el("div", { class: "shape-head" }, el("h2", { text: "Her rig" }), rigReset),
+  el("p", { class: "lede", text: "What is stepped in each socket and which sail is bent on each berth of it. A taller mast carries more sails; an empty berth is a yard crossed bare. Each sail is drawn as itself wherever it is bent on. Nothing here changes the game." }),
+  rigRows);
+function setMast(socketId, mastId) {
+  const r = rigOf(state.id);
+  const mast = mastId ? MASTS[mastId] : null;
+  r[socketId] = { mast: mast ? mast.id : null, sails: mast ? berthsOf(mast).map((b) => { const sail = dearest(sailsForBerth(b)); return sail ? sail.id : null; }) : [] };
+  fleetDirty = true;
+  save();
+  syncRig();
+}
+function setSail(socketId, i, sailId) {
+  const r = rigOf(state.id);
+  if (!r[socketId]) return;
+  r[socketId].sails[i] = sailId || null;
+  fleetDirty = true;
+  save();
+  syncRig();
+}
+// Where a berth is, named by the place rather than by a sail, since any sail of its kind may go
+// there: a yard by its height up the mast (the mizzen's lowest the crossjack yard), a headsail berth
+// by its stay, inner to outer, and a fore-and-aft berth by its spar.
+const SQUARE_NAMES = ["Lower yard", "Topsail yard", "Topgallant yard", "Royal yard", "Skysail yard"];
+const HEAD_NAMES = ["Inner stay", "Outer stay", "Flying stay"];
+function berthLabel(socket, mast, i) {
+  const berths = berthsOf(mast), b = berths[i];
+  const nth = (test) => berths.slice(0, i).filter(test).length;
+  if (b.kind === "LSQ" || b.kind === "SSQ") {
+    const n = nth((x) => x.kind === "LSQ" || x.kind === "SSQ");
+    if (socket.station === "mizzen" && n === 0) return "Crossjack yard";
+    return SQUARE_NAMES[Math.min(n, SQUARE_NAMES.length - 1)];
+  }
+  if (b.kind === "TRI" && socket.station === "bowsprit") return HEAD_NAMES[Math.min(nth((x) => x.kind === "TRI"), HEAD_NAMES.length - 1)];
+  if (b.kind === "GAF") return nth((x) => x.kind === "GAF") ? "Over the gaff" : "Gaff and boom";
+  if (b.kind === "LUG") return nth((x) => x.kind === "LUG") ? "Lug topsail" : "Lugsail";
+  if (b.kind === "LAT") return mast.family === "bermuda" ? "Bermuda mainsail" : "Lateen";
+  const kind = SAIL_KINDS[b.kind];
+  return kind ? kind.name : b.kind;
+}
+function syncRig() {
+  const hull = HULLS[state.id], r = rigOf(state.id);
+  rigRows.replaceChildren(...hull.sockets.map((s) => {
+    const fits = mastsForSocket(s).slice().sort((a, b) => a.price - b.price);
+    const chosen = r[s.id] && r[s.id].mast ? MASTS[r[s.id].mast] : null;
+    const pick = el("select", { "aria-label": `${STATION_LABEL[s.station] || s.station} mast`, on: { change: (e) => setMast(s.id, e.target.value || null) } },
+      el("option", { value: "", text: "Nothing stepped" }),
+      fits.map((m) => el("option", { value: m.id, text: `${m.name} (${m.berths.length} ${m.berths.length === 1 ? "sail" : "sails"})` })));
+    pick.value = chosen ? chosen.id : "";
+    // a berth each: its place on the mast, and the sail bent on it, chosen from every sail that fits
+    const berths = chosen ? berthsOf(chosen).map((b, i) => {
+      const held = sailIn(b, r[s.id].sails[i]);
+      const name = berthLabel(s, chosen, i);
+      const sel = el("select", { class: "berth-pick", "aria-label": `${STATION_LABEL[s.station] || s.station} ${name.toLowerCase()}`, on: { change: (e) => setSail(s.id, i, e.target.value) } },
+        el("option", { value: "", text: "Empty" }),
+        sailsForBerth(b).slice().sort((x, y) => x.price - y.price).map((sail) => el("option", { value: sail.id, text: sail.name })));
+      sel.value = held ? held.id : "";
+      return el("label", { class: "berth" + (held ? " set" : "") }, el("span", { text: name }), sel);
+    }) : [];
+    return el("div", { class: "row" },
+      el("span", { class: "label" }, `${STATION_LABEL[s.station] || s.station}`, el("span", { class: "note", text: `${s.size} socket, ${s.rigs.length ? s.rigs.join(" or ") : "any"} rig` })),
+      pick,
+      berths.length ? el("div", { class: "berths" }, berths) : null);
+  }));
+  rigReset.disabled = !state.rig[state.id];
+  syncSailing();
+}
 
 // her shape
 const shapeRows = new Map();
@@ -342,7 +459,7 @@ async function copyChanges() {
   }
 }
 
-controls.append(classPanel, sailPanel, shapePanel, changePanel);
+controls.append(classPanel, sailPanel, rigPanel, shapePanel, changePanel);
 
 /* ---- keeping the page in step with the state ----------------------------------------------------- */
 
@@ -354,6 +471,7 @@ function setView(v) {
   $("#stage-one").hidden = v !== "one";
   fleetBox.hidden = v !== "fleet";
   classPanel.hidden = v !== "one";
+  rigPanel.hidden = v !== "one";
   shapePanel.hidden = v !== "one";
   turnToggle.hidden = v !== "one";
   if (v === "fleet") fleetDirty = true;
@@ -406,6 +524,7 @@ function refresh() {
   describe(state.id);
   syncBearing();
   syncSailing();
+  syncRig();
   syncShape();
   fleetDirty = true;
   save();
