@@ -334,12 +334,16 @@ function withFill(m) {
 /** The lower masts' iron bands, which the solid material paints: one every 1.45 m, 0.12 m deep. */
 export const BAND = { every: 1.45, width: 0.12 };
 
+/** How much of her trim's own colour the trim gives off, over what the lights put on it. */
+export const TRIM_LIFT = 0.15;
+
 /**
  * The solid material: every timber, iron, copper and trim part of a ship in one Lambert material
  * that takes its colour from the vertices. Each vertex carries a mark (`aMark`): -2 for trim, which
  * the shader paints in `trim` (a uniform of this material's own, so changing it costs nothing); 0
  * and up along a lower mast, where the shader paints the black iron bands; -1 for everything else.
- * `tint` multiplies every colour but the trim, for her timber.
+ * `tint` multiplies every colour but the trim, for her timber. The trim also gives off `TRIM_LIFT` of
+ * its own colour, so her livery holds its colour on the shaded side of a dark hull.
  */
 export function solidMaterial({ trim = "#e8c877", tint = null } = {}) {
   const m = new THREE.MeshLambertMaterial({ vertexColors: true });
@@ -353,7 +357,7 @@ export function solidMaterial({ trim = "#e8c877", tint = null } = {}) {
         varying float vMark;
         float bandRun( float x ) { return floor( x ) * ${w} + min( fract( x ), ${w} ); }`),
       "#include <color_fragment>", `float bandFw = max( fwidth( vMark ), 1e-4 );
-        if ( vMark < -1.5 ) diffuseColor.rgb = trimColor;
+        if ( vMark < -1.5 ) { diffuseColor.rgb = trimColor; totalEmissiveRadiance += ${TRIM_LIFT.toFixed(3)} * trimColor; }
         else if ( vMark >= 0.0 ) diffuseColor.rgb = mix( diffuseColor.rgb, bandColor,
           clamp( ( bandRun( vMark + 0.5 * bandFw ) - bandRun( vMark - 0.5 * bandFw ) ) / bandFw, 0.0, 1.0 ) );`);
   };
@@ -419,9 +423,13 @@ export function lineGeo(segs) {
   return g;
 }
 
-/** Her flags' cloth, in her livery: front-sided, because flags.js lays down both faces itself. */
+/**
+ * Her flags' cloth, in her livery: front-sided, because flags.js lays down both faces itself. It gives
+ * off `FLAG_LIFT` of its own colour, so a pennant streaming through the shade of her sails stays hers.
+ */
+export const FLAG_LIFT = 0.25;
 export function flagMaterial(color = "#e8c877") {
-  const m = new THREE.MeshLambertMaterial({ color: col(color) });
+  const c = col(color), m = new THREE.MeshLambertMaterial({ color: c, emissive: c.clone().multiplyScalar(FLAG_LIFT) });
   m.customProgramCacheKey = () => "bespoke-flag";
   return withFill(m);
 }
