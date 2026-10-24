@@ -24,6 +24,11 @@
  *   GOOGLE_CLIENT_ID     optional, with GOOGLE_CLIENT_SECRET: turns on sign-in with Google. The
  *   GOOGLE_CLIENT_SECRET OAuth client's redirect URI is BETTER_AUTH_URL + API_PREFIX +
  *                        `/auth/callback/google`, e.g. https://sternchase.org/api/auth/callback/google.
+ *   COIN_GRANT           optional: who the menu's tap code may hand 100,000 coins to. Unset, nobody,
+ *                        which is how production should stay unless the owner wants it there.
+ *                        `all` grants to every captain of this environment, guests included, which
+ *                        is meant for staging. Anything else is a comma-separated list of email
+ *                        addresses, and only an account signed in with one of them is granted.
  *   PORT                 Railway sets it.
  */
 
@@ -47,5 +52,19 @@ export function configFromEnv(env = process.env) {
     sendCode: env.RESEND_API_KEY ? resendSender({ apiKey: env.RESEND_API_KEY, from: need("EMAIL_FROM") }) : null,
     google: env.GOOGLE_CLIENT_ID ? { clientId: env.GOOGLE_CLIENT_ID, clientSecret: need("GOOGLE_CLIENT_SECRET") } : null,
     port: Number(env.PORT) || 8787,
+    coinGrant: grantRule(env.COIN_GRANT),
   };
+}
+
+/**
+ * Whom `COIN_GRANT` lets the tap code grant coins to, as a test of a Better Auth user: nobody when it
+ * is unset or blank, everybody for `all`, and otherwise only a signed-in account whose email is on
+ * the list, compared without regard to case. A guest has no email of her own and is never on a list.
+ */
+export function grantRule(raw) {
+  const v = String(raw || "").trim();
+  if (!v) return () => false;
+  if (v.toLowerCase() === "all") return () => true;
+  const emails = new Set(v.split(",").map((e) => e.trim().toLowerCase()).filter(Boolean));
+  return (user) => !!user && !user.isAnonymous && typeof user.email === "string" && emails.has(user.email.toLowerCase());
 }

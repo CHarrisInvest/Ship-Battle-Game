@@ -217,6 +217,20 @@ const act = (rec, name, ...args) => R.applyAction(rec, name, args);
   check(R.spend(fresh(), 10) === null && R.spend(rich(100), 40).rec.coins === 60, "spend refuses what she does not have");
 }
 
+{
+  // the menu's tap code: coins handed over outright, on a ledger line of their own
+  const rec = fresh();
+  check(!("granted" in rec), "a blank record carries no grant line, so a record never granted still reads as blank");
+  check(act(rec, "grantCoins") === null, "the grant is not a shop action");
+  const g = R.grantCoins(rec);
+  check(g && g.granted === R.GRANT_COINS && g.rec.coins === R.GRANT_COINS && g.rec.granted === R.GRANT_COINS
+    && g.rec.lifetime.earned === 0 && json(rec) === json(fresh()), "a grant adds 100,000 coins on its own line, earns nothing, and edits nothing it was handed");
+  const twice = R.grantCoins(g.rec);
+  check(twice.rec.coins === 2 * R.GRANT_COINS && twice.rec.granted === 2 * R.GRANT_COINS, "and again each time");
+  check(json(R.sanitize(JSON.parse(json(twice.rec)))) === json(twice.rec), "a granted record survives sanitize unchanged");
+  check(R.grantCoins(rec, -5) === null && R.grantCoins(rec, "x") === null, "a grant of nothing, or of junk, is refused");
+}
+
 if (failures.length) {
   console.log(`\n${failures.length} FAILURE${failures.length === 1 ? "" : "S"}`);
   process.exit(1);

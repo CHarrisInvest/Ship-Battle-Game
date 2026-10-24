@@ -146,7 +146,9 @@ export function blank() {
     // thing about an achievement that IS stored, and it is a record of payments rather than of the
     // achievement: `settle` compares what the list says is earned against what has been paid and
     // pays the difference, so a rung is paid once and a row added later pays for what she did
-    // before it existed. `coins` reconstructs as earned plus bounties less spent.
+    // before it existed. `coins` reconstructs as earned plus bounties plus `granted` less spent.
+    // `granted` (coins the server handed her outright, see `grantCoins`) is written only once
+    // something has been granted, so a record that never was compares equal to a blank one.
     bounties: 0,
     paid: {}, // achievement id to rungs paid, created on demand
     // `repaired` is coins spent at sea that never reached the hold, so it is not reconstructible
@@ -181,6 +183,7 @@ export function sanitize(raw) {
   rec.coins = num(raw.coins);
   rec.spent = num(raw.spent);
   rec.bounties = num(raw.bounties);
+  if (num(raw.granted) > 0) rec.granted = num(raw.granted);
   const paid = raw.paid && typeof raw.paid === "object" ? raw.paid : {};
   for (const [id, n] of Object.entries(paid)) {
     if (num(n) <= 0) continue;
@@ -1006,6 +1009,20 @@ export const ACTIONS = Object.freeze({
  * completes is paid in the same write, or `null` for an unknown name, a refusal or arguments that
  * name nothing. Never throws on bad arguments: from the server, they come off the network.
  */
+/**
+ * COINS HANDED OVER OUTRIGHT, by the server and never by a shop action: it is the owner's way of
+ * stocking a hold to try the shipyard with (the tap code on the menu). It is not in `ACTIONS`, so no
+ * browser can send it through the shop's door; the server's own route calls it, and only for the
+ * accounts its configuration names. What is granted goes on its own line of the ledger, `granted`,
+ * so `coins` still reconstructs and `earned`, which voyages and achievements read, is untouched.
+ */
+export const GRANT_COINS = 100000;
+export function grantCoins(rec, amount = GRANT_COINS) {
+  const n = Math.floor(num(amount));
+  if (!(n > 0)) return null;
+  return { rec: settle({ ...rec, coins: rec.coins + n, granted: num(rec.granted) + n }).rec, granted: n };
+}
+
 export function applyAction(rec, name, args) {
   const fn = own(ACTIONS, name);
   if (!fn || !Array.isArray(args)) return null;

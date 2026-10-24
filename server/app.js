@@ -11,6 +11,7 @@
  *   POST /account/delete         delete her account, her hold and her voyages, at once
  *   GET  /hold                   the captain's hold and its version
  *   POST /hold/actions           one shop action, `{ action, args, version }`
+ *   POST /hold/grant             100,000 coins, for an account `COIN_GRANT` names (the menu's tap code)
  *
  *   POST /rounds                 start a voyage
  *   POST /rounds/:id/inputs      a piece of its input log
@@ -23,7 +24,7 @@ import { betterAuth } from "better-auth";
 import { authOptions } from "./auth.js";
 import { migrate, transaction } from "./db.js";
 import { cors, send, readJson, HttpError } from "./http.js";
-import { lockHold, parseAction, act } from "./hold.js";
+import { lockHold, parseAction, act, grant } from "./hold.js";
 import { engineHash } from "./enginehash.js";
 import { replayer, startRound, addInputs, finishRound } from "./rounds.js";
 import { createOnline, makeTicket } from "./online.js";
@@ -103,6 +104,17 @@ export async function createApp({ pool, config, now = () => Date.now(), catchUp,
       const user = await userOf(req);
       const body = parseAction(await readJson(req));
       return transaction(pool, (c) => act(c, user.id, body, now));
+    },
+    // The menu's tap code. The code itself is in the game's public script, so this is where it is
+    // decided whether it does anything: only for an account the environment's `COIN_GRANT` names,
+    // and a refusal says nothing a stranger could learn from. A JSON body is asked for, though it
+    // carries nothing, so another site's form cannot send this.
+    "POST /hold/grant": async (req) => {
+      const user = await userOf(req);
+      await readJson(req);
+      const allowed = config.coinGrant || (() => false);
+      if (!allowed(user)) return { status: 404, body: { error: "not found" } };
+      return transaction(pool, (c) => grant(c, user.id, now));
     },
     // whether she still has a place in a lobby: a reopened app asks, and goes straight back to it
     "GET /online/where": async (req) => {
