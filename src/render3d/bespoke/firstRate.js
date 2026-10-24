@@ -247,6 +247,15 @@ const jb = (f) => jbStart.clone().addScaledVector(bsDir, JB_LEN * f);
 const CAT_X = 24.95; // where the catheads leave the bow; each anchor hangs from a cathead's end
 const RING_DROP = 1.3; // the top of each anchor's ring hangs this far below its cathead's end
 
+/**
+ * How far forward and how high she can ever reach, rig and jib-boom at their fullest: the menu frames
+ * her by these rather than by what she carries today, so stepping a shorter spar or striking a
+ * topgallant never makes her jump in her box. They are the extent of her model fully found (the cap
+ * knob at the jib-boom's end, the main truck with royals aloft), and `npm run bespoke-test` holds
+ * them to it, so she is framed exactly as she was when the frame followed her box.
+ */
+export const FIRST_RATE_FRAME = { reach: 55.998, top: 62.548 };
+
 /* ---- decks' figures ---------------------------------------------------------------------------- */
 const CAMBER = 0.12;
 const deckY = (x, Y, z = 0) => yOf(x, Y) + CAMBER * Math.max(0, 1 - Math.pow(z / deckHalf(x, Y), 2));
@@ -271,31 +280,75 @@ const CH_K = 36, CH_STEP = 0.66, CH_R = { x: 520, y: 960, w: Math.round((1 + 9 *
 
 /**
  * What the spec says she carries, in this model's own terms: for each mast its cap (how many square
- * sails tall it stands, 1 to 4) and which of them are set; whether the spanker is set; how many
- * headsails; her fitted broadside. A station the spec does not step stays null and is not built.
+ * sails tall it stands, 1 to 4) and what is set on each yard; what is set on her spanker's gaff; what
+ * is set on each of her headsail stays; her fitted broadside. A station the spec does not step stays
+ * null and is not built.
+ *
+ * A place in the rig holds the id of the sail bent on there (`staysail`, `jibFine`, `trysail` ...),
+ * or false when it is empty, so what a captain put where in the outfitter is what is drawn there: a
+ * staysail in the outer berth is drawn as a staysail on the outer stay, and a jib inboard as a jib.
+ * A spec from before sails were named says only that a berth is filled, and reads as `true`, which
+ * draws the sail that place was first drawn with.
  */
 export function rigOf(spec) {
-  const out = { fore: null, main: null, mizzen: null, gaff: false, jibs: 0, guns: PORTS_A_SIDE };
+  // `sprit` is what is stepped on the bowsprit, as the length of spar it carries (0 nothing, 1 a
+  // standing bowsprit, 2 a jib-boom run out beyond it), and what is set on each of its two stays,
+  // berth by berth: the fore topmast stay first, the stay out to the jib-boom's end second
+  const out = { fore: null, main: null, mizzen: null, gaff: false, sprit: { spar: 0, set: [false, false] }, guns: PORTS_A_SIDE };
   if (spec && Number.isFinite(spec.guns)) out.guns = Math.max(0, Math.min(PORTS_A_SIDE, spec.guns));
+  const named = (s) => s.sail || true;
   for (const m of (spec && spec.masts) || []) {
     const berths = m.berths || [];
     const sails = m.sails || [];
-    if (m.station === "bowsprit") { out.jibs = Math.min(2, sails.filter((s) => s.kind === "TRI").length); continue; }
+    const at = new Map(sails.map((s) => [s.berth, s]));
+    if (m.station === "bowsprit") {
+      // a spec with no berth list (an old one) is read as long as its sails need
+      const n = berths.length || (sails.length ? Math.max(...sails.map((s) => s.berth)) + 1 : 0);
+      const spar = Math.max(1, Math.min(2, n));
+      const set = [0, 1].map((i) => (i < spar && at.has(i) && at.get(i).kind === "TRI" ? named(at.get(i)) : false));
+      out.sprit = { spar, set };
+      continue;
+    }
     if (!MAST_BY_STATION[m.station]) continue;
     const squares = berths.map((k, i) => ({ k, i })).filter((b) => b.k !== "GAF");
-    const setAt = new Set(sails.map((s) => s.berth));
     // the fore and main count every berth, the mizzen those over her spanker; a mast with no berth
     // list (an old spec) is read as tall as its highest sail
     const count = squares.length || (sails.length ? Math.max(...sails.map((s) => s.berth)) + 1 : 0);
     const cap = Math.max(1, Math.min(4, count));
     const set = [false, false, false, false];
-    squares.forEach((b, j) => { if (j < 4 && setAt.has(b.i)) set[j] = true; });
-    if (!squares.length) sails.forEach((s) => { if (s.kind !== "GAF" && s.berth < 4) set[s.berth] = true; });
+    squares.forEach((b, j) => { if (j < 4 && at.has(b.i)) set[j] = named(at.get(b.i)); });
+    if (!squares.length) sails.forEach((s) => { if (s.kind !== "GAF" && s.berth < 4) set[s.berth] = named(s); });
     out[m.station] = { cap, sails: set };
-    if (m.station === "mizzen") out.gaff = sails.some((s) => s.kind === "GAF");
+    if (m.station === "mizzen") { const g = sails.find((s) => s.kind === "GAF"); out.gaff = g ? named(g) : false; }
   }
   return out;
 }
+
+/**
+ * HOW EACH SAIL IS CUT, by what it is rather than where it hangs. The catalogue's plain and fine
+ * grades of a sail are the same cloth to look at, so a sail's look is read off its id's stem.
+ */
+const sailStem = (id) => (typeof id === "string" ? id.replace(/Fine$/, "") : null);
+// square canvas: the cloth it is drawn in, by what was bent on rather than by which yard
+const squareCloth = (id, fallback) => {
+  const s = sailStem(id);
+  return s === "course" ? "course" : s === "topsail" ? "topsail" : s ? "plain" : fallback;
+};
+// A headsail on one of her two stays: where its tack and head sit up the stay, how far aft its clew
+// stands as a share of the run from the foremast to the spar's end, how high over the stay's foot,
+// and how full it draws. The staysail on the inner stay and the jib on the outer are the two she was
+// first drawn with; the rest are each sail cut to its own size on the other stay.
+const HEADSAIL = {
+  staysail: [{ tack: 0.15, head: 0.72, share: 0.33, dy: 2.0, belly: 1.0 }, { tack: 0.14, head: 0.62, share: 0.7, dy: 2.4, belly: 1.0 }],
+  jib: [{ tack: 0.12, head: 0.8, share: 0.27, dy: 1.6, belly: 1.2 }, { tack: 0.1, head: 0.75, share: 0.63, dy: 1.3, belly: 1.4 }],
+  flyingJib: [{ tack: 0.2, head: 0.66, share: 0.4, dy: 2.6, belly: 0.9 }, { tack: 0.16, head: 0.68, share: 0.74, dy: 2.4, belly: 1.0 }],
+};
+const BERTH_HEADSAIL = ["staysail", "jib"]; // what each stay was first drawn with, for a sail with no name
+const headsailCut = (id, stay) => (HEADSAIL[sailStem(id)] || HEADSAIL[BERTH_HEADSAIL[stay]])[stay];
+// a fore-and-aft sail on her mizzen gaff, as a share of the full spanker: a gaff mainsail is as big,
+// a trysail a smaller, heavier sail, a gaff topsail a scrap
+const GAFF_SIZE = { spanker: 1, gaffMain: 1, trysail: 0.74, gaffTopsail: 0.52 };
+const gaffSize = (id) => GAFF_SIZE[sailStem(id)] ?? 1;
 
 /* ---- the texture sheet ---------------------------------------------------------------------------- */
 
@@ -1056,12 +1109,19 @@ export function buildFirstRate(spec) {
   const flags = [];
 
   // the bowsprit, the jib-boom laid along its top with a black cap block at the bowsprit's end, and a cap at the tip
+  // The bowsprit is always hers; the jib-boom only when a spar carrying two headsails is stepped on
+  // it. Without one the bowsprit's cap takes the trim knob the jib-boom's end would have carried.
+  const boom = cfg.sprit.spar >= 2;
   if (spec?.bowsprit !== false) {
     const bw = new THREE.Group();
     fitAdd(bw, PINE, rodGeo(bsR(0) + 0.06, bsR(1), bs(-0.12), bs(1), 8));
-    fitAdd(bw, PINE, rodGeo(0.27, 0.13, jbStart.clone().addScaledVector(bsDir, -0.4), jb(1), 6));
     fitAdd(bw, blackMat, frameBox(0.45, 1.6, 0.95, bs(1).addScaledVector(bsPerp, 0.2), bsDir, bsPerp, V3(0, 0, 1)));
-    fitAdd(bw, trimMat, rodGeo(0.16, 0.16, jb(0.99), jb(1.004), 6), sphereGeo(0.16, jb(1.004)));
+    if (boom) {
+      fitAdd(bw, PINE, rodGeo(0.27, 0.13, jbStart.clone().addScaledVector(bsDir, -0.4), jb(1), 6));
+      fitAdd(bw, trimMat, rodGeo(0.16, 0.16, jb(0.99), jb(1.004), 6), sphereGeo(0.16, jb(1.004)));
+    } else {
+      fitAdd(bw, trimMat, sphereGeo(0.2, bs(1).addScaledVector(bsDir, 0.3).addScaledVector(bsPerp, 0.2)));
+    }
     // the bowsprit is the hull's: it stays when she is dismasted
     hullPieces.push({ geo: bakeGeos(bw).get("solid"), material: SLOT.solid });
   }
@@ -1128,10 +1188,10 @@ export function buildFirstRate(spec) {
     }));
     // sails only where set; each foot's rounded middle clears the platform or crosstrees below it
     const footOver = (yHead, clear) => yHead - (yHead - clear) / 1.12;
-    if (set(0)) sails.square(Y[0].x - 0.3, Y[0].y - 0.3, m.foot, Y[0].w * 0.94, Y[0].w * 0.98, mi, "course");
-    if (set(1) && Y[1]) sails.square(Y[1].x - 0.3, Y[1].y - 0.3, footOver(Y[1].y - 0.3, m.top + 0.5), Y[1].w * 0.94, Y[0].w * 0.86, mi + 1.7, "topsail");
-    if (set(2) && Y[2]) sails.square(Y[2].x - 0.3, Y[2].y - 0.3, footOver(Y[2].y - 0.3, m.xt + 0.5), Y[2].w * 0.94, Y[1].w * 0.84, mi + 3.1, "plain");
-    if (set(3) && Y[3]) sails.square(Y[3].x - 0.3, Y[3].y - 0.3, footOver(Y[3].y - 0.3, Y[2].y + 0.4), Y[3].w * 0.94, Y[2].w * 0.86, mi + 4.4, "plain");
+    if (set(0)) sails.square(Y[0].x - 0.3, Y[0].y - 0.3, m.foot, Y[0].w * 0.94, Y[0].w * 0.98, mi, squareCloth(c.sails[0], "course"));
+    if (set(1) && Y[1]) sails.square(Y[1].x - 0.3, Y[1].y - 0.3, footOver(Y[1].y - 0.3, m.top + 0.5), Y[1].w * 0.94, Y[0].w * 0.86, mi + 1.7, squareCloth(c.sails[1], "topsail"));
+    if (set(2) && Y[2]) sails.square(Y[2].x - 0.3, Y[2].y - 0.3, footOver(Y[2].y - 0.3, m.xt + 0.5), Y[2].w * 0.94, Y[1].w * 0.84, mi + 3.1, squareCloth(c.sails[2], "plain"));
+    if (set(3) && Y[3]) sails.square(Y[3].x - 0.3, Y[3].y - 0.3, footOver(Y[3].y - 0.3, Y[2].y + 0.4), Y[3].w * 0.94, Y[2].w * 0.86, mi + 4.4, squareCloth(c.sails[3], "plain"));
     // rake this mast's sails: each breathing point moves only in x, so its rest x and reach are re-based on the raked point
     const cR = Math.cos(m.rake);
     for (let i = s0; i < sails.parts.length; i++) {
@@ -1174,17 +1234,34 @@ export function buildFirstRate(spec) {
   const onBs = (f) => bs(f).addScaledVector(bsPerp, bsR(f));
   const sprit = spec?.bowsprit !== false;
   if (F && sprit) {
+    // Three stays come forward from the foremast whatever is set on them: the forestay to the
+    // bowsprit by the stem, the fore topmast stay to the bowsprit's end and the fore topgallant
+    // stay to the jib-boom's end. Without a jib-boom the topgallant stay comes in to the bowsprit's
+    // cap and the topmast stay sets up a little further inboard, so the two never share a point.
     const foreTop = F.at(F.x + 2.6, F.top), forestayFoot = onBs(0.1);
-    const ftmTop = F.at(F.xT + 1.0, F.xt - 0.3), ftmFoot = onBs(0.95), jibTop = F.n >= 2 ? tgHead(F) : below(F), jibFoot = jb(1);
+    const capTop = bs(1).addScaledVector(bsPerp, 0.95);
+    const ftmTop = F.at(F.xT + 1.0, F.xt - 0.3), ftmFoot = onBs(boom ? 0.95 : 0.72);
+    const jibTop = F.n >= 2 ? tgHead(F) : below(F), jibFoot = boom ? jb(1) : capTop;
     rigLines.push(foreTop, forestayFoot, ROPE.tar, ftmTop, ftmFoot, ROPE.tar, jibTop, jibFoot, ROPE.tar);
-    // head sails: the jib outermost on the stay to the jib-boom's end, the fore topmast staysail inside it
-    const clew = (share, stayFoot, dy) => V3(F.x + share * (jb(1).x - F.x), stayFoot.y + dy, 0);
+    // head sails, berth by berth: the fore topmast staysail on the topmast stay, and outside it the
+    // jib on the stay to the jib-boom's end, which has nowhere to set without the jib-boom
+    const reach = boom ? jb(1).x : bs(1).x;
+    const clew = (share, stayFoot, dy) => V3(F.x + share * (reach - F.x), stayFoot.y + dy, 0);
     const headSail = (stayTop, stayFoot, tackAt, headAt, clewAt, sheetTo, belly) => {
       sails.tri(stayFoot.clone().lerp(stayTop, tackAt), stayFoot.clone().lerp(stayTop, headAt), clewAt, belly, 0.07, 0.05);
       rigLines.push(clewAt, sheetTo, ROPE.hemp);
     };
-    if (cfg.jibs >= 1) headSail(jibTop, jibFoot, 0.1, 0.75, clew(0.63, jibFoot, 1.3), bs(0.97).add(V3(0, 0, bsR(0.97))), 1.4);
-    if (cfg.jibs >= 2) headSail(ftmTop, ftmFoot, 0.15, 0.72, clew(0.33, ftmFoot, 2.0), forestayFoot.clone(), 1.0);
+    // each stay carries whatever sail was bent on its berth, cut to that sail's own size: the outer
+    // stay's sheet comes down to the bowsprit by its cap, the inner stay's to the bow
+    if (boom && cfg.sprit.set[1]) {
+      const c = headsailCut(cfg.sprit.set[1], 1);
+      headSail(jibTop, jibFoot, c.tack, c.head, clew(c.share, jibFoot, c.dy), bs(0.97).add(V3(0, 0, bsR(0.97))), c.belly);
+    }
+    if (cfg.sprit.set[0]) {
+      const c = headsailCut(cfg.sprit.set[0], 0);
+      // without a jib-boom the run to the spar's end is shorter, so the clew stands a little further out along it
+      headSail(ftmTop, ftmFoot, c.tack, c.head, clew(boom ? c.share : c.share * 1.27, ftmFoot, c.dy), forestayFoot.clone(), c.belly);
+    }
   }
   if (F && Mn) {
     rigLines.push(Mn.at(Mn.xT + 1.0, Mn.xt - 0.3), F.at(F.x - 0.3, F.top - 0.3), ROPE.tar); // main topmast stay: to the fore top
@@ -1207,7 +1284,11 @@ export function buildFirstRate(spec) {
     const sp = new THREE.Group();
     fitAdd(sp, blackMat, rodGeo(0.27, 0.19, jaw, boomEnd, 6), rodGeo(0.25, 0.16, throat, peak, 6));
     mastGeos.push(bakeGeos(sp).get("solid"));
-    sails.quad(Z.at(Z.x - 0.7, Z.yd + BOOM_Y + 0.2), Z.at(Z.x - 0.7, Z.top - 1.75), peak.clone().add(V3(0, -0.2, 0)), boomEnd.clone().add(V3(0.2, 0.15, 0)), 1.2);
+    // the sail bent on the gaff, at its own size: a trysail or a gaff topsail is hoisted on the same
+    // spars and stands short of the peak and the boom's end, toward the mast
+    const k = gaffSize(cfg.gaff), tack = Z.at(Z.x - 0.7, Z.yd + BOOM_Y + 0.2), thr = Z.at(Z.x - 0.7, Z.top - 1.75);
+    const pk = peak.clone().add(V3(0, -0.2, 0)), cl = boomEnd.clone().add(V3(0.2, 0.15, 0));
+    sails.quad(tack, thr, thr.clone().lerp(pk, k), tack.clone().lerp(cl, k), 1.2 * k);
   }
 
   const rigPieces = mastGeos.map((g) => ({ geo: g, material: SLOT.solid }));

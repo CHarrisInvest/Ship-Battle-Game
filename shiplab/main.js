@@ -17,7 +17,7 @@ import { createMenuShip } from "../src/render3d/menuship.js";
 import { WIND } from "../src/render3d/flags.js";
 import {
   HULL_LIST, HULLS, STANDARDS, MASTS, STATIONS, fitOut, emptyLoadout, rigSpec, rate, rateOf,
-  mastsForSocket, mastFitsSocket, berthsOf, sailsForBerth, SAIL_KINDS,
+  mastsForSocket, mastFitsSocket, berthsOf, sailsForBerth, sailFitsBerth, SAILS, SAIL_KINDS,
 } from "../src/shipyard.js";
 import { HULL_REF } from "../src/shipref.js";
 import { BASE_SPEED } from "../src/sim/ships.js";
@@ -116,14 +116,21 @@ const fitLoadout = (id) => {
   return fit.quality == null ? emptyLoadout(id) : fitOut(id, fit.quality);
 };
 const dearest = (list) => list.slice().sort((a, b) => a.price - b.price).pop() || null;
-// a loadout's rig in the panel's own terms: a mast id per socket and a flag per berth
+// a loadout's rig in the panel's own terms: a mast id per socket and, per berth, the id of the sail
+// bent on there or null for a berth left empty
 function rigFromLoadout(lo) {
   const out = {};
   for (const s of lo.hull.sockets) {
     const e = lo.rig[s.id];
-    out[s.id] = { mast: e && e.mast ? e.mast.id : null, sails: e && e.mast ? berthsOf(e.mast).map((_, i) => !!e.sails[i]) : [] };
+    out[s.id] = { mast: e && e.mast ? e.mast.id : null, sails: e && e.mast ? berthsOf(e.mast).map((_, i) => (e.sails[i] ? e.sails[i].id : null)) : [] };
   }
   return out;
+}
+// the sail a berth holds, as the panel recorded it: an id that still fits, or, from a lab that saved
+// only whether a berth was filled, the best sail of its kind
+function sailIn(berth, want) {
+  if (typeof want === "string") { const sail = SAILS[want]; return sailFitsBerth(sail, berth) ? sail : null; }
+  return want ? dearest(sailsForBerth(berth)) : null;
 }
 const rigOf = (id) => state.rig[id] || (state.rig[id] = rigFromLoadout(fitLoadout(id)));
 function loadoutFor(id) {
@@ -133,7 +140,7 @@ function loadoutFor(id) {
     const want = r[s.id], mast = want && want.mast ? MASTS[want.mast] : null;
     if (!mast || !mastFitsSocket(mast, s)) { lo.rig[s.id] = { mast: null, sails: [], studs: [] }; continue; }
     // a filled berth carries the best sail of its kind, as the fully found fit does
-    lo.rig[s.id] = { mast, sails: berthsOf(mast).map((b, i) => (want.sails[i] ? dearest(sailsForBerth(b)) : null)), studs: [] };
+    lo.rig[s.id] = { mast, sails: berthsOf(mast).map((b, i) => sailIn(b, want.sails[i])), studs: [] };
   }
   return lo;
 }
@@ -309,45 +316,46 @@ const sailPanel = el("section", { class: "panel", "aria-label": "Fit and sailing
     el("div", { class: "inline" }, arrow, wind), el("div", { class: "actions" }, windReset)),
   el("p", { class: "lede", text: "Stopped, her flags fly down the wind. Give her way and they swing round to stream astern. The game's wind is fixed; this one is here to try others." }));
 
-// her rig: a mast for each socket and a chip for each berth of it, as the shipyard offers them
+// her rig: a mast for each socket and, for each berth of it, which sail is bent on there, as the
+// outfitter lets a captain choose
 const STATION_LABEL = { bowsprit: "Bowsprit", fore: "Fore", main: "Main", mizzen: "Mizzen", bonaventure: "Bonaventure" };
 const rigRows = el("div", { class: "rig-rows" });
 const rigReset = el("button", { type: "button", class: "ghost", text: "Back to the fit", on: { click: () => { delete state.rig[state.id]; refresh(); } } });
 const rigPanel = el("section", { class: "panel", "aria-label": "Her rig" },
   el("div", { class: "shape-head" }, el("h2", { text: "Her rig" }), rigReset),
-  el("p", { class: "lede", text: "What is stepped in each socket and what is bent on it. A taller mast carries more sails; a berth switched off is a yard crossed bare. Nothing here changes the game." }),
+  el("p", { class: "lede", text: "What is stepped in each socket and which sail is bent on each berth of it. A taller mast carries more sails; an empty berth is a yard crossed bare. Each sail is drawn as itself wherever it is bent on. Nothing here changes the game." }),
   rigRows);
 function setMast(socketId, mastId) {
   const r = rigOf(state.id);
   const mast = mastId ? MASTS[mastId] : null;
-  r[socketId] = { mast: mast ? mast.id : null, sails: mast ? berthsOf(mast).map(() => true) : [] };
+  r[socketId] = { mast: mast ? mast.id : null, sails: mast ? berthsOf(mast).map((b) => { const sail = dearest(sailsForBerth(b)); return sail ? sail.id : null; }) : [] };
   fleetDirty = true;
   save();
   syncRig();
 }
-function toggleBerth(socketId, i) {
+function setSail(socketId, i, sailId) {
   const r = rigOf(state.id);
   if (!r[socketId]) return;
-  r[socketId].sails[i] = !r[socketId].sails[i];
+  r[socketId].sails[i] = sailId || null;
   fleetDirty = true;
   save();
   syncRig();
 }
-// What a berth is, as a captain names it, from its kind and its place up the mast: square canvas
-// course to skysail (the mizzen's lowest a crossjack), headsails staysail to flying jib, the rest
-// by their kind.
-const SQUARE_NAMES = ["Course", "Topsail", "Topgallant", "Royal", "Skysail"];
-const HEAD_NAMES = ["Staysail", "Jib", "Flying jib"];
+// Where a berth is, named by the place rather than by a sail, since any sail of its kind may go
+// there: a yard by its height up the mast (the mizzen's lowest the crossjack yard), a headsail berth
+// by its stay, inner to outer, and a fore-and-aft berth by its spar.
+const SQUARE_NAMES = ["Lower yard", "Topsail yard", "Topgallant yard", "Royal yard", "Skysail yard"];
+const HEAD_NAMES = ["Inner stay", "Outer stay", "Flying stay"];
 function berthLabel(socket, mast, i) {
   const berths = berthsOf(mast), b = berths[i];
   const nth = (test) => berths.slice(0, i).filter(test).length;
   if (b.kind === "LSQ" || b.kind === "SSQ") {
     const n = nth((x) => x.kind === "LSQ" || x.kind === "SSQ");
-    if (socket.station === "mizzen" && n === 0) return "Crossjack";
+    if (socket.station === "mizzen" && n === 0) return "Crossjack yard";
     return SQUARE_NAMES[Math.min(n, SQUARE_NAMES.length - 1)];
   }
   if (b.kind === "TRI" && socket.station === "bowsprit") return HEAD_NAMES[Math.min(nth((x) => x.kind === "TRI"), HEAD_NAMES.length - 1)];
-  if (b.kind === "GAF") return mast.family === "spanker" ? "Spanker" : nth((x) => x.kind === "GAF") ? "Gaff topsail" : "Gaff mainsail";
+  if (b.kind === "GAF") return nth((x) => x.kind === "GAF") ? "Over the gaff" : "Gaff and boom";
   if (b.kind === "LUG") return nth((x) => x.kind === "LUG") ? "Lug topsail" : "Lugsail";
   if (b.kind === "LAT") return mast.family === "bermuda" ? "Bermuda mainsail" : "Lateen";
   const kind = SAIL_KINDS[b.kind];
@@ -362,14 +370,20 @@ function syncRig() {
       el("option", { value: "", text: "Nothing stepped" }),
       fits.map((m) => el("option", { value: m.id, text: `${m.name} (${m.berths.length} ${m.berths.length === 1 ? "sail" : "sails"})` })));
     pick.value = chosen ? chosen.id : "";
-    const chips = chosen ? berthsOf(chosen).map((b, i) => {
-      const on = !!(r[s.id].sails[i]);
-      return el("button", { type: "button", class: "toggle", "aria-pressed": String(on), text: berthLabel(s, chosen, i), on: { click: () => toggleBerth(s.id, i) } });
+    // a berth each: its place on the mast, and the sail bent on it, chosen from every sail that fits
+    const berths = chosen ? berthsOf(chosen).map((b, i) => {
+      const held = sailIn(b, r[s.id].sails[i]);
+      const name = berthLabel(s, chosen, i);
+      const sel = el("select", { class: "berth-pick", "aria-label": `${STATION_LABEL[s.station] || s.station} ${name.toLowerCase()}`, on: { change: (e) => setSail(s.id, i, e.target.value) } },
+        el("option", { value: "", text: "Empty" }),
+        sailsForBerth(b).slice().sort((x, y) => x.price - y.price).map((sail) => el("option", { value: sail.id, text: sail.name })));
+      sel.value = held ? held.id : "";
+      return el("label", { class: "berth" + (held ? " set" : "") }, el("span", { text: name }), sel);
     }) : [];
     return el("div", { class: "row" },
       el("span", { class: "label" }, `${STATION_LABEL[s.station] || s.station}`, el("span", { class: "note", text: `${s.size} socket, ${s.rigs.length ? s.rigs.join(" or ") : "any"} rig` })),
       pick,
-      chips.length ? el("div", { class: "actions" }, chips) : null);
+      berths.length ? el("div", { class: "berths" }, berths) : null);
   }));
   rigReset.disabled = !state.rig[state.id];
   syncSailing();
