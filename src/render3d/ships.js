@@ -486,6 +486,7 @@ export function createShipLayer(scene, ctx) {
         hullId: s.loadout.hull.id,
         trim: ctx.lookOf(fx, s).trim,
         guns: (s.loadout.guns.broadside || []).length,
+        timber: s.playerId ? CAPTAIN_TIMBER : null,
       })));
     }
     frame++;

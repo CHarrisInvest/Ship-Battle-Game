@@ -76,8 +76,8 @@ export function cleanName(raw) {
 
 /**
  * The colours a captain may paint a ship in: her own gold first, which every ship wears until she is
- * painted, then every other livery the game already flies: the AI's ten and the violet side's (the
- * yellow side's is a shade off her gold, so it is not offered as a second choice). They are
+ * painted, then a brighter cut of every other livery the game flies: the AI's ten and the violet
+ * side's (the yellow side's is a shade off her gold, so it is not offered as a second choice). They are
  * named here by key and nothing more, because what each looks like is the renderer's
  * (`LIVERIES` in `palette.js`, which follows this order). A ship's record carries `livery` only once
  * she is painted something other than gold, so a ship never painted compares equal to one built

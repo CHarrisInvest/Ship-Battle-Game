@@ -102,28 +102,28 @@ export const SIDE_COLORS = {
 };
 
 /**
- * THE LIVERIES A CAPTAIN MAY PAINT HER SHIP IN, in the yard: her own gold, then every other colour
- * the game already flies, the AI's ten and the violet side's. The keys and their order are the
- * hold's (`LIVERY_KEYS` in holdrules.js), which keeps no colour; the names and the colours are here.
- * A livery is her flags and her trim, and on the first rate the bands along her gun decks; her
+ * THE LIVERIES A CAPTAIN MAY PAINT HER SHIP IN, in the yard: her own gold, then a brighter cut of
+ * every other colour the game flies, the AI's ten and the violet side's, so a painted ship of hers
+ * stands out from the AI ship whose colour she borrowed. The keys and their order are the hold's
+ * (`LIVERY_KEYS` in holdrules.js), which keeps no colour; the names and the colours are here. A
+ * livery is her flags and her trim, and on the first rate the bands along her gun decks; her
  * planking stays her own. Between sides she flies her side's colour whatever she is painted.
  */
 export const LIVERIES = Object.freeze([
   { key: "gold", name: "Gold", fill: C.own },
-  { key: "vermilion", name: "Vermilion", fill: AI_COLORS[0].fill },
-  { key: "amber", name: "Amber", fill: AI_COLORS[1].fill },
-  { key: "brick", name: "Brick", fill: AI_COLORS[2].fill },
-  { key: "sage", name: "Sage", fill: AI_COLORS[3].fill },
-  { key: "lilac", name: "Lilac", fill: AI_COLORS[4].fill },
-  { key: "olive", name: "Olive", fill: AI_COLORS[5].fill },
-  { key: "slate", name: "Slate blue", fill: AI_COLORS[6].fill },
-  { key: "rose", name: "Rose", fill: AI_COLORS[7].fill },
-  { key: "green", name: "Green", fill: AI_COLORS[8].fill },
-  { key: "copper", name: "Copper", fill: AI_COLORS[9].fill },
-  { key: "violet", name: "Violet", fill: SIDE_COLORS.left.fill },
+  { key: "vermilion", name: "Vermilion", fill: "#f85026" },
+  { key: "amber", name: "Amber", fill: "#f99d2a" },
+  { key: "brick", name: "Brick", fill: "#d65648" },
+  { key: "sage", name: "Sage", fill: "#7bbda3" },
+  { key: "lilac", name: "Lilac", fill: "#af76d0" },
+  { key: "olive", name: "Olive", fill: "#dac443" },
+  { key: "slate", name: "Slate blue", fill: "#6ea5d8" },
+  { key: "rose", name: "Rose", fill: "#ea5c92" },
+  { key: "green", name: "Green", fill: "#58c88d" },
+  { key: "copper", name: "Copper", fill: "#e38344" },
+  { key: "violet", name: "Violet", fill: "#a247ff" },
 ]);
 
-/** The colour a livery key paints in: her own gold for a key it does not know. */
 export const liveryFill = (key) => (LIVERIES.find((l) => l.key === key) || LIVERIES[0]).fill;
 
 
