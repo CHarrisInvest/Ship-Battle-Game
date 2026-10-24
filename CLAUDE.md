@@ -227,7 +227,16 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   first time takes it, and an account that already has one keeps its own, because merging two holds
   duplicates coins; the account screen (`src/account.js`) warns a guest with progress first.
   Signing out and `POST /account/delete` leave the browser a fresh guest.
-  A shop action is `applyAction` under a row lock with the record's `version` as the check, so a stale tab is refused with the record as it stands. A voyage is
+  A shop action is `applyAction` under a row lock with the record's `version` as the check, so a stale tab is refused with the record as it stands.
+  **The menu's tap code is the server's to grant.** STERNCHASE three times, HELM & HULL three
+  times, STERNCHASE once (`TAP_CODE` in the screen) asks `POST /hold/grant` for 100,000 coins
+  (`grantCoins` in `holdrules.js`, kept out of `ACTIONS` so no browser can send it as a shop
+  action), and the server grants only where `COIN_GRANT` says: unset is nobody, which is production,
+  `all` is everybody in that environment, which is for staging, and a list of emails is those
+  accounts alone. The sequence is in the public script, so the check is the server's and a refusal is
+  a plain 404. What is granted goes on its own ledger line, `granted`, written only once something
+  has been, so `coins` still reconstructs, `earned` and every achievement are untouched, and a record
+  never granted still compares equal to a blank one. A voyage is
   started by the server (its seed, the loadout off its own copy of the hold, sent as the JSON the
   browser builds the world from), fed its input log in pieces no faster than real time, and banked
   only after the server replays it and finds it ends where the browser said. The replay runs in a

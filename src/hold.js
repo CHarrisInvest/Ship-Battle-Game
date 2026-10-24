@@ -190,6 +190,20 @@ function act(name, ...args) {
 }
 const recOf = (out) => (out ? out.rec : null);
 
+/**
+ * Ask the server for the tap code's coins. The server alone decides: for an account its
+ * `COIN_GRANT` names the record comes back with them added, and otherwise nothing happens at all.
+ * Resolves to the coins granted, or 0.
+ */
+export async function grantCoins() {
+  if (status !== "ready") return 0;
+  const r = await call("POST", "/hold/grant", {});
+  if (r.status !== 200 || !r.data || !r.data.hold) return 0;
+  // an answer older than the record already here (a voyage banked meanwhile) is not taken
+  if (r.data.version >= version) adoptHold(r.data);
+  return r.data.granted || 0;
+}
+
 /** Buy a bare hull. She arrives with no rig and no guns; the parts to fill her are bought separately. */
 export function buyShip(hullId) {
   const out = act("buyShip", hullId);

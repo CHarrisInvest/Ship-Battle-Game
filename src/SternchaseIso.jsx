@@ -3,7 +3,7 @@ import { platePainter } from "./galleon.js";
 import {
   getHold, subscribeHold, modeRecord, shipLoadout, shortfall, connect, holdStatus, subscribeStatus, hadLocalSave, adoptHold, holdSettled, hasProgress,
   buyShip, buyPart, fitMast, fitSail, fitStud, fitGun, unfitGun, setActiveShip, spareParts, ownedShips, partOf,
-  shipName, nameShip, fitOwned, ownedFill, NAME_LIMIT, readiness, sellPart, refundOf,
+  shipName, nameShip, fitOwned, ownedFill, NAME_LIMIT, readiness, sellPart, refundOf, grantCoins,
 } from "./hold.js";
 import { startVoyage, recorderFor } from "./voyage.js";
 import { getAccount, sendCode, signInWithCode, signInWithGoogle, signOut, deleteAccount, returnedFromGoogle } from "./account.js";
@@ -3625,7 +3625,35 @@ function ArrowButton({ back, label, onClick }) {
 // would let a captain think a gun fits when it does not.
 const fmtTons = (t) => t.toFixed(1);
 
+/**
+ * THE TAP CODE: the title's two lines tapped in a set order hand the hold 100,000 coins, for the
+ * owner stocking a hold to try the shipyard with. The order is STERNCHASE three times, HELM & HULL
+ * three times, then STERNCHASE once, each tap within `TAP_GAP` of the last. The sequence is in this
+ * public script, so the browser only asks; the server's `COIN_GRANT` decides whether it does
+ * anything, and for anyone it does not name, nothing at all happens. No button or label gives it
+ * away, and the two lines stay what they always were for everybody.
+ */
+const TAP_CODE = ["title", "title", "title", "line", "line", "line", "title"];
+const TAP_GAP = 1500; // ms
+function useTapCode(onCode) {
+  const taps = useRef([]);
+  return useCallback((which) => {
+    const t = performance.now();
+    const last = taps.current[taps.current.length - 1];
+    if (last && t - last.t > TAP_GAP) taps.current = [];
+    taps.current.push({ which, t });
+    if (taps.current.length > TAP_CODE.length) taps.current.shift();
+    if (taps.current.length === TAP_CODE.length && taps.current.every((x, i) => x.which === TAP_CODE[i])) {
+      taps.current = [];
+      onCode();
+    }
+  }, [onCode]);
+}
+
 function StartOverlay({ onStart, onEdit, onOutfit, onRecords, onCookies, onPrivacy, onFriends, onAccount, account, hold, note }) {
+  const tap = useTapCode(useCallback(() => { grantCoins(); }, []));
+  // the title's two lines take taps for the code without looking or behaving like controls
+  const tapLine = (which) => ({ onClick: () => tap(which), style: { WebkitUserSelect: "none", userSelect: "none", WebkitTapHighlightColor: "transparent" } });
   return (
     <Shell>
       {/* The name is a lockup of two lines, and the first one carries it. STERNCHASE is the word a
@@ -3634,8 +3662,8 @@ function StartOverlay({ onStart, onEdit, onOutfit, onRecords, onCookies, onPriva
       {/* 44px is the size the title wants, but STERNCHASE at 44 measures wider than the 272px a
           320px phone leaves inside the shell's padding, and the last letter went off the screen.
           It gives size back on a narrow screen rather than being set small everywhere. */}
-      <div style={{ fontFamily: DISPLAY, fontSize: "clamp(34px, 12vw, 44px)", color: C.gold, letterSpacing: 2, lineHeight: 1.05 }}>STERNCHASE</div>
-      <div style={{ fontFamily: DISPLAY, fontSize: 15, color: "rgba(232,200,119,0.62)", letterSpacing: 3, marginTop: 4 }}>HELM &amp; HULL</div>
+      <div onClick={tapLine("title").onClick} style={{ ...tapLine("title").style, fontFamily: DISPLAY, fontSize: "clamp(34px, 12vw, 44px)", color: C.gold, letterSpacing: 2, lineHeight: 1.05 }}>STERNCHASE</div>
+      <div onClick={tapLine("line").onClick} style={{ ...tapLine("line").style, fontFamily: DISPLAY, fontSize: 15, color: "rgba(232,200,119,0.62)", letterSpacing: 3, marginTop: 4 }}>HELM &amp; HULL</div>
       {/* What the server has to say: still loading, out of reach, a voyage it would not start, or that
           progress moved to it. One line of plain prose, over the plate it is about. */}
       {note && (
