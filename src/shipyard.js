@@ -274,7 +274,7 @@ const FLEET = [
     id: "secondRate", name: "2nd rate", price: 80000,
     blurb: "Three decks of iron. She is slow, she is enormous, and nothing wants her attention.",
     hull: 2421, crew: 700, speed: 0.79, hand: 0.68, canvas: 5.12, tons: 259.4,
-    guns: [45, 2, 6], masts: ["bowsprit/large/headsails", "fore/heavy/square", "main/heavy/square", "mizzen/large/spanker"],
+    guns: [45, 2, 6], masts: ["bowsprit/small/headsails", "fore/large/square/2", "main/large/square/2", "mizzen/heavy/spanker"],
   },
   {
     id: "firstRate", name: "1st rate", price: 100000,
