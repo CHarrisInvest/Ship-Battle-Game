@@ -283,7 +283,7 @@ const deckSurfY = (x, Y, z) => {
 const GANG = 1.85; // width of the gangways along the waist
 // the waist's, the after one on the quarterdeck between the wheel and the mizzen (the waist's
 // grating over again), and the forecastle's
-const GRATINGS = [[9.9, D_UD, 5.1, 2.3], [-12.5, D_QD, 5.1, 2.3], [21.75, D_QD, 2.5, 1.7]];
+const GRATINGS = [[9.9, D_UD, 5.1, 2.3], [-13.0, D_QD, 5.1, 2.3], [21.75, D_QD, 2.5, 1.7]];
 const GRATE_K = 40, GRATE_Y = 858;
 // each grating's patch of the sheet, laid left to right; a grating the size of one already laid out
 // shares its patch, so the quarterdeck's is painted from the very same slats as the waist's
@@ -1004,11 +1004,11 @@ export function buildSecondRate(spec) {
         (ii, j) => atlasUV(X0 + ii * w, GRATE_Y + j * h)), UP));
     });
     // The wheel on the quarterdeck, between the main and the mizzen and clear of both masts' pin
-    // rails, with the binnacle just forward of it: a little aft of where the first rate's stands for
-    // her length, to give the after grating its room. Everything the first rate carries on her poop
-    // is aft of it on this deck: the after grating between it and the mizzen, and the cabin
-    // skylight, the signal-flag lockers, the arms chests, the casks and the tub abaft the mizzen.
-    const WHEEL_X = -8.0, WHL = 0.62;
+    // rails, with the binnacle just forward of it: just aft of where the first rate's stands (-7.1),
+    // and never forward of it. Everything the first rate carries on her poop is aft of it on this
+    // deck: the after grating between it and the mizzen, and the cabin skylight, the signal-flag
+    // lockers, the arms chests, the casks and the tub abaft the mizzen.
+    const WHEEL_X = -7.2, WHL = 0.62;
     const wb = deckPt(WHEEL_X, D_QD), R = 0.95, HUB = 1.35, PED = { x: 0.42, z: 0.5 };
     fitAdd(fit, WOOD, deckBox(PED.x, HUB + 0.2, PED.z, wb.clone().add(V3(0, (HUB + 0.2) / 2, 0)), P.midWood));
     const hub = wb.clone().add(V3(-PED.x / 2 - 0.14, HUB, 0)), AX = V3(1, 0, 0);
