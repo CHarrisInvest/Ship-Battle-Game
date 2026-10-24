@@ -45,6 +45,10 @@ export const C = {
   front: "#7a9cc6",
   splinter: "#b98a4a",
   gold: "#e8c877",
+  // the livery the viewer's own ship flies outside a round fought between sides: her flags, her trim
+  // and on the first rate the bands along her gun decks. Brighter and fuller than the HUD's gold, so
+  // she reads as hers against the AI's muted liveries; between sides she flies her side's colour
+  own: "#f9c440",
   panel: "rgba(11,51,49,0.80)",
   hair: "rgba(160,224,210,0.20)",
   ink: "#eef4f2",
@@ -87,13 +91,41 @@ export const AI_COLORS = [
  * other at any size. Against the grounds: the yellow scores 2.3 on open water, 4.0 past the buoys
  * and 7.5 on the radar's backing; the violet carries by hue rather than by light on open water
  * (1.26, the same figure the AI's own purple livery has always had) and scores 4.4 on the dark
- * grounds. The yellow is a shade off the HUD's gold and the cream of her own hull, which is why
- * her own dot on the radar wears a dark ring and her hull keeps its cream whichever side she is on.
+ * grounds. Her own ship flies her side's colour like every other ship of it, because a captain on
+ * the yellow side in her own gold was one more yellow ship to puzzle over; the camera and the HUD
+ * say which ship is hers. The yellow is a shade off the HUD's gold and the cream of her old hull,
+ * which is why her own dot on the radar wears a dark ring.
  */
 export const SIDE_COLORS = {
   left: { name: "Violet", fill: "#b07ae8", stroke: "#6a4697" },
   right: { name: "Yellow", fill: "#f0c419", stroke: "#8f7410" },
 };
+
+/**
+ * THE LIVERIES A CAPTAIN MAY PAINT HER SHIP IN, in the yard: her own gold, then every other colour
+ * the game already flies, the AI's ten and the violet side's. The keys and their order are the
+ * hold's (`LIVERY_KEYS` in holdrules.js), which keeps no colour; the names and the colours are here.
+ * A livery is her flags and her trim, and on the first rate the bands along her gun decks; her
+ * planking stays her own. Between sides she flies her side's colour whatever she is painted.
+ */
+export const LIVERIES = Object.freeze([
+  { key: "gold", name: "Gold", fill: C.own },
+  { key: "vermilion", name: "Vermilion", fill: AI_COLORS[0].fill },
+  { key: "amber", name: "Amber", fill: AI_COLORS[1].fill },
+  { key: "brick", name: "Brick", fill: AI_COLORS[2].fill },
+  { key: "sage", name: "Sage", fill: AI_COLORS[3].fill },
+  { key: "lilac", name: "Lilac", fill: AI_COLORS[4].fill },
+  { key: "olive", name: "Olive", fill: AI_COLORS[5].fill },
+  { key: "slate", name: "Slate blue", fill: AI_COLORS[6].fill },
+  { key: "rose", name: "Rose", fill: AI_COLORS[7].fill },
+  { key: "green", name: "Green", fill: AI_COLORS[8].fill },
+  { key: "copper", name: "Copper", fill: AI_COLORS[9].fill },
+  { key: "violet", name: "Violet", fill: SIDE_COLORS.left.fill },
+]);
+
+/** The colour a livery key paints in: her own gold for a key it does not know. */
+export const liveryFill = (key) => (LIVERIES.find((l) => l.key === key) || LIVERIES[0]).fill;
+
 
 /**
  * WHAT A CAPTAIN'S SHIPS ARE BUILT OF, as drawn. Every ship a captain owns or sails is drawn in this

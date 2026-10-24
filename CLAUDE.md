@@ -152,8 +152,10 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   follows, labels or sinks a ship knows the difference. Her beam at sea is the model's: the row's
   `drawnLength` and `drawnBeam` are the model's figures, `seaForm` takes her collision beam from
   their ratio, and `npm run bespoke-test` holds the row to the model. Her livery is the game's: the
-  trim the viewer's gold or a rival's colour, through `model.dress`, which both model kinds answer
-  (`paint` is the face-list ship's planking colour; a bespoke ship keeps her own painted sides),
+  trim the viewer's gold (`C.own`) or a rival's colour, through `model.dress`, which both model kinds
+  answer (`paint` is the face-list ship's planking colour; a bespoke ship keeps her own painted
+  sides, but for the bands behind her gun decks' ports, painted `LIVERY_BAND` of the way from oak to her trim
+  and kept that far, and a moulding in her trim under her cap rail),
   her sheet painted once per livery and gun count and pre-warmed when a round starts, her timber a
   tint over sheet and solids, her three pennants the game's cloth blown by wind and way, no ensign.
   Her rope stays at sea as line batches under her hull and her rig. Her under-body is built to the
@@ -283,7 +285,9 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   `sunkWinBonus`, and nobody is placed, so there is no rank, no leader and no best finish. The side
   is a fact of the round and lives on the ship; what colour it flies and what it is called are the
   renderer's (`SIDE_COLORS` in `palette.js`), and the HUD's badge in the rank's place shows the two
-  fleets' ships afloat and the hull they have left.
+  fleets' ships afloat and the hull they have left. A captain's own ship flies her side's colour
+  too, planking and trim, rather than the gold she flies elsewhere (`lookOf` in `effects.js` is the
+  one statement of every ship's colours, for both renderers).
 - `src/consent.js` is the cookie prompt's answer: essential, analytics and advertising, kept
   under its own key. **The hold is the essential category and is never gated on
   it**: "Reject all" must not touch a captain's progress.
@@ -340,6 +344,15 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   `NAME_LIMIT` and `cleanName` are the whole of the rule. There is no filter, because until online
   play the only reader was the captain who wrote it; sailing with friends shows a ship's name to
   them, and those are people she chose to sail with.
+- **A ship's colours are the captain's too, and they are a look.** The yard paints a ship in any
+  livery in `LIVERY_KEYS` (`holdrules.js`, keys only, gold first) through `paintShip`, for nothing;
+  the record carries `livery` only once she is painted something other than gold, so an unpainted
+  ship compares equal to one from before, and `shipLivery` is the one reader. What each key looks
+  like is `LIVERIES` in `palette.js`: her own gold and every colour the game already flies, the AI's
+  ten and the violet side's (the yellow side's is a shade off her gold). It is her flags and her trim
+  as the captain herself sees her, at sea (`createFx`'s `own`, read by `lookOf`) and on the plate;
+  her planking stays cream, and between sides she flies her side's colour whatever she is painted.
+  Nothing about it reaches the engine, the server's world or another captain's screen.
 - **Her tonnage is a hard limit, and the rail refuses a gun she cannot bear.** `hull.tons` is the
   iron she carries, in the tons the guns are weighed in, and a broadside gun counts twice because it
   is mounted both sides. `gunTons` and `gunFits` in `shipyard.js` are the one statement of that rule;

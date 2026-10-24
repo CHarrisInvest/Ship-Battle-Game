@@ -435,7 +435,8 @@ export function shipModel(spec, { units = "sea", seaLength, phase = 0, rig } = {
     }
     const [t0, c0, f0] = shipMaterials();
     const trim = how.trim ?? FLAG;
-    const timber = paintWith(t0.clone(), new THREE.Color(how.paint ?? trim));
+    // `paint: null` leaves her planking its timber and dresses her flags alone
+    const timber = how.paint === null ? t0.clone() : paintWith(t0.clone(), new THREE.Color(how.paint ?? trim));
     const canvas = c0.clone();
     const flag = f0.clone();
     flag.color.set(trim);
@@ -501,7 +502,8 @@ export function shipModel(spec, { units = "sea", seaLength, phase = 0, rig } = {
     scale: built.scale, height: built.height, length: built.length, beam: built.beam,
     /**
      * Dress her for whoever sails her: `trim` is her livery (her flags, and a bespoke ship's trim),
-     * `paint` the colour a face-list ship's planking takes (her livery again if left out), `name`
+     * `paint` the colour a face-list ship's planking takes (her livery again if left out, her own
+     * timber if null), `name`
      * what a bespoke ship paints across her stern. The materials are hers alone and go with her;
      * `lit` are the ones a hit's light is put on. Dressing her again replaces the last set.
      */

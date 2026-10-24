@@ -3,7 +3,7 @@ import { platePainter } from "./galleon.js";
 import {
   getHold, subscribeHold, modeRecord, shipLoadout, shortfall, connect, holdStatus, subscribeStatus, hadLocalSave, adoptHold, holdSettled, hasProgress,
   buyShip, buyPart, fitMast, fitSail, fitStud, fitGun, unfitGun, setActiveShip, spareParts, ownedShips, partOf,
-  shipName, nameShip, fitOwned, ownedFill, NAME_LIMIT, readiness, sellPart, refundOf, grantCoins,
+  shipName, nameShip, shipLivery, paintShip, fitOwned, ownedFill, NAME_LIMIT, readiness, sellPart, refundOf, grantCoins,
 } from "./hold.js";
 import { startVoyage, recorderFor } from "./voyage.js";
 import { getAccount, sendCode, signInWithCode, signInWithGoogle, signOut, deleteAccount, returnedFromGoogle } from "./account.js";
@@ -24,7 +24,7 @@ import {
   createWorld, step, TICK, voyageStats, repairQuote, shipOf, playOn, playsOn, outInWeather, stormPhase, volleyWindow, reloadOf, canFire,
   HULL_PATCH_CAP, MAST_JURY_CAP, barsOf, MODES as RULES, MODE_LIST, modeOf, clamp, SIDES, SIDE_MIN, SIDE_MAX,
 } from "./sim/index.js";
-import { C, UI, SIDE_COLORS, CAPTAIN_TIMBER } from "./render/palette.js";
+import { C, UI, SIDE_COLORS, CAPTAIN_TIMBER, LIVERIES, liveryFill } from "./render/palette.js";
 import { createRenderer } from "./render/renderer.js";
 import { createFx, fxEvents, stepFx } from "./render/effects.js";
 import { HUD, radarRight } from "./render/hud.js";
@@ -798,7 +798,7 @@ export default function App() {
     // The sea behind the menu: her ship read fresh out of the hold, on a seed of its own.
     function newRound(m) {
       gameRef.current = createWorld({ mode: m, seed: newSeed(), players: [{ id: meRef.current, loadout: shipLoadout(getHold()) }] });
-      fx = createFx(shipOf(gameRef.current, meRef.current).id);
+      fx = createFx(shipOf(gameRef.current, meRef.current).id, liveryFill(shipLivery(getHold())));
     }
 
     // A voyage: the server's seed and the loadout off its copy of her hold, sent as the very JSON
@@ -828,7 +828,7 @@ export default function App() {
       }
       const { round } = s;
       gameRef.current = voyage = createWorld({ mode: round.mode, seed: round.seed, players: [{ id: meRef.current, loadout: round.loadout }] });
-      fx = createFx(shipOf(gameRef.current, meRef.current).id);
+      fx = createFx(shipOf(gameRef.current, meRef.current).id, liveryFill(shipLivery(getHold())));
       recorder = recorderFor(round.roundId);
       resetWatch();
       renderer.follow(shipOf(gameRef.current, meRef.current));
@@ -857,7 +857,7 @@ export default function App() {
     function startOnline(round) {
       gameRef.current = round.world;
       meRef.current = round.you;
-      fx = createFx(shipOf(round.world, round.you).id);
+      fx = createFx(shipOf(round.world, round.you).id, liveryFill(shipLivery(getHold())));
       fx.names = round.names; // her friends' ship names, drawn over their ships
       recorder = null;
       resetWatch();
@@ -1441,13 +1441,13 @@ const ownRig = (loadout) => ({ ...rigSpec(loadout), timber: CAPTAIN_TIMBER });
 // She is the captain's own ship, not a stock galleon: `rig` is what is actually
 // stepped and bent on aboard whichever hull she is sailing, so buying a sail
 // shows up here, on her own class's hull.
-function MenuGalleon({ rig }) {
+function MenuGalleon({ rig, trim }) {
   const cvs = useRef(null);
   // The rig changes rarely and the object is rebuilt on every render, so the
   // effect keys off the shape of it rather than its identity. Without this the
   // canvas tears down and restarts on every parent render, and the ship jumps
   // back to bearing zero mid-turn.
-  const key = JSON.stringify(rig);
+  const key = JSON.stringify(rig) + (trim || "");
   // Her bearing lives outside the effect, so a change of rig, or a change of ship under the plate's
   // arrows, carries on from where she was turning rather than snapping her back to bearing zero.
   const degRef = useRef(0);
@@ -1470,7 +1470,7 @@ function MenuGalleon({ rig }) {
     const w = GALLEON_W;
     const h = Math.round(w * GALLEON_ASPECT);
     ship.resize(w, h, Math.min(window.devicePixelRatio || 1, 2));
-    const paint = (deg) => ship.draw(rig, deg);
+    const paint = (deg) => ship.draw(rig, deg, { trim });
 
     // A perpetually turning ship is exactly what reduced-motion asks us to drop,
     // so hold a three-quarter view instead.
@@ -2019,7 +2019,8 @@ function YardScreen({ hold, shipId, onView, onBack, onCommission, onOutfit }) {
             would hide the rating on exactly the ships whose names are about to stop matching. */}
         {loadout.hull.name}, {rated.name}
       </div>
-      <MenuGalleon rig={rig} />
+      <MenuGalleon rig={rig} trim={liveryFill(shipLivery(hold, id))} />
+      <LiveryPicker hold={hold} shipId={id} />
 
       <Slab title="How she sails">
         <TallyRow label="Top speed" value={fmtKnots(stats.speed)} />
@@ -2311,6 +2312,48 @@ function NamePlate({ hold, shipId }) {
       <span style={{ fontFamily: DISPLAY, fontSize: 21, color: C.gold, letterSpacing: 0.4, overflowWrap: "anywhere" }}>{shipName(hold, shipId)}</span>
       <TinyButton label={named ? "Rename her" : "Name her"} onClick={open} />
     </div>
+  );
+}
+
+/**
+ * Her colours: a swatch for every livery a ship can be painted in, the one she wears ringed, and its
+ * name and what it paints said under them. A tap paints her at once and costs nothing, and the ship
+ * over it turns in the new colour. Every swatch is a mass of colour with no mark inside it, so the
+ * ring is the only thing that says which is chosen, drawn in ink off her own swatch and the hair
+ * on the others.
+ */
+function LiveryPicker({ hold, shipId }) {
+  const current = shipLivery(hold, shipId);
+  const chosen = LIVERIES.find((l) => l.key === current) || LIVERIES[0];
+  return (
+    <Slab title="Her colours">
+      <div role="radiogroup" aria-label="Her colours" style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center", margin: "6px 0 4px" }}>
+        {LIVERIES.map((l) => {
+          const on = l.key === current;
+          return (
+            <button
+              key={l.key}
+              type="button"
+              role="radio"
+              aria-checked={on}
+              aria-label={l.name}
+              title={l.name}
+              onClick={() => { if (!on) paintShip(shipId, l.key); }}
+              style={{
+                width: 30, height: 30, padding: 0, borderRadius: 20, background: l.fill,
+                border: `2px solid ${on ? C.ink : "rgba(11,51,49,0.9)"}`,
+                boxShadow: on ? `0 0 0 2px ${C.deep}, 0 0 0 3px ${C.ink}` : `0 0 0 1px ${C.hair}`,
+                cursor: on ? "default" : "pointer", WebkitTapHighlightColor: "transparent",
+              }}
+            />
+          );
+        })}
+      </div>
+      <div style={{ fontSize: 12, color: C.ink, textAlign: "center", marginTop: 6 }}>{chosen.name}</div>
+      <div style={{ fontSize: 10, color: "rgba(238,244,242,0.55)", textAlign: "center", marginTop: 3, lineHeight: 1.5 }}>
+        Her flags and trim at sea. In TEAMS she flies her side&apos;s colour instead.
+      </div>
+    </Slab>
   );
 }
 
@@ -3523,7 +3566,7 @@ function ShipPlate({ hold, onEdit, onOutfit }) {
       aria-label={`Open the yard for ${shipName(hold, id)}`}
       style={{ display: "block", width: wide ? GALLEON_W : "100%", flex: "0 0 auto", padding: 0, background: "transparent", border: "none", color: C.ink, cursor: "pointer", WebkitTapHighlightColor: "transparent" }}
     >
-      <MenuGalleon rig={rig} />
+      <MenuGalleon rig={rig} trim={liveryFill(shipLivery(hold, id))} />
       {/* MenuGalleon carries a -6px bottom margin to tuck itself up under whatever follows, so this
           pays that back before spacing itself off her keel. */}
       <div style={{ textAlign: "center", paddingTop: 14, fontSize: 10, letterSpacing: 0.5, color: lit ? C.gold : "rgba(232,200,119,0.72)" }}>
