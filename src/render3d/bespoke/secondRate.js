@@ -257,7 +257,10 @@ const jbStart = bs(JB_IN).addScaledVector(bsPerp, bsR(JB_IN) + 0.22);
 const JB_LEN = (1 - JB_IN) * BS_LEN + JB_OUT;
 const jb = (f) => jbStart.clone().addScaledVector(bsDir, JB_LEN * f);
 const CAT_X = 23.6; // where the catheads leave the bow; each anchor hangs from a cathead's end
-const RING_DROP = 1.3; // the top of each anchor's ring hangs this far below its cathead's end
+// Her bower anchors and the tackle they hang by are the first rate's brought down by her length,
+// so they stand to her as the first rate's stand to her.
+const ANCHOR = 0.946;
+const RING_DROP = 1.3 * ANCHOR; // the top of each anchor's ring hangs this far below its cathead's end
 
 /**
  * How far forward and how high she can ever reach, rig and jib-boom at their fullest: the menu frames
@@ -891,13 +894,15 @@ export function buildSecondRate(spec) {
       const X = V3().crossVectors(UP, dir).normalize(), Yv = V3().crossVectors(dir, X).normalize();
       fitAdd(fit, WOOD, frameBox(0.48, 0.48, inb.distanceTo(end), inb.clone().lerp(end, 0.5), X, Yv, dir));
       fitAdd(fit, trimMat, placeGeo(new THREE.CylinderGeometry(0.27, 0.27, 0.08, 10), end.clone().addScaledVector(dir, 0.04), new THREE.Quaternion().setFromUnitVectors(UP, dir)));
-      // the bower anchor (5 m shank), hanging straight down from the cathead
+      // the bower anchor, hanging straight down from the cathead: drawn to the first rate's figures
+      // (a 5 m shank) and built ANCHOR times that size, so a 4.7 m shank
       const LS = 5.0, ARM_X = 1.65, ARM_Y = 1.5, RING_TOP = 0.39, ANCHOR_TURN = 30 * Math.PI / 180;
       const hang = end.clone().add(V3(0, -RING_DROP, 0));
       const aft = V3(-out.z, 0, out.x); if (aft.x > 0) aft.negate();
       const armOut = out.clone().multiplyScalar(Math.cos(ANCHOR_TURN)).addScaledVector(aft, Math.sin(ANCHOR_TURN)).normalize();
       const along = V3().crossVectors(armOut, UP).normalize();
-      const frame = new THREE.Matrix4().makeBasis(armOut, UP, along).setPosition(hang.clone().add(V3(0, -RING_TOP, 0)));
+      const frame = new THREE.Matrix4().makeBasis(armOut, UP, along).scale(V3(ANCHOR, ANCHOR, ANCHOR))
+        .setPosition(hang.clone().add(V3(0, -RING_TOP * ANCHOR, 0)));
       const crown = V3(0, -LS, 0), iron = [], oak = [];
       iron.push(new THREE.TorusGeometry(0.34, 0.075, 3, 6).rotateY(Math.PI / 2).translate(0, 0.05, 0), rodGeo(0.14, 0.19, V3(0, -0.25, 0), crown, 4));
       [1, -1].forEach((sx) => {
@@ -918,10 +923,11 @@ export function buildSecondRate(spec) {
       });
       iron.forEach((g) => fitAdd(fit, ironMat, g.applyMatrix4(frame)));
       oak.forEach((g) => fitAdd(fit, MID, g.applyMatrix4(frame)));
-      const ringTop = V3(0, RING_TOP, 0).applyMatrix4(frame), blk = ringTop.clone().add(V3(0, 0.3, 0));
-      fitAdd(fit, WOOD, frameBox(0.3, 0.42, 0.24, blk.clone().add(V3(0, 0.21, 0)), X, UP, V3().crossVectors(X, UP)));
-      fitAdd(fit, ironMat, rodGeo(0.035, 0.035, ringTop, blk.clone().add(V3(0, 0.05, 0)), 4, true));
-      [-0.12, 0, 0.12].forEach((o) => hullLines.push(end.clone().addScaledVector(X, o).add(V3(0, -0.2, 0)), blk.clone().addScaledVector(X, o * 0.6).add(V3(0, 0.42, 0)), ROPE.hemp));
+      // the cat block over the ring, its hook, and the fall up to the cathead, at the anchor's scale
+      const k = ANCHOR, ringTop = V3(0, RING_TOP, 0).applyMatrix4(frame), blk = ringTop.clone().add(V3(0, 0.3 * k, 0));
+      fitAdd(fit, WOOD, frameBox(0.3 * k, 0.42 * k, 0.24 * k, blk.clone().add(V3(0, 0.21 * k, 0)), X, UP, V3().crossVectors(X, UP)));
+      fitAdd(fit, ironMat, rodGeo(0.035 * k, 0.035 * k, ringTop, blk.clone().add(V3(0, 0.05 * k, 0)), 4, true));
+      [-0.12, 0, 0.12].forEach((o) => hullLines.push(end.clone().addScaledVector(X, o).add(V3(0, -0.2, 0)), blk.clone().addScaledVector(X, o * 0.6 * k).add(V3(0, 0.42 * k, 0)), ROPE.hemp));
     });
   }
 
