@@ -210,11 +210,11 @@ const NAME_MAX = 24;
 // the poop. rake: how far each mast leans aft, in degrees.
 const MASTS = [
   { name: "fore", x: 19.6, deck: D_QD, r: 0.5, top: 24.2, cap: 27.7, xt: 38.4, tmCap: 40.7, tg: 47.0, truck3: 48.9, truck4: 52.4,
-    yards: [26.0, 19.6, 12.6, 8.4], topW: 6.6, topL: 4.1, foot: 12.3, shrouds: 9, step: 0.66, rake: 1, pennant: 9 },
+    yards: [26.0, 19.6, 12.6, 8.4], topW: 6.6, topL: 4.1, foot: 12.3, shrouds: 9, step: 0.66, rake: 1, pennant: 10.8 },
   { name: "main", x: -1.0, deck: D_QD, r: 0.56, top: 26.0, cap: 29.8, xt: 41.8, tmCap: 44.2, tg: 51.1, truck3: 53.1, truck4: 56.9,
-    yards: [29.0, 21.6, 13.8, 9.2], topW: 7.2, topL: 4.4, foot: 11.9, shrouds: 10, step: 0.66, rake: 2, pennant: 11 },
+    yards: [29.0, 21.6, 13.8, 9.2], topW: 7.2, topL: 4.4, foot: 11.9, shrouds: 10, step: 0.66, rake: 2, pennant: 13.2 },
   { name: "mizzen", x: -18.6, deck: D_POOP, r: 0.38, top: 21.3, cap: 24.0, xt: 33.0, tmCap: 34.9, tg: 40.0, truck3: 41.5, truck4: 44.4,
-    yards: [20.6, 15.2, 9.8, 6.6], topW: 5.0, topL: 3.2, foot: 13.9, shrouds: 6, step: 0.6, rake: 3, pennant: 7.5 },
+    yards: [20.6, 15.2, 9.8, 6.6], topW: 5.0, topL: 3.2, foot: 13.9, shrouds: 6, step: 0.6, rake: 3, pennant: 9 },
 ];
 // The figures above were drawn a little short. The whole rig is built RIG times larger, which puts the
 // main truck (royals aloft) at Victory's 205 ft (62.5 m) above the waterline. Each mast is modelled
@@ -702,6 +702,19 @@ export function buildFirstRate(spec) {
       path.push({ p: hullPoint(t, Y, side), o: levelOut(t, Math.min(Y, 9.5), side), u: UP });
     }
     fitAdd(fit, trimMat, sweepGeo(path, CAP_PROFILE, true, { skip: NO_UNDERSIDE }));
+  });
+  // ---- and a sheer moulding down the outside of her side under it, so her livery runs her whole
+  // length at sea rather than as a rail seen edge-on. It leans with her tumblehome, and stops just
+  // clear of the frames of her quarterdeck and forecastle ports.
+  const SHEER_MOULD = [[0, -0.26], [0.06, -0.26], [0.08, -0.23], [0.08, -0.02], [0, -0.02]];
+  [1, -1].forEach((side) => {
+    const path = [];
+    for (let i = 0; i < HULL_T.length; i++) {
+      const t = Math.min(0.9985, Math.max(0.0015, HULL_T[i])), Y = topRel(t), p = hullPoint(t, Y, side);
+      const u = p.clone().sub(hullPoint(t, Y - 0.3, side)).normalize(), o = levelOut(t, Math.min(Y, 9.5), side);
+      path.push({ p, o: o.addScaledVector(u, -o.dot(u)).normalize(), u });
+    }
+    fitAdd(fit, trimMat, sweepGeo(path, SHEER_MOULD));
   });
 
   // ---- stem and sternpost: solid timber along the centreline, coppered below the waterline -------
@@ -1220,7 +1233,8 @@ export function buildFirstRate(spec) {
     const truckAt = m.rk(truck);
     M[m.name] = { x, xT, xG, top: m.top, xt: m.xt, tg: m.tg, truck: truckAt, truckUp: truck, n: cap, yd: m.yd, at: (px, py) => m.rk(V3(px, py, 0)) };
     // her pennant: a long tapering streamer from just under the pole's tip, flown by flags.js
-    flags.push({ x: truckAt.x, z: truckAt.y - 0.1, len: m.pennant, hoist: 0.9, fly: 0.1, wave: 0.7, part: "mast" + mi });
+    // deep enough at the hoist to carry her livery at sea, its foot just clear of a royal yard
+    flags.push({ x: truckAt.x, z: truckAt.y - 0.1, len: m.pennant, hoist: 1.35, fly: 0.3, wave: 0.8, part: "mast" + mi });
     return baked;
   }
   const mastGeos = stood.map((m, i) => buildMast(m, i));
