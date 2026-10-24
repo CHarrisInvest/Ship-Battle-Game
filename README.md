@@ -124,8 +124,7 @@ order; see "The road to production" below.
      `GOOGLE_CLIENT_ID` unset unless the OAuth client is given
      `https://staging.sternchase.org/api/auth/callback/google` as a second redirect URI.
    - to stock a hold for trying the shipyard, set `COIN_GRANT` to `all`: on the menu, tapping
-     STERNCHASE three times, HELM & HULL three times and STERNCHASE once, each within a second and a
-     half of the last, adds 100,000 coins every time. Production leaves it unset, which makes the taps
+     STERNCHASE, HELM & HULL, STERNCHASE, HELM & HULL, each within a second and a half of the last, adds 100,000 coins every time. Production leaves it unset, which makes the taps
      do nothing; to allow it there for one account only, set it to that account's sign-in email (a
      comma-separated list for several), and only a captain signed in with it is granted.
 

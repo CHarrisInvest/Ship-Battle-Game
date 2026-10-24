@@ -228,8 +228,8 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   duplicates coins; the account screen (`src/account.js`) warns a guest with progress first.
   Signing out and `POST /account/delete` leave the browser a fresh guest.
   A shop action is `applyAction` under a row lock with the record's `version` as the check, so a stale tab is refused with the record as it stands.
-  **The menu's tap code is the server's to grant.** STERNCHASE three times, HELM & HULL three
-  times, STERNCHASE once (`TAP_CODE` in the screen) asks `POST /hold/grant` for 100,000 coins
+  **The menu's tap code is the server's to grant.** STERNCHASE, HELM & HULL, STERNCHASE,
+  HELM & HULL (`TAP_CODE` in the screen) asks `POST /hold/grant` for 100,000 coins
   (`grantCoins` in `holdrules.js`, kept out of `ACTIONS` so no browser can send it as a shop
   action), and the server grants only where `COIN_GRANT` says: unset is nobody, which is production,
   `all` is everybody in that environment, which is for staging, and a list of emails is those

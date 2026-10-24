@@ -3627,13 +3627,13 @@ const fmtTons = (t) => t.toFixed(1);
 
 /**
  * THE TAP CODE: the title's two lines tapped in a set order hand the hold 100,000 coins, for the
- * owner stocking a hold to try the shipyard with. The order is STERNCHASE three times, HELM & HULL
- * three times, then STERNCHASE once, each tap within `TAP_GAP` of the last. The sequence is in this
+ * owner stocking a hold to try the shipyard with. The order is STERNCHASE, HELM & HULL, STERNCHASE,
+ * HELM & HULL, each tap within `TAP_GAP` of the last. The sequence is in this
  * public script, so the browser only asks; the server's `COIN_GRANT` decides whether it does
  * anything, and for anyone it does not name, nothing at all happens. No button or label gives it
  * away, and the two lines stay what they always were for everybody.
  */
-const TAP_CODE = ["title", "title", "title", "line", "line", "line", "title"];
+const TAP_CODE = ["title", "line", "title", "line"];
 const TAP_GAP = 1500; // ms
 function useTapCode(onCode) {
   const taps = useRef([]);
