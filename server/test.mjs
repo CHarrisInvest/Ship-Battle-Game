@@ -134,6 +134,11 @@ try {
       "with COIN_GRANT unset the tap code does nothing, and says nothing");
     check(!grantRule("owner@example.com")({ isAnonymous: true, email: "temp@guest" }) && grantRule("Owner@Example.com")({ isAnonymous: false, email: "owner@example.com" }),
       "a list of addresses grants only to an account signed in with one of them, a guest never");
+    const anyone = { isAnonymous: true };
+    check(grantRule("", "staging")(anyone) && !grantRule("", "production")(anyone) && !grantRule("", undefined)(anyone),
+      "unset, it grants to everybody in Railway's staging and to nobody in production or off Railway");
+    check(!grantRule("off", "staging")(anyone) && grantRule("all", "production")(anyone),
+      "and COIN_GRANT overrides the environment either way");
     grantTo = grantRule("all");
     const one = await a("POST", "/hold/grant", {});
     const two = await a("POST", "/hold/grant", {});

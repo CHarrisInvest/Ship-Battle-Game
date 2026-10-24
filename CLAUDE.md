@@ -231,9 +231,10 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   **The menu's tap code is the server's to grant.** STERNCHASE, HELM & HULL, STERNCHASE,
   HELM & HULL (`TAP_CODE` in the screen) asks `POST /hold/grant` for 100,000 coins
   (`grantCoins` in `holdrules.js`, kept out of `ACTIONS` so no browser can send it as a shop
-  action), and the server grants only where `COIN_GRANT` says: unset is nobody, which is production,
-  `all` is everybody in that environment, which is for staging, and a list of emails is those
-  accounts alone. The sequence is in the public script, so the check is the server's and a refusal is
+  action), and the server grants only where it should: with `COIN_GRANT` unset it reads Railway's own
+  `RAILWAY_ENVIRONMENT_NAME` and grants to everybody in `staging` and nobody elsewhere, production
+  and a developer's machine included, so nothing has to be set; `COIN_GRANT` overrides that with
+  `all`, `off` or a list of emails, those accounts alone. The sequence is in the public script, so the check is the server's and a refusal is
   a plain 404. What is granted goes on its own ledger line, `granted`, written only once something
   has been, so `coins` still reconstructs, `earned` and every achievement are untouched, and a record
   never granted still compares equal to a blank one. A voyage is
