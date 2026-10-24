@@ -281,11 +281,24 @@ const deckSurfY = (x, Y, z) => {
   return yOf(x, Y) + lerp(c(j), c(j + 1), f - j);
 };
 const GANG = 1.85; // width of the gangways along the waist
-// the waist's, the after one on the quarterdeck between the wheel and the mizzen, and the forecastle's
-const GRATINGS = [[9.9, D_UD, 5.1, 2.3], [-14.0, D_QD, 1.6, 1.8], [21.75, D_QD, 2.5, 1.7]];
+// the waist's, the after one on the quarterdeck between the wheel and the mizzen (the waist's
+// grating over again), and the forecastle's
+const GRATINGS = [[9.9, D_UD, 5.1, 2.3], [-12.5, D_QD, 5.1, 2.3], [21.75, D_QD, 2.5, 1.7]];
 const GRATE_K = 40, GRATE_Y = 858;
-// each grating's patch of the sheet, laid left to right
-const GRATE_RECTS = (function () { let x = 516; return GRATINGS.map(([, , len, wid]) => { const w = Math.round(len * GRATE_K), h = Math.round(wid * GRATE_K), r = { x, w, h }; x += w + 6; return r; }); })();
+// each grating's patch of the sheet, laid left to right; a grating the size of one already laid out
+// shares its patch, so the quarterdeck's is painted from the very same slats as the waist's
+const GRATE_RECTS = (function () {
+  let x = 516;
+  const laid = [];
+  return GRATINGS.map(([, , len, wid]) => {
+    const same = laid.find((r) => r.len === len && r.wid === wid);
+    if (same) return same;
+    const r = { x, w: Math.round(len * GRATE_K), h: Math.round(wid * GRATE_K), len, wid };
+    x += r.w + 6;
+    laid.push(r);
+    return r;
+  });
+})();
 const CAP_R = { top: [916, 862, 96, 96], drum: [916, 962, 104, 12], barrel: [916, 978, 104, 40] };
 const CH_K = 36, CH_STEP = 0.66, CH_R = { x: 520, y: 960, w: Math.round((1 + 9 * CH_STEP) * CH_K), h: Math.round(1.1 * CH_K) };
 
@@ -588,6 +601,7 @@ export function paintAtlas({ trim = "#e8c877", guns = PORTS_A_SIDE, name = "", b
 
   // ---- the gratings: crossing slats about every 0.4 m in light wood, over squares in black
   GRATINGS.forEach(([, , len, wid], i) => {
+    if (GRATE_RECTS.indexOf(GRATE_RECTS[i]) !== i) return; // a patch shared with one painted already
     const { x: X0, w, h } = GRATE_RECTS[i], nx = Math.max(2, Math.round(len / 0.4)), nz = Math.max(2, Math.round(wid / 0.4)), slat = 0.08 * GRATE_K;
     g.fillStyle = P.black; g.fillRect(X0, GRATE_Y, w, h);
     g.fillStyle = P.lightWood;
@@ -990,10 +1004,11 @@ export function buildSecondRate(spec) {
         (ii, j) => atlasUV(X0 + ii * w, GRATE_Y + j * h)), UP));
     });
     // The wheel on the quarterdeck, between the main and the mizzen and clear of both masts' pin
-    // rails, with the binnacle just forward of it. Everything the first rate carries on her poop is
-    // aft of it on this deck: the after grating between it and the mizzen, and the cabin skylight,
-    // the signal-flag lockers, the arms chests, the casks and the tub abaft the mizzen.
-    const WHEEL_X = -11.0, WHL = 0.62;
+    // rails, with the binnacle just forward of it: a little aft of where the first rate's stands for
+    // her length, to give the after grating its room. Everything the first rate carries on her poop
+    // is aft of it on this deck: the after grating between it and the mizzen, and the cabin
+    // skylight, the signal-flag lockers, the arms chests, the casks and the tub abaft the mizzen.
+    const WHEEL_X = -8.0, WHL = 0.62;
     const wb = deckPt(WHEEL_X, D_QD), R = 0.95, HUB = 1.35, PED = { x: 0.42, z: 0.5 };
     fitAdd(fit, WOOD, deckBox(PED.x, HUB + 0.2, PED.z, wb.clone().add(V3(0, (HUB + 0.2) / 2, 0)), P.midWood));
     const hub = wb.clone().add(V3(-PED.x / 2 - 0.14, HUB, 0)), AX = V3(1, 0, 0);
