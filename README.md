@@ -123,10 +123,12 @@ order; see "The road to production" below.
    - keep `RESEND_API_KEY` and `EMAIL_FROM` if codes should send from staging, and leave
      `GOOGLE_CLIENT_ID` unset unless the OAuth client is given
      `https://staging.sternchase.org/api/auth/callback/google` as a second redirect URI.
-   - to stock a hold for trying the shipyard, set `COIN_GRANT` to `all`: on the menu, tapping
-     STERNCHASE, HELM & HULL, STERNCHASE, HELM & HULL, each within a second and a half of the last, adds 100,000 coins every time. Production leaves it unset, which makes the taps
-     do nothing; to allow it there for one account only, set it to that account's sign-in email (a
-     comma-separated list for several), and only a captain signed in with it is granted.
+   - on staging the menu's tap code stocks a hold for trying the shipyard, with nothing to set:
+     tapping STERNCHASE, HELM & HULL, STERNCHASE, HELM & HULL, each within a second and a half of
+     the last, adds 100,000 coins every time, because the server reads Railway's own
+     `RAILWAY_ENVIRONMENT_NAME`. In production the taps do nothing. `COIN_GRANT` overrides either:
+     `off` stops it on staging, `all` allows it for everyone, and a sign-in email (a comma-separated
+     list for several) allows it for those accounts alone.
 
    Railway deploys each environment from its own branch on every push, so `staging` deploys when
    `staging` moves and `production` when `main` does.
