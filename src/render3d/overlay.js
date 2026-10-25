@@ -225,9 +225,10 @@ export function radar(ctx, v, world, fx, clock) {
  * guides, every rival's bars, the rising words and the storm's edge in world space, then the
  * vignette and the radar in screen space.
  *
- * `opts` is the frame's `{ live, input, alpha }`, as `render` is given it. `labelOf(s)` says where a
- * ship's bars go, as `{ gx, gy, h, roll, topZ }` (see `shipLabel`); the 3D renderer answers it from
- * her model's height and her drawn heel.
+ * `opts` is the frame's `{ live, input, alpha }`, as `render` is given it, with `radar: false` for a
+ * frame that wants no radar (the instant replay, which is a window onto the sea and not a fight).
+ * `labelOf(s)` says where a ship's bars go, as `{ gx, gy, h, roll, topZ }` (see `shipLabel`); the 3D
+ * renderer answers it from her model's height and her drawn heel.
  */
 export function drawOverlay(ctx, v, world, fx, opts, clock, labelOf) {
   screenSpace(ctx, v);
@@ -241,5 +242,5 @@ export function drawOverlay(ctx, v, world, fx, opts, clock, labelOf) {
   stormEdge(ctx, v, world, clock);
   screenSpace(ctx, v);
   vignette(ctx, v, fx);
-  radar(ctx, v, world, fx, clock);
+  if (opts.radar !== false) radar(ctx, v, world, fx, clock);
 }

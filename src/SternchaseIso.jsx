@@ -28,7 +28,9 @@ import { C, UI, SIDE_COLORS, CAPTAIN_TIMBER, LIVERIES, liveryFill } from "./rend
 import { createRenderer } from "./render/renderer.js";
 import { createFx, fxEvents, stepFx } from "./render/effects.js";
 import { HUD, radarRight } from "./render/hud.js";
+import { TILT, VIEW, MAX_ZOOM } from "./render/view.js";
 import { useControls } from "./input/controls.js";
+import { createTape, createReplay, REPLAY_LOOPS } from "./replay.js";
 
 /**
  * three.js, in a chunk of its own (`render3d/index.js`). It is asked for once the screen has
@@ -293,6 +295,19 @@ export default function App() {
   const [watchNote, setWatchNote] = useState("");
   const watchRef = useRef(null);
   const watchRefs = useRef({ start: () => {}, next: () => {}, stop: () => {} });
+  // The end of a round, before its tally: the word for how it ended rising out of the health card
+  // and the instant replay of her last seconds. `ending` is what the screen shows of it (null when
+  // nothing is ending), `endingRef` what the frame loop needs of it (the clip, whose ship the
+  // camera is on, and which end screen follows), `replayRef` the clip while it plays and `tapeRef`
+  // the round's tape, recording as she sails. The health card is where the word starts from, and
+  // `aimRef` is where the replay's window is on the screen, which the camera aims the clip into.
+  const [ending, setEnding] = useState(null);
+  const endingRef = useRef(null);
+  const endingRefs = useRef({ replay: () => {}, finish: () => {} }); // the loop's hands on it, for the screen
+  const replayRef = useRef(null);
+  const tapeRef = useRef(null);
+  const healthRef = useRef(null);
+  const aimRef = useRef(null);
   const roundSeen = useRef(null);
   const pendingJoin = useRef(null);
   const onNet = useCallback((st) => {
@@ -311,7 +326,8 @@ export default function App() {
     // one connection at a time: a second tap while the first is still opening waits for it
     if (connecting.current) return connecting.current;
     setNetNote("Connecting to the server.");
-    connecting.current = connectOnline({ onChange: onNet });
+    // every tick of a round with friends goes on the round's tape too, for the replay at her end
+    connecting.current = connectOnline({ onChange: onNet, onStep: (w, inputs) => { if (tapeRef.current) tapeRef.current.record(w, inputs); } });
     const c = await connecting.current;
     connecting.current = null;
     if (c.error) { setNetNote(ONLINE_FAILED[c.error]); return; }
@@ -382,7 +398,7 @@ export default function App() {
   // screen but the fight is that ground over the sea, and a sea-coloured band over a dark menu
   // read as a browser that had not caught up. Safari follows a change to the meta as it happens.
   useEffect(() => {
-    const tint = phase === "playing" || phase === "watching" ? C.water : MENU_TINT;
+    const tint = phase === "playing" || phase === "ending" || phase === "watching" ? C.water : MENU_TINT;
     let meta = document.querySelector('meta[name="theme-color"]');
     if (!meta) {
       meta = document.createElement("meta");
@@ -691,6 +707,8 @@ export default function App() {
             if (window.__sternchaseHelm) window.__sternchaseHelm(g, controls);
             const input = controls.read();
             if (recorder) recorder.record(g.tick, input[meRef.current]);
+            // and on the round's tape, for the replay at her end; a round she only watches has had its end
+            if (tapeRef.current && !g.watching) tapeRef.current.record(g, input);
             for (const e of step(g, input)) events.push(e);
             bank -= TICK;
             steps++;
@@ -704,20 +722,26 @@ export default function App() {
         renderer.follow(viewed(g), alpha);
         updateButtons();
         let hudNow = false;
+        // the blow that ended whatever ended this step, for the replay to look at: the last sinking
+        const strike = events.filter((e) => e.type === "sunk").pop() || null;
         for (const e of events) {
           if (e.type === "repaired" && e.shipId === fx.me) hudNow = true; // the rail answers the tap
           if (onlineRef.current && onlineRef.current.state.round && onlineRef.current.state.round.world === g) {
-            if (e.type === "player_out" && e.playerId === meRef.current) onlineOut(g, e);
+            // her own sinking is replayed as it happens, with her side or the field still at it
+            if (e.type === "player_out" && e.playerId === meRef.current) onlineOut(g, e, { replay: true, strike });
             if (e.type === "round_over") {
               const won = e.result.winners.find((w) => w.playerId === meRef.current);
               liveRef.current = false;
+              // a win she was afloat for is replayed on the ship whose blow won it; a round ending
+              // after she sank has had its replay, of her sinking, and goes straight to the screen
+              const afloat = shipOf(g, meRef.current).alive;
               if (g.rules.sides) {
                 // the round went to a side, hers or the other: her end screen says which, whether
                 // she is still afloat or has been watching from the bottom
                 const mine = won || e.result.losers.find((l) => l.playerId === meRef.current) || {};
                 watchRef.current = null;
-                onlineOut(g, { ...mine, won: !!won });
-              } else if (won) onlineOut(g, { ...won, won: true });
+                onlineOut(g, { ...mine, won: !!won }, { replay: afloat && !!won, strike });
+              } else if (won) onlineOut(g, { ...won, won: true }, { replay: afloat, strike });
               else if (watchRef.current != null && playsOn(g)) {
                 // the last of her friends is out and the AI fight on: she watches on, sailed here
                 gameRef.current = playOn(g);
@@ -727,7 +751,7 @@ export default function App() {
             }
           } else if (e.type === "round_over") {
             if (g.watching) { liveRef.current = false; watchOver(g); }
-            else endRound(g, e.result);
+            else endRound(g, e.result, strike);
           }
         }
         hudAcc += dt;
@@ -736,10 +760,111 @@ export default function App() {
           if (hudNow || key !== hudLast) { syncRef.current(); hudLast = key; hudAcc = 0; }
         }
       }
-      renderer.render(g, fx, { live: liveRef.current && watchRef.current == null, input: controls.input, alpha });
+      const rp = replayRef.current;
+      if (rp) drawReplay(rp, frame, dt);
+      else renderer.render(g, fx, { live: liveRef.current && watchRef.current == null, input: controls.input, alpha });
       fadeRail();
       raf = requestAnimationFrame(loop);
     }
+
+    /**
+     * THE INSTANT REPLAY, drawn in the round's place while it plays: the clip's world stepped by the
+     * real time this frame pays for, its events turned into smoke and splinters through a picture of
+     * its own, and the camera laid so the ship the clip is about sits in the replay's window on the
+     * screen rather than in the middle of it. Her own ship is still hers in it, in her colours and
+     * with the screen reddening for her hits. Past the moment it ends on the clip sails the world on
+     * for its tail, so she is seen to go under with the sea still alive around her. When the clip
+     * starts over the picture is cleared of its smoke and words but keeps what it knows of each
+     * ship, so the sea does not rebuild every hull on each pass; the ships that went down in the
+     * clip have gone under by then, since the tail is longer than a sinking takes to draw.
+     */
+    function drawReplay(rp, frame, dt) {
+      const { events, restarted } = rp.advance(Math.min(frame, 0.25), dt);
+      if (restarted) {
+        rp.fx.parts.length = 0; rp.fx.texts.length = 0; rp.fx.wakes.length = 0; rp.fx.vign = 0;
+        if (rp.loops >= REPLAY_LOOPS) { finishEnding(); return; }
+      }
+      const w = rp.world;
+      fxEvents(rp.fx, events);
+      stepFx(rp.fx, w, dt);
+      // the ship it is about, where she is now or where she was last seen afloat if she has gone
+      const s = w.ships.find((x) => x.id === rp.focusId);
+      if (s) rp.last = { px: s.px, py: s.py, x: s.x, y: s.y, pHeading: s.pHeading, heading: s.heading };
+      renderer.follow(aimInto(rp.last, aimRef.current), rp.alpha);
+      renderer.render(w, rp.fx, { live: false, radar: false, input: controls.input, alpha: rp.alpha });
+    }
+
+    /**
+     * The ship brought into the replay's window rather than the middle of the screen: the camera
+     * follows a point offset from her by the window's offset from the screen's centre, in world
+     * units. The view's zoom is the camera's own figure, from the canvas's shorter side; the camera
+     * still holds at the map's edge, so a ship fought right against the boundary drifts off the
+     * window's centre by what the edge allows, as she would off the screen's.
+     */
+    function aimInto(ship, aim) {
+      const cv = overlayRef.current;
+      if (!aim || !cv) return ship;
+      const W = cv.clientWidth, H = cv.clientHeight;
+      const zoom = Math.min(Math.min(W, H) / VIEW, MAX_ZOOM);
+      const ox = (aim.x - W / 2) / zoom, oy = (aim.y - H / 2) / (zoom * TILT);
+      return { px: ship.px - ox, py: ship.py - oy, x: ship.x - ox, y: ship.y - oy, pHeading: ship.pHeading, heading: ship.heading };
+    }
+
+    /**
+     * THE ROUND HAS ENDED FOR HER, and the screen says so before it counts: the word for how (SUNK,
+     * or VICTORY! for a round she won) rises out of her health card and takes its post, and under
+     * it the instant replay of her last seconds plays in a window, on the ship the moment was about:
+     * her own, sunk or sinking the last of them, or between sides the ship whose blow won the round
+     * while she was still afloat. `then` is the end screen that follows, when she taps on or the
+     * clip has played its loops. Without a tape to cut (a round picked up with no recording) the
+     * end screen comes at once, as it always did.
+     */
+    function beginEnding(g, { won, strike, then }) {
+      const tape = tapeRef.current;
+      const clip = tape ? tape.cut(g.tick) : null;
+      if (!clip) { setPhase(then); return; }
+      const me = shipOf(g, meRef.current);
+      // whose blow it was: hers unless she won by another ship's hand (a side's win) and that ship
+      // is in the clip to look at; the storm's leaves it on her
+      const by = won && strike && strike.by != null && clip.world.ships.find((s) => s.id === strike.by) ? strike.by : me.id;
+      const focus = clip.world.ships.find((s) => s.id === by) || me;
+      const rfx = createFx(me.id, fx.own);
+      rfx.names = fx.names;
+      endingRef.current = { then, clip, focusId: focus.id, fx: rfx, last: { px: focus.px, py: focus.py, x: focus.x, y: focus.y, pHeading: focus.pHeading, heading: focus.heading } };
+      // where the word rises from: the middle of her health card, in the HUD box's own coordinates
+      const card = healthRef.current && healthRef.current.getBoundingClientRect();
+      const hud = hudRef.current && hudRef.current.getBoundingClientRect();
+      const from = card && hud ? { x: card.left + card.width / 2 - hud.left, y: card.top + card.height / 2 - hud.top } : null;
+      setEnding({ word: won ? "VICTORY!" : "SUNK", color: won ? C.gold : C.crew, from });
+      setPhase("ending");
+    }
+
+    // The replay's window is on the screen: the clip starts playing in it.
+    function startReplay() {
+      const e = endingRef.current;
+      if (!e || replayRef.current) return;
+      const rp = createReplay(e.clip);
+      rp.fx = e.fx; rp.focusId = e.focusId; rp.last = e.last;
+      replayRef.current = rp;
+    }
+
+    // On to the end screen, whichever the round has since decided it is.
+    function finishEnding() {
+      const e = endingRef.current;
+      replayRef.current = null;
+      endingRef.current = null;
+      aimRef.current = null;
+      setEnding(null);
+      if (e) setPhase(e.then);
+    }
+
+    // The end screen `then`: now, or after the ending that is showing, which keeps its own course
+    // (between sides the round can go to a side while her own sinking is still being replayed).
+    function showEnd(then) {
+      if (endingRef.current) endingRef.current.then = then;
+      else setPhase(then);
+    }
+    endingRefs.current = { replay: startReplay, finish: finishEnding };
 
     // What the HUD shows, as one string, so the loop can tell whether any of it has moved since React
     // last heard: her purse, the field, her rank, her three bars, and the weather's countdown, phase
@@ -761,7 +886,7 @@ export default function App() {
      * it ended. The engine only said who won and how whoever sank went down; what that is worth, what
      * it is called and where it is written down is the screen's business, and happens once, here.
      */
-    function endRound(g, result) {
+    function endRound(g, result, strike) {
       liveRef.current = false;
       const won = result.winners.some((w) => w.playerId === meRef.current);
       const mine = (won ? result.winners : result.losers).find((r) => r.playerId === meRef.current) || { rank: 0, cause: "hull" };
@@ -791,8 +916,9 @@ export default function App() {
       }
       setResult(won ? (g.rules.ladder ? WON_LADDER : WON_LAST) : SUNK_LINE[mine.cause] || SUNK_LINE.crew);
       setCanWatch(!won && playsOn(g));
-      setPhase(won ? "won" : "dead");
       syncRef.current();
+      // the word and the replay first, then the tally
+      beginEnding(g, { won, strike, then: won ? "won" : "dead" });
     }
 
     // The sea behind the menu: her ship read fresh out of the hold, on a seed of its own.
@@ -830,6 +956,7 @@ export default function App() {
       gameRef.current = voyage = createWorld({ mode: round.mode, seed: round.seed, players: [{ id: meRef.current, loadout: round.loadout }] });
       fx = createFx(shipOf(gameRef.current, meRef.current).id, liveryFill(shipLivery(getHold())));
       recorder = recorderFor(round.roundId);
+      tapeRef.current = createTape();
       resetWatch();
       renderer.follow(shipOf(gameRef.current, meRef.current));
       liveRef.current = true;
@@ -860,6 +987,7 @@ export default function App() {
       fx = createFx(shipOf(round.world, round.you).id, liveryFill(shipLivery(getHold())));
       fx.names = round.names; // her friends' ship names, drawn over their ships
       recorder = null;
+      tapeRef.current = createTape();
       resetWatch();
       renderer.follow(shipOf(round.world, round.you));
       liveRef.current = true;
@@ -885,16 +1013,26 @@ export default function App() {
       watchRef.current = null;
       setCanWatch(false);
       setWatchNote("");
+      // a new round while the last one's ending is still up (a friend's lobby starting over) drops it
+      replayRef.current = null;
+      endingRef.current = null;
+      aimRef.current = null;
+      setEnding(null);
     }
 
     /**
      * She is out of the round with friends, sunk or the last afloat: the end screen, over the sea.
      * Between sides it is shown twice over if she sinks first: once for her sinking, with her side
-     * still fighting and her purse still open, and again when the round goes to a side.
+     * still fighting and her purse still open, and again when the round goes to a side. `replay`
+     * says whether this end is shown with its word and replay first (her own sinking, or a win she
+     * was afloat for), and `strike` is the sinking that ended the step, whose author the replay
+     * looks at when the win was by another ship's hand.
      */
-    function onlineOut(g, out) {
+    function onlineOut(g, out, { replay = false, strike = null } = {}) {
       const s = voyageStats(g, meRef.current);
       setStats(s);
+      const then = out.won ? "won" : "dead";
+      const end = () => (replay ? beginEnding(g, { won: !!out.won, strike, then }) : showEnd(then));
       if (g.rules.sides) {
         const me = shipOf(g, meRef.current), r = g.result;
         if (!r.over) { setResult(SUNK_LINE[out.cause] || SUNK_LINE.crew); setWatchNote(SIDE_FIGHTS_ON); setSideEnd(null); }
@@ -907,18 +1045,18 @@ export default function App() {
         setPlace({ rank: 0, total: 0 });
         setCanWatch(!me.alive && !r.over);
         setOnlineEnd(true);
-        setPhase(out.won ? "won" : "dead");
         if (r.over) track("voyage_end", { mode: "online", field: "teams", result: out.won ? "won" : r.side === null ? "draw" : "lost", kills: s.kills, seconds: Math.round(s.time) });
         syncRef.current();
+        end();
         return;
       }
       setPlace({ rank: out.rank, total: g.ships.length });
       setResult(out.won ? WON_LAST : SUNK_LINE[out.cause] || SUNK_LINE.crew);
       setCanWatch(!out.won && !g.result.over);
       setOnlineEnd(true);
-      setPhase(out.won ? "won" : "dead");
       track("voyage_end", { mode: "online", result: out.won ? "won" : "sunk", rank: out.rank, kills: s.kills, seconds: Math.round(s.time) });
       syncRef.current();
+      end();
     }
 
     resize();
@@ -1023,8 +1161,11 @@ export default function App() {
           landing twice on the counters, which sideways sit where the thumbs are, is two taps and
           never a zoom. The canvas, the joystick and the fire buttons already said so for themselves. */}
       <div ref={hudRef} style={{ position: "absolute", top: "env(safe-area-inset-top, 0px)", right: "env(safe-area-inset-right, 0px)", bottom: "env(safe-area-inset-bottom, 0px)", left: "env(safe-area-inset-left, 0px)", pointerEvents: "none", touchAction: "none" }}>
-      {phase === "playing" && (
-        <>
+      {/* The HUD stays up a moment into the ending, fading, so the word is seen to come out of the
+          health card rather than out of nothing; the ending's own layer covers it and takes the
+          taps meanwhile. */}
+      {(phase === "playing" || phase === "ending") && (
+        <div style={{ position: "absolute", inset: 0, opacity: phase === "ending" ? 0 : 1, transition: "opacity 0.6s ease 0.45s" }}>
           {wide ? (
             // Sideways: the rank and the bars in the top left, and beside them, in the room
             // between the bars and the radar, a column of two rows: the counters, wrapping if the
@@ -1033,7 +1174,7 @@ export default function App() {
               <div style={{ flex: "0 0 auto", display: "flex", gap: 6, alignItems: "stretch", pointerEvents: "auto" }}>
                 {rules.ranked && <RankBadge rank={rank.rank} total={rank.total} />}
                 {rules.sides && sides && <SideBadge sides={sides} />}
-                <div style={{ width: 180 }}>
+                <div ref={healthRef} style={{ width: 180 }}>
                   <HealthPanel ph={ph} phMax={phMax} />
                 </div>
               </div>
@@ -1049,7 +1190,7 @@ export default function App() {
               <div style={{ position: "absolute", top: 36, left: HUD.pad, display: "flex", gap: 6, alignItems: "stretch", width: "min(236px, 72%)", pointerEvents: "auto" }}>
                 {rules.ranked && <RankBadge rank={rank.rank} total={rank.total} />}
                 {rules.sides && sides && <SideBadge sides={sides} />}
-                <div style={{ flex: 1 }}>
+                <div ref={healthRef} style={{ flex: 1 }}>
                   <HealthPanel ph={ph} phMax={phMax} />
                 </div>
               </div>
@@ -1072,7 +1213,13 @@ export default function App() {
             <FireButton refEl={btnRefs.musket} name="MUSKET" sub="crew" color={C.crew} onDown={controls.hold("musket", true)} onUp={controls.hold("musket", false)} />
           </div>
           )}
-        </>
+        </div>
+      )}
+      {phase === "ending" && ending && (
+        <EndingOverlay ending={ending} box={box} wide={wide}
+          onAim={(at) => { aimRef.current = at; }}
+          onReplay={() => endingRefs.current.replay()}
+          onDone={() => endingRefs.current.finish()} />
       )}
       </div>
 
@@ -4458,6 +4605,98 @@ function EndOverlay({ title, titleColor, result, note, stats, mode, place, hold,
         )}
       </div>
     </Shell>
+  );
+}
+
+// The end-of-round word: how long it stands over the health card before it moves, how long the move
+// takes, and how long after the replay's window is up before a tap anywhere moves on, so the thumb
+// still drumming a fire button as she goes under does not skip the whole thing.
+const WORD_PX = 44;
+const WORD_HOLD = 900, WORD_TRAVEL = 750, TAP_ARM = 600;
+// The word's column when the screen is sideways: wide enough for VICTORY! at its size.
+const WORD_COL = 232;
+
+/**
+ * THE END OF A ROUND, BEFORE THE TALLY. The word for how it ended, SUNK or VICTORY!, appears out
+ * of her health card, where her bars just ran out or held, stands there a moment, and travels to
+ * its post: the top middle of the screen held upright, the middle of the left side held sideways.
+ * Then a window opens under it (beside it, sideways) and the instant replay of her last seconds
+ * plays there, captioned "Instant replay" with its three dots breathing, over the rest of the sea
+ * dimmed. The clip loops; "Continue" or a tap anywhere, once the window has been up a moment,
+ * goes on to the tally, and so does the clip playing itself out.
+ *
+ * `box` is the HUD's safe-area box, which this sits in, `ending.from` where the card's middle was
+ * in it, `onAim` tells the frame loop where the window's middle is on the page so the camera can
+ * lay the clip's ship in it, `onReplay` that the window is up and the clip can start, and `onDone`
+ * that she is moving on. Stages are timers, not frames: nothing here is drawn per frame.
+ */
+function EndingOverlay({ ending, box, wide, onAim, onReplay, onDone }) {
+  const [stage, setStage] = useState(0);
+  const [armed, setArmed] = useState(false);
+  const winRef = useRef(null);
+  useEffect(() => {
+    const t = [
+      setTimeout(() => setStage(1), 30),
+      setTimeout(() => setStage(2), 30 + WORD_HOLD),
+      setTimeout(() => setStage(3), 30 + WORD_HOLD + WORD_TRAVEL),
+      setTimeout(() => setArmed(true), 30 + WORD_HOLD + WORD_TRAVEL + TAP_ARM),
+    ];
+    return () => t.forEach(clearTimeout);
+  }, []);
+
+  // Where everything sits, off the box's shape. Upright, the word at the top middle and the window
+  // under it, as wide as the screen allows and no taller than leaves room for the button. Sideways,
+  // the word in a column down the left, centred on the screen's middle, and the window beside it
+  // filling the height, the button under the window.
+  const { w, h } = box;
+  let post, win;
+  if (wide) {
+    post = { x: 16 + WORD_COL / 2, y: h / 2 };
+    const left = 16 + WORD_COL + 12;
+    const height = Math.max(120, Math.min(h - 24 - 70, 360));
+    const width = Math.max(160, Math.min(w - left - 16, Math.round(height * 1.3)));
+    win = { left, top: Math.max(12, (h - (height + 58)) / 2), width, height };
+  } else {
+    post = { x: w / 2, y: 14 + WORD_PX / 2 };
+    const top = post.y + WORD_PX / 2 + 16;
+    const width = Math.max(160, Math.min(w - 32, 420));
+    const height = Math.max(120, Math.min(width, h - top - 96));
+    win = { left: (w - width) / 2, top, width, height };
+  }
+  const from = ending.from || post;
+  const at = stage < 2 ? from : post;
+  const open = stage >= 3;
+
+  // the window's middle on the page, for the camera; measured, so it is what is actually drawn
+  useEffect(() => {
+    if (!open || !winRef.current) return;
+    const r = winRef.current.getBoundingClientRect();
+    onAim({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
+  }, [open, w, h, wide]);
+  useEffect(() => { if (open) onReplay(); }, [open]);
+
+  return (
+    <div style={{ position: "absolute", inset: 0, pointerEvents: "auto", touchAction: "none" }} onPointerDown={() => { if (armed) onDone(); }}>
+      {/* the window onto the replay: everything outside it is dimmed by its own shadow */}
+      <div ref={winRef} style={{ position: "absolute", left: win.left, top: win.top, width: win.width, height: win.height, borderRadius: 10, border: `1px solid ${C.gold}`, boxShadow: "0 0 0 200vmax rgba(6,32,31,0.55)", opacity: open ? 1 : 0, transition: "opacity 0.35s", pointerEvents: "none" }}>
+        <div style={{ position: "absolute", top: -13, left: 12, background: C.panel, border: `1px solid ${C.hair}`, borderRadius: 20, padding: "4px 11px", fontSize: 12, fontWeight: 700, color: C.gold, display: "flex", alignItems: "center", whiteSpace: "nowrap" }}>
+          <span>Instant replay</span>
+          {[0, 1, 2].map((i) => <span key={i} aria-hidden="true" style={{ animation: `replay-dot 1.4s ease-in-out ${i * 0.25}s infinite` }}>.</span>)}
+        </div>
+      </div>
+      {/* the word, out of the card and to its post */}
+      <div style={{
+        position: "absolute", left: at.x, top: at.y, whiteSpace: "nowrap", pointerEvents: "none",
+        transform: `translate(-50%, -50%) scale(${stage === 0 ? 0.45 : 1})`, opacity: stage === 0 ? 0 : 1,
+        transition: stage < 2 ? "transform 0.35s ease-out, opacity 0.3s ease-out" : "left 0.75s cubic-bezier(0.2, 0.7, 0.2, 1), top 0.75s cubic-bezier(0.2, 0.7, 0.2, 1)",
+        fontFamily: DISPLAY, fontSize: WORD_PX, letterSpacing: 1, color: ending.color, textShadow: "0 2px 10px rgba(0,0,0,0.65), 0 0 2px rgba(0,0,0,0.8)",
+      }}>{ending.word}</div>
+      {open && (
+        <div style={{ position: "absolute", left: win.left, top: win.top + win.height + 14, width: win.width, display: "flex", justifyContent: "center" }} onPointerDown={(e) => e.stopPropagation()}>
+          <StartButton onClick={onDone} label="Continue" />
+        </div>
+      )}
+    </div>
   );
 }
 

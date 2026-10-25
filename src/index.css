@@ -56,6 +56,16 @@ body {
 }
 
 /*
+ * The three dots after "Instant replay" on the end-of-round window, each breathing from a quarter
+ * to full and back, a third of a beat apart, so the caption reads as a replay still running rather
+ * than a label. Lightly: the dots never go out, and nothing else on the screen blinks.
+ */
+@keyframes replay-dot {
+  0%, 100% { opacity: 0.25; }
+  50% { opacity: 1; }
+}
+
+/*
  * The note beside the GAME MODES heading never breaks onto a second line. It reads "Enter to earn
  * coins" where the row is wide enough for that beside the heading, and "Earn coins" where it is
  * not, decided by the row's own width rather than the screen's, because the row is what the two

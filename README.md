@@ -25,6 +25,7 @@ npm run preview  # serve the built bundle
 npm run catalogue  # check the fleet is riggable and drawable, and print it
 npm run purity     # check the engine imports and touches nothing it must not; a second
 npm run sim-test   # play every mode to its end in plain Node, twice from each seed; seconds
+npm run replay-test # cut the instant replay's clip from rounds in Node and check it ends on their bits
 npm run smoke      # play every mode headless to its end screen; about four minutes
 ```
 
