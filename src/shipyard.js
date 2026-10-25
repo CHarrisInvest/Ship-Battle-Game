@@ -268,7 +268,7 @@ const FLEET = [
     id: "thirdRate", name: "3rd rate", price: 58000,
     blurb: "Sixty four guns, and the smallest ship anyone will put in the line of battle.",
     hull: 1812, crew: 500, speed: 0.88, hand: 0.7, canvas: 4.13, tons: 175,
-    guns: [32, 2, 5], masts: ["bowsprit/large/headsails", "fore/heavy/square", "main/heavy/square", "mizzen/large/spanker"],
+    guns: [32, 2, 5], masts: ["bowsprit/small/headsails", "fore/large/square/2", "main/large/square/2", "mizzen/heavy/spanker"],
   },
   {
     id: "secondRate", name: "2nd rate", price: 80000,
