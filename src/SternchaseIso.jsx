@@ -772,10 +772,11 @@ export default function App() {
      * real time this frame pays for, its events turned into smoke and splinters through a picture of
      * its own, and the camera laid so the ship the clip is about sits in the replay's window on the
      * screen rather than in the middle of it. Her own ship is still hers in it, in her colours and
-     * with the screen reddening for her hits. When the clip starts over the picture is cleared of
-     * its smoke and words but keeps what it knows of each ship, so the sea does not rebuild every
-     * hull on each pass; the ships that went down in the clip have gone under by then, since the
-     * clip holds longer on its end than a sinking takes to draw.
+     * with the screen reddening for her hits. Past the moment it ends on the clip sails the world on
+     * for its tail, so she is seen to go under with the sea still alive around her. When the clip
+     * starts over the picture is cleared of its smoke and words but keeps what it knows of each
+     * ship, so the sea does not rebuild every hull on each pass; the ships that went down in the
+     * clip have gone under by then, since the tail is longer than a sinking takes to draw.
      */
     function drawReplay(rp, frame, dt) {
       const { events, restarted } = rp.advance(Math.min(frame, 0.25), dt);

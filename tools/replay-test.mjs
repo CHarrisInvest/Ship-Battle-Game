@@ -10,7 +10,8 @@
  *   a clip is the wrong length: the whole round when it ran shorter than the clip, else exactly
  *   `REPLAY_SECONDS` of it;
  *   a clip of a round with several captains loses one captain's controls;
- *   the player does not reach the same end in real-time frames, hold for its tail, and start over;
+ *   the player does not reach the same end in real-time frames, sail on through its tail (the
+ *   world stepping on past the round's own end, so a sinking is seen whole), and start over;
  *   the recording leaves the round it records a different round.
  */
 
@@ -78,13 +79,26 @@ function playerTest(name, world, clip) {
   if (rp.alpha !== 1) fail(`${name}: alpha is ${rp.alpha} at the clip's end`);
   const secs = frames / 4 * dts.reduce((a, b) => a + b, 0);
   if (Math.abs(secs - clip.inputs.length * TICK) > 0.1) fail(`${name}: the clip took ${secs.toFixed(2)} s of real time for ${(clip.inputs.length * TICK).toFixed(2)} s of round`);
-  // the hold, then over again
-  let held = 0;
-  while (!restarted && held < REPLAY_TAIL + 1) { restarted = rp.advance(1 / 60).restarted; held += 1 / 60; }
+  // the tail: the world sails on past the round's end, every ship a number still, then over again
+  let held = 0, sailedOn = 0, bad = null, said = 0;
+  const endTick = rp.world.tick;
+  while (!restarted && held < REPLAY_TAIL + 1) {
+    const r = rp.advance(1 / 60);
+    restarted = r.restarted;
+    said += r.events.filter((e) => e.type === "round_over").length;
+    held += 1 / 60;
+    if (!restarted) {
+      sailedOn = rp.world.tick - endTick;
+      for (const s of rp.world.ships) { const f = ["x", "y", "heading", "spdCur", "hull"].find((k) => !Number.isFinite(s[k])); if (f && !bad) bad = `ship ${s.id} ${f} is ${s[f]}`; }
+    }
+  }
   if (!restarted) fail(`${name}: the player never started over`);
   else if (held < REPLAY_TAIL - 1 / 30) fail(`${name}: the player started over after ${held.toFixed(2)} s, before its tail`);
+  else if (sailedOn < Math.round((REPLAY_TAIL - 0.2) / TICK)) fail(`${name}: the tail sailed the world on only ${sailedOn} steps`);
+  else if (bad) fail(`${name}: sailing on past the end, ${bad}`);
+  else if (said) fail(`${name}: the round's end was said ${said} times over in the tail`);
   else if (rp.loops !== 1 || rp.world.tick !== clip.world.tick) fail(`${name}: the player did not start the clip over from its start`);
-  else ok(`${name}: the player reaches the same end in ${secs.toFixed(2)} s, holds ${held.toFixed(2)} s and starts over (${events} events)`);
+  else ok(`${name}: the player reaches the same end in ${secs.toFixed(2)} s, sails on ${sailedOn} steps through its tail and starts over (${events} events)`);
 }
 
 /** Recording leaves the round exactly as it would have been without a tape. */
@@ -106,9 +120,12 @@ console.log("replay-test");
 const one = (loadout) => [{ id: "p1", loadout }];
 const r1 = roundTest("wave gundalow driven", { mode: "wave", seed: 5, players: one(SHIPS.gundalow), hands: drive, mark: 1000 });
 if (r1) playerTest("wave gundalow driven", r1.world, r1.clip);
-roundTest("ladder first rate wandering", { mode: "ladder", seed: 8, players: one(SHIPS["first rate"]), hands: wander, mark: 2400 });
-roundTest("ffa, 4 captains wandering", { mode: "ffa", seed: 12, players: Array.from({ length: 4 }, (_, i) => ({ id: `p${i + 1}`, loadout: i % 2 ? SHIPS["first rate"] : SHIPS.gundalow })), hands: wander, mark: 600 });
-roundTest("teams, 2 captains wandering", { mode: "teams", seed: 3, players: Array.from({ length: 2 }, (_, i) => ({ id: `p${i + 1}`, loadout: SHIPS.gundalow, side: SIDES[i % SIDES.length] })), hands: wander });
+const r2 = roundTest("ladder first rate wandering", { mode: "ladder", seed: 8, players: one(SHIPS["first rate"]), hands: wander, mark: 2400 });
+if (r2) playerTest("ladder first rate wandering", r2.world, r2.clip);
+const r3 = roundTest("ffa, 4 captains wandering", { mode: "ffa", seed: 12, players: Array.from({ length: 4 }, (_, i) => ({ id: `p${i + 1}`, loadout: i % 2 ? SHIPS["first rate"] : SHIPS.gundalow })), hands: wander, mark: 600 });
+if (r3) playerTest("ffa, 4 captains wandering", r3.world, r3.clip);
+const r4 = roundTest("teams, 2 captains wandering", { mode: "teams", seed: 3, players: Array.from({ length: 2 }, (_, i) => ({ id: `p${i + 1}`, loadout: SHIPS.gundalow, side: SIDES[i % SIDES.length] })), hands: wander });
+if (r4) playerTest("teams, 2 captains wandering", r4.world, r4.clip);
 // a round shorter than the clip: a storm or a ram can end one in seconds, and the clip is all of it
 {
   const world = createWorld({ mode: "derby", seed: 21, players: one(SHIPS.gundalow) });

@@ -379,7 +379,9 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   re-steps to the round's own bits because the same state and the same inputs are the same round.
   `createReplay` sails the clip in real time through the same renderer and effects as the round,
   with the camera aimed so the ship sits in the window (`aimInto`) and no radar (`radar: false` on
-  the frame's `opts`), holds on the aftermath for the 3D sea to take her under, and starts over;
+  the frame's `opts`), then sails the world on for `REPLAY_TAIL` seconds past the moment, the
+  round's own end lifted before each of those steps since the copy is a show, so the 3D sea is
+  seen to take her under with the sea alive around her, and starts over;
   "Continue", a tap anywhere once the window has been up a moment, or the clip's third pass goes
   on to the tally, whichever end screen the round has since decided (`showEnd`, since between
   sides the round can go to a side while her own sinking is still playing). `npm run replay-test`

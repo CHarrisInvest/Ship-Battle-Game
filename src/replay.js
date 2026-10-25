@@ -19,8 +19,11 @@ import { step, TICK } from "./sim/index.js";
 
 /** How much of the round a clip shows, ending on the moment the round ended for her. */
 export const REPLAY_SECONDS = 5;
-/** How long a clip holds on its last step before starting over: long enough for the 3D sea to take her under. */
-export const REPLAY_TAIL = 2.8;
+/**
+ * How long a clip sails on past the moment it ends on before starting over: long enough for the 3D
+ * sea to take a ship under (2.5 seconds from her last step afloat) and for the wreckage to settle.
+ */
+export const REPLAY_TAIL = 4;
 /** How many times a clip plays before the screen moves on by itself. */
 export const REPLAY_LOOPS = 3;
 // Ticks between the copies of the world the tape keeps. A copy a second is cheap, and the lead-in
@@ -81,39 +84,62 @@ export function createTape(seconds = REPLAY_SECONDS) {
 /**
  * A clip being played. `advance(frame, dt)` banks `frame` seconds of real time, takes the steps it
  * pays for and returns what happened in them as events, the way the frame loop does for a live
- * round, so the screen can draw the clip's smoke and splinters through the same effects. At the
- * clip's end it holds for `tail` seconds, then starts the clip over and says so, so the screen can
- * clear its picture of it. The hold is counted in `dt`, the screen's own time for what decorates
- * the sea (the frame's time, capped), because a sinking is drawn at that pace, and the hold is
- * there for the sinking to be seen whole: on a phone dropping frames both run slow together.
- * `alpha` is how far through the last step to draw, as in play.
+ * round, so the screen can draw the clip's smoke and splinters through the same effects.
+ *
+ * THE CLIP SAILS ON PAST ITS END. The moment it is cut to is the step she went under on, or the last
+ * of them did, and a frame frozen there shows a hull still afloat: the 3D sea takes a ship under
+ * over the seconds after her last step, her wreckage flies and the smoke drifts. So for `tail`
+ * seconds after the clip's last input the world is stepped on under the hands as they stood on
+ * that last step (a repair asked for then is not asked again), the round's own end notwithstanding:
+ * the engine refuses to step a round that is over, and this copy is a show, so its end is lifted
+ * before each of those steps and what the engine says again about it is left out of the events.
+ * The frame that reaches the clip's end stops there, so the moment itself lands on a frame of its
+ * own. Then the clip starts over and says so, so the screen can clear its picture of it.
+ *
+ * The tail is counted in `dt`, the screen's own time for what decorates the sea (the frame's time,
+ * capped), because a sinking is drawn at that pace and the tail is there for it to be seen whole:
+ * on a phone dropping frames both run slow together. `alpha` is how far through the last step to
+ * draw, as in play.
  */
 export function createReplay(clip, { tail = REPLAY_TAIL } = {}) {
   let world = structuredClone(clip.world);
   let at = 0, bank = 0, held = 0, loops = 0;
   const over = () => at >= clip.inputs.length;
+  // her hands as they stood on the last step, held through the tail, with no repair asked again
+  const last = clip.inputs[clip.inputs.length - 1];
+  const hands = Object.fromEntries(Object.entries(last).map(([id, rec]) => [id, { ...rec, repair: null }]));
   return {
     get world() { return world; },
-    get alpha() { return over() ? 1 : Math.min(1, bank / TICK); },
+    // an empty bank is a step drawn whole: the frame the clip ends on, and the first of a pass
+    get alpha() { return bank === 0 ? 1 : Math.min(1, bank / TICK); },
     /** How many times the clip has started over. */
     get loops() { return loops; },
-    /** Whether the clip has been sailed to its end and is holding on the aftermath. */
+    /** Whether the clip has been sailed to its end and is sailing on through the aftermath. */
     get over() { return over(); },
     advance(frame, dt = frame) {
       const events = [];
       if (over()) {
         held += dt;
-        if (held < tail) return { events, restarted: false };
-        world = structuredClone(clip.world);
-        at = 0; bank = 0; held = 0; loops++;
-        return { events, restarted: true };
+        if (held >= tail) {
+          world = structuredClone(clip.world);
+          at = 0; bank = 0; held = 0; loops++;
+          return { events, restarted: true };
+        }
       }
       bank += Math.min(frame, 0.25);
       let steps = 0;
-      while (bank >= TICK && steps < MAX_STEPS && !over()) {
-        for (const e of step(world, clip.inputs[at++])) events.push(e);
-        bank -= TICK;
-        steps++;
+      while (bank >= TICK && steps < MAX_STEPS) {
+        if (!over()) {
+          for (const e of step(world, clip.inputs[at++])) events.push(e);
+          bank -= TICK;
+          steps++;
+          if (over()) { bank = 0; break; } // the moment itself, on a frame of its own, drawn whole
+        } else {
+          world.result.over = false;
+          for (const e of step(world, hands)) if (e.type !== "round_over") events.push(e);
+          bank -= TICK;
+          steps++;
+        }
       }
       if (bank >= TICK) bank %= TICK; // behind by more than a frame can pay: let it go
       return { events, restarted: false };
