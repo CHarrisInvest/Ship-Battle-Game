@@ -108,7 +108,7 @@ const oneOf = (row, col, file, list, what) => {
  * column and the hull writer below knows what to do with it.
  */
 const REFERENCE = [
-  "era", "region", "role", "lod", "lbp", "beam", "draft", "depth", "freeboard", "lb", "bd",
+  "era", "region", "role", "lod", "lbp", "beam", "depth", "freeboard", "lb", "bd",
   "burthen", "disp", "bowFine", "tumblehome", "deadrise", "sheer", "castle", "stern", "mastHeight",
   "decks", "wale", "topside", "roomSpace", "species", "timber", "crewMin", "cruise", "topSpeed",
   "manoeuvre", "histGuns", "battery", "drawnLength", "drawnBeam",
