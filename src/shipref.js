@@ -558,7 +558,7 @@ export const HULL_REF = {
     topSpeed: 9,
     manoeuvre: 38,
     histGuns: 100,
-    battery: "28/28/30+12/2",
+    battery: "28/28/28+12/4",
     drawnLength: 58.7,
     drawnBeam: 15.8,
   },
