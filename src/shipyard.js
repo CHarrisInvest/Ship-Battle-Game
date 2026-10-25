@@ -262,7 +262,7 @@ const FLEET = [
     id: "fourthRate", name: "4th rate", price: 35000,
     blurb: "Two decks of guns on a hull too slow to run and too light for the line.",
     hull: 1305, crew: 390, speed: 0.85, hand: 0.76, canvas: 3.18, tons: 142,
-    guns: [27, 2, 4], masts: ["bowsprit/large/headsails", "fore/heavy/square", "main/heavy/square", "mizzen/large/spanker+lateen"],
+    guns: [27, 2, 4], masts: ["bowsprit/small/headsails", "fore/large/square/2", "main/large/square/2", "mizzen/heavy/spanker"],
   },
   {
     id: "thirdRate", name: "3rd rate", price: 58000,
