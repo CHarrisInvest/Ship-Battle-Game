@@ -42,6 +42,8 @@ const PIVOT_Y = 0.71; // where the waterline amidships sits, as a share of the b
 const KEY_DIR = new THREE.Vector3(-0.42, 0.78, 0.46).normalize();
 const KEY = { color: "#fff8ee", intensity: 0.85 * Math.PI };
 const FILL = { sky: "#eef0f2", ground: "#5a4c3c", intensity: 0.36 * Math.PI };
+/** The plate's two lights, for anything else that draws a ship as the plate does (the Ship Lab's close-ups). */
+export const PLATE_LIGHTS = { keyDir: KEY_DIR, key: KEY, fill: FILL };
 
 /* ---- the one shared WebGL renderer ------------------------------------------------------------ */
 
@@ -112,7 +114,8 @@ function blobTexture() {
  * Her flags fly from the menu's wind (`WIND.menu` in flags.js), which is fixed to the viewer, so as
  * the plate turns her they hold their line on screen and she swings under them. `how` is optional:
  * `speed` sails her at that speed in the engine's units, so her flags stream astern as they would at
- * sea; `wind` turns the wind to that many radians in the menu's frame; and `time` holds the flags
+ * sea; `wind` turns the wind to that many radians in the menu's frame; `trim` is her livery, on her
+ * flags and a bespoke ship's trim (left out, her flags fly the model's own colour); and `time` holds the flags
  * still at that moment of their wave, for a picture that must come out the same every time (the
  * icons, the Ship Lab's sheet). Without `time` they wave on the page's own clock.
  *
@@ -147,6 +150,7 @@ export function createMenuShip(canvas, { shadow = true } = {}) {
   const paint2d = (spec, deg) => flat(ctx, w, h, dpr, deg, spec);
 
   let lastSpec; // the spec placed last: a plate redraws the same object every frame
+  let dressed = null; // the livery she was last dressed in, so a frame in the same one costs nothing
   let lastT = 0; // the page's clock at the last frame, for her flags
   const size = new THREE.Vector2();
   const place = (spec) => {
@@ -157,6 +161,7 @@ export function createMenuShip(canvas, { shadow = true } = {}) {
     if (model) model.dispose();
     model = shipModel(spec || null, { units: "menu" });
     modelKey = key;
+    dressed = null;
     for (const m of model.group.children) { m.castShadow = false; m.receiveShadow = false; }
     if (blob) {
       // under her keel, her length and a little over her beam, turning with her
@@ -179,6 +184,9 @@ export function createMenuShip(canvas, { shadow = true } = {}) {
     draw(spec, deg, how = {}) {
       if (!gl || gl.lost || shared !== gl) return paint2d(spec, deg);
       place(spec);
+      // her livery on her flags and, on a bespoke ship, her trim; a face-list ship's planking keeps
+      // its timber on the plate, as it always has
+      if (how.trim && how.trim !== dressed) { model.dress({ trim: how.trim, paint: null }); dressed = how.trim; }
       flat.reset(); // this frame is painted over whatever the flat painter left
       // the wind, turned into her own frame: the plate turns her by `deg`, the wind stays put
       const rel = (how.wind ?? WIND.menu) - (deg * Math.PI) / 180;

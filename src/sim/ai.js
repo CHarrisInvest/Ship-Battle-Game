@@ -359,8 +359,14 @@ export function stepAI(world, s, dt) {
   }
 
   let desired, throttle;
-  if (nearWall && dist > 260) { desired = exact.atan2(WORLD / 2 - s.y, WORLD / 2 - s.x); throttle = 0.7; }
-  else if (dist > 900) {
+  // Off a wall and still far from her quarry, she stands in for where her quarry is, held clear of
+  // the walls. She used to stand in for the middle of the sea, so a quarry pinned in a corner was
+  // never reached: every course to it took her back inside the wall's band before she was in
+  // range, she turned for the middle again, and a round with one hunter in it never ended.
+  if (nearWall && dist > 260) {
+    desired = exact.atan2(clamp(tgt.y, 160, WORLD - 160) - s.y, clamp(tgt.x, 160, WORLD - 160) - s.x);
+    throttle = 0.7;
+  } else if (dist > 900) {
     s.wanderT -= dt;
     if (s.wanderT <= 0) { s.wander = toT + (random(world) - 0.5) * 0.8; s.wanderT = 1.2 + random(world); }
     desired = s.wander; throttle = 0.6;

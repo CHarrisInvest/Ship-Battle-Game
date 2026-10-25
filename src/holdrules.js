@@ -74,6 +74,24 @@ export function cleanName(raw) {
   return raw.replace(/\s+/g, " ").trim().slice(0, NAME_LIMIT).trim();
 }
 
+/**
+ * The colours a captain may paint a ship in: her own gold first, which every ship wears until she is
+ * painted, then a brighter cut of every other livery the game flies: the AI's ten and the violet
+ * side's (the yellow side's is a shade off her gold, so it is not offered as a second choice). They are
+ * named here by key and nothing more, because what each looks like is the renderer's
+ * (`LIVERIES` in `palette.js`, which follows this order). A ship's record carries `livery` only once
+ * she is painted something other than gold, so a ship never painted compares equal to one built
+ * before liveries existed.
+ */
+export const LIVERY_KEYS = Object.freeze([
+  "gold", "vermilion", "amber", "brick", "sage", "lilac", "olive", "slate", "rose", "green", "copper", "violet",
+]);
+
+/** A livery as the record keeps it: a key from `LIVERY_KEYS` other than gold, or "" for her own gold. */
+export function cleanLivery(raw) {
+  return typeof raw === "string" && raw !== "gold" && LIVERY_KEYS.includes(raw) ? raw : "";
+}
+
 // Share of a voyage's takings, less what the carpenter took, that reaches the hold. At 1 every coin
 // she kept at sea is a coin ashore. Drop it below 1 if the meta economy ever needs slowing down
 // without touching the in-round loop.
@@ -242,7 +260,8 @@ function sanitizeYard(raw) {
     if (!s || typeof s !== "object") continue;
     const hull = HULLS[s.hull];
     if (!hull) continue; // a class that no longer exists takes its slots with it; the parts stay loose
-    const ship = { hull: hull.id, name: cleanName(s.name), rig: {}, guns: { broadside: [], bow: [], swivel: [] } };
+    const livery = cleanLivery(s.livery);
+    const ship = { hull: hull.id, name: cleanName(s.name), ...(livery ? { livery } : {}), rig: {}, guns: { broadside: [], bow: [], swivel: [] } };
     used.clear(); // one slot to a part on THIS ship; her sister may carry the same one
 
     for (const socket of hull.sockets) {
@@ -484,6 +503,7 @@ export function spend(rec, amount) {
 const cloneShip = (s) => ({
   hull: s.hull,
   name: s.name || "",
+  ...(s.livery ? { livery: s.livery } : {}),
   rig: Object.fromEntries(Object.entries(s.rig).map(([k, v]) => [k, { mast: v.mast, sails: v.sails.slice(), studs: (v.studs || []).slice() }])),
   guns: { broadside: s.guns.broadside.slice(), bow: s.guns.bow.slice(), swivel: s.guns.swivel.slice() },
 });
@@ -539,6 +559,12 @@ export function shipName(rec, shipId) {
   if (!ship) return "";
   if (ship.name) return ship.name;
   return HULLS[ship.hull] ? HULLS[ship.hull].name : ship.hull;
+}
+
+/** The livery a ship is painted in, a key from `LIVERY_KEYS`: gold until she is painted. Pass no id for the ship she sails. */
+export function shipLivery(rec, shipId) {
+  const ship = own(rec.yard.ships, shipId || rec.yard.active);
+  return (ship && cleanLivery(ship.livery)) || "gold";
 }
 
 /** Every gun she carries, in tons, off her record in `yard`. What `hull.tons` is a cap on. */
@@ -719,6 +745,18 @@ function nameShip(rec, shipId, name) {
   if (!own(rec.yard.ships, shipId)) return null;
   const yard = cloneYard(rec.yard);
   yard.ships[shipId].name = cleanName(name);
+  return done(withYard(rec, yard));
+}
+
+/**
+ * Paint a ship in one of the liveries in `LIVERY_KEYS`. It costs nothing and changes nothing she
+ * does: a livery is a look. Gold takes the field off her record, since gold is what she wears unpainted.
+ */
+function paintShip(rec, shipId, key) {
+  if (!own(rec.yard.ships, shipId) || typeof key !== "string" || !LIVERY_KEYS.includes(key)) return null;
+  const yard = cloneYard(rec.yard);
+  // rebuilt rather than assigned, so the field sits where `sanitize` puts it and the record reads back unchanged
+  yard.ships[shipId] = cloneShip({ ...yard.ships[shipId], livery: cleanLivery(key) });
   return done(withYard(rec, yard));
 }
 
@@ -1000,7 +1038,7 @@ function unfitGun(rec, shipId, partId) {
  * `null`. Banking and spending are not here; see the head of this file.
  */
 export const ACTIONS = Object.freeze({
-  buyShip, nameShip, buyPart, sellPart, fitOwned, setActiveShip, fitMast, fitSail, fitStud, fitGun, unfitGun,
+  buyShip, nameShip, paintShip, buyPart, sellPart, fitOwned, setActiveShip, fitMast, fitSail, fitStud, fitGun, unfitGun,
 });
 
 /**

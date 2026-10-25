@@ -407,7 +407,7 @@ export function createRenderer(canvas) {
     }
 
     // ship colour reads as TRIM; the hull itself is brown wood
-    const trim = s.id === fx.me ? C.gold : look.fill;
+    const trim = look.trim;
 
     // hull: dark waterline body + brown deck, trimmed in the ship's colour. The outline is the
     // class's own: her length, her beam, her entry and her stern.
@@ -720,7 +720,7 @@ export function createRenderer(canvas) {
     stormEdge(ctx, vs, world, clock);
     screenSpace(); // the two that belong to the screen rather than to the sea
     vignette(ctx, vs, fx);
-    radar(ctx, vs, world, fx, clock);
+    if (view.radar !== false) radar(ctx, vs, world, fx, clock); // the replay's window wants none
   }
 
   // whether any ship afloat lies under a box on the page; see `shipUnder` in view.js

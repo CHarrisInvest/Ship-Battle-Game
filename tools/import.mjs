@@ -21,6 +21,7 @@ import { dirname, join } from "node:path";
 // them does not depend on what this run is about to write.
 import { SIZES, STATIONS, RIG_FAMILIES } from "../src/shipyard.js";
 import { DRAWN_FIELDS } from "../src/hullform.js";
+import { RIG_BERTHS } from "../src/galleon.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const src = join(root, "src", "shipyard.js");
@@ -108,7 +109,7 @@ const oneOf = (row, col, file, list, what) => {
  * column and the hull writer below knows what to do with it.
  */
 const REFERENCE = [
-  "era", "region", "role", "lod", "lbp", "beam", "draft", "depth", "freeboard", "lb", "bd",
+  "era", "region", "role", "lod", "lbp", "beam", "depth", "freeboard", "lb", "bd",
   "burthen", "disp", "bowFine", "tumblehome", "deadrise", "sheer", "castle", "stern", "mastHeight",
   "decks", "wale", "topside", "roomSpace", "species", "timber", "crewMin", "cruise", "topSpeed",
   "manoeuvre", "histGuns", "battery", "drawnLength", "drawnBeam",
@@ -163,6 +164,24 @@ function referenceRows() {
   });
 }
 
+/**
+ * A socket's fourth figure: how many sails a mast stepped there carries. "2" is two or more and "2-3"
+ * two to three, every sail it can set counted, so a spanker mast's spanker is one of them. The most
+ * is held to what the renderer draws up one mast, since a range it cannot draw would sell a captain
+ * a mast she never sees.
+ */
+function checkSailRange(file, id, station, range) {
+  const whole = (s) => /^\d+$/.test(s) && Number(s) >= 1;
+  const [least, most, ...more] = range.split("-");
+  const says = `says her ${station} takes masts carrying "${range}" sails`;
+  if (more.length || !whole(least) || (most !== undefined && !whole(most))) {
+    throw new Error(`${file}: "${id}" ${says}, which is neither a whole number of sails from 1 up ("2" is two or more) nor two joined by a hyphen ("2-3" is two to three)`);
+  }
+  if (most === undefined) return;
+  if (Number(most) < Number(least)) throw new Error(`${file}: "${id}" ${says}: the most a mast there may carry is fewer than the fewest`);
+  if (Number(most) > RIG_BERTHS) throw new Error(`${file}: "${id}" ${says}, and the renderer draws no more than ${RIG_BERTHS} sails up one mast`);
+}
+
 function hullRows() {
   const file = "hulls.tsv";
   const seen = new Set();
@@ -173,11 +192,9 @@ function hullRows() {
     const masts = need(r, "masts", file).split(/\s+/).filter(Boolean);
     // every socket is station/size/family+family, and each word has to be one the catalogue knows
     for (const m of masts) {
-      const [station, size, rigs, least, ...rest] = m.split("/");
-      if (rest.length) throw new Error(`${file}: "${id}" has a socket "${m}" with more than four parts (station/size/family/fewest sails)`);
-      if (least !== undefined && !(Number.isInteger(Number(least)) && Number(least) >= 1)) {
-        throw new Error(`${file}: "${id}" says her ${station} takes masts carrying at least "${least}" sails, which is not a whole number above zero`);
-      }
+      const [station, size, rigs, range, ...rest] = m.split("/");
+      if (rest.length) throw new Error(`${file}: "${id}" has a socket "${m}" with more than four parts (station/size/family/sails)`);
+      if (range !== undefined) checkSailRange(file, id, station, range);
       if (!STATIONS.includes(station)) throw new Error(`${file}: "${id}" steps a mast at "${station}", which is not a station (${STATIONS.join(", ")})`);
       if (!SIZES.includes(size)) throw new Error(`${file}: "${id}" has a ${station} socket of size "${size}", which is not a size (${SIZES.join(", ")})`);
       for (const f of (rigs || "").split("+").filter(Boolean)) {

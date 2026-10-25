@@ -2,8 +2,9 @@
  * THE BESPOKE SHIPS' TEST — `npm run bespoke-test`
  *
  * A class with a hand-modelled 3D ship of her own (`src/render3d/bespoke/`) is built here, in Node,
- * with a stand-in canvas, for every fit the stock fleet issues her at and for every way her fore and
- * main berths can be filled, and checked for what nothing else would catch: a figure that is not a
+ * with a stand-in canvas, for every fit the stock fleet issues her at, for every way her fore and
+ * main berths can be filled and with the tallest mast each of her sockets admits, every berth
+ * filled, and checked for what nothing else would catch: a figure that is not a
  * number, a hull that comes out the wrong length for her form, a mast the spec steps that she does
  * not build, a sail bought and not drawn, a texture sheet that will not paint, a reference row that
  * does not say what the model draws, and a triangle or draw-call count past what a phone affords.
@@ -39,6 +40,12 @@ for (const id of bespokeIds()) {
   if (Math.abs((ref.drawnLength || 0) - entry.length) > 0.05 || Math.abs((ref.drawnBeam || 0) - entry.beam) > 0.05) {
     fault(where, `the reference row says drawnLength ${ref.drawnLength} and drawnBeam ${ref.drawnBeam}; the model is ${entry.length} by ${entry.beam}`);
   }
+  // her ports are what her row says she carries, a side and deck by deck: a gun bought for a port
+  // the model has not got is a gun never drawn, and a tier the row and the model count differently
+  // is the 2D fallback and the 3D sea drawing two different ships
+  if (entry.ports !== hull.guns.broadside) fault(where, `the model is pierced for ${entry.ports} a side and her row bears ${hull.guns.broadside}`);
+  // compared as written: a battery of one figure, all on one gun deck, comes out of the import a number
+  if (String(entry.battery) !== String(ref.battery)) fault(where, `the model is pierced ${entry.battery} and her row's battery says ${ref.battery}`);
 
   // her frame is the extent of her model fully found, which is what the menu frames her by
   if (entry.frame) {
@@ -89,7 +96,7 @@ for (const id of bespokeIds()) {
   const full = fitOut(id, 1);
   const squares = hull.sockets.filter((s) => s.station === "fore" || s.station === "main");
   const nBerths = squares.length ? berthsOf(best(squares[0])).length : 0;
-  let combos = 0;
+  let combos = 0, tallestCase = 0;
   for (let mask = 1; mask < 1 << nBerths; mask++) {
     const lo = fitOut(id, 1);
     for (const s of squares) {
@@ -116,6 +123,34 @@ for (const id of bespokeIds()) {
     m.dispose();
     combos++;
     void verts;
+  }
+  // the tallest mast every socket of hers admits, the mizzen's and the bowsprit's included, all
+  // stepped at once with every berth filled: her row's sail ranges say what a captain can buy, and a
+  // range the model cannot draw is a sail paid for and never seen
+  {
+    const tallest = (socket) => Object.values(MASTS).filter((mm) => mastFitsSocket(mm, socket))
+      .sort((a, b) => b.berths.length - a.berths.length || b.price - a.price)[0];
+    const lo = fitOut(id, 1), stepped = [];
+    for (const s of hull.sockets) {
+      const mast = tallest(s);
+      if (!mast) { fault(`${where} ${s.station}`, "admits no mast at all"); continue; }
+      lo.rig[s.id] = { mast, sails: berthsOf(mast).map((b) => dearest(b)), studs: [] };
+      stepped.push(`${mast.name} on her ${s.station}`);
+    }
+    const spec = rigSpec(lo);
+    const at = `${where} with the tallest mast each socket admits (${stepped.join(", ")}), every berth filled`;
+    try {
+      const m = shipModel(spec, { units: "sea", rig: RIG });
+      const set = spec.masts.reduce((n, mm) => n + mm.sails.length, 0);
+      const berths = spec.masts.reduce((n, mm) => n + mm.berths.length, 0);
+      const want = spec.masts.reduce((n, mm) => n + mm.sails.reduce((k, s) => k + (s.kind === "TRI" ? 28 : s.kind === "GAF" ? 25 : 35), 0), 0);
+      const g = m.parts.rig?.geometry, grp = g?.groups.find((x) => x.materialIndex === entry.slot.sail), seen = new Set();
+      if (grp) for (let i = grp.start; i < grp.start + grp.count; i++) seen.add(g.index.array[i]);
+      if (set !== berths) fault(at, `${berths} berths and only ${set} sails found for them in the shop`);
+      if (seen.size !== want) fault(at, `${set} sails bent on should draw ${want} vertices of canvas and draw ${seen.size}, so a sail she can buy goes undrawn`);
+      m.dispose();
+      tallestCase = stepped.length;
+    } catch (e) { fault(at, `does not build: ${e.message}`); }
   }
   // everything that can be stepped on her bowsprit, and every way to fill it: nothing, then each
   // spar with each set of its berths, and her headsails come out as the spec bends them on
@@ -158,7 +193,7 @@ for (const id of bespokeIds()) {
   for (const guns of [0, Math.floor(hull.guns.broadside / 2), hull.guns.broadside]) {
     try { entry.paintAtlas({ trim: "#e8c877", guns, name: "Sternchase" }); } catch (e) { fault(`${where} with ${guns} guns a side`, `her sheet does not paint: ${e.message}`); }
   }
-  if (!problems.some((p) => p.startsWith(where))) ok(`${hull.name}: ${STANDARDS.length} fits on the sea and the plate, ${combos} ways to fill her fore and main, ${spritCases} on her bowsprit, her sheet at 3 batteries`);
+  if (!problems.some((p) => p.startsWith(where))) ok(`${hull.name}: ${STANDARDS.length} fits on the sea and the plate, ${combos} ways to fill her fore and main, ${spritCases} on her bowsprit, the tallest mast in all ${tallestCase} sockets, her sheet at 3 batteries`);
 }
 clearShipModels();
 

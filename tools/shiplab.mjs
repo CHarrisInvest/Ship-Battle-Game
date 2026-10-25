@@ -12,11 +12,16 @@
  *                                       each picture that moved is printed
  *   npm run shiplab -- --artifact       the Ship Lab page (`shiplab/`) folded into one self-contained
  *                                       file, to publish as an Artifact a phone can open
+ *   npm run shiplab -- --closeup        each class seen close, near deck level, from where things
+ *                                       collide (`shiplab/closeup.js`): her stern, quarterdeck, waist,
+ *                                       forecastle and bow, astern and abeam, one row a class. Without
+ *                                       `--only` it draws the classes modelled by hand
  *
  * Options: `--bearings 300,30,200`, `--fit full|found|plain|bare` (default full), `--speed 0` (the
  * engine's units; her flags stream astern above zero), `--only corvette,firstRate`, and `--out DIR`
- * (default `shiplab-out/`, which git ignores). Flags are drawn at one fixed moment of their wave, so
- * two runs of the same tree come out the same and a diff shows only what changed.
+ * (default `shiplab-out/`, which git ignores), and for `--closeup` `--views stern,waist` to draw only
+ * some of its views. Flags are drawn at one fixed moment of their wave, so two runs of the same tree
+ * come out the same and a diff shows only what changed.
  *
  * `--diff REF` checks REF out into a temporary worktree beside this one, borrows this checkout's
  * node_modules, and serves it on a second port. Any commit with `createMenuShip` can be compared,
@@ -48,9 +53,12 @@ const SPEED = Number(opt("speed", "0")) || 0;
 const ONLY = opt("only", "") ? opt("only", "").split(",") : null;
 const CELL = { w: 420, h: 260 };
 
-const mode = flag("artifact") ? "artifact" : flag("diff") ? "diff" : flag("sheet") ? "sheet" : null;
+const VIEWS = opt("views", "") ? opt("views", "").split(",") : null;
+const CLOSE = { w: 560, h: 380 };
+
+const mode = flag("artifact") ? "artifact" : flag("diff") ? "diff" : flag("sheet") ? "sheet" : flag("closeup") ? "closeup" : null;
 if (!mode) {
-  console.log("npm run shiplab -- --sheet | --diff <commit> | --artifact   (see tools/shiplab.mjs)");
+  console.log("npm run shiplab -- --sheet | --diff <commit> | --closeup | --artifact   (see tools/shiplab.mjs)");
   process.exit(1);
 }
 mkdirSync(OUT, { recursive: true });
@@ -143,8 +151,26 @@ async function drawFleet(page, site) {
   }, { BEARINGS, FIT, SPEED, ONLY, CELL });
 }
 
+// Close-ups of each class, drawn in the page by `shiplab/closeup.js`, as data URLs.
+async function drawCloseups(page, site) {
+  const blank = site + "__shiplab__";
+  await page.route(blank, (r) => r.fulfill({ contentType: "text/html", body: "<!doctype html><title>close-ups</title>" }));
+  await page.goto(blank);
+  return page.evaluate(async ({ FIT, ONLY, VIEWS, CLOSE }) => {
+    const C = await import("/shiplab/closeup.js");
+    const Y = await import("/src/shipyard.js");
+    const views = VIEWS || Object.keys(C.VIEWS);
+    const bad = views.filter((v) => !C.VIEWS[v]);
+    if (bad.length) throw new Error(`no view called ${bad.join(", ")}; the views are ${Object.keys(C.VIEWS).join(", ")}`);
+    const fit = { bare: null, plain: 0.35, found: 0.7, full: 1 }[FIT];
+    return (ONLY || C.defaultIds()).filter((id) => Y.HULLS[id]).map((id) => ({
+      id, name: Y.HULLS[id].name, views, cells: C.drawCloseups({ id, fit, views, w: CLOSE.w, h: CLOSE.h }),
+    }));
+  }, { FIT, ONLY, VIEWS, CLOSE });
+}
+
 // Laid out in the page as well, since the browser is the one thing here that can draw a PNG.
-async function compose(page, rows, title) {
+async function compose(page, rows, title, cell = CELL) {
   return page.evaluate(async ({ rows, title, CELL }) => {
     const load = (src) => new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = no; i.src = src; });
     const cols = Math.max(...rows.map((r) => r.cells.length));
@@ -166,7 +192,7 @@ async function compose(page, rows, title) {
       }
     }
     return c.toDataURL("image/png");
-  }, { rows, title, CELL });
+  }, { rows, title, CELL: cell });
 }
 
 // The share of a picture's pixels that differ between two drawings of it.
@@ -203,9 +229,16 @@ try {
   const page = await browser.newPage();
   page.on("pageerror", (e) => console.error("page:", e.message));
   const what = `fit ${FIT}, speed ${SPEED}, bearings ${BEARINGS.join(", ")}`;
-  const now = await drawFleet(page, here.site);
+  const now = mode === "closeup" ? [] : await drawFleet(page, here.site);
 
-  if (mode === "sheet") {
+  if (mode === "closeup") {
+    const ships = await drawCloseups(page, here.site);
+    if (!ships.length) throw new Error(`no class called ${ONLY.join(", ")}`);
+    const rows = ships.map((s) => ({ cells: s.cells, labels: s.views.map((v) => `${s.name}, ${v}`) }));
+    const file = join(OUT, "closeup.png");
+    writeFileSync(file, png(await compose(page, rows, `Close-ups, fit ${FIT}`, CLOSE)));
+    console.log(`wrote ${file}: ${ships.map((s) => s.name).join(", ")}, ${rows[0].cells.length} views each`);
+  } else if (mode === "sheet") {
     const rows = now.map((s) => ({ cells: s.cells, labels: BEARINGS.map((d) => `${s.name}  ${d}°`) }));
     const file = join(OUT, "sheet.png");
     writeFileSync(file, png(await compose(page, rows, `The fleet, ${what}`)));

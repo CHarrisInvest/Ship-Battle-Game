@@ -7,8 +7,9 @@
  * exactly as the 2D sea placed her. Around that model this layer hangs what is hers alone:
  *
  *   - her livery: her topsides, bulwarks and castle walls painted in her colour (the look's `fill`,
- *     which is `C.player` for the viewer's own ship, as the 2D hulls were filled), her flags and a
- *     band along her rail in it too (gold for the viewer's own), on materials cloned for her. A
+ *     which is `C.player` for the viewer's own ship, as the 2D hulls were filled, and her side's
+ *     colour between sides, the viewer's own included), her flags and a band along her rail in it
+ *     too (the look's `trim`: `C.own` for the viewer's own), on materials cloned for her. A
  *     rail band alone was a pixel wide at phone zoom and every rival read as the same brown ship;
  *     the painted side is what matches her to her dot on the radar;
  *   - her rig, never under a readable size: a small craft's masts are scaled up about their feet
@@ -290,11 +291,11 @@ export function createShipLayer(scene, ctx) {
     // a captain's ship is built of the captain's timber, a rival of her class's own
     const spec = s.playerId ? { ...rigSpec(s.loadout), timber: CAPTAIN_TIMBER } : rigSpec(s.loadout);
     const model = ctx.shipModel(spec, { units: "sea", phase: (hashId(s.id) % 628) / 100, rig: RIG });
-    // her livery: gold for the viewer's own ship, her colour for anyone else. A face-list ship takes
-    // it on her flags and her rail band and paints her planking in `look.fill`; a bespoke ship takes
-    // it on her flags and her trim and keeps her own painted sides (the trim is all she wears)
-    const livery = s.id === lastFx.me ? C.gold : look.fill;
-    const dressed = model.dress({ trim: livery, paint: look.fill });
+    // her livery (`look.trim`): gold for the viewer's own ship, her side's colour between sides, her
+    // own colour for anyone else. A face-list ship takes it on her flags and her rail band and
+    // paints her planking in `look.fill`; a bespoke ship takes it on her flags, her trim and the
+    // bands along her gun decks, and keeps the rest of her painted sides
+    const dressed = model.dress({ trim: look.trim, paint: look.fill });
 
     // the whole of her, yawed on her heading; the model inside it heels, pitches and settles
     const outer = new THREE.Group();
@@ -483,8 +484,9 @@ export function createShipLayer(scene, ctx) {
       lastFx = fx;
       prewarmBespoke(world.ships.map((s) => ({
         hullId: s.loadout.hull.id,
-        trim: s.id === fx.me ? C.gold : ctx.lookOf(fx, s).fill,
+        trim: ctx.lookOf(fx, s).trim,
         guns: (s.loadout.guns.broadside || []).length,
+        timber: s.playerId ? CAPTAIN_TIMBER : null,
       })));
     }
     frame++;
