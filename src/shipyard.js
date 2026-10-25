@@ -238,8 +238,8 @@ const FLEET = [
   {
     id: "sixthRate", name: "6th rate", price: 12500,
     blurb: "Rated at last, and the smallest thing a post captain will admit to commanding.",
-    hull: 647, crew: 155, speed: 0.88, hand: 0.89, canvas: 1.81, tons: 45.4,
-    guns: [12, 2, 2], masts: ["bowsprit/medium/headsails", "fore/large/square", "main/large/square", "mizzen/medium/spanker"],
+    hull: 647, crew: 155, speed: 0.88, hand: 0.905, canvas: 1.81, tons: 45.4,
+    guns: [12, 2, 2], masts: ["bowsprit/small/headsails/1-2", "fore/large/square/2-3", "main/large/square/2-3", "mizzen/large/spanker/2-4"],
   },
   {
     id: "xebecHeavy", name: "Xebec heavy", price: 18000,
