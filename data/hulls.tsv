@@ -45,9 +45,15 @@
 #             The bowsprit takes a SPAR rather than a mast, which is what her headsails hang on.
 #             A socket that names no family takes any mast of its size, which is how the laid-up rows
 #             stand; the bench asks every class that sails to say what she takes.
-#             A fourth figure is the fewest sails a mast stepped there must carry: "fore/large/square/2"
-#             takes a topmast or taller and never a bare lower mast. Size alone cannot say it, since
-#             a lower mast and a topmast are both medium. Leave it off and any mast that fits goes in.
+#             A fourth figure is how many sails a mast stepped there carries, counting every sail it
+#             can set: a square mast's square sails, a spanker mast's spanker and the square sails
+#             over it, a spar's headsails. "2" is two or more, so "fore/large/square/2" takes a
+#             topmast or taller and never a bare lower mast; "2-3" is two to three, so
+#             "fore/large/square/2-3" takes a topmast or a topgallant mast and never a royal mast.
+#             Size alone cannot say either, since a lower mast and a topmast are both medium and a
+#             topgallant mast and a royal mast both large. The most is at most 5, all the renderer
+#             draws up one mast, and has to be a mast her size and family can actually carry, which
+#             the bench checks. Leave the figure off and any mast that fits goes in.
 # bowsprit    yes or no. Whether she carries the spar at all.
 # blurb       one line a captain reads. May be left empty.
 #
@@ -147,10 +153,10 @@ yes	sixthRate	6th rate	12500	647	155	0.88	0.89	1.81	45.4	12	2	2	bowsprit/medium/
 yes	xebecHeavy	Xebec heavy	18000	568	320	0.94	0.99	1.6	44	16	2	3	bowsprit/medium/headsails fore/large/lateen main/large/lateen mizzen/medium/lateen	yes	The same corsair hull grown a third mast and a great many more men.	1650-1830	Barbary coast	Corsair and coastal warship	120	110	29	11	5	4.14	2.64	380	525	5	1	4	3	2	Overhanging	1.2	1	3.5	2	1.8	Oak	1	110	7	12	78	32	32		
 yes	fifthRate	5th rate	25000	1128	260	1	0.83	2.83	96.3	19	2	3	bowsprit/large/headsails fore/heavy/square main/heavy/square mizzen/large/spanker	yes	A whole deck of eighteens and the legs to choose her own fight.	1740-1840	Global	Cruiser and commerce war	146	133	39	13	6.5	3.74	3	860	1230	4	3	3	3	3	Gallery	1.2	2	4.25	2.5	1.9	Oak	1.0	170	8	13	59	38	28+8/2		
 yes	heavyFrigate	Frigate heavy	48000	1721	420	1.03	0.74	3.8	135	25	2	3	bowsprit/large/headsails fore/heavy/square main/heavy/square mizzen/large/spanker	yes	Live oak frames set close enough that round shot comes off her sides.	1794-1855	Global	Super cruiser and duellist	168	153	43	13.5	7	3.91	3.19	1350	1920	4	3	3	3	3	Gallery	1.3	2	5.25	3	1.9	Live oak	1	280	8	13.5	55	50	30+20		
-yes	fourthRate	4th rate	35000	1305	390	0.85	0.76	3.18	142	27	2	4	bowsprit/small/headsails fore/large/square/2 main/large/square/2 mizzen/heavy/spanker	yes	Two decks of guns on a hull too slow to run and too light for the line.	1650-1780	Global	Small liner and flag cruiser	144	131	40.5	17.5	7.5	3.56	2.31	980	1470	3	4	3	4	3	Gallery	1.1	2	5.5	3.25	1.95	Oak	1.0	240	6	10	52	54	24/22+6/2	45.29	12.35
-yes	thirdRate	3rd rate	58000	1812	500	0.88	0.7	4.13	175	32	2	5	bowsprit/small/headsails fore/large/square/2 main/large/square/2 mizzen/heavy/spanker	yes	Sixty four guns, and the smallest ship anyone will put in the line of battle.	1750-1860	Global	Backbone of the line	160	145	44.5	19	8	3.6	2.34	1400	2170	3	4	3	4	3	Gallery	1.15	2	6.25	3.75	1.95	Oak	1.0	320	6	10.5	45	64	26/26+10/2	50.16	13.57
-yes	secondRate	2nd rate	80000	2421	700	0.79	0.68	5.12	259.4	45	2	6	bowsprit/small/headsails fore/large/square/2 main/large/square/2 mizzen/heavy/spanker	yes	Three decks of iron. She is slow, she is enormous, and nothing wants her attention.	1690-1850	Global	Fleet flagship	176	160	49	21	11	3.59	2.33	1900	3000	2	5	3	4	4	Gallery	1.1	3	6.75	4.25	2.0	Oak	1.0	450	5	9	41	90	26/26/26+10/2	55.57	14.94
-yes	firstRate	1st rate	100000	2699	800	0.796	0.629	5.68	297.7	50	2	6	bowsprit/small/headsails fore/large/square/2 main/large/square/2 mizzen/heavy/spanker	yes	A hundred guns and a flag at the main. There is nothing above her.	1650-1860	Britain, France, Spain	Fleet flagship	190	173	51	22	12	3.73	2.32	2150	3500	2	5	3	4	4	Gallery	1.1	3	7	4.5	2.0	Oak	1.0	520	5	9	38	100	28/28/28+12/4	58.7	15.8
+yes	fourthRate	4th rate	35000	1305	390	0.85	0.76	3.18	142	27	2	4	bowsprit/small/headsails/1-2 fore/large/square/2-4 main/large/square/2-4 mizzen/heavy/spanker/1-5	yes	Two decks of guns on a hull too slow to run and too light for the line.	1650-1780	Global	Small liner and flag cruiser	144	131	40.5	17.5	7.5	3.56	2.31	980	1470	3	4	3	4	3	Gallery	1.1	2	5.5	3.25	1.95	Oak	1.0	240	6	10	52	54	24/22+6/2	45.29	12.35
+yes	thirdRate	3rd rate	58000	1812	500	0.88	0.7	4.13	175	32	2	5	bowsprit/small/headsails/1-2 fore/large/square/2-4 main/large/square/2-4 mizzen/heavy/spanker/1-5	yes	Sixty four guns, and the smallest ship anyone will put in the line of battle.	1750-1860	Global	Backbone of the line	160	145	44.5	19	8	3.6	2.34	1400	2170	3	4	3	4	3	Gallery	1.15	2	6.25	3.75	1.95	Oak	1.0	320	6	10.5	45	64	26/26+10/2	50.16	13.57
+yes	secondRate	2nd rate	80000	2421	700	0.79	0.68	5.12	259.4	45	2	6	bowsprit/small/headsails/1-2 fore/large/square/2-4 main/large/square/2-4 mizzen/heavy/spanker/1-5	yes	Three decks of iron. She is slow, she is enormous, and nothing wants her attention.	1690-1850	Global	Fleet flagship	176	160	49	21	11	3.59	2.33	1900	3000	2	5	3	4	4	Gallery	1.1	3	6.75	4.25	2.0	Oak	1.0	450	5	9	41	90	26/26/26+10/2	55.57	14.94
+yes	firstRate	1st rate	100000	2699	800	0.796	0.629	5.68	297.7	50	2	6	bowsprit/small/headsails/1-2 fore/large/square/2-4 main/large/square/2-4 mizzen/heavy/spanker/1-5	yes	A hundred guns and a flag at the main. There is nothing above her.	1650-1860	Britain, France, Spain	Fleet flagship	190	173	51	22	12	3.73	2.32	2150	3500	2	5	3	4	4	Gallery	1.1	3	7	4.5	2.0	Oak	1.0	520	5	9	38	100	28/28/28+12/4	58.7	15.8
 
 
 No	launch	Armed launch	0	100	30	0.58	1.28	0.1	0.21	1	1	1	bowsprit/boat main/boat	yes		1650-1865	Global	Boarding and inshore harassment	32	30	8	3	1.5	4.0	3.2	6	8	3	1	2	2	1	Transom	0.9	1	1.5	1.0	1.2	Pine	0.85	6	2	5	92	1			

@@ -34,6 +34,13 @@ import { HULL_REF } from "../src/shipref.js";
 const problems = new Set();
 const fault = (where, what) => problems.add(`${where}: ${what}`);
 
+// how many sails a socket's mast carries, as its fourth figure in hulls.tsv says
+const sailRange = (s) => {
+  const least = s.minBerths || 1;
+  if (!s.maxBerths) return least > 1 ? `${least} or more sails` : "any number of sails";
+  return s.maxBerths === least ? `${least} sail${least === 1 ? "" : "s"}` : `${least} to ${s.maxBerths} sails`;
+};
+
 const n1 = (v) => v.toFixed(1);
 const n2 = (v) => v.toFixed(2);
 const pad = (v, w) => String(v).padEnd(w);
@@ -67,7 +74,7 @@ for (const h of HULL_LIST) {
     if (!RIG_STATIONS.includes(s.station)) {
       fault(at, `the renderer cannot draw a mast at "${s.station}" (it knows ${RIG_STATIONS.join(", ")}), so this mast would be missing from the menu ship`);
     }
-    if (!mastsForSocket(s).length) fault(at, `size "${s.size}" fits no mast in the catalogue`);
+    if (!mastsForSocket(s).length) fault(at, `size "${s.size}" with ${sailRange(s)} fits no mast in the catalogue`);
     // A class that sails has to say what shape of rig each socket takes, or size alone lets a lug
     // mast step in a first rate. Every family she names has to be one the catalogue knows and has
     // to be carried by some mast that fits the socket, or the name is decoration.
@@ -76,8 +83,18 @@ for (const h of HULL_LIST) {
       if (!RIG_FAMILIES[f]) {
         fault(at, `takes "${f}", which is not a rig family (${Object.keys(RIG_FAMILIES).join(", ")})`);
       } else if (!MAST_LIST.some((m) => m.family === f && mastFitsSocket(m, s))) {
-        fault(at, `takes ${RIG_FAMILIES[f].name} and no mast of that family fits a ${s.size} socket`);
+        // the size rung and the sail range are two gates, and the fault says which one shut
+        const bySize = MAST_LIST.some((m) => m.family === f && mastFitsSocket(m, { ...s, minBerths: 1, maxBerths: undefined }));
+        fault(at, bySize
+          ? `takes ${RIG_FAMILIES[f].name} carrying ${sailRange(s)}, and no ${s.size} mast of that family carries that many`
+          : `takes ${RIG_FAMILIES[f].name} and no mast of that family fits a ${s.size} socket`);
       }
+    }
+    // A range's most has to be a mast that can actually be stepped there. Where no mast of her size
+    // and family carries that many sails, the size rung has quietly overruled the range, and the two
+    // gates have drifted apart: the table says one thing and the shop sells another.
+    if (s.maxBerths && !MAST_LIST.some((m) => mastFitsSocket(m, s) && m.berths.length === s.maxBerths)) {
+      fault(at, `takes masts carrying ${sailRange(s)}, and no ${s.size} mast of ${s.rigs.map((f) => RIG_FAMILIES[f]?.name || f).join(" or ")} carries ${s.maxBerths}, so her size rung decides the most and the range does not`);
     }
   }
 
@@ -379,9 +396,9 @@ for (const a of portAudit) {
   );
 }
 
-console.log("\nHER RIG  (the families each socket takes, bow aft)");
+console.log("\nHER RIG  (the families each socket takes and how many sails a mast stepped there carries, bow aft)");
 for (const h of HULL_LIST) {
-  const rig = h.sockets.map((s) => `${s.station} ${s.rigs.map((f) => (RIG_FAMILIES[f] ? RIG_FAMILIES[f].name : f)).join(" or ")}`).join(", ");
+  const rig = h.sockets.map((s) => `${s.station} ${s.rigs.map((f) => (RIG_FAMILIES[f] ? RIG_FAMILIES[f].name : f)).join(" or ")}, ${sailRange(s)}`).join("; ");
   console.log("  " + pad(h.name, 19) + " " + rig);
 }
 

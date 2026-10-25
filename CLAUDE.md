@@ -445,9 +445,21 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   the families it takes, written `station/size/family+family` in `hulls.tsv`. `mastFitsSocket`
   matches the family before the size rung, the way it matches spar against mast, because size alone
   let a lug mast step in a first rate and her "plain" stock fit really did sail under lug topmasts.
-  A socket may add a fourth figure, the fewest sails a mast stepped there carries
-  (`fore/large/square/2`, `minBerths` on the socket): a lower mast and a topmast are both medium, so
-  size cannot keep a bare lower mast out of a first rate's fore and main, and this does.
+  **A socket may add a fourth figure, the range of sails a mast stepped there carries**, counting
+  every sail it can set (a square mast's square sails, a spanker mast's spanker and the square sails
+  over it, a spar's headsails): `2` is two or more and `2-3` two to three, `minBerths` and
+  `maxBerths` on the socket, both checked by `mastFitsSocket` beside the family and the size rung. A
+  lower mast and a topmast are both medium and a topgallant mast and a royal mast both large, so size
+  can neither keep a bare lower mast out of a first rate's fore nor a royal mast out of a 5th rate's,
+  and the range does both. Do not re-rank the mast sizes for it, which would move every class at
+  once. A socket with no most has no `maxBerths` at all, never `Infinity`, because her sockets travel
+  as JSON in a voyage's loadout and `Infinity` comes out of JSON as `null`. `npm run import` holds the
+  most to 5, all the renderer draws up a mast, and `npm run catalogue` fails a range that admits no
+  mast of a family it names, or whose most no mast of her size and family carries, which is the size
+  rung quietly overruling it. A bespoke class's row states what her model can draw (the 1st to 4th
+  rates' `bowsprit/small/headsails/1-2 fore/large/square/2-4 main/large/square/2-4
+  mizzen/heavy/spanker/1-5`), and `npm run bespoke-test` steps the tallest mast every socket admits,
+  every berth filled, and fails a sail left undrawn.
   Berths run deck upward, and a fore-and-aft driving sail sharing the lowest
   level with a course takes berth 0 with the square canvas above it, because the model holds one sail
   to a band and a spanker belongs at the bottom of the rig rather than over the topgallant.
