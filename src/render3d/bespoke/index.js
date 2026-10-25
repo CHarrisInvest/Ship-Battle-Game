@@ -22,6 +22,7 @@ import { FIRST_RATE, FIRST_RATE_FRAME, buildFirstRate, paintAtlas as paintFirstR
 import { SECOND_RATE, SECOND_RATE_FRAME, buildSecondRate, paintAtlas as paintSecondRate, SLOT as SECOND_RATE_SLOT, PORTS_A_SIDE as SECOND_RATE_PORTS, BATTERY as SECOND_RATE_BATTERY } from "./secondRate.js";
 import { THIRD_RATE, THIRD_RATE_FRAME, buildThirdRate, paintAtlas as paintThirdRate, SLOT as THIRD_RATE_SLOT, PORTS_A_SIDE as THIRD_RATE_PORTS, BATTERY as THIRD_RATE_BATTERY } from "./thirdRate.js";
 import { FOURTH_RATE, FOURTH_RATE_FRAME, buildFourthRate, paintAtlas as paintFourthRate, SLOT as FOURTH_RATE_SLOT, PORTS_A_SIDE as FOURTH_RATE_PORTS, BATTERY as FOURTH_RATE_BATTERY } from "./fourthRate.js";
+import { FIFTH_RATE, FIFTH_RATE_FRAME, buildFifthRate, paintAtlas as paintFifthRate, SLOT as FIFTH_RATE_SLOT, PORTS_A_SIDE as FIFTH_RATE_PORTS, BATTERY as FIFTH_RATE_BATTERY } from "./fifthRate.js";
 
 /** The trim a bespoke ship wears until a layer dresses her: the gold the viewer's own ship flies, as on the menu's plate. */
 export const BESPOKE_TRIM = C.own;
@@ -46,6 +47,8 @@ const BESPOKE = {
     ports: THIRD_RATE_PORTS, battery: THIRD_RATE_BATTERY },
   fourthRate: { ...FOURTH_RATE, build: buildFourthRate, paintAtlas: paintFourthRate, slot: FOURTH_RATE_SLOT, frame: FOURTH_RATE_FRAME,
     ports: FOURTH_RATE_PORTS, battery: FOURTH_RATE_BATTERY },
+  fifthRate: { ...FIFTH_RATE, build: buildFifthRate, paintAtlas: paintFifthRate, slot: FIFTH_RATE_SLOT, frame: FIFTH_RATE_FRAME,
+    ports: FIFTH_RATE_PORTS, battery: FIFTH_RATE_BATTERY },
 };
 
 /** The bespoke entry for a hull id, or null for a class drawn from her form. */

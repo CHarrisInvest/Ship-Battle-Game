@@ -241,6 +241,35 @@ const act = (rec, name, ...args) => R.applyAction(rec, name, args);
   check(R.grantCoins(rec, -5) === null && R.grantCoins(rec, "x") === null, "a grant of nothing, or of junk, is refused");
 }
 
+// A socket's range narrowed under a ship already rigged past it: the 5th rate's fore and main took a
+// Skysail mast and her bowsprit a Flying jibboom until her sockets were cut to what her model draws.
+// The record is written the way such a captain's was, past the fitting rules, and loaded: each mast
+// comes out of its socket and back into her hold with every sail it carried, nothing is lost, and
+// her coins are what they were.
+{
+  let rec = act(rich(1e6), "buyShip", "fifthRate").rec;
+  const frigate = Object.keys(rec.yard.ships).find((id) => rec.yard.ships[id].hull === "fifthRate");
+  const buy = (type) => { const r = act(rec, "buyPart", type); rec = r.rec; return r.part; };
+  const RIGGED = {
+    fore: ["skysailMast", ["courseFine", "courseFine", "topgallantFine", "topgallantFine", "topgallantFine"]],
+    main: ["skysailMast", ["courseFine", "courseFine", "topgallantFine", "topgallantFine", "topgallantFine"]],
+    bowsprit: ["flyingJibboom", ["jibFine", "jibFine", "jibFine"]],
+  };
+  const rig = {};
+  for (const [socket, [mast, sails]] of Object.entries(RIGGED)) rig[socket] = { mast: buy(mast), sails: sails.map(buy), studs: [] };
+  const raw = JSON.parse(json(rec));
+  Object.assign(raw.yard.ships[frigate].rig, rig);
+  const parts = json(raw.yard.parts), coins = raw.coins;
+  const loaded = R.sanitize(raw);
+  const ship = loaded.yard.ships[frigate];
+  const back = Object.values(rig).flatMap((r) => [r.mast, ...r.sails]);
+  check(Object.keys(RIGGED).every((s) => !ship.rig[s].mast && ship.rig[s].sails.length === 0),
+    "a Skysail mast and a Flying jibboom no longer fit a 5th rate, and load out of her sockets");
+  check(json(loaded.yard.parts) === parts && back.every((pid) => R.spareParts(loaded, frigate).includes(pid)),
+    `every one of the ${back.length} parts comes back into her hold with its sails, to step or sell again`);
+  check(loaded.coins === coins && loaded.spent === raw.spent, "and her coins and what she spent are unchanged");
+}
+
 if (failures.length) {
   console.log(`\n${failures.length} FAILURE${failures.length === 1 ? "" : "S"}`);
   process.exit(1);

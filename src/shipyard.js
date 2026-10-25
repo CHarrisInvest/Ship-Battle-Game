@@ -172,8 +172,9 @@ export const kindOf = (id) => SAIL_KINDS[id] || null;
  * `guns` is `[broadside, bow, swivel]`, and broadside counts guns *a side*, mirrored, because that is
  * how she fires: the number in the shipyard is the number that goes off in one volley.
  *
- * `masts` is where she can step one, written `station/size` from the bow aft. The station is also the
- * socket's name, so a class carries at most one mast at each, which is what a rig actually is.
+ * `masts` is where she can step one, written `station/size/family` from the bow aft, with a fourth
+ * figure for how many sails a mast stepped there carries (`2`, or a range, `2-3`). The station is
+ * also the socket's name, so a class carries at most one mast at each, which is what a rig actually is.
  *
  * `order` is her place on the shop shelf and defaults to her place in this list, so adding a class
  * between two others is inserting a row rather than renumbering everything below it. It is *not* a
@@ -249,8 +250,8 @@ const FLEET = [
   {
     id: "fifthRate", name: "5th rate", price: 25000,
     blurb: "A whole deck of eighteens and the legs to choose her own fight.",
-    hull: 1128, crew: 260, speed: 1, hand: 0.83, canvas: 2.83, tons: 96.3,
-    guns: [19, 2, 3], masts: ["bowsprit/large/headsails", "fore/heavy/square", "main/heavy/square", "mizzen/large/spanker"],
+    hull: 1128, crew: 260, speed: 1.015, hand: 0.837, canvas: 2.83, tons: 96.3,
+    guns: [20, 2, 3], masts: ["bowsprit/small/headsails/1-2", "fore/large/square/2-3", "main/large/square/2-3", "mizzen/large/spanker/2-4"],
   },
   {
     id: "heavyFrigate", name: "Frigate heavy", price: 48000,
@@ -262,25 +263,25 @@ const FLEET = [
     id: "fourthRate", name: "4th rate", price: 35000,
     blurb: "Two decks of guns on a hull too slow to run and too light for the line.",
     hull: 1305, crew: 390, speed: 0.85, hand: 0.76, canvas: 3.18, tons: 142,
-    guns: [27, 2, 4], masts: ["bowsprit/small/headsails", "fore/large/square/2", "main/large/square/2", "mizzen/heavy/spanker"],
+    guns: [27, 2, 4], masts: ["bowsprit/small/headsails/1-2", "fore/large/square/2-4", "main/large/square/2-4", "mizzen/heavy/spanker/1-5"],
   },
   {
     id: "thirdRate", name: "3rd rate", price: 58000,
     blurb: "Sixty four guns, and the smallest ship anyone will put in the line of battle.",
     hull: 1812, crew: 500, speed: 0.88, hand: 0.7, canvas: 4.13, tons: 175,
-    guns: [32, 2, 5], masts: ["bowsprit/small/headsails", "fore/large/square/2", "main/large/square/2", "mizzen/heavy/spanker"],
+    guns: [32, 2, 5], masts: ["bowsprit/small/headsails/1-2", "fore/large/square/2-4", "main/large/square/2-4", "mizzen/heavy/spanker/1-5"],
   },
   {
     id: "secondRate", name: "2nd rate", price: 80000,
     blurb: "Three decks of iron. She is slow, she is enormous, and nothing wants her attention.",
     hull: 2421, crew: 700, speed: 0.79, hand: 0.68, canvas: 5.12, tons: 259.4,
-    guns: [45, 2, 6], masts: ["bowsprit/small/headsails", "fore/large/square/2", "main/large/square/2", "mizzen/heavy/spanker"],
+    guns: [45, 2, 6], masts: ["bowsprit/small/headsails/1-2", "fore/large/square/2-4", "main/large/square/2-4", "mizzen/heavy/spanker/1-5"],
   },
   {
     id: "firstRate", name: "1st rate", price: 100000,
     blurb: "A hundred guns and a flag at the main. There is nothing above her.",
     hull: 2699, crew: 800, speed: 0.796, hand: 0.629, canvas: 5.68, tons: 297.7,
-    guns: [50, 2, 6], masts: ["bowsprit/small/headsails", "fore/large/square/2", "main/large/square/2", "mizzen/heavy/spanker"],
+    guns: [50, 2, 6], masts: ["bowsprit/small/headsails/1-2", "fore/large/square/2-4", "main/large/square/2-4", "mizzen/heavy/spanker/1-5"],
   },
 ];
 /* end:hulls */
@@ -308,13 +309,20 @@ function buildHull(row, index) {
     bowsprit: r.bowsprit,
     guns: { broadside, bow, swivel },
     sockets: (r.masts || []).map((m) => {
-      const [station, size, families, least] = m.split("/");
+      const [station, size, families, range] = m.split("/");
       // the bowsprit takes a spar and every other station takes a mast, which is a fact about the
       // place rather than something a row has to say twice. `rigs` is the families the socket
       // takes, and an empty list is a socket that has not said, which takes anything of its size.
-      // `minBerths` is the fewest sails a mast stepped there must carry, 1 when the row says nothing.
+      // The fourth figure is how many sails a mast stepped there carries: "2" is two or more and
+      // "2-3" two to three. `minBerths` is 1 when the row says nothing, and a socket with no most
+      // has no `maxBerths` at all rather than Infinity, because her sockets travel as JSON in a
+      // voyage's loadout and Infinity comes back out of JSON as null.
       const rigs = families ? families.split("+").filter(Boolean) : [];
-      return { id: station, station, size, spar: SPAR_STATIONS.has(station), rigs, minBerths: least ? Number(least) : 1 };
+      const [least, most] = range ? range.split("-") : [];
+      return {
+        id: station, station, size, spar: SPAR_STATIONS.has(station), rigs,
+        minBerths: least ? Number(least) : 1, ...(most ? { maxBerths: Number(most) } : {}),
+      };
     }),
   };
 }
@@ -1263,14 +1271,19 @@ export const socketOf = (hull, socketId) => hull.sockets.find((s) => s.id === so
  * fleet could be rigged as a lugger and her "plain" stock fit actually was. `rigs` on the socket is
  * the list of families it takes, matched against the mast's own `family` before size is consulted.
  * A socket that names none takes any mast of its size.
+ *
+ * And a socket may say how many sails a mast stepped there carries, which size cannot say either:
+ * a lower mast and a topmast are both medium, and a topgallant mast and a royal mast both large. A
+ * mast's sails are its berths, every sail it can set: a square mast's square sails, a spanker
+ * mast's spanker and the square sails over it, a spar's headsails. So `fore/large/square/2-3` is a
+ * topmast or a topgallant mast and never a bare lower mast or a royal mast, whatever the rungs say.
  */
 export function mastFitsSocket(mast, socket) {
   if (!mast || !socket || mast.part !== "mast") return false;
   if (!!mast.spar !== !!socket.spar) return false;
   if (socket.rigs && socket.rigs.length && !socket.rigs.includes(mast.family)) return false;
-  // a socket may ask for a mast of some height, which size cannot say: a lower mast and a topmast
-  // are both medium, and a first rate's fore and main step nothing shorter than a topmast
   if (socket.minBerths && mast.berths.length < socket.minBerths) return false;
+  if (socket.maxBerths && mast.berths.length > socket.maxBerths) return false;
   return sizeRank(mast.size) <= sizeRank(socket.size);
 }
 
