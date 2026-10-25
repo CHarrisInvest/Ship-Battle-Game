@@ -131,15 +131,16 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   never led fore or aft to dodge a sail. That leaves both of the light xebec's masts and the heavy
   xebec's main single-roped; every other mast keeps its ladder and her pole, gaff masts included,
   whose ladders only brush the luff by the pole.
-- **A class may have a 3D model of her own, and the first, second, third and fourth rates do.**
+- **A class may have a 3D model of her own, and the first, second, third, fourth and fifth rates do.**
   `src/render3d/bespoke/` is the hand-modelled ships: `kit.js` is the toolkit they share (sweeps,
   baking, the materials, the painted sheet, the sails, the railings, rope as lines, one sky fill
   `FILL` over the scene's lights), `index.js` the registry `shipModel` asks before it turns to
-  `shipFaces`, and one file per class, `firstRate.js`, `secondRate.js`, `thirdRate.js` and
-  `fourthRate.js`, each holding every figure of her: the form, the decks, the breaks, the tiers of
-  ports, the stern, the masts and their yards. A new class starts as a copy of one of those files
-  over the same kit, the way the 2nd rate began as the first rate's, the 3rd rate as the 2nd rate's
-  and the 4th rate as the 3rd rate's; editing one class never touches another, and editing the kit
+  `shipFaces`, and one file per class, `firstRate.js`, `secondRate.js`, `thirdRate.js`,
+  `fourthRate.js` and `fifthRate.js`, each holding every figure of her: the form, the decks, the
+  breaks, the tiers of ports, the stern, the masts and their yards. A new class starts as a copy of
+  one of those files over the same kit, the way the 2nd rate began as the first rate's, the 3rd rate
+  as the 2nd rate's, the 4th rate as the 3rd rate's and the 5th rate as the 4th rate's; editing one
+  class never touches another, and editing the kit
   touches them
   all, which is what the shiplab diff is for. The 2nd rate is a base second rate, 176 ft on the gun
   deck to the first rate's 186 and 49 ft in the beam to her 52, her decks kept within 5 cm of hers
@@ -167,9 +168,28 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   her bow and quarter galleries the room the 3rd rate's have (2.945 m is the most that does), so
   hers are cut 2.9 m apart, the pitch at which her aftmost waist gun clears the quarterdeck ladders
   with the break brought 0.9 m aft of where scaling put it, which leaves the main's pin rail close
-  behind the breast rail. A bespoke ship is built in metres from the same `rigSpec` as everyone
+  behind the breast rail. The 5th rate is a forty-gun frigate, 140 ft on the gun deck to the 4th rate's
+  144 and 37.5 ft in the beam to her 40.5: the 4th rate's lengths and beams brought down by those
+  ratios with her upper gun deck taken out, so she has one gun deck, open in the waist between her
+  quarterdeck and forecastle, her decks 2.1 m apart. Her gun deck stands 0.5 m over where the 4th
+  rate's lower deck does, which puts her port sills 2.2 m (7.2 ft) over the water, a frigate's
+  height rather than a two-decker's lower deck's, and keeps her anchors (at 140/144 of the 4th
+  rate's) clear of the sea; everything that stood over the 4th rate's upper deck comes down 1.6 m
+  with her quarterdeck. Her rig is the 4th rate's at 0.98 (heights over the waterline), at most three
+  square sails a mast, and she is pierced 26+12/2: thirteen a side on her gun deck, cut with the 4th
+  rate's upper-deck port 2.5 m apart aft from the room the 4th rate leaves at her bow to under her
+  mizzen, six on her quarterdeck on the chequer at the same spacing, from a pitch abaft its break to
+  the mizzen (over the main and mizzen channels between their deadeyes, their muzzles inboard of the
+  lanyards), and one on her forecastle halfway between the fore channel and the cathead.
+  Every quarterdeck gun stands forward of the casks and the tub abaft the mizzen, where there is no
+  skylight. Each break stands where the gun-deck port at its foot is under the deck and the next one
+  along carries a waist gun clear of its ladders. She has no side galleries. Her stern carries one
+  tier of five windows, the captain's cabin on her gun deck, over a counter coming down to the water
+  with no chase ports; the stern still narrows through that height, so it is painted by metres
+  across rather than by shares of its breadth, which keeps the windows upright rectangles. A bespoke ship is built in metres from the same `rigSpec` as everyone
   (which now carries each mast's `berths`): each mast stands as tall as its berths, a filled berth is
-  a sail set and an empty one a yard crossed bare, so all 15 ways to fill four berths draw; the
+  a sail set and an empty one a yard crossed bare, so all 15 ways to fill four berths draw (all 7 of
+  three on the 5th rate); the
   spanker is the mizzen's gaff berth, the headsails the bowsprit's (a jib-boom only when a spar of two
   berths is stepped, its first berth on the inner stay and its second on the stay to the jib-boom's
   end; with a standing bowsprit or nothing stepped her stays come in to the bowsprit's cap). **What
@@ -458,8 +478,13 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   mast of a family it names, or whose most no mast of her size and family carries, which is the size
   rung quietly overruling it. A bespoke class's row states what her model can draw (the 1st to 4th
   rates' `bowsprit/small/headsails/1-2 fore/large/square/2-4 main/large/square/2-4
-  mizzen/heavy/spanker/1-5`), and `npm run bespoke-test` steps the tallest mast every socket admits,
-  every berth filled, and fails a sail left undrawn.
+  mizzen/heavy/spanker/1-5`, and the 5th rate's `bowsprit/small/headsails/1-2 fore/large/square/2-3
+  main/large/square/2-3 mizzen/large/spanker/2-4`, a Topmast or a Topgallant mast on her fore and
+  main and never a Royal mast, and a spanker under one to three square sails on her mizzen; no
+  spanker mast carries one square sail yet, so her mizzen's floor of two admits nothing more), and
+  `npm run bespoke-test` steps the tallest mast every socket admits, every berth filled, and fails a
+  sail left undrawn. A captain whose ship carries a mast her socket no longer takes finds it back in
+  her hold on load, with its sails, as `sanitize` does for any mast that no longer fits.
   Berths run deck upward, and a fore-and-aft driving sail sharing the lowest
   level with a course takes berth 0 with the square canvas above it, because the model holds one sail
   to a band and a spanker belongs at the bottom of the rig rather than over the topgallant.
@@ -734,13 +759,13 @@ Rules above that the code does not yet satisfy. Tracked cleanups, not exceptions
   forecastle, and nothing stacks a third deck aft, so no class drawn from her form can show the poop
   a ship carried over her quarterdeck. It wants a deck of its own in `hullform.js` and `galleon.js`
   rather than a higher castle score, which only lifts the quarterdeck. The first rate has hers,
-  because she is modelled by hand; the 2nd, 3rd and 4th rates are modelled by hand without one, by
-  design.
+  because she is modelled by hand; the 2nd, 3rd, 4th and 5th rates are modelled by hand without one,
+  by design.
 - **A bespoke ship is the 3D sea's and the 3D plate's only.** Where WebGL cannot be had the first,
-  second, third and fourth rates are still drawn from their forms by `drawGalleon`, and the
+  second, third, fourth and fifth rates are still drawn from their forms by `drawGalleon`, and the
   catalogue bench still audits their ports off the form. Form and model pierce the same ports,
   because the bespoke test holds every model to its row's `battery` (28/28/28+12/4, 26/26/26+10/2,
-  26/26+10/2 and 24/22+6/2), but
+  26/26+10/2, 24/22+6/2 and 26+12/2), but
   each ship is still two separate drawings that agree on nothing else by construction. A bespoke ship has not been
   measured on a phone either: eleven of her in a free-for-all on both quality tiers is the field to
   look at before trusting the budget in `tools/bespoke-test.mjs`.

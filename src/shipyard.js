@@ -250,8 +250,8 @@ const FLEET = [
   {
     id: "fifthRate", name: "5th rate", price: 25000,
     blurb: "A whole deck of eighteens and the legs to choose her own fight.",
-    hull: 1128, crew: 260, speed: 1, hand: 0.83, canvas: 2.83, tons: 96.3,
-    guns: [19, 2, 3], masts: ["bowsprit/large/headsails", "fore/heavy/square", "main/heavy/square", "mizzen/large/spanker"],
+    hull: 1128, crew: 260, speed: 1.015, hand: 0.837, canvas: 2.83, tons: 96.3,
+    guns: [20, 2, 3], masts: ["bowsprit/small/headsails/1-2", "fore/large/square/2-3", "main/large/square/2-3", "mizzen/large/spanker/2-4"],
   },
   {
     id: "heavyFrigate", name: "Frigate heavy", price: 48000,
