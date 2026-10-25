@@ -242,33 +242,38 @@ const act = (rec, name, ...args) => R.applyAction(rec, name, args);
 }
 
 // A socket's range narrowed under a ship already rigged past it: the 5th rate's fore and main took a
-// Skysail mast and her bowsprit a Flying jibboom until her sockets were cut to what her model draws.
-// The record is written the way such a captain's was, past the fitting rules, and loaded: each mast
-// comes out of its socket and back into her hold with every sail it carried, nothing is lost, and
-// her coins are what they were.
-{
-  let rec = act(rich(1e6), "buyShip", "fifthRate").rec;
-  const frigate = Object.keys(rec.yard.ships).find((id) => rec.yard.ships[id].hull === "fifthRate");
+// Skysail mast and her bowsprit a Flying jibboom until her sockets were cut to what her model draws,
+// and the 6th rate's a Royal mast and a Flying jibboom. The record is written the way such a
+// captain's was, past the fitting rules, and loaded: each mast comes out of its socket and back into
+// her hold with every sail it carried, nothing is lost, and her coins are what they were.
+function narrowed(hull, what, RIGGED) {
+  let rec = act(rich(1e6), "buyShip", hull).rec;
+  const ours = Object.keys(rec.yard.ships).find((id) => rec.yard.ships[id].hull === hull);
   const buy = (type) => { const r = act(rec, "buyPart", type); rec = r.rec; return r.part; };
-  const RIGGED = {
-    fore: ["skysailMast", ["courseFine", "courseFine", "topgallantFine", "topgallantFine", "topgallantFine"]],
-    main: ["skysailMast", ["courseFine", "courseFine", "topgallantFine", "topgallantFine", "topgallantFine"]],
-    bowsprit: ["flyingJibboom", ["jibFine", "jibFine", "jibFine"]],
-  };
   const rig = {};
   for (const [socket, [mast, sails]] of Object.entries(RIGGED)) rig[socket] = { mast: buy(mast), sails: sails.map(buy), studs: [] };
   const raw = JSON.parse(json(rec));
-  Object.assign(raw.yard.ships[frigate].rig, rig);
+  Object.assign(raw.yard.ships[ours].rig, rig);
   const parts = json(raw.yard.parts), coins = raw.coins;
   const loaded = R.sanitize(raw);
-  const ship = loaded.yard.ships[frigate];
+  const ship = loaded.yard.ships[ours];
   const back = Object.values(rig).flatMap((r) => [r.mast, ...r.sails]);
   check(Object.keys(RIGGED).every((s) => !ship.rig[s].mast && ship.rig[s].sails.length === 0),
-    "a Skysail mast and a Flying jibboom no longer fit a 5th rate, and load out of her sockets");
-  check(json(loaded.yard.parts) === parts && back.every((pid) => R.spareParts(loaded, frigate).includes(pid)),
+    `${what} no longer fit a ${R.shipName(loaded, ours)}, and load out of her sockets`);
+  check(json(loaded.yard.parts) === parts && back.every((pid) => R.spareParts(loaded, ours).includes(pid)),
     `every one of the ${back.length} parts comes back into her hold with its sails, to step or sell again`);
   check(loaded.coins === coins && loaded.spent === raw.spent, "and her coins and what she spent are unchanged");
 }
+narrowed("fifthRate", "a Skysail mast and a Flying jibboom", {
+  fore: ["skysailMast", ["courseFine", "courseFine", "topgallantFine", "topgallantFine", "topgallantFine"]],
+  main: ["skysailMast", ["courseFine", "courseFine", "topgallantFine", "topgallantFine", "topgallantFine"]],
+  bowsprit: ["flyingJibboom", ["jibFine", "jibFine", "jibFine"]],
+});
+narrowed("sixthRate", "a Royal mast and a Flying jibboom", {
+  fore: ["royalMast", ["courseFine", "courseFine", "topgallantFine", "topgallantFine"]],
+  main: ["royalMast", ["courseFine", "courseFine", "topgallantFine", "topgallantFine"]],
+  bowsprit: ["flyingJibboom", ["jibFine", "jibFine", "jibFine"]],
+});
 
 if (failures.length) {
   console.log(`\n${failures.length} FAILURE${failures.length === 1 ? "" : "S"}`);

@@ -44,7 +44,8 @@ for (const id of bespokeIds()) {
   // the model has not got is a gun never drawn, and a tier the row and the model count differently
   // is the 2D fallback and the 3D sea drawing two different ships
   if (entry.ports !== hull.guns.broadside) fault(where, `the model is pierced for ${entry.ports} a side and her row bears ${hull.guns.broadside}`);
-  if (entry.battery !== ref.battery) fault(where, `the model is pierced ${entry.battery} and her row's battery says ${ref.battery}`);
+  // compared as written: a battery of one figure, all on one gun deck, comes out of the import a number
+  if (String(entry.battery) !== String(ref.battery)) fault(where, `the model is pierced ${entry.battery} and her row's battery says ${ref.battery}`);
 
   // her frame is the extent of her model fully found, which is what the menu frames her by
   if (entry.frame) {
