@@ -9,10 +9,12 @@
  * drawn with everything a single-player round has. Every two seconds the server's fingerprint of its
  * ships comes too, and `desynced` turns true if this world ever parts company with it.
  *
- * `connectOnline({ onChange, onEvents })` returns the connection: `create()`, `join(code)`,
+ * `connectOnline({ onChange, onEvents, onStep })` returns the connection: `create()`, `join(code)`,
  * `leave()`, `setMode(mode)`, `setRivals(n)`, `setPerSide(n)`, `setSide(side)`, `start()`,
  * `send(input)` for her controls, and `advance(n)` to step the world up to `n` ticks of what the
- * server has sent. `state` is everything the lobby screen reads.
+ * server has sent. `state` is everything the lobby screen reads. `onStep(world, inputs)` is called
+ * just before each step, with the world and the controls it is about to be stepped with, which is
+ * what the instant replay's tape records.
  */
 
 import { createWorld, step, shipsPrint, NO_INPUT, isInput } from "./sim/index.js";
@@ -33,7 +35,7 @@ export const ONLINE_FAILED = {
 
 const askTicket = () => call("POST", "/online/ticket", { engine: ENGINE });
 
-export async function connectOnline({ onChange = () => {}, onEvents = () => {}, Socket = globalThis.WebSocket, getTicket = askTicket, retryMs = 1000 } = {}) {
+export async function connectOnline({ onChange = () => {}, onEvents = () => {}, onStep = null, Socket = globalThis.WebSocket, getTicket = askTicket, retryMs = 1000 } = {}) {
   const state = {
     open: false, you: null, lobby: null, error: "", sailing: false, banked: null,
     reconnecting: false, // the connection dropped and is being made again; her place is held meanwhile
@@ -165,6 +167,7 @@ export async function connectOnline({ onChange = () => {}, onEvents = () => {}, 
         const [tick, changes] = f;
         if (tick !== r.world.tick) r.desynced = true;
         if (changes) for (const [id, input] of Object.entries(changes)) r.cur[id] = input;
+        if (onStep) onStep(r.world, r.cur);
         for (const e of step(r.world, r.cur)) events.push(e);
         r.queue.shift();
         stepped++;

@@ -21,6 +21,7 @@
     "client-test": "node server/client-test.mjs",
     "online-test": "node server/online-test.mjs",
     "determinism": "node tools/determinism.mjs",
+    "replay-test": "node tools/replay-test.mjs",
     "inputlog": "node tools/inputlog.mjs",
     "icon": "node tools/icon.mjs",
     "promo": "node tools/promo.mjs",

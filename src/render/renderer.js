@@ -720,7 +720,7 @@ export function createRenderer(canvas) {
     stormEdge(ctx, vs, world, clock);
     screenSpace(); // the two that belong to the screen rather than to the sea
     vignette(ctx, vs, fx);
-    radar(ctx, vs, world, fx, clock);
+    if (view.radar !== false) radar(ctx, vs, world, fx, clock); // the replay's window wants none
   }
 
   // whether any ship afloat lies under a box on the page; see `shipUnder` in view.js

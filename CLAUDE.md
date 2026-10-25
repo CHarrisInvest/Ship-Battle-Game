@@ -362,6 +362,28 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   fleets' ships afloat and the hull they have left. A captain's own ship flies her side's colour
   too, planking and trim, rather than the gold she flies elsewhere (`lookOf` in `effects.js` is the
   one statement of every ship's colours, for both renderers).
+- **A round ends with its word and its instant replay, and the replay is the engine sailed again.**
+  When a round ends for her, the screen goes to an `ending` phase before the tally: the word for how
+  it ended, SUNK or VICTORY!, rises out of her health card and travels to its post (the top middle
+  held upright, the middle of the left side held sideways), the HUD fades under it, and a window
+  opens captioned "Instant replay" with its three dots breathing, in which her last five seconds
+  play (`EndingOverlay` in the screen, `REPLAY_SECONDS` in `src/replay.js`). The clip is the ship
+  the moment was about: her own when she sank or sank the last of them, and between sides, when her
+  side won by another ship's blow while she was afloat, the ship that struck it (the `by` on the
+  last `sunk` event of the ending step); a captain who sank before her side's day is replayed once,
+  as she sank. Nothing of the picture is recorded. `createTape` in `src/replay.js` keeps a
+  `structuredClone` of the world once a second and every tick's input record since the oldest copy
+  (`record(world, inputs)` just before each `step`, in the frame loop for a voyage and through
+  `onStep` in `online.js` with friends), and `cut(endTick)` steps the copy before the clip's start
+  up to it and hands back that world and the inputs that sail it to the end, which the engine
+  re-steps to the round's own bits because the same state and the same inputs are the same round.
+  `createReplay` sails the clip in real time through the same renderer and effects as the round,
+  with the camera aimed so the ship sits in the window (`aimInto`) and no radar (`radar: false` on
+  the frame's `opts`), holds on the aftermath for the 3D sea to take her under, and starts over;
+  "Continue", a tap anywhere once the window has been up a moment, or the clip's third pass goes
+  on to the tally, whichever end screen the round has since decided (`showEnd`, since between
+  sides the round can go to a side while her own sinking is still playing). `npm run replay-test`
+  cuts clips from rounds in Node and fails if one does not end on the round's own bits.
 - `src/consent.js` is the cookie prompt's answer: essential, analytics and advertising, kept
   under its own key. **The hold is the essential category and is never gated on
   it**: "Reject all" must not touch a captain's progress.
