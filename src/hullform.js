@@ -254,7 +254,7 @@ const PORT = {
  *
  * `battery` is written "lower/.../upper+quarterdeck/forecastle", guns aboard, the way a ship was
  * rated: "10" is a cutter, "28+8/2" a frigate, "30+20" a spar-decked heavy frigate whose upper
- * battery ran the length of her, "28/28/30+12/2" a first rate. A row with no battery at all falls
+ * battery ran the length of her, "28/28/28+12/4" a first rate. A row with no battery at all falls
  * back to every gun she carried on one deck, which is right for a boat and wrong for nothing else
  * that has a row in the table.
  */

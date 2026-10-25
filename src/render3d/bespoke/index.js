@@ -18,9 +18,9 @@ import * as THREE from "three";
 import { C } from "../../render/palette.js";
 import { hullForm, timberCast } from "../../hullform.js";
 import { solidMaterial, hullMaterial, deckMaterial, sailMaterial, flagMaterial, toTex } from "./kit.js";
-import { FIRST_RATE, FIRST_RATE_FRAME, buildFirstRate, paintAtlas as paintFirstRate, SLOT as FIRST_RATE_SLOT } from "./firstRate.js";
-import { SECOND_RATE, SECOND_RATE_FRAME, buildSecondRate, paintAtlas as paintSecondRate, SLOT as SECOND_RATE_SLOT } from "./secondRate.js";
-import { THIRD_RATE, THIRD_RATE_FRAME, buildThirdRate, paintAtlas as paintThirdRate, SLOT as THIRD_RATE_SLOT } from "./thirdRate.js";
+import { FIRST_RATE, FIRST_RATE_FRAME, buildFirstRate, paintAtlas as paintFirstRate, SLOT as FIRST_RATE_SLOT, PORTS_A_SIDE as FIRST_RATE_PORTS, BATTERY as FIRST_RATE_BATTERY } from "./firstRate.js";
+import { SECOND_RATE, SECOND_RATE_FRAME, buildSecondRate, paintAtlas as paintSecondRate, SLOT as SECOND_RATE_SLOT, PORTS_A_SIDE as SECOND_RATE_PORTS, BATTERY as SECOND_RATE_BATTERY } from "./secondRate.js";
+import { THIRD_RATE, THIRD_RATE_FRAME, buildThirdRate, paintAtlas as paintThirdRate, SLOT as THIRD_RATE_SLOT, PORTS_A_SIDE as THIRD_RATE_PORTS, BATTERY as THIRD_RATE_BATTERY } from "./thirdRate.js";
 
 /** The trim a bespoke ship wears until a layer dresses her: the gold the viewer's own ship flies, as on the menu's plate. */
 export const BESPOKE_TRIM = C.own;
@@ -33,11 +33,16 @@ export const BESPOKE_TRIM = C.own;
  *   slot                          the material slots her geometry's groups index
  *   frame                         { reach, top } in metres: her furthest bowsprit tip and highest
  *                                 truck at any fit, which the menu frames her by
+ *   ports, battery                what she is pierced for: her ports a side, and her establishment in
+ *                                 the reference row's notation, which the bespoke test holds her row to
  */
 const BESPOKE = {
-  firstRate: { ...FIRST_RATE, build: buildFirstRate, paintAtlas: paintFirstRate, slot: FIRST_RATE_SLOT, frame: FIRST_RATE_FRAME },
-  secondRate: { ...SECOND_RATE, build: buildSecondRate, paintAtlas: paintSecondRate, slot: SECOND_RATE_SLOT, frame: SECOND_RATE_FRAME },
-  thirdRate: { ...THIRD_RATE, build: buildThirdRate, paintAtlas: paintThirdRate, slot: THIRD_RATE_SLOT, frame: THIRD_RATE_FRAME },
+  firstRate: { ...FIRST_RATE, build: buildFirstRate, paintAtlas: paintFirstRate, slot: FIRST_RATE_SLOT, frame: FIRST_RATE_FRAME,
+    ports: FIRST_RATE_PORTS, battery: FIRST_RATE_BATTERY },
+  secondRate: { ...SECOND_RATE, build: buildSecondRate, paintAtlas: paintSecondRate, slot: SECOND_RATE_SLOT, frame: SECOND_RATE_FRAME,
+    ports: SECOND_RATE_PORTS, battery: SECOND_RATE_BATTERY },
+  thirdRate: { ...THIRD_RATE, build: buildThirdRate, paintAtlas: paintThirdRate, slot: THIRD_RATE_SLOT, frame: THIRD_RATE_FRAME,
+    ports: THIRD_RATE_PORTS, battery: THIRD_RATE_BATTERY },
 };
 
 /** The bespoke entry for a hull id, or null for a class drawn from her form. */

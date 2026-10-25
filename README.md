@@ -47,6 +47,7 @@ npm run icon       # redraw the home-screen icons in public/ from the menu's gal
 npm run shiplab -- --sheet         # every class at three bearings, into shiplab-out/sheet.png
 npm run shiplab -- --diff staging  # the fleet drawn from staging and from here; names what changed
 npm run shiplab -- --artifact      # the Ship Lab as one file, shiplab-out/ship-lab.html
+npm run shiplab -- --closeup       # the hand-modelled classes seen close, deck by deck, into shiplab-out/closeup.png
 ```
 
 ```bash

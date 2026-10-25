@@ -171,7 +171,9 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   registry scales her to the menu and sea lengths her form gives her, so nothing that places,
   follows, labels or sinks a ship knows the difference. Her beam at sea is the model's: the row's
   `drawnLength` and `drawnBeam` are the model's figures, `seaForm` takes her collision beam from
-  their ratio, and `npm run bespoke-test` holds the row to the model. Her livery is the game's: the
+  their ratio, and `npm run bespoke-test` holds the row to the model: her drawn length and beam, and
+  her ports, a side against `broadside` and deck by deck against `battery` (each file exports what
+  it pierces as `BATTERY`, in the row's notation). Her livery is the game's: the
   trim the viewer's gold (`C.own`) or a rival's colour, through `model.dress`, which both model kinds
   answer (`paint` is the face-list ship's planking colour; a bespoke ship keeps her own painted
   sides, but for the bands behind her gun decks' ports, painted solid in her trim, and a moulding
@@ -190,7 +192,10 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   Artifact, which is how the captain who owns the game looks at it from a phone. `npm run shiplab --
   --sheet` draws the fleet in one picture and `--diff REF` draws it from another commit beside this
   one and names the classes that came out different; run the diff against `staging` before pushing
-  a change to a ship's art, and say what it found.
+  a change to a ship's art, and say what it found. The plate frames a ship whole, too small to see
+  whether a gun clears a ladder, so `--closeup` draws a class close from where things collide (her
+  stern, quarterdeck, waist, forecastle and bow, astern and abeam), through `shiplab/closeup.js`, in
+  the plate's own light; with no `--only` it draws the classes modelled by hand.
 - `src/shipyard.js` is the catalogue and the maths for buying ships and parts. Hulls, masts, sails
   and guns as data, what fits what, and `rate()` turning a set of them into the figures a fight
   reads. It holds no state, touches no storage and imports nothing but `exact.js`, and it should
@@ -711,11 +716,9 @@ Rules above that the code does not yet satisfy. Tracked cleanups, not exceptions
   because she is modelled by hand; the 2nd and 3rd rates are modelled by hand without one, by design.
 - **A bespoke ship is the 3D sea's and the 3D plate's only.** Where WebGL cannot be had the first,
   second and third rates are still drawn from their forms by `drawGalleon`, and the catalogue bench
-  still audits their ports off the form, so the two drawings of the first rate disagree in detail
-  (the form says 28/28/30+12/2, the model pierces 28/28/28 with 12 and 4 above). The 2nd and 3rd
-  rates' forms and models both pierce as their rows say (26/26/26+10/2 and 26/26+10/2), but each is
-  still two separate drawings of her that agree on nothing else by construction. Nothing reads both.
-  A bespoke ship has not been
+  still audits their ports off the form. Form and model pierce the same ports, because the bespoke
+  test holds every model to its row's `battery` (28/28/28+12/4, 26/26/26+10/2 and 26/26+10/2), but
+  each ship is still two separate drawings that agree on nothing else by construction. A bespoke ship has not been
   measured on a phone either: eleven of her in a free-for-all on both quality tiers is the field to
   look at before trusting the budget in `tools/bespoke-test.mjs`.
 - **Google sign-in has not been tried from the home-screen app on an iPhone.** A redirect out of a

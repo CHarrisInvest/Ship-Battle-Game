@@ -39,6 +39,11 @@ for (const id of bespokeIds()) {
   if (Math.abs((ref.drawnLength || 0) - entry.length) > 0.05 || Math.abs((ref.drawnBeam || 0) - entry.beam) > 0.05) {
     fault(where, `the reference row says drawnLength ${ref.drawnLength} and drawnBeam ${ref.drawnBeam}; the model is ${entry.length} by ${entry.beam}`);
   }
+  // her ports are what her row says she carries, a side and deck by deck: a gun bought for a port
+  // the model has not got is a gun never drawn, and a tier the row and the model count differently
+  // is the 2D fallback and the 3D sea drawing two different ships
+  if (entry.ports !== hull.guns.broadside) fault(where, `the model is pierced for ${entry.ports} a side and her row bears ${hull.guns.broadside}`);
+  if (entry.battery !== ref.battery) fault(where, `the model is pierced ${entry.battery} and her row's battery says ${ref.battery}`);
 
   // her frame is the extent of her model fully found, which is what the menu frames her by
   if (entry.frame) {

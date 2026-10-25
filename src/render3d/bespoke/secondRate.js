@@ -173,6 +173,12 @@ const PORTS = [];
 TIERS.forEach((tr, ti) => tr.xs.forEach((x) => PORTS.push({ x, ti, t: tOf(x, tr.Y), Y: tr.Y, w: tr.w, h: tr.h, gun: tr.gun, len: tr.len, out: tr.out, deck: !!tr.deck })));
 /** A side's worth of her ports, which is what `broadside` counts. */
 export const PORTS_A_SIDE = PORTS.length;
+/**
+ * Her battery as her reference row writes it, guns aboard rather than a side: her gun decks lowest
+ * first, then her quarterdeck and forecastle after the plus. `npm run bespoke-test` holds the row to it.
+ */
+export const BATTERY = TIERS.filter((t) => !t.deck).map((t) => 2 * t.xs.length).join("/")
+  + "+" + TIERS.filter((t) => t.deck).map((t) => 2 * t.xs.length).join("/");
 // guns you can see on deck, on their carriages: every one on the quarterdeck and the forecastle,
 // which have no deck over them, and the upper deck's in the open waist
 const onDeck = (p) => p.deck || (p.ti === 2 && p.x > X_QD + 1 && p.x < X_FC - 0.9);
