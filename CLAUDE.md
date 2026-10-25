@@ -192,7 +192,10 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   Artifact, which is how the captain who owns the game looks at it from a phone. `npm run shiplab --
   --sheet` draws the fleet in one picture and `--diff REF` draws it from another commit beside this
   one and names the classes that came out different; run the diff against `staging` before pushing
-  a change to a ship's art, and say what it found.
+  a change to a ship's art, and say what it found. The plate frames a ship whole, too small to see
+  whether a gun clears a ladder, so `--closeup` draws a class close from where things collide (her
+  stern, quarterdeck, waist, forecastle and bow, astern and abeam), through `shiplab/closeup.js`, in
+  the plate's own light; with no `--only` it draws the classes modelled by hand.
 - `src/shipyard.js` is the catalogue and the maths for buying ships and parts. Hulls, masts, sails
   and guns as data, what fits what, and `rate()` turning a set of them into the figures a fight
   reads. It holds no state, touches no storage and imports nothing but `exact.js`, and it should

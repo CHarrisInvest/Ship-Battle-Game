@@ -42,6 +42,8 @@ const PIVOT_Y = 0.71; // where the waterline amidships sits, as a share of the b
 const KEY_DIR = new THREE.Vector3(-0.42, 0.78, 0.46).normalize();
 const KEY = { color: "#fff8ee", intensity: 0.85 * Math.PI };
 const FILL = { sky: "#eef0f2", ground: "#5a4c3c", intensity: 0.36 * Math.PI };
+/** The plate's two lights, for anything else that draws a ship as the plate does (the Ship Lab's close-ups). */
+export const PLATE_LIGHTS = { keyDir: KEY_DIR, key: KEY, fill: FILL };
 
 /* ---- the one shared WebGL renderer ------------------------------------------------------------ */
 
