@@ -388,8 +388,12 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   beat of `HIT_STOP` held on the blow with the splinters still flying, then the world sailed on
   for `REPLAY_TAIL` seconds past the moment under hands that ease off the stick (`HANDS_EASE`),
   the round's own end lifted before each of those steps since the copy is a show, so the 3D sea
-  is seen to take her under with the sea alive around her; it starts over, and after
-  `REPLAY_LOOPS` passes holds on its last frame. The window is drawn `REPLAY_ZOOM` closer than
+  is seen to take her under with the sea alive around her; it starts over, and the last of its
+  `REPLAY_LOOPS` passes stops on the moment itself, the frame held with the sea's own time stopped
+  (the loop's `dt` is 0 while `done`), her just starting to go under. "Spectate" is offered only
+  while there is a fight left to watch (`canWatch`, as the tally decides it): never to a winner,
+  the last afloat or a side's win, and it goes away if the side's day comes while her sinking is
+  still playing. The window is drawn `REPLAY_ZOOM` closer than
   play, let out as far as `REPLAY_ZOOM_MIN` to keep both ships in it (`REPLAY_FIT` of its width),
   aimed between them (`aimInto`, through `renderer.zoom` and `setZoom` in `view.js`) with the
   map's edge not holding the camera (`followView`'s `hold`), no radar and no bars outside it
