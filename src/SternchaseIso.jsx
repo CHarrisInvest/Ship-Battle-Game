@@ -680,7 +680,9 @@ export default function App() {
       if (!last) last = ts;
       const frame = (ts - last) / 1000;
       last = ts;
-      const dt = Math.min(frame, 0.05); // the frame's own time, for what only decorates the sea
+      // the frame's own time, for what only decorates the sea; none at all while the replay holds on
+      // its moment, so the frame stands as it is, her just starting to go under, the sea still
+      const dt = replayRef.current && replayRef.current.done ? 0 : Math.min(frame, 0.05);
       renderer.tick(dt);
       const g = gameRef.current;
       let alpha = 1;
@@ -821,6 +823,8 @@ export default function App() {
       const labels = aim ? { x0: aim.x - aim.w / 2, y0: aim.y - aim.h / 2, x1: aim.x + aim.w / 2, y1: aim.y + aim.h / 2 } : null;
       renderer.render(w, rp.fx, { live: false, radar: false, labels, input: controls.input, alpha: rp.alpha });
     }
+    // (while `rp.done` the loop's `dt` is 0, so the effects, the waves, the flags and the sea's own
+    // sinking all stand still with the world: the last pass is a frame held on the moment)
 
     // the picture cleared of what hangs on the water: the smoke, the words, the wakes and the red
     function clearFx(f) {

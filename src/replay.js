@@ -143,7 +143,9 @@ const smooth = (t) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
  * asked again. The round's own end notwithstanding: the engine refuses to step a round that is
  * over, and this copy is a show, so its end is lifted before each of those steps and what the
  * engine says again about it is left out of the events. Then the clip starts over and says so, so
- * the screen can clear its picture of it, and after `loops` passes it holds on its last frame.
+ * the screen can clear its picture of it. THE LAST PASS STOPS ON THE MOMENT: it reaches the blow and
+ * holds there, `done`, with no tail, so the screen can freeze the frame with her just starting to go
+ * under rather than play her sinking through once more.
  *
  * The hold and the tail are counted in `dt`, the screen's own time for what decorates the sea (the
  * frame's time, capped), because a sinking is drawn at that pace and the tail is there for it to be
@@ -171,7 +173,7 @@ export function createReplay(clip, { tail = REPLAY_TAIL, loops: most = REPLAY_LO
     get loops() { return loops; },
     /** Whether the clip has been sailed to its end and is sailing on through the aftermath. */
     get over() { return over(); },
-    /** Whether the clip has played its passes and holds on its last frame. */
+    /** Whether the clip has played its passes and holds on the moment itself. */
     get done() { return done; },
     advance(frame, dt = frame) {
       const events = [];
@@ -180,7 +182,6 @@ export function createReplay(clip, { tail = REPLAY_TAIL, loops: most = REPLAY_LO
         if (stop > 0) { stop -= dt; return { events, restarted: false }; }
         held += dt;
         if (held >= tail) {
-          if (loops + 1 >= most) { done = true; bank = 0; return { events, restarted: false }; }
           world = structuredClone(clip.world);
           at = 0; bank = 0; held = 0; loops++;
           return { events, restarted: true };
@@ -193,7 +194,8 @@ export function createReplay(clip, { tail = REPLAY_TAIL, loops: most = REPLAY_LO
           bank -= cost();
           for (const e of step(world, clip.inputs[at++])) events.push(e);
           steps++;
-          if (over()) { bank = 0; stop = HIT_STOP; break; } // the moment itself, on a frame of its own, drawn whole
+          // the moment itself, on a frame of its own, drawn whole; on the last pass the clip stops here
+          if (over()) { bank = 0; if (loops + 1 >= most) done = true; else stop = HIT_STOP; break; }
         } else {
           world.result.over = false;
           for (const e of step(world, hands(held))) if (e.type !== "round_over") events.push(e);

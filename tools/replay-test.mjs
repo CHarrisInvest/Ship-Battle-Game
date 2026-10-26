@@ -13,8 +13,8 @@
  *   a clip of a round with several captains loses one captain's controls;
  *   the player does not reach the same end in real-time frames, with its last second at half pace,
  *   hold a beat on the blow, sail on through its tail (the world stepping on past the round's own
- *   end with her hands easing off the stick, so a sinking is seen whole), start over, and after its
- *   passes hold on its last frame;
+ *   end with her hands easing off the stick, so a sinking is seen whole), start over, and on its
+ *   last pass stop on the moment itself and hold;
  *   the recording leaves the round it records a different round.
  */
 
@@ -124,16 +124,16 @@ function playerTest(name, world, clip) {
   else if (said) fail(`${name}: the round's end was said ${said} times over in the tail`);
   else if (rp.loops !== 1 || rp.world.tick !== clip.world.tick) fail(`${name}: the player did not start the clip over from its start`);
   else ok(`${name}: the player reaches the same end in ${secs.toFixed(2)} s, holds the blow ${stopped.toFixed(2)} s, sails on ${sailedOn} steps and starts over (${events} events)`);
-  // the passes play out and the player holds on its last frame
+  // the passes play out and the last stops on the moment itself: the round's own end, no tail
   let n = 0;
   while (!rp.done && n++ < 100000) rp.advance(1 / 60);
-  if (!rp.done) fail(`${name}: the player never held on its last frame`);
-  else if (rp.loops !== REPLAY_LOOPS - 1) fail(`${name}: the player held after ${rp.loops + 1} passes, not ${REPLAY_LOOPS}`);
+  if (!rp.done) fail(`${name}: the player never stopped on the moment`);
+  else if (rp.loops !== REPLAY_LOOPS - 1) fail(`${name}: the player stopped after ${rp.loops + 1} passes, not ${REPLAY_LOOPS}`);
+  else if (dump(rp.world) !== dump(world)) fail(`${name}: the last pass did not stop on the round's own end`);
   else {
-    const t = rp.world.tick;
     for (let i = 0; i < 60; i++) rp.advance(1 / 60);
-    if (rp.world.tick !== t || rp.alpha !== 1) fail(`${name}: the player did not hold on its last frame`);
-    else ok(`${name}: the player holds on its last frame after ${REPLAY_LOOPS} passes`);
+    if (dump(rp.world) !== dump(world) || rp.alpha !== 1) fail(`${name}: the player did not hold on the moment`);
+    else ok(`${name}: the last of ${REPLAY_LOOPS} passes stops on the moment and holds`);
   }
 }
 
