@@ -22,7 +22,7 @@
 
 import { WORLD, WP, TICK, clamp, seedFrom } from "../sim/index.js";
 import { C, UI } from "./palette.js";
-import { TILT, ZUP, SHOT_DRAW, SHOT_LIT_MIN, createView, sizeView, followView, blend, shipUnder } from "./view.js";
+import { TILT, ZUP, SHOT_DRAW, SHOT_LIT_MIN, createView, sizeView, setZoom, followView, blend, shipUnder, inBox } from "./view.js";
 import { genFoliage, drawShadows, drawPalm, drawBush } from "./foliage.js";
 import { SEA_FOREAFT } from "./searig.js";
 import { lookOf } from "./effects.js";
@@ -85,8 +85,14 @@ export function createRenderer(canvas) {
 
   // the camera brought round onto `me`, the viewer's own ship, where she is drawn `alpha` of the
   // way through the last step; how it holds her off the boundary is `followView`'s, in view.js
-  function follow(ship, alpha = 1) {
-    followView(vs, ship, alpha);
+  function follow(ship, alpha = 1, hold = true) {
+    followView(vs, ship, alpha, hold);
+  }
+
+  // the sea drawn `k` times closer than the square's zoom, for the replay's window
+  function zoomTo(k) {
+    setZoom(vs, k);
+    ({ zoom, Vw, Vh } = vs);
   }
 
   // ---------------- rendering ----------------
@@ -578,8 +584,8 @@ export function createRenderer(canvas) {
     }
     if (s.mastDown) line(P3(-2, 0, deckH), P3(-2, 3, deckH + 8), look.cols.spar, 1.8);
 
-    // health bars + rank, above the rig
-    shipLabel(ctx, vs, s, { gx, gy, h: H, roll, topZ: deckH + rig.top + 6 }, world, fx);
+    // health bars + rank, above the rig; none outside the replay's window, when there is one
+    if (inBox(vs, gx, gy, view.labels)) shipLabel(ctx, vs, s, { gx, gy, h: H, roll, topZ: deckH + rig.top + 6 }, world, fx);
   }
 
   function drawShots(cam) {
@@ -729,6 +735,7 @@ export function createRenderer(canvas) {
   return {
     resize,
     follow,
+    zoom: zoomTo,
     render,
     under,
     tick: (dt) => { clock += dt; },
