@@ -3965,7 +3965,7 @@ function StartOverlay({ onStart, onEdit, onOutfit, onRecords, onCookies, onPriva
       })}
       {/* The one mode sailed with other people: a free-for-all in a lobby a captain makes and her
           friends join with its code. Last in the list, because it is the one that needs friends. */}
-      <ModeCard color={C.gold} title="WITH FRIENDS" desc="Up to 8 captains, in a free-for-all or on two sides. Make a lobby and send your friends its code, or join theirs." onClick={onFriends} />
+      <ModeCard color={C.gold} title="WITH FRIENDS" desc="Free-for-all or teams. Make a lobby and send your friends its code, or join theirs." onClick={onFriends} />
       <div style={{ marginTop: 16, fontSize: 11, color: "rgba(238,244,242,0.5)", lineHeight: 1.6 }}>
         Stick to sail. Your side guns hit the hull, the bow gun brings down the mast, muskets clear
         the crew. Rams can pack a punch.
