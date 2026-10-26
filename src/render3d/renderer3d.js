@@ -27,7 +27,7 @@
 import * as THREE from "three";
 import { C, AI_COLORS } from "../render/palette.js";
 import { lookOf } from "../render/effects.js";
-import { createView, sizeView, followView, blend, shipUnder } from "../render/view.js";
+import { createView, sizeView, setZoom, followView, blend, shipUnder } from "../render/view.js";
 import { createCamera, syncCamera, toThree, viewGround } from "./camera.js";
 import { toonMaterial, flatMaterial, toonRamp, color, LIGHTING, disposeToon } from "./toon.js";
 import { shipModel, clearShipModels } from "./shipmodel.js";
@@ -165,8 +165,14 @@ export function createRenderer3d(webglCanvas, overlayCanvas, { quality = pickQua
     syncCamera(camera, view);
   }
 
-  function follow(ship, alpha = 1) {
-    followView(view, ship, alpha);
+  function follow(ship, alpha = 1, hold = true) {
+    followView(view, ship, alpha, hold);
+  }
+
+  // the sea drawn `k` times closer than the square's zoom, for the replay's window; the camera
+  // reads the view again on the next frame
+  function zoom(k) {
+    setZoom(view, k);
   }
 
   // The key light stands off the middle of the view along its own direction, and its shadow camera
@@ -270,6 +276,7 @@ export function createRenderer3d(webglCanvas, overlayCanvas, { quality = pickQua
   return {
     resize,
     follow,
+    zoom,
     render,
     under: (rect, w) => shipUnder(view, rect, w),
     tick: (dt) => { clock.t += dt; ctx.dt = dt; },

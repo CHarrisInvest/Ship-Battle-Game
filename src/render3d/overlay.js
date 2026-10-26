@@ -16,7 +16,7 @@
 
 import { WORLD, WP, musketArc } from "../sim/index.js";
 import { C, UI } from "../render/palette.js";
-import { TILT, ZUP, SX, SY, blend } from "../render/view.js";
+import { TILT, ZUP, SX, SY, blend, inBox } from "../render/view.js";
 import { HUD, radarRight } from "../render/hud.js";
 import { lookOf } from "../render/effects.js";
 
@@ -226,9 +226,10 @@ export function radar(ctx, v, world, fx, clock) {
  * vignette and the radar in screen space.
  *
  * `opts` is the frame's `{ live, input, alpha }`, as `render` is given it, with `radar: false` for a
- * frame that wants no radar (the instant replay, which is a window onto the sea and not a fight).
- * `labelOf(s)` says where a ship's bars go, as `{ gx, gy, h, roll, topZ }` (see `shipLabel`); the 3D
- * renderer answers it from her model's height and her drawn heel.
+ * frame that wants no radar and `labels` a box in CSS pixels outside which no ship's bars are drawn
+ * (the instant replay, which is a window onto the sea and not a fight). `labelOf(s)` says where a
+ * ship's bars go, as `{ gx, gy, h, roll, topZ }` (see `shipLabel`); the 3D renderer answers it from
+ * her model's height and her drawn heel.
  */
 export function drawOverlay(ctx, v, world, fx, opts, clock, labelOf) {
   screenSpace(ctx, v);
@@ -237,7 +238,11 @@ export function drawOverlay(ctx, v, world, fx, opts, clock, labelOf) {
   worldSpace(ctx, v);
   const me = world.ships.find((s) => s.id === fx.me);
   if (opts.live && me) arcGuides(ctx, v, me, opts.alpha, opts.input);
-  for (const s of world.ships) if (s.alive && s.id !== fx.me) shipLabel(ctx, v, s, labelOf(s), world, fx);
+  for (const s of world.ships) {
+    if (!s.alive || s.id === fx.me) continue;
+    const at = labelOf(s); // one answer, reused by the layer: read before the next ship is asked
+    if (inBox(v, at.gx, at.gy, opts.labels)) shipLabel(ctx, v, s, at, world, fx);
+  }
   floatTexts(ctx, v, fx);
   stormEdge(ctx, v, world, clock);
   screenSpace(ctx, v);

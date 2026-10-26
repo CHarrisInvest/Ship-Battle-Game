@@ -220,8 +220,17 @@ async function round(modeTitle, key, drive) {
   };
   const release = () => cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
   let i = 0;
+  // the round's end comes with its word and its instant replay before the tally: the window is
+  // looked for, and Continue tapped once it offers, which is the only way on
+  let sawReplay = false;
   while (!ended && Date.now() - t0 < ROUND_LIMIT * 1000) {
-    if (drive) {
+    const replay = (await page.locator("text=Instant replay").count()) > 0;
+    if (replay) {
+      if (!sawReplay) { sawReplay = true; await snap(page, "02-replay"); }
+      const go = page.locator("button", { hasText: /^Continue$/ });
+      if (await go.count()) { try { await go.click({ timeout: 1000 }); } catch { /* gone already */ } }
+      await page.waitForTimeout(500);
+    } else if (drive) {
       try { await press(); await page.waitForTimeout(2500); await release(); await page.waitForTimeout(200); } catch { /* the screen has gone */ }
       for (const r of await page.locator("button", { hasText: /^(HULL|MAST)$/ }).all()) { try { await r.tap({ timeout: 300 }); } catch { /* dead or gone */ } }
     } else {
@@ -230,6 +239,7 @@ async function round(modeTitle, key, drive) {
     if (i++ % 8 === 0) await snap(page, `02-play-${String(i).padStart(3, "0")}`);
     ended = (await page.locator("button", { hasText: /^Rematch$/ }).count()) > 0;
   }
+  if (ended && !sawReplay) fail(`${page.tag}: the end screen came without the instant replay`);
   const secs = Math.round((Date.now() - t0) / 1000);
   // the server replays the voyage before it banks it: wait for "Counting" to become a figure
   for (let w = 0; w < 40 && /Into the hold\nCounting/.test(await text(page)); w++) await page.waitForTimeout(500);
