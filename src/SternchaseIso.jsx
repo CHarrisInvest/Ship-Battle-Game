@@ -4694,11 +4694,14 @@ function EndOverlay({ title, titleColor, result, note, stats, mode, place, hold,
 // whole thing. There is no tap anywhere: the buttons are the way on.
 const WORD_PX = 44;
 const WORD_HOLD = 900, WORD_TRAVEL = 750, BUTTONS_AFTER = 500;
-// The word's column when the screen is sideways: wide enough for VICTORY! at its size and the line
-// under it.
-const WORD_COL = 232;
-// The buttons' row under the window, with its gap.
-const BUTTONS_H = 60;
+// The word's line box, the line under it (room for two lines), and the gaps between the pieces: word
+// to line, line to the window's caption, and line to the buttons.
+const WORD_H = 50, CAUSE_H = 38, GAP = 10, CAPTION_H = 14, BUTTON_H = 44;
+// The word's column when the screen is sideways: wide enough for VICTORY! at its size, the line
+// under it and a button, and the buttons' width in it.
+const WORD_COL = 240, COL_BUTTON_W = 190;
+// The buttons' row under the window, with its gap, upright.
+const BUTTONS_H = BUTTON_H + 2 * GAP;
 
 /**
  * THE END OF A ROUND, BEFORE THE TALLY. The word for how it ended, SUNK or VICTORY!, appears out
@@ -4708,7 +4711,12 @@ const BUTTONS_H = 60;
  * opens under it (beside it, sideways) and the instant replay plays there, captioned "Instant
  * replay" with its three dots breathing, over the rest of the sea dimmed. The clip plays three
  * times and holds on its last frame; "Continue" goes on to the tally and "Spectate", when there
- * is a fight left to watch, straight to watching it.
+ * is a fight left to watch, straight to watching it. Upright the buttons sit under the window;
+ * sideways they sit in the word's column, under its line, and the window takes the whole height.
+ *
+ * Everything but the word's own journey settles in rather than appearing: the line rises a few
+ * pixels as it fades in, the window opens a breath after it, from a touch under its size, and the
+ * buttons fade in last, once a thumb has had time to come off the fire buttons.
  *
  * `box` is the HUD's safe-area box, which this sits in, `ending.from` where the card's middle was
  * in it, `onAim` tells the frame loop where the window is on the page and how big, so the camera
@@ -4729,28 +4737,35 @@ function EndingOverlay({ ending, box, wide, onAim, onReplay, onWatch, onDone }) 
   }, []);
   const winRef = useRef(null);
 
-  // Where everything sits, off the box's shape. Upright, the word at the top middle with its line
-  // under it, and the window under that, as wide as the screen allows and as tall as leaves room
-  // for the buttons. Sideways, the word and its line in a column down the left, centred on the
-  // screen's middle, and the window beside it filling the height, the buttons under the window.
+  // Where everything sits, off the box's shape. Upright, down the middle: the word, its line, the
+  // window with its caption, the buttons, each a gap apart, the window as wide as the screen
+  // allows and as tall as the rest leaves it. Sideways, a column down the left centred on the
+  // screen's middle (the word, its line, the buttons), and the window beside it filling the height.
   const { w, h } = box;
-  let post, win;
+  let post, cause, win, buttons;
   if (wide) {
-    post = { x: 16 + WORD_COL / 2, y: h / 2 - 10 };
-    const left = 16 + WORD_COL + 12;
-    const height = Math.max(120, h - 24 - BUTTONS_H);
+    const block = WORD_H + GAP + CAUSE_H + GAP + (onWatch ? 2 * BUTTON_H + GAP : BUTTON_H);
+    const top = Math.max(12, (h - block) / 2);
+    post = { x: 16 + WORD_COL / 2, y: top + WORD_H / 2 };
+    cause = { left: 16, width: WORD_COL, top: top + WORD_H + GAP };
+    buttons = { left: 16 + (WORD_COL - COL_BUTTON_W) / 2, width: COL_BUTTON_W, top: cause.top + CAUSE_H + GAP, column: true };
+    const left = 16 + WORD_COL + 16;
+    const height = Math.max(120, h - 24);
     const width = Math.max(160, Math.min(w - left - 12, Math.round(height * 1.4)));
     win = { left, top: 12, width, height };
   } else {
-    post = { x: w / 2, y: 14 + WORD_PX / 2 };
-    const top = post.y + WORD_PX / 2 + 30; // the line under the word, then the window
+    post = { x: w / 2, y: 16 + WORD_H / 2 };
+    cause = { left: 16, width: w - 32, top: 16 + WORD_H + GAP };
+    const top = cause.top + CAUSE_H + GAP + CAPTION_H;
     const width = Math.max(160, w - 20);
-    const height = Math.max(120, Math.min(Math.round(width * 1.25), h - top - BUTTONS_H - 12));
+    const height = Math.max(120, Math.min(Math.round(width * 1.2), h - top - BUTTONS_H));
     win = { left: (w - width) / 2, top, width, height };
+    buttons = { left: win.left, width: win.width, top: win.top + win.height + GAP, column: false };
   }
   const from = ending.from || post;
   const at = stage < 2 ? from : post;
   const open = stage >= 3;
+  const offered = stage >= 4;
 
   // the window on the page, for the camera; measured, so it is what is actually drawn
   useEffect(() => {
@@ -4763,29 +4778,38 @@ function EndingOverlay({ ending, box, wide, onAim, onReplay, onWatch, onDone }) 
   return (
     <div style={{ position: "absolute", inset: 0, pointerEvents: "auto", touchAction: "none" }}>
       {/* the window onto the replay: everything outside it is dimmed by its own shadow */}
-      <div ref={winRef} style={{ position: "absolute", left: win.left, top: win.top, width: win.width, height: win.height, borderRadius: 10, border: `1px solid ${C.gold}`, boxShadow: "0 0 0 200vmax rgba(6,32,31,0.72)", opacity: open ? 1 : 0, transition: "opacity 0.35s", pointerEvents: "none" }}>
-        <div style={{ position: "absolute", top: -13, left: 12, background: C.panel, border: `1px solid ${C.hair}`, borderRadius: 20, padding: "4px 11px", fontSize: 12, fontWeight: 700, color: C.gold, display: "flex", alignItems: "center", whiteSpace: "nowrap" }}>
+      <div ref={winRef} style={{
+        position: "absolute", left: win.left, top: win.top, width: win.width, height: win.height, borderRadius: 10, border: `1px solid ${C.gold}`,
+        boxShadow: "0 0 0 200vmax rgba(6,32,31,0.72)", pointerEvents: "none",
+        opacity: open ? 1 : 0, transform: open ? "scale(1)" : "scale(0.97)", transition: "opacity 0.4s ease 0.15s, transform 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) 0.15s",
+      }}>
+        <div style={{ position: "absolute", top: -CAPTION_H, left: 12, background: C.panel, border: `1px solid ${C.hair}`, borderRadius: 20, padding: "4px 11px", fontSize: 12, fontWeight: 700, color: C.gold, display: "flex", alignItems: "center", whiteSpace: "nowrap" }}>
           <span>Instant replay</span>
           {[0, 1, 2].map((i) => <span key={i} aria-hidden="true" style={{ animation: `replay-dot 1.4s ease-in-out ${i * 0.25}s infinite` }}>.</span>)}
         </div>
       </div>
       {/* the word, out of the card and to its post */}
       <div style={{
-        position: "absolute", left: at.x, top: at.y, whiteSpace: "nowrap", pointerEvents: "none",
+        position: "absolute", left: at.x, top: at.y, whiteSpace: "nowrap", pointerEvents: "none", lineHeight: `${WORD_H}px`,
         transform: `translate(-50%, -50%) scale(${stage === 0 ? 0.45 : 1})`, opacity: stage === 0 ? 0 : 1,
         transition: stage < 2 ? "transform 0.35s ease-out, opacity 0.3s ease-out" : "left 0.75s cubic-bezier(0.2, 0.7, 0.2, 1), top 0.75s cubic-bezier(0.2, 0.7, 0.2, 1)",
         fontFamily: DISPLAY, fontSize: WORD_PX, letterSpacing: 1, color: ending.color, textShadow: "0 2px 10px rgba(0,0,0,0.65), 0 0 2px rgba(0,0,0,0.8)",
       }}>{ending.word}</div>
-      {/* what the moment was, under the word once it has settled; sideways it wraps in the column */}
+      {/* what the moment was, under the word once it has settled, rising into place */}
       {ending.cause && (
         <div style={{
-          position: "absolute", left: wide ? 16 : 16, right: wide ? undefined : 16, width: wide ? WORD_COL : undefined, top: post.y + WORD_PX / 2 + 2,
+          position: "absolute", left: cause.left, width: cause.width, top: cause.top, height: CAUSE_H, display: "flex", alignItems: "flex-start", justifyContent: "center",
           textAlign: "center", fontSize: 13, lineHeight: 1.4, color: C.ink, textShadow: "0 1px 4px rgba(0,0,0,0.7)", pointerEvents: "none",
-          opacity: open ? 1 : 0, transition: "opacity 0.4s ease 0.2s",
-        }}>{ending.cause}</div>
+          opacity: open ? 1 : 0, transform: open ? "translateY(0)" : "translateY(6px)", transition: "opacity 0.4s ease, transform 0.4s ease",
+        }}><span>{ending.cause}</span></div>
       )}
-      {stage >= 4 && (
-        <div style={{ position: "absolute", left: win.left, top: win.top + win.height + 12, width: win.width, display: "flex", justifyContent: "center", gap: 10 }}>
+      {/* the way on: under the window upright, in the column sideways; there once a thumb has come off the guns */}
+      {open && (
+        <div style={{
+          position: "absolute", left: buttons.left, top: buttons.top, width: buttons.width,
+          display: buttons.column ? "grid" : "flex", justifyContent: "center", gap: GAP,
+          opacity: offered ? 1 : 0, transition: "opacity 0.35s ease", pointerEvents: offered ? "auto" : "none",
+        }}>
           {onWatch && <StartButton onClick={onWatch} label="Spectate" ghost />}
           <StartButton onClick={onDone} label="Continue" />
         </div>

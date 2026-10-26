@@ -393,7 +393,10 @@ repository keeps its old name, `Ship-Battle-Game`, but the site is served from t
   play, let out as far as `REPLAY_ZOOM_MIN` to keep both ships in it (`REPLAY_FIT` of its width),
   aimed between them (`aimInto`, through `renderer.zoom` and `setZoom` in `view.js`) with the
   map's edge not holding the camera (`followView`'s `hold`), no radar and no bars outside it
-  (`radar: false` and `labels` on the frame's `opts`). "Continue" goes on to the tally, whichever
+  (`radar: false` and `labels` on the frame's `opts`). Upright the pieces run down the middle a
+  gap apart (the word, its line, the window with its caption, the buttons); sideways the word, its
+  line and the buttons make a column down the left and the window fills the height beside it, and
+  the line, the window and the buttons settle in rather than appear. "Continue" goes on to the tally, whichever
   end screen the round has since decided (`showEnd`, since between sides the round can go to a
   side while her own sinking is still playing), and "Spectate" straight to watching the fight when
   there is one; there is no tap anywhere. `npm run replay-test` cuts clips from rounds in Node and
