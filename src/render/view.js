@@ -63,7 +63,22 @@ export const SIDE_PEEK = 150; // screen pixels
 
 
 export function createView() {
-  return { Wd: 0, Hd: 0, dpr: 1, zoom: 1, Vw: 0, Vh: 0, Vsq: 0, safe: { l: 0, t: 0, r: 0, b: 0 }, cam: { x: 0, y: 0 } };
+  return { Wd: 0, Hd: 0, dpr: 1, zoom: 1, zoomK: 1, Vw: 0, Vh: 0, Vsq: 0, safe: { l: 0, t: 0, r: 0, b: 0 }, cam: { x: 0, y: 0 } };
+}
+
+/**
+ * The view's zoom scaled by `k` over the square's own, which is how the instant replay draws the
+ * sea closer in its window: a window a fraction of the screen wide at play zoom shows a ship a few
+ * pixels long. Everything across and down follows the zoom, so the figures that hang off it are
+ * worked out again; the canvas is untouched. 1 is the square's zoom, the figure play runs at.
+ */
+export function setZoom(v, k) {
+  v.zoomK = k;
+  v.zoom = Math.min(Math.min(v.Wd, v.Hd) / VIEW, MAX_ZOOM) * k;
+  v.Vw = v.Wd / v.zoom;
+  v.Vh = v.Hd / v.zoom;
+  v.Vsq = Math.min(v.Vw, v.Vh);
+  return v;
 }
 
 /**
@@ -76,11 +91,7 @@ export function sizeView(v, rect, hud, dpr) {
   v.Wd = rect.width;
   v.Hd = rect.height;
   if (hud) v.safe = { l: Math.max(0, hud.left - rect.left), t: Math.max(0, hud.top - rect.top), r: Math.max(0, rect.right - hud.right), b: Math.max(0, rect.bottom - hud.bottom) };
-  v.zoom = Math.min(Math.min(v.Wd, v.Hd) / VIEW, MAX_ZOOM);
-  v.Vw = v.Wd / v.zoom;
-  v.Vh = v.Hd / v.zoom;
-  v.Vsq = Math.min(v.Vw, v.Vh);
-  return v;
+  return setZoom(v, v.zoomK || 1);
 }
 
 // Where a ship is drawn, `alpha` of the way through the last step: her position and her heading,
@@ -117,11 +128,21 @@ export function camHold(centred, span, peek) {
   return clamp(centred, lo, Math.max(lo, WORLD - span + peek));
 }
 
-/** The camera brought round onto `ship`, where she is drawn `alpha` of the way through the last step. */
-export function followView(v, ship, alpha = 1) {
+/**
+ * The camera brought round onto `ship`, where she is drawn `alpha` of the way through the last step.
+ * `hold` is whether the map's boundary holds the camera off its edge, which play wants and the
+ * instant replay does not: its window is aimed at a point, and a ship sunk against the rope would
+ * otherwise drift out of it.
+ */
+export function followView(v, ship, alpha = 1, hold = true) {
   if (!ship) return;
   const me = blend(ship, alpha);
   const spanX = v.Vw, spanY = v.Vh / TILT; // sea on the screen, in world units
+  if (!hold) {
+    v.cam.x = me.x - spanX / 2;
+    v.cam.y = me.y - spanY / 2;
+    return;
+  }
   // across, the give past the square is capped at SIDE_PEEK; up and down it is not, because
   // that strip is the one the buttons and panels sit on and it is hers to spend
   const peekX = Math.max(Math.min((spanX - v.Vsq) / 2, SIDE_PEEK / v.zoom), EDGE_PEEK / v.zoom);
@@ -129,6 +150,9 @@ export function followView(v, ship, alpha = 1) {
   v.cam.x = camHold(me.x - spanX / 2, spanX, peekX);
   v.cam.y = camHold(me.y - spanY / 2, spanY, peekY);
 }
+
+/** Whether a point in view space (`gx, gy`, as the overlay places a ship's bars) lands inside `box`, a rectangle in CSS pixels. */
+export const inBox = (v, gx, gy, box) => !box || (gx * v.zoom >= box.x0 && gx * v.zoom <= box.x1 && gy * v.zoom >= box.y0 && gy * v.zoom <= box.y1);
 
 /**
  * Whether any ship afloat lies under a box on the page, `rect` as `getBoundingClientRect` gives
